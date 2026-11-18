@@ -24,6 +24,13 @@
 - 解决：关闭已有实例后重试。已在单实例锁失败时向控制台输出 `[app] another instance is already running`。
 - 预防：启动前检查 `Get-Process electron` 与 5173 端口；e2e / 截屏脚本使用独立的 `PCH_USER_DATA_DIR`，不受影响。
 
+### 主进程的超时 / 取消不能依赖 provider 响应 AbortSignal
+
+- 日期：2026-11-18
+- 症状：（预防性）`fs.promises.readdir` 不接受 signal；网络共享无响应时 readdir 可能一直挂起，超时形同虚设。
+- 解决：`VfsService` 让调用与中止信号赛跑（`Promise.race`），中止即以 `FS_CANCELLED` / `FS_TIMEOUT` 结束；同时给操作的 promise 挂一个空 `catch`，避免它在中止后迟到失败时产生 unhandled rejection。
+- 预防：所有可能访问网络路径的操作都经过 `VfsService`，不要在模块里直接调用 `fs`。
+
 ### tsup / esbuild 打包 Electron 主进程的两个坑（历史，tsup 已移除）
 
 - 日期：2026-11-18

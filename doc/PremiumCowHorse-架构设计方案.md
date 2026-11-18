@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.4　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.5　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.5 变更（M1-1 数据层完成）：工作区 / 条目的存储与规则、VFS（LocalProvider、VfsService）与对应 IPC 已实现；更新 5.2、6.1、6.3、6.6、7.1、7.2、8.1、13 节的「已实现」标注与细节
 > v1.4 变更（M1 开工前的决策）：标签状态在 M1 即按最终设计由主进程的 layoutReducer 持有（先支持单窗口）；M1 实现最小插件体系（PreviewContainer + 只含 folder 的注册表）；内置插件合并为单个 `plugins/builtin` 包；目录变更感知改用 Node 内置 `fs.watch`（不引入 chokidar），并明确网络路径与 FTP/SFTP 的刷新策略。涉及 2.5、3.2、3.3、5.1、8.3、18 节
 > v1.3 变更（M0 完成）：Windows 下不再使用系统窗口按钮（Window Controls Overlay），改为自绘窗口按钮；分发形式改为 zip 免安装文件夹版（不提供安装程序）；新增第 20 节「文档与知识管理」；修正 5.2、6.1、6.2、6.3、12.2、14.2、14.3、16.4 等处与实现不一致的描述；目录结构区分「目标结构」与「M0 已实现」
 > v1.2 变更（M0 实施后的技术栈复审）：渲染端由 Next.js 静态导出改为 electron-vite（Vite + React），去掉 tsup 与自写开发脚本；数据库访问由 Drizzle 改为 Kysely；shadcn/ui 底层由 Radix 改为 Base UI；IPC 改为单通道传输；新增模块边界 lint、渲染端错误落盘、Electron Fuses 与打包工具链说明。涉及 2.1、2.2、2.6、3、5、6.3、6.5、12.3、13、16、17、19 节
@@ -234,7 +235,9 @@ apps/desktop/src/
 │   │   └── i18n.ts                   # 主进程 i18next 实例
 │   ├── vfs/
 │   │   ├── types.ts                  # FileSystemProvider 接口
-│   │   ├── vfs.service.ts            # 按 scheme 路由到 provider
+│   │   ├── errors.ts                 # Node 文件系统错误 → AppError（FS_*）
+│   │   ├── vfs.service.ts            # 按 scheme 路由到 provider；取消与超时
+│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list / vfs.cancel
 │   │   ├── providers/
 │   │   │   ├── local.provider.ts
 │   │   │   ├── smb.provider.ts
@@ -247,6 +250,7 @@ apps/desktop/src/
 │   ├── modules/                      # 按业务领域划分，每个模块结构一致
 │   │   ├── workspace/
 │   │   │   ├── workspace.repo.ts     # 只做数据存取
+│   │   │   ├── entry.repo.ts         # 条目的数据存取
 │   │   │   ├── workspace.service.ts  # 业务规则
 │   │   │   └── workspace.ipc.ts      # IPC handler：参数已校验，只转发给 service
 │   │   ├── connection/
@@ -270,7 +274,7 @@ apps/desktop/src/
     └── index.ts                      # 暴露 window.pch
 ```
 
-M0 已实现：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window）、`windows/`、`preload/`。
+已实现（M0、M1-1）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -317,7 +321,7 @@ M0 已实现：`app/`、`features/shell/`、`data/`、`lib/`、`providers/`、`s
 ### 6.1 组合根（不引入 DI 框架）
 
 ```ts
-// apps/desktop/src/main/bootstrap/container.ts（目标形态；M0 已装配 paths、logger、db、bus、settings、i18n、windows）
+// apps/desktop/src/main/bootstrap/container.ts（目标形态；已装配 paths、logger、db、bus、settings、workspaces、vfs、i18n、windows）
 export async function createContainer(rendererUrl: string): Promise<Container> {
   const paths = createPaths();
   const logger = createLogger(paths);
@@ -361,7 +365,8 @@ import { z } from 'zod';
 const route = <O>() => <I extends z.ZodType>(input: I) =>
   ({ input, output: undefined as unknown as O });
 
-// 目标形态节选；M0 已实现：app.getInfo、settings.getAll、settings.set、window.*、log.write
+// 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
+// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel}、window.*、log.write
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
@@ -463,7 +468,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：M0 已有 `UNKNOWN`、`IPC_FORBIDDEN`、`IPC_BAD_INPUT`、`IPC_UNKNOWN_CHANNEL`、`SETTINGS_INVALID`；后续按需增加 `FS_NOT_FOUND`、`FS_PERMISSION_DENIED`、`CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -494,11 +499,11 @@ export interface FileEntry {
 }
 ```
 
-`VfsService` 只负责按 scheme 路由、统一超时与取消（`vfs.cancel` 通过 requestId 触发 AbortController）、对目录变更发布 `vfs.changed` 事件。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
+已实现的是上面接口的子集（`stat`、`list`、`dispose`；`createReadStream` 于 M2、`watch` 于 M1-2 增加）。`VfsService` 负责按 scheme 路由、统一超时（默认 30 秒，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）、对目录变更发布 `vfs.changed` 事件（M1-2）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
 ### 7.2 各 Provider 要点
 
-**LocalProvider**：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`）。隐藏文件判断在 Windows 上需读取文件属性。
+**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环）；单个子项读取失败（列出过程中被删除、权限不足）时跳过该项，不让整个列表失败。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
 
 **SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
@@ -559,7 +564,9 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | `folder` | 指向某个目录 URI 的根 | 懒加载，来自 VFS 真实列表 |
 | `file` | 指向单个文件 URI | 无 |
 
-远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
+远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。条目规则（已实现）：父节点只能是根或同一工作区的 `group`；folder / file 条目以本地路径添加，目标必须存在且类型一致（`ENTRY_KIND_MISMATCH`）；删除 group 时连同所有后代一起删除；新增条目追加到同级末尾，移动时在一个事务内重排同级的 `sort_order`；不能把 group 移到它自己的后代下。所有写操作各自在一个事务内完成，成功后广播 `workspace.changed`。
+
+此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
 
 ### 8.2 树的渲染
 
@@ -913,11 +920,11 @@ createRoot(document.getElementById('root')!).render(
 
 ## 13. 数据库设计
 
-位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（M0 已实现 `settings`）。
+位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`））。
 
 ```sql
 -- 时间戳一律为 UNIX 毫秒（INTEGER）；JSON 列以 TEXT 存储
-CREATE TABLE workspaces (
+CREATE TABLE workspaces (                             -- M1-1 已实现
   id             TEXT PRIMARY KEY,
   name           TEXT NOT NULL,
   description    TEXT,
@@ -929,7 +936,7 @@ CREATE TABLE workspaces (
   updated_at     INTEGER NOT NULL
 );
 
-CREATE TABLE workspace_entries (
+CREATE TABLE workspace_entries (                      -- M1-1 已实现
   id           TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   parent_id    TEXT,                                  -- NULL 为根；只能指向 group

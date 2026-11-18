@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -180,6 +180,86 @@ test.describe('first screen', () => {
       await closed
     } finally {
       await app.close().catch(() => undefined)
+    }
+  })
+})
+
+test.describe('workspace data layer over IPC', () => {
+  let userData: string
+  let files: string
+
+  test.beforeEach(() => {
+    userData = mkdtempSync(path.join(tmpdir(), 'pch-e2e-'))
+    files = mkdtempSync(path.join(tmpdir(), 'pch-e2e-files-'))
+    mkdirSync(path.join(files, '設計書'))
+    writeFileSync(path.join(files, '設計書', '仕様.xlsx'), '')
+  })
+  test.afterEach(() => {
+    rmSync(userData, { recursive: true, force: true })
+    rmSync(files, { recursive: true, force: true })
+  })
+
+  type IpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string } }
+  type Named = { id: string; name: string; label: string; uri: string }
+
+  /** 经 window.pch 调用主进程，返回 IpcResult */
+  const invoke = (page: Page, channel: string, input?: unknown): Promise<IpcResult> =>
+    page.evaluate(([c, i]) => window.pch!.invoke(c as string, i) as Promise<IpcResult>, [
+      channel,
+      input
+    ] as const)
+  /** 调用并断言成功，返回 data */
+  const data = async <T = Named>(page: Page, channel: string, input?: unknown): Promise<T> => {
+    const res = await invoke(page, channel, input)
+    if (!res.ok) throw new Error(`${channel} failed: ${JSON.stringify(res)}`)
+    return res.data as T
+  }
+
+  test('creates and activates a workspace, adds a folder entry, lists it and persists', async () => {
+    let { app, page } = await launch(userData)
+    let workspaceId: string
+    try {
+      const initial = await data<Named[]>(page, 'workspace.list')
+      expect(initial.map((w) => w.id)).toEqual(['default'])
+
+      const created = await data(page, 'workspace.create', { name: '案件A' })
+      workspaceId = created.id
+      await data(page, 'workspace.activate', { id: workspaceId })
+      expect((await data(page, 'workspace.active')).name).toBe('案件A')
+
+      const folder = path.join(files, '設計書')
+      const entry = await data(page, 'entry.add', {
+        kind: 'folder',
+        workspaceId,
+        parentId: null,
+        path: folder
+      })
+      expect(entry).toMatchObject({ kind: 'folder', label: '設計書' })
+      const entries = await data<Named[]>(page, 'entry.list', { workspaceId })
+      expect(entries.map((e) => e.id)).toEqual([entry.id])
+
+      const listed = await data<Named[]>(page, 'vfs.list', { uri: entry.uri, requestId: 'e2e-1' })
+      expect(listed.map((f) => f.name)).toEqual(['仕様.xlsx'])
+
+      const missing = await invoke(page, 'entry.add', {
+        kind: 'folder',
+        workspaceId,
+        parentId: null,
+        path: path.join(files, 'nope')
+      })
+      expect(missing).toMatchObject({ ok: false, error: { code: 'FS_NOT_FOUND' } })
+    } finally {
+      await app.close()
+    }
+
+    // 重启后：工作区、当前工作区与条目都还在
+    ;({ app, page } = await launch(userData))
+    try {
+      expect((await data(page, 'workspace.active')).id).toBe(workspaceId)
+      const entries = await data<Named[]>(page, 'entry.list', { workspaceId })
+      expect(entries.map((e) => e.label)).toEqual(['設計書'])
+    } finally {
+      await app.close()
     }
   })
 })
