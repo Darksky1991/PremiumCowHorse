@@ -12,7 +12,7 @@ import {
 import { applySecurityPolicies } from '../windows/security'
 import { location } from '../vfs/location'
 import { createContainer, type Container } from './container'
-import { minimalScannerConfig } from './scanner-config'
+import { buildScannerConfig } from '../vfs/scanner-config'
 import { registerShutdown } from './shutdown'
 
 export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
@@ -95,14 +95,19 @@ function wireScanner(c: Container): void {
   const push = async (): Promise<void> => {
     const mine = ++seq
     try {
-      const [active, all] = await Promise.all([c.workspaces.active(), c.workspaces.list()])
+      const [active, all, indexTargets] = await Promise.all([
+        c.workspaces.active(),
+        c.workspaces.list(),
+        c.workspaces.listAllIndexTargets()
+      ])
       const entries = (await Promise.all(all.map((w) => c.workspaces.listEntries(w.id)))).flat()
       // 更晚发起的下发已在途：丢弃这次（避免旧配置后到、覆盖新配置）
       if (mine !== seq) return
       c.scanner.configure(
-        minimalScannerConfig({
+        buildScannerConfig({
           activeWorkspaceIds: [active.id],
-          entries,
+          allFolderEntries: entries.filter((e) => e.kind === 'folder'),
+          indexTargets,
           settings: c.settings.getAll(),
           location
         })

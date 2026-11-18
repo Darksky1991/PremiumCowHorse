@@ -59,6 +59,23 @@ export const EntryUpdateInput = z.strictObject({
 })
 export type EntryUpdateInput = z.infer<typeof EntryUpdateInput>
 
+export const RefreshLevelSchema = z.enum(['passive', 'default', 'active', 'all'])
+
+export const EntrySetRefreshLevelInput = z.strictObject({
+  workspaceId: id,
+  entryId: id,
+  /** null = 清除条目级设置，沿用全局默认 */
+  level: RefreshLevelSchema.nullable()
+})
+export type EntrySetRefreshLevelInput = z.infer<typeof EntrySetRefreshLevelInput>
+
+export const IndexSetTargetInput = z.strictObject({
+  workspaceId: id,
+  uri: z.string().min(1),
+  enabled: z.boolean()
+})
+export type IndexSetTargetInput = z.infer<typeof IndexSetTargetInput>
+
 export const EntryMoveInput = z.strictObject({
   id,
   parentId,

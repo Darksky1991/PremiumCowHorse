@@ -7,6 +7,12 @@ describe('toFileUri', () => {
     expect(fileURLToPath(toFileUri('"C:\\案件 A"'))).toBe('C:\\案件 A')
   })
 
+  it('does not leave a trailing slash, except on a drive root', () => {
+    expect(toFileUri('C:\\foo\\')).toBe('file:///C:/foo')
+    expect(toFileUri('C:\\')).toBe('file:///C:/')
+    expect(toFileUri('\\\\srv\\share\\')).toBe('file://srv/share')
+  })
+
   it('trims surrounding whitespace', () => {
     expect(fileURLToPath(toFileUri('  C:\\x  '))).toBe('C:\\x')
   })

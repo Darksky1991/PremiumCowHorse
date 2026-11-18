@@ -4,6 +4,8 @@ import {
   DEFAULT_WORKSPACE_ID,
   type EntryAddInput,
   type EntryMoveInput,
+  type EntrySetRefreshLevelInput,
+  type IndexSetTargetInput,
   type EntryUpdateInput,
   type Workspace,
   type WorkspaceCreateInput,
@@ -14,8 +16,9 @@ import type { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import type { Database } from '../../infra/db/client'
 import { toFileUri } from '../../vfs/input-path'
+import { isUnderUri, normalizeRootUri } from '../../vfs/normalize-uri'
 import type { VfsService } from '../../vfs/vfs.service'
-import { EntryRepo } from './entry.repo'
+import { EntryRepo, IndexTargetRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
 
 /**
@@ -111,7 +114,7 @@ export class WorkspaceService {
     let uri: string | null = null
     let defaultLabel = ''
     if (input.kind !== 'group') {
-      uri = input.path !== undefined ? toFileUri(input.path) : (input.uri as string)
+      uri = input.path !== undefined ? toFileUri(input.path) : normalizeRootUri(input.uri as string)
       const stat = await this.vfs.stat(uri)
       if ((input.kind === 'folder') !== (stat.kind === 'directory')) {
         throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${input.kind} → ${stat.kind}` })
@@ -132,6 +135,7 @@ export class WorkspaceService {
         uri,
         sortOrder: (await entries.maxSortOrder(input.workspaceId, input.parentId)) + 1,
         meta: null,
+        refreshLevel: null,
         createdAt: now,
         updatedAt: now
       }
@@ -156,8 +160,68 @@ export class WorkspaceService {
       const entries = new EntryRepo(trx)
       const existing = await this.requireEntry(entries, id)
       const all = await entries.listByWorkspace(existing.workspaceId)
-      await entries.deleteMany(subtreeIds(all, id))
+      const removedIds = new Set(subtreeIds(all, id))
+      await entries.deleteMany([...removedIds])
+      await this.pruneIndexTargets(
+        trx,
+        existing.workspaceId,
+        all.filter((e) => removedIds.has(e.id)),
+        all.filter((e) => !removedIds.has(e.id))
+      )
       return { workspaceId: existing.workspaceId, result: undefined }
+    })
+  }
+
+  /** 设置条目级刷新级别（null = 沿用全局默认）；只有 folder 条目可设置 */
+  async setRefreshLevel(input: EntrySetRefreshLevelInput): Promise<WorkspaceEntry> {
+    return this.write(async (trx) => {
+      const entries = new EntryRepo(trx)
+      const existing = await this.requireEntry(entries, input.entryId)
+      if (existing.workspaceId !== input.workspaceId) {
+        throw new AppError({ code: 'ENTRY_NOT_FOUND', detail: input.entryId })
+      }
+      if (existing.kind !== 'folder') {
+        throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${existing.kind} → folder` })
+      }
+      await entries.update(existing.id, { refreshLevel: input.level })
+      return {
+        workspaceId: existing.workspaceId,
+        result: await this.requireEntry(entries, existing.id)
+      }
+    })
+  }
+
+  // ---------- 建立索引 ----------
+
+  listIndexTargets(workspaceId: string): Promise<string[]> {
+    return new IndexTargetRepo(this.db).listByWorkspace(workspaceId)
+  }
+
+  /** 全部工作区的索引目标（配置下发用，由 buildScannerConfig 按活动工作区过滤） */
+  listAllIndexTargets(): Promise<{ workspaceId: string; uri: string }[]> {
+    return new IndexTargetRepo(this.db).listAll()
+  }
+
+  /**
+   * 开启 / 关闭某目录的「建立索引」。uri 经规范化，开启时必须位于该工作区某个 folder 条目之下
+   * （否则 ENTRY_INVALID_PARENT）；重复开启 / 关闭是幂等的。
+   */
+  async setIndexTarget(input: IndexSetTargetInput): Promise<void> {
+    const uri = normalizeRootUri(input.uri)
+    await this.write(async (trx) => {
+      await this.requireWorkspace(new WorkspaceRepo(trx), input.workspaceId)
+      const targets = new IndexTargetRepo(trx)
+      if (!input.enabled) {
+        await targets.remove(input.workspaceId, uri)
+      } else {
+        const all = await new EntryRepo(trx).listByWorkspace(input.workspaceId)
+        const inside = all.some(
+          (e) => e.kind === 'folder' && e.uri !== null && isUnderUri(uri, normalizeRootUri(e.uri))
+        )
+        if (!inside) throw new AppError({ code: 'ENTRY_INVALID_PARENT', detail: uri })
+        await targets.add(input.workspaceId, uri)
+      }
+      return { workspaceId: input.workspaceId, result: undefined }
     })
   }
 
@@ -207,6 +271,29 @@ export class WorkspaceService {
     const { workspaceId, result } = await this.db.transaction().execute(fn)
     this.bus.emit('workspace.changed', { id: workspaceId })
     return result
+  }
+
+  /** 删除位于被移除 folder 之下、且不在任何保留 folder 之下的索引目标 */
+  private async pruneIndexTargets(
+    trx: Database,
+    workspaceId: string,
+    removed: WorkspaceEntry[],
+    kept: WorkspaceEntry[]
+  ): Promise<void> {
+    const folderUris = (list: WorkspaceEntry[]): string[] =>
+      list.flatMap((e) => (e.kind === 'folder' && e.uri !== null ? [normalizeRootUri(e.uri)] : []))
+    const removedRoots = folderUris(removed)
+    if (removedRoots.length === 0) return
+    const keptRoots = folderUris(kept)
+    const targets = new IndexTargetRepo(trx)
+    for (const uri of await targets.listByWorkspace(workspaceId)) {
+      if (
+        removedRoots.some((r) => isUnderUri(uri, r)) &&
+        !keptRoots.some((r) => isUnderUri(uri, r))
+      ) {
+        await targets.remove(workspaceId, uri)
+      }
+    }
   }
 
   private async requireWorkspace(repo: WorkspaceRepo, id: string): Promise<Workspace> {

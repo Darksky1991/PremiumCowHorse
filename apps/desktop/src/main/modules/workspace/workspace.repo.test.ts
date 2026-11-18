@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_WORKSPACE_ID, type Workspace, type WorkspaceEntry } from '@pch/shared'
 import { openDatabase, type Database } from '../../infra/db/client'
 import type { Logger } from '../../infra/logger'
-import { EntryRepo } from './entry.repo'
+import { EntryRepo, IndexTargetRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
 
 const noop = (): void => undefined
@@ -29,6 +29,7 @@ const entry = (id: string, over: Partial<WorkspaceEntry> = {}): WorkspaceEntry =
   uri: null,
   sortOrder: 0,
   meta: null,
+  refreshLevel: null,
   createdAt: 1,
   updatedAt: 1,
   ...over
@@ -94,5 +95,57 @@ describe('workspace repositories (migration 0002)', () => {
       await new EntryRepo(trx).insert(entry('t1'))
     })
     expect(await entries.get('t1')).toBeDefined()
+  })
+
+  describe('migration 0003 (refresh level, index targets)', () => {
+    it('leaves existing entries with a null refresh level and stores / clears a level', async () => {
+      await entries.insert(entry('f1', { kind: 'folder', uri: 'file:///C:/a' }))
+      expect((await entries.get('f1'))?.refreshLevel).toBeNull()
+      await entries.update('f1', { refreshLevel: 'all' })
+      expect((await entries.get('f1'))?.refreshLevel).toBe('all')
+      await entries.update('f1', { refreshLevel: null })
+      expect((await entries.get('f1'))?.refreshLevel).toBeNull()
+    })
+
+    it('rejects an unknown refresh level at the database level', async () => {
+      await expect(
+        db
+          .insertInto('workspace_entries')
+          .values({
+            id: 'x',
+            workspace_id: DEFAULT_WORKSPACE_ID,
+            parent_id: null,
+            kind: 'folder',
+            label: 'x',
+            uri: 'file:///C:/x',
+            sort_order: 0,
+            meta: null,
+            refresh_level: 'bogus' as never,
+            created_at: 1,
+            updated_at: 1
+          })
+          .execute()
+      ).rejects.toThrow()
+    })
+
+    it('adds index targets idempotently, lists them per workspace and removes them', async () => {
+      const targets = new IndexTargetRepo(db)
+      await workspaces.insert(workspace('w1'))
+      await targets.add(DEFAULT_WORKSPACE_ID, 'file:///C:/a')
+      await targets.add(DEFAULT_WORKSPACE_ID, 'file:///C:/a')
+      await targets.add('w1', 'file:///C:/a')
+      expect(await targets.listByWorkspace(DEFAULT_WORKSPACE_ID)).toEqual(['file:///C:/a'])
+      expect(await targets.listAll()).toHaveLength(2)
+      await targets.remove(DEFAULT_WORKSPACE_ID, 'file:///C:/a')
+      expect(await targets.listByWorkspace(DEFAULT_WORKSPACE_ID)).toEqual([])
+    })
+
+    it('cascades index targets when a workspace is deleted', async () => {
+      const targets = new IndexTargetRepo(db)
+      await workspaces.insert(workspace('w1'))
+      await targets.add('w1', 'file:///C:/a')
+      await workspaces.delete('w1')
+      expect(await targets.listAll()).toEqual([])
+    })
   })
 })

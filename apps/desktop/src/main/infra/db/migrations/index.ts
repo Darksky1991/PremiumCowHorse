@@ -1,6 +1,7 @@
 import type { Migration } from 'kysely/migration'
 import * as m0001 from './0001-init'
 import * as m0002 from './0002-workspaces'
+import * as m0003 from './0003-refresh'
 
 /**
  * 迁移按键名的字典序执行，键名一旦发布不得修改。
@@ -8,5 +9,6 @@ import * as m0002 from './0002-workspaces'
  */
 export const migrations: Record<string, Migration> = {
   '0001-init': m0001,
-  '0002-workspaces': m0002
+  '0002-workspaces': m0002,
+  '0003-refresh': m0003
 }

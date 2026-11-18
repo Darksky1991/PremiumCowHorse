@@ -16,6 +16,9 @@ export function workspaceHandlers(
   | 'entry.update'
   | 'entry.remove'
   | 'entry.move'
+  | 'entry.setRefreshLevel'
+  | 'index.setTarget'
+  | 'index.list'
 > {
   return {
     'workspace.list': () => workspaces.list(),
@@ -28,6 +31,9 @@ export function workspaceHandlers(
     'entry.add': (input) => workspaces.addEntry(input),
     'entry.update': (input) => workspaces.updateEntry(input),
     'entry.remove': ({ id }) => workspaces.removeEntry(id),
-    'entry.move': (input) => workspaces.moveEntry(input)
+    'entry.move': (input) => workspaces.moveEntry(input),
+    'entry.setRefreshLevel': (input) => workspaces.setRefreshLevel(input),
+    'index.setTarget': (input) => workspaces.setIndexTarget(input),
+    'index.list': ({ workspaceId }) => workspaces.listIndexTargets(workspaceId)
   }
 }

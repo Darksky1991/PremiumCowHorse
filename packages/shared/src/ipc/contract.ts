@@ -4,6 +4,8 @@ import { SettingsPatch, type Settings } from '../settings/schema'
 import {
   EntryAddInput,
   EntryMoveInput,
+  EntrySetRefreshLevelInput,
+  IndexSetTargetInput,
   EntryUpdateInput,
   WorkspaceCreateInput,
   WorkspaceUpdateInput
@@ -58,6 +60,9 @@ export const ipcContract = {
   'entry.update': route<WorkspaceEntry>()(EntryUpdateInput),
   'entry.remove': route<void>()(z.strictObject({ id: z.string().min(1) })),
   'entry.move': route<void>()(EntryMoveInput),
+  'entry.setRefreshLevel': route<WorkspaceEntry>()(EntrySetRefreshLevelInput),
+  'index.setTarget': route<void>()(IndexSetTargetInput),
+  'index.list': route<string[]>()(z.strictObject({ workspaceId: z.string().min(1) })),
   /** 文件系统的一次性调用（经 VfsService 按 scheme 路由）；requestId 用于取消，同一 id 的新请求取代旧请求 */
   'vfs.stat': route<FileStat>()(z.strictObject({ uri: z.string().min(1) })),
   /**

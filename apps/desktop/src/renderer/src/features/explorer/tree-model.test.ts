@@ -24,6 +24,7 @@ function entry(
     uri: opts.uri ?? (kind === 'group' ? null : `${ROOT}/${id}`),
     sortOrder: opts.sortOrder ?? 0,
     meta: null,
+    refreshLevel: null,
     createdAt: 0,
     updatedAt: 0
   }

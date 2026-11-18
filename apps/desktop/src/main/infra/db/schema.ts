@@ -33,12 +33,21 @@ export interface WorkspaceEntriesTable {
   uri: string | null
   sort_order: number
   meta: string | null
+  refresh_level: 'passive' | 'default' | 'active' | 'all' | null
   created_at: number
   updated_at: number
+}
+
+/** 「建立索引」的目标目录（file URI，已规范化）；只属于一个工作区，随工作区删除 */
+export interface IndexTargetsTable {
+  workspace_id: string
+  uri: string
+  created_at: number
 }
 
 export interface DB {
   settings: SettingsTable
   workspaces: WorkspacesTable
   workspace_entries: WorkspaceEntriesTable
+  index_targets: IndexTargetsTable
 }

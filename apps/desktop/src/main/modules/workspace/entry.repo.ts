@@ -1,9 +1,11 @@
 import type { Selectable, Updateable } from 'kysely'
-import type { EntryMeta, WorkspaceEntry } from '@pch/shared'
+import type { EntryMeta, RefreshLevel, WorkspaceEntry } from '@pch/shared'
 import type { Database } from '../../infra/db/client'
 import type { WorkspaceEntriesTable } from '../../infra/db/schema'
 
-export type EntryPatch = Partial<Pick<WorkspaceEntry, 'label' | 'meta' | 'parentId' | 'sortOrder'>>
+export type EntryPatch = Partial<
+  Pick<WorkspaceEntry, 'label' | 'meta' | 'parentId' | 'sortOrder' | 'refreshLevel'>
+>
 
 /**
  * 只做数据存取，不含业务规则（父节点合法性、排序重排等由 WorkspaceService 负责）。
@@ -44,6 +46,7 @@ export class EntryRepo {
         uri: e.uri,
         sort_order: e.sortOrder,
         meta: e.meta === null ? null : JSON.stringify(e.meta),
+        refresh_level: e.refreshLevel,
         created_at: e.createdAt,
         updated_at: e.updatedAt
       })
@@ -54,6 +57,7 @@ export class EntryRepo {
     const set: Updateable<WorkspaceEntriesTable> = { updated_at: Date.now() }
     if (patch.label !== undefined) set.label = patch.label
     if (patch.meta !== undefined) set.meta = patch.meta === null ? null : JSON.stringify(patch.meta)
+    if (patch.refreshLevel !== undefined) set.refresh_level = patch.refreshLevel
     if (patch.parentId !== undefined) set.parent_id = patch.parentId
     if (patch.sortOrder !== undefined) set.sort_order = patch.sortOrder
     await this.db.updateTable('workspace_entries').set(set).where('id', '=', id).execute()
@@ -76,6 +80,44 @@ export class EntryRepo {
   }
 }
 
+/** 「建立索引」目标的存取；规则（位置、清理）由 WorkspaceService 负责 */
+export class IndexTargetRepo {
+  constructor(private readonly db: Database) {}
+
+  async listByWorkspace(workspaceId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('index_targets')
+      .select('uri')
+      .where('workspace_id', '=', workspaceId)
+      .orderBy('created_at')
+      .orderBy('uri')
+      .execute()
+    return rows.map((r) => r.uri)
+  }
+
+  async listAll(): Promise<{ workspaceId: string; uri: string }[]> {
+    const rows = await this.db.selectFrom('index_targets').select(['workspace_id', 'uri']).execute()
+    return rows.map((r) => ({ workspaceId: r.workspace_id, uri: r.uri }))
+  }
+
+  /** 幂等：已存在时不改动（保留首次的 created_at） */
+  async add(workspaceId: string, uri: string): Promise<void> {
+    await this.db
+      .insertInto('index_targets')
+      .values({ workspace_id: workspaceId, uri, created_at: Date.now() })
+      .onConflict((oc) => oc.columns(['workspace_id', 'uri']).doNothing())
+      .execute()
+  }
+
+  async remove(workspaceId: string, uri: string): Promise<void> {
+    await this.db
+      .deleteFrom('index_targets')
+      .where('workspace_id', '=', workspaceId)
+      .where('uri', '=', uri)
+      .execute()
+  }
+}
+
 function toEntry(row: Selectable<WorkspaceEntriesTable>): WorkspaceEntry {
   return {
     id: row.id,
@@ -86,6 +128,7 @@ function toEntry(row: Selectable<WorkspaceEntriesTable>): WorkspaceEntry {
     uri: row.uri,
     sortOrder: row.sort_order,
     meta: row.meta === null ? null : (JSON.parse(row.meta) as EntryMeta),
+    refreshLevel: row.refresh_level as RefreshLevel | null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
