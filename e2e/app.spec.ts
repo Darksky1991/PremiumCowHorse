@@ -1,33 +1,8 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
-
-const appDir = path.resolve(__dirname, '../apps/desktop')
-
-async function launch(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [appDir],
-    env: { ...process.env, PCH_USER_DATA_DIR: userDataDir, ELECTRON_RENDERER_URL: '' }
-  })
-  const page = await app.firstWindow()
-  await page.waitForLoadState('domcontentloaded')
-  return { app, page }
-}
+import { expect, test } from '@playwright/test'
+import { data, invoke, launch, retryLabel, snapshotTree, type Named } from './support'
 
 test.describe('first screen', () => {
   let userData: string
@@ -207,22 +182,6 @@ test.describe('workspace data layer over IPC', () => {
     rmSync(files, { recursive: true, force: true })
   })
 
-  type IpcResult = { ok: true; data: unknown } | { ok: false; error: { code: string } }
-  type Named = { id: string; name: string; label: string; uri: string }
-
-  /** 经 window.pch 调用主进程，返回 IpcResult */
-  const invoke = (page: Page, channel: string, input?: unknown): Promise<IpcResult> =>
-    page.evaluate(([c, i]) => window.pch!.invoke(c as string, i) as Promise<IpcResult>, [
-      channel,
-      input
-    ] as const)
-  /** 调用并断言成功，返回 data */
-  const data = async <T = Named>(page: Page, channel: string, input?: unknown): Promise<T> => {
-    const res = await invoke(page, channel, input)
-    if (!res.ok) throw new Error(`${channel} failed: ${JSON.stringify(res)}`)
-    return res.data as T
-  }
-
   test('creates and activates a workspace, adds a folder entry, lists it and persists', async () => {
     let { app, page } = await launch(userData)
     let workspaceId: string
@@ -388,7 +347,8 @@ test.describe('workspace data layer over IPC', () => {
         (await data<Named[]>(page, 'entry.list', { workspaceId })).map((e) => e.label)
       await expect(page.getByRole('tree').getByRole('treeitem')).toHaveCount(2)
       expect(await labels()).toEqual(['a.txt', 'b.txt'])
-      const before = readdirSync(files).sort()
+      // 递归快照（路径 + 类型 + 大小 + mtime）：拖放前后完全一致（Review Focus 1）
+      const before = snapshotTree(files)
 
       // 合成原生拖放事件：b 拖到 a 行的上缘（before）。dragover 已 preventDefault 才会触发 drop
       const result = await page.evaluate(() => {
@@ -419,7 +379,7 @@ test.describe('workspace data layer over IPC', () => {
       expect(result.overPrevented).toBe(true)
 
       await expect.poll(labels).toEqual(['b.txt', 'a.txt'])
-      expect(readdirSync(files).sort()).toEqual(before)
+      expect(snapshotTree(files)).toEqual(before)
     } finally {
       await app.close()
     }
@@ -640,8 +600,15 @@ test.describe('workspace data layer over IPC', () => {
       const tree = page.getByRole('tree')
       const switcher = page.getByRole('banner').getByRole('button', { name: workspaceTrigger })
       const heading = page.getByRole('heading', { level: 1 })
-      const menuOf = async (name: RegExp): Promise<void> => {
+      // 上一个菜单的关闭动画（data-ending-style）结束前再次点击切换器，菜单会重新打开但焦点留在按钮上，
+      // 随后的 Esc / 点击不按预期生效（e2e 偶发失败的原因）：每次打开前等旧菜单从 DOM 中移除
+      const openMenu = async (): Promise<void> => {
+        await expect(page.getByRole('menu')).toHaveCount(0)
         await switcher.click()
+        await expect(page.getByRole('menu')).toBeVisible()
+      }
+      const menuOf = async (name: RegExp): Promise<void> => {
+        await openMenu()
         await page.getByRole('menuitem', { name }).click()
       }
       await expect(switcher).toHaveText(defaultName)
@@ -660,14 +627,15 @@ test.describe('workspace data layer over IPC', () => {
       expect((await data(page, 'workspace.active')).name).toBe('案件A')
 
       // 切回默认工作区：树恢复为默认工作区的条目
-      await switcher.click()
+      await openMenu()
       await page.getByRole('menuitemradio', { name: defaultName }).click()
       await expect(switcher).toHaveText(defaultName)
       await expect(heading).toHaveText(defaultName)
       await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
 
-      // 默认工作区不能删除，也没有「恢复默认名称」
-      await switcher.click()
+      // 默认工作区不能删除，也没有「恢复默认名称」（菜单已打开后再断言「不存在」，避免空洞通过）
+      await openMenu()
+      await expect(page.getByRole('menuitem', { name: newWorkspaceLabel })).toBeVisible()
       await expect(page.getByRole('menuitem', { name: deleteWorkspaceLabel })).toHaveCount(0)
       await expect(page.getByRole('menuitem', { name: restoreNameLabel })).toHaveCount(0)
       await page.keyboard.press('Escape')
@@ -685,7 +653,7 @@ test.describe('workspace data layer over IPC', () => {
       expect((await data(page, 'workspace.active')).name).toBe('')
 
       // 删除当前工作区：只删工作区与条目，之后回到默认工作区
-      await switcher.click()
+      await openMenu()
       await page.getByRole('menuitemradio', { name: '案件A' }).click()
       await expect(switcher).toHaveText('案件A')
       await menuOf(deleteWorkspaceLabel)
@@ -710,9 +678,6 @@ test.describe('workspace data layer over IPC', () => {
     }
   })
 })
-
-/** 错误行的可访问名称包含「重试」按钮的文字 */
-const retryLabel = '再試行|重试|Retry'
 
 /** 右键菜单与对话框的文案（ja | zh-CN | en；e2e 默认语言随系统，三种都匹配） */
 const renameLabel = /^(名前の変更|重命名|Rename) ?(F2)?$/
