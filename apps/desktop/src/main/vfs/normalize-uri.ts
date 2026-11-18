@@ -8,8 +8,17 @@ export function normalizeRootUri(uri: string): string {
   return /^file:\/\/\/[A-Za-z]:$/.test(trimmed) ? `${trimmed}/` : trimmed
 }
 
-/** uri 是否为 root 本身或其子孙（两者都应已规范化；按字面比较） */
+/** 目录 URI 的「根前缀」：根已以 / 结尾（驱动器根 file:///C:/）时不再追加 */
+export function prefixOf(root: string): string {
+  return root.endsWith('/') ? root : `${root}/`
+}
+
+/**
+ * uri 是否等于 root 或在 root 之下。纯字符串比较、大小写敏感（与 URI 原样一致）：
+ * Windows 路径大小写不敏感，大小写不同的同一目录会被视为不同目录——
+ * 这里依赖 URI 来自同一来源（工作区条目 + pathToFileURL(path.join(...))）而保持一致。
+ * 主进程（索引目标是否在 folder 之下）与扫描进程（缓存、调度器的根覆盖）共用本实现，语义必须一致。
+ */
 export function isUnderUri(uri: string, root: string): boolean {
-  if (uri === root) return true
-  return uri.startsWith(root.endsWith('/') ? root : `${root}/`)
+  return uri === root || uri.startsWith(prefixOf(root))
 }

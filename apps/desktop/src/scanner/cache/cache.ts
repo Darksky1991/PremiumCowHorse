@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
+import { isUnderUri as isUnder, prefixOf } from '../../main/vfs/normalize-uri'
 import type { RawEntry } from '../enum/types'
 import { CACHE_VERSION, CREATE_SQL, DROP_SQL } from './cache-schema'
 
@@ -25,19 +26,8 @@ const HALF_LIFE_MS = 3 * 24 * 3600 * 1000
 
 type Row = Record<string, SQLOutputValue>
 
-/** 目录 URI 的「根前缀」：根已以 / 结尾（驱动器根 file:///C:/）时不再追加 */
-function prefixOf(root: string): string {
-  return root.endsWith('/') ? root : `${root}/`
-}
-
-/**
- * uri 是否等于 root 或在 root 之下。纯字符串比较、大小写敏感（与 URI 原样一致）：
- * Windows 路径大小写不敏感，大小写不同的同一目录会被视为不同目录——
- * 这里依赖 URI 来自同一来源（工作区条目 + pathToFileURL(path.join(...))）而保持一致。
- */
-export function isUnder(uri: string, root: string): boolean {
-  return uri === root || uri.startsWith(prefixOf(root))
-}
+// 判断「在根之下」的实现与主进程共用（vfs/normalize-uri.ts），此处保留原导出名
+export { isUnder }
 
 /** 子项 URI：与 LocalProvider.list 的生成方式完全一致（调度器把 RawEntry 转为 FileEntry 时也用它） */
 export function childUri(dirUri: string, name: string): string {
