@@ -263,3 +263,42 @@ describe('空树 / 空状态', () => {
     expect(osDropEffect('none')).toBeNull()
   })
 })
+
+describe('展开分组的下缘（after）', () => {
+  const collapsed = { ...entryNode('h', 'group'), expanded: false }
+  const empty = entryNode('e', 'group')
+  const withEmptyStatus = [empty, statusNode(empty)]
+
+  it('展开且有可见子项的分组 after → 进入该分组第 0 位（等同第一个子项之前）', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, g, 'after', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: 'g',
+      index: 0
+    })
+  })
+
+  it('展开分组 after：add 来源进入该分组', () => {
+    expect(resolveDrop({ type: 'os', paths: ['/tmp/x'] }, g, 'after', nodes)).toEqual({
+      type: 'add',
+      parentId: 'g',
+      items: [{ path: '/tmp/x' }]
+    })
+  })
+
+  it('折叠的分组 after → 同级之后', () => {
+    const tree = [a, collapsed, b]
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, collapsed, 'after', tree)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: null,
+      index: 1
+    })
+  })
+
+  it('空分组（只有「空」状态行）after → 同级之后', () => {
+    expect(
+      resolveDrop({ type: 'entry', entryId: 'a' }, empty, 'after', [a, ...withEmptyStatus])
+    ).toEqual({ type: 'move', entryId: 'a', parentId: null, index: 1 })
+  })
+})

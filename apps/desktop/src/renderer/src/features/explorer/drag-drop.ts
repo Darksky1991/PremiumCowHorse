@@ -70,6 +70,20 @@ export function resolveDrop(
     if (position === 'inside' && target.kind !== 'group') return null
   }
 
+  // 展开且有可见子项的分组，下缘的线画在分组与第一个子项之间（与「第一个子项之前」同一条线），
+  // 因此按进入分组第 0 位处理；折叠或空分组（只有状态行）保持「该分组之后」
+  let firstChild = false
+  if (
+    target !== null &&
+    position === 'after' &&
+    target.kind === 'group' &&
+    target.expanded &&
+    nodes.some((n) => n.parentId === target.id && !isStatusNode(n))
+  ) {
+    position = 'inside'
+    firstChild = true
+  }
+
   // 落点的父条目：inside 为目标本身，before / after 为目标的父节点，空白处为根
   let parentId: string | null = null
   if (target !== null) {
@@ -101,7 +115,7 @@ export function resolveDrop(
   )
   let index: number
   if (target === null) index = siblings.length
-  else if (position === 'inside') index = END
+  else if (position === 'inside') index = firstChild ? 0 : END
   else {
     const at = siblings.findIndex((n) => n.id === target.id)
     if (at < 0) return null
