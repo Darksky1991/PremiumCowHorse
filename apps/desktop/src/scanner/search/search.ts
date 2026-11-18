@@ -58,7 +58,7 @@ function termConditions(terms: SearchTerm[]): { sql: string[]; params: SQLInputV
 
 const KIND_SQL = {
   all: null,
-  file: "e.kind <> 'directory' AND NOT (e.kind = 'symlink' AND e.target = 'directory')",
+  file: "e.kind <> 'directory' AND (e.kind <> 'symlink' OR e.target IS NOT 'directory')",
   directory: "(e.kind = 'directory' OR (e.kind = 'symlink' AND e.target = 'directory'))"
 } as const
 

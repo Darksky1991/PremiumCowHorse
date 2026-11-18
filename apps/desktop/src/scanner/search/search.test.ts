@@ -131,6 +131,22 @@ describe('search', () => {
     expect(names(search(cache, q('lin', { scopes: [scopeB], kind: 'file' })))).toEqual([])
   })
 
+  it('keeps broken symlinks (target null) for the file filter and out of the directory filter', () => {
+    cache.applyListing(
+      B,
+      1,
+      [{ name: 'broken-link', kind: 'symlink', size: 0, mtime: 1, hidden: false }],
+      1
+    )
+    expect(names(search(cache, q('broken', { scopes: [scopeB], kind: 'file' })))).toEqual([
+      'broken-link'
+    ])
+    expect(names(search(cache, q('broken', { scopes: [scopeB], kind: 'directory' })))).toEqual([])
+    expect(names(search(cache, q('broken', { scopes: [scopeB], kind: 'all' })))).toEqual([
+      'broken-link'
+    ])
+  })
+
   it('limits scope by URI prefix (C:/a does not include C:/ab)', () => {
     expect(search(cache, q('設計書_other')).items).toEqual([])
     const both = search(cache, q('設計書_other', { scopes: [scopeA, scopeB] }))
