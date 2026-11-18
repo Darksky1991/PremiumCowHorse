@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ERROR_CODES, type AppErrorPayload } from '../errors/app-error'
+import type { SearchQuery } from '../search/types'
 import type { Interest, ReachabilityEvent, RootConfig, ScanSettings } from './types'
 
 /**
@@ -48,6 +49,14 @@ const ReachabilitySchema = z.strictObject({
   since: z.number()
 }) satisfies z.ZodType<ReachabilityEvent>
 
+const SearchQuerySchema = z.strictObject({
+  scopes: z.array(z.strictObject({ uri, entryId: z.string().min(1), label: z.string() })),
+  terms: z.array(z.strictObject({ kind: z.enum(['contains', 'glob']), value: z.string().min(1) })),
+  kind: z.enum(['all', 'file', 'directory']),
+  showHidden: z.boolean(),
+  limit: z.number().int().min(1).max(1000)
+}) satisfies z.ZodType<SearchQuery>
+
 /** 主进程 → 扫描进程 */
 export const MainToScanner = z.discriminatedUnion('type', [
   /** fork 后的第一条消息：缓存库文件（userData/cache/index.db） */
@@ -63,7 +72,9 @@ export const MainToScanner = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('cacheInfo'), id }),
   /** → result { value: undefined } */
   z.strictObject({ type: z.literal('clearCache'), id }),
-  /** 取消可取消的请求（搜索，Task 11）；对其他请求无效果 */
+  /** → result { value: SearchResult }；只读缓存，同步执行（无法中途打断） */
+  z.strictObject({ type: z.literal('search'), id, ...SearchQuerySchema.shape }),
+  /** 保留：搜索是同步 SQL，无法中途打断；主进程客户端以丢弃旧结果实现取消，不发送本消息 */
   z.strictObject({ type: z.literal('cancel'), id }),
   z.strictObject({ type: z.literal('shutdown') })
 ])

@@ -285,6 +285,11 @@ export class Cache {
       .map((x) => x.uri)
   }
 
+  /** 只读查询（搜索用）：调用方保证 sql 是 SELECT */
+  select(sql: string, ...params: SQLInputValue[]): Record<string, SQLOutputValue>[] {
+    return this.all(sql, ...params)
+  }
+
   sizeBytes(): number {
     const r = this.db
       .prepare(

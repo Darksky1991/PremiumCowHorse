@@ -6,7 +6,7 @@ import type { VfsService } from './vfs.service'
 /** handler 用到的 ScannerClient 部分（测试可注入假实现） */
 export type ScannerApi = Pick<
   ScannerClient,
-  'available' | 'list' | 'interest' | 'refresh' | 'cacheInfo' | 'clearCache'
+  'available' | 'list' | 'interest' | 'refresh' | 'cacheInfo' | 'clearCache' | 'cancelSearch'
 >
 
 /** 扫描进程不可用（超过重启上限、index.db 打不开、请求兜底超时等） */
@@ -45,7 +45,10 @@ export function vfsHandlers(
         return listDirectly(uri, requestId)
       }
     },
-    'vfs.cancel': async ({ requestId }) => vfs.cancel(requestId),
+    'vfs.cancel': async ({ requestId }) => {
+      vfs.cancel(requestId)
+      scanner.cancelSearch(requestId)
+    },
     'vfs.interest': async (interest, ctx) => scanner.interest(ctx.senderId, interest),
     'vfs.refresh': async ({ uris }) => scanner.refresh(uris),
     'vfs.cacheInfo': () => scanner.cacheInfo(),

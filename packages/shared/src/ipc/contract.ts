@@ -11,6 +11,7 @@ import {
   WorkspaceUpdateInput
 } from '../workspace/schema'
 import type { DirectoryListing, FileStat } from '../vfs/types'
+import type { SearchResult } from '../search/types'
 import type { ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 
@@ -88,6 +89,20 @@ export const ipcContract = {
   /** 目录缓存（userData/cache/index.db）的占用与清空；界面随 M5 设置页 */
   'vfs.cacheInfo': route<{ bytes: number }>()(z.strictObject({})),
   'vfs.clearCache': route<void>()(z.strictObject({})),
+  /**
+   * 文件名搜索：只查缓存（不访问文件系统）。text 按空白分词（AND），含 * / ? 的词为通配；
+   * 范围为该工作区的 folder 条目（固定的单个文件条目按名称匹配）。同一 requestId 的新查询取代旧查询，
+   * 渲染端取消用 vfs.cancel。扫描进程不可用时以 INDEX_UNAVAILABLE 拒绝
+   */
+  'search.query': route<SearchResult>()(
+    z.strictObject({
+      workspaceId: z.string().min(1),
+      text: z.string().max(500),
+      kind: z.enum(['all', 'file', 'directory']),
+      limit: z.number().int().min(1).max(1000).optional(),
+      requestId: z.string().min(1)
+    })
+  ),
   /** 系统操作（均不修改文件）：在资源管理器中显示 / 写剪贴板 / 选择路径对话框 */
   'system.revealInOs': route<void>()(z.strictObject({ uri: z.string().min(1) })),
   'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),

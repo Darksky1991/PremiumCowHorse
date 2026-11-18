@@ -5,7 +5,9 @@ import {
   type Interest,
   type MainToScanner,
   type ReachabilityEvent,
-  type ScannerConfig
+  type ScannerConfig,
+  type SearchQuery,
+  type SearchResult
 } from '@pch/shared'
 import type { Logger } from '../infra/logger'
 
@@ -73,6 +75,8 @@ export class ScannerClient {
   private exits: number[] = []
   private state: 'idle' | 'running' | 'unavailable' | 'disposed' = 'idle'
   private exited: (() => void) | null = null
+  /** 进行中的搜索：渲染端的 requestId → 请求 id（同一 requestId 的新查询取代旧查询） */
+  private readonly searches = new Map<string, number>()
 
   constructor(private readonly opts: ScannerClientOptions) {
     this.maxRestarts = opts.maxRestarts ?? 3
@@ -128,6 +132,39 @@ export class ScannerClient {
 
   clearCache(): Promise<void> {
     return this.request<void>((id) => ({ type: 'clearCache', id }))
+  }
+
+  /**
+   * 在缓存中搜索（只读缓存）。扫描进程中的 SQL 是同步执行的，无法中途打断，所以「取消」是
+   * 丢弃结果：同一 requestId 的新查询、cancelSearch 都以 FS_CANCELLED 拒绝旧请求，
+   * 扫描进程稍后返回的旧结果被忽略。
+   */
+  search(q: SearchQuery, requestId?: string): Promise<SearchResult> {
+    if (requestId !== undefined) this.cancelSearch(requestId)
+    const p = this.request<SearchResult>((id) => {
+      if (requestId !== undefined) this.searches.set(requestId, id)
+      return { type: 'search', id, ...q }
+    })
+    if (requestId === undefined) return p
+    const mine = this.searches.get(requestId)
+    const forget = (): void => {
+      if (this.searches.get(requestId) === mine) this.searches.delete(requestId)
+    }
+    return p.then(
+      (v) => (forget(), v),
+      (e: unknown) => {
+        forget()
+        throw e
+      }
+    )
+  }
+
+  /** 取消该 requestId 的进行中的搜索（没有则忽略） */
+  cancelSearch(requestId: string): void {
+    const id = this.searches.get(requestId)
+    if (id === undefined) return
+    this.searches.delete(requestId)
+    this.settle(id)?.reject(new AppError({ code: 'FS_CANCELLED' }))
   }
 
   /** 请求扫描进程退出（关闭缓存库），超时则 kill；之后所有请求以 INDEX_UNAVAILABLE 拒绝 */

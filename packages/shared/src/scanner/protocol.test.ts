@@ -48,6 +48,27 @@ const mainToScanner: Array<[string, unknown, unknown]> = [
   ],
   ['cacheInfo', { type: 'cacheInfo', id: 2 }, { type: 'cacheInfo' }],
   ['clearCache', { type: 'clearCache', id: 2 }, { type: 'clearCache', id: '2' }],
+  [
+    'search',
+    {
+      type: 'search',
+      id: 3,
+      scopes: [{ uri: 'file:///C:/a', entryId: 'e1', label: 'A' }],
+      terms: [{ kind: 'contains', value: 'abc' }],
+      kind: 'all',
+      showHidden: false,
+      limit: 1000
+    },
+    {
+      type: 'search',
+      id: 3,
+      scopes: [],
+      terms: [{ kind: 'regex', value: 'abc' }],
+      kind: 'all',
+      showHidden: false,
+      limit: 1000
+    }
+  ],
   ['cancel', { type: 'cancel', id: 2 }, { type: 'cancel', id: null }],
   ['shutdown', { type: 'shutdown' }, { type: 'shutdown', now: true }]
 ]

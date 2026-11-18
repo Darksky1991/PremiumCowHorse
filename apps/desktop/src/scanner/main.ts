@@ -4,6 +4,7 @@ import { toAppError } from '../main/vfs/errors'
 import { Cache } from './cache/cache'
 import { createEnumerator } from './enum/create-enumerator'
 import type { Enumerator } from './enum/types'
+import { search } from './search/search'
 import { Scheduler } from './schedule/scheduler'
 
 /**
@@ -168,8 +169,18 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
           cache.clear()
           return undefined
         })
+      case 'search':
+        return reply(m.id, ({ cache }) =>
+          search(cache, {
+            scopes: m.scopes,
+            terms: m.terms,
+            kind: m.kind,
+            showHidden: m.showHidden,
+            limit: m.limit
+          })
+        )
       case 'cancel':
-        // 目前没有可取消的请求（搜索在 Task 11 加入）
+        // 搜索是同步 SQL，无法中途打断；取消由主进程客户端丢弃旧结果实现
         return
       case 'shutdown':
         return shutdown()

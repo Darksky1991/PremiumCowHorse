@@ -4,6 +4,7 @@ import { systemHandlers } from '../modules/system/system.ipc'
 import { windowHandlers } from '../modules/window/window.ipc'
 import { workspaceHandlers } from '../modules/workspace/workspace.ipc'
 import { vfsHandlers } from '../vfs/vfs.ipc'
+import { searchHandlers } from './search.ipc'
 import type { Handlers } from './router'
 
 /** 汇总各模块的 handler */
@@ -13,6 +14,7 @@ export function createHandlers(c: Container): Handlers {
     ...settingsHandlers(c.settings),
     ...windowHandlers(),
     ...workspaceHandlers(c.workspaces),
-    ...vfsHandlers(c.vfs, c.scanner)
+    ...vfsHandlers(c.vfs, c.scanner),
+    ...searchHandlers(c.workspaces, c.settings, c.scanner)
   }
 }

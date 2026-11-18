@@ -21,6 +21,7 @@ function setup(scanner: Partial<ScannerApi> & { available: boolean }): {
     refresh: vi.fn(),
     cacheInfo: vi.fn(async () => ({ bytes: 0 })),
     clearCache: vi.fn(async () => undefined),
+    cancelSearch: vi.fn(),
     ...scanner
   }
   return { handlers: vfsHandlers(vfs as unknown as VfsService, full), vfs }
