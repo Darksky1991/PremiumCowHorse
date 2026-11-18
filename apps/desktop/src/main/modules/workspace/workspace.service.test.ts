@@ -112,6 +112,17 @@ describe('WorkspaceService', () => {
       expect(e.label).toBe('設計書#1')
     })
 
+    it('labels a drive-root folder entry with the drive name, not an empty string', async () => {
+      const driveRoot = path.parse(root).root
+      const e = await service.addEntry({
+        kind: 'folder',
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        parentId: null,
+        path: driveRoot
+      })
+      expect(e.label).toBe(driveRoot.replace(/[\\/]$/, ''))
+    })
+
     it('rejects a path that does not exist with FS_NOT_FOUND', async () => {
       await expect(
         service.addEntry({

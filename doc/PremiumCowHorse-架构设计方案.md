@@ -503,7 +503,7 @@ export interface FileEntry {
 
 ### 7.2 各 Provider 要点
 
-**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环）；单个子项读取失败（列出过程中被删除、权限不足）时跳过该项，不让整个列表失败。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
+**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，目标类型待 M1-2 决定如何提供）；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
 
 **SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
@@ -1141,7 +1141,7 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果可手动刷新；启动时重新检测 |
 | Excel 不能同时打开两个同名工作簿 | 远程缓存副本与本地同名文件冲突 | 属 Office 自身限制，检测到同名已打开时给出提示 |
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
-| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat、可取消的请求 |
+| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
 
 ---

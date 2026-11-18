@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
   AppError,
@@ -15,6 +14,7 @@ import {
 import type { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import type { Database } from '../../infra/db/client'
+import { displayName } from '../../vfs/path-name'
 import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
@@ -119,7 +119,7 @@ export class WorkspaceService {
         workspaceId: input.workspaceId,
         parentId: input.parentId,
         kind: input.kind,
-        label: input.kind === 'group' ? input.label : (input.label ?? path.basename(input.path)),
+        label: input.kind === 'group' ? input.label : (input.label ?? displayName(input.path)),
         uri,
         sortOrder: (await entries.maxSortOrder(input.workspaceId, input.parentId)) + 1,
         meta: null,

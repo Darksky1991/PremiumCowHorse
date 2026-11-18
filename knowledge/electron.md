@@ -29,7 +29,8 @@
 - 日期：2026-11-18
 - 症状：（预防性）`fs.promises.readdir` 不接受 signal；网络共享无响应时 readdir 可能一直挂起，超时形同虚设。
 - 解决：`VfsService` 让调用与中止信号赛跑（`Promise.race`），中止即以 `FS_CANCELLED` / `FS_TIMEOUT` 结束；同时给操作的 promise 挂一个空 `catch`，避免它在中止后迟到失败时产生 unhandled rejection。
-- 预防：所有可能访问网络路径的操作都经过 `VfsService`，不要在模块里直接调用 `fs`。
+- 注意：赛跑只**释放调用方**，不会停止已经发出的工作。`fs.promises` 的每个调用占用 libuv 线程池（默认 4 个线程）中的一个线程；无响应的网络共享上，已发出的 readdir / lstat 会一直占着线程直到系统超时，4 个这样的调用就能让主进程所有文件操作排队。因此 `LocalProvider.list` 把子项 lstat 限制为最多 16 个并发、每开始一项前检查中止信号（中止后不再发出新工作）。已发出的单个调用仍无法中止，对失联主机的「快速失败」待评估。
+- 预防：所有可能访问网络路径的操作都经过 `VfsService`，不要在模块里直接调用 `fs`；不要一次性对大量路径发起 `fs` 调用。
 
 ### tsup / esbuild 打包 Electron 主进程的两个坑（历史，tsup 已移除）
 
