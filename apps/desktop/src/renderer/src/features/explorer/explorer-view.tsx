@@ -15,7 +15,7 @@ import {
 } from '@pch/ui/components/empty'
 import { Kbd } from '@pch/ui/components/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@pch/ui/components/tooltip'
-import { useEntries, useEntryActions } from '@renderer/data/entries'
+import { useEntries } from '@renderer/data/entries'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
@@ -95,21 +95,20 @@ export function ExplorerView(): JSX.Element {
 /** 工作区没有条目：引导用系统对话框添加文件夹 */
 function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
   const { t } = useTranslation()
-  const { add } = useEntryActions()
+  // 添加与系统拖入共用拖放的执行器：逐项添加，某项失败只提示该项，不中断其余项（与树空白处菜单一致）
+  const execute = useDropExecutor(workspaceId)
 
   const addFolder = async (): Promise<void> => {
     try {
       const paths = await call('system.selectPaths', { kind: 'folder', multiple: true })
-      for (const path of paths) {
-        await add.mutateAsync({ kind: 'folder', workspaceId, parentId: null, path })
-      }
+      if (paths.length === 0) return
+      await execute({ type: 'add', parentId: null, items: paths.map((path) => ({ path })) }, [])
     } catch (e) {
       toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
     }
   }
 
   // 空状态也接受系统文件拖入（只有 os 来源）：与树的空白处相同，add 到根末尾，绝不产生文件操作
-  const execute = useDropExecutor(workspaceId)
   const [over, setOver] = useState(false)
   const isFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer.types).includes('Files')
   const onDragOver = (e: DragEvent): void => {

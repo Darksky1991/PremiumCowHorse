@@ -540,6 +540,34 @@ test.describe('workspace data layer over IPC', () => {
     }
   })
 
+  test('empty state: adding several folders keeps going after one of them fails', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const missing = path.join(files, '存在しない')
+      const good = path.join(files, '設計書')
+      const good2 = path.join(files, '議事録')
+      mkdirSync(good2)
+      // 系统对话框无法自动化：在主进程中替换 showOpenDialog 的结果（选中的第一项不存在）。
+      // 第二项添加后空状态被树取代（组件卸载），第三项也必须照常添加
+      await app.evaluate(
+        ({ dialog }, filePaths) => {
+          Object.assign(dialog, { showOpenDialog: async () => ({ canceled: false, filePaths }) })
+        },
+        [missing, good, good2]
+      )
+      await page.getByRole('button', { name: addFolderLabel }).click()
+      // 第一项失败（提示错误）后继续添加其余项，与树空白处菜单的「添加文件夹…」一致
+      await expect(page.getByRole('tree').getByRole('treeitem', { name: '議事録' })).toBeVisible()
+      await expect(page.getByText(notFoundText)).toBeVisible()
+      expect(
+        (await data<Named[]>(page, 'entry.list', { workspaceId })).map((e) => e.label)
+      ).toEqual(['設計書', '議事録'])
+    } finally {
+      await app.close()
+    }
+  })
+
   test('context menu: dialogs close when the entry was removed in the meantime', async () => {
     const { app, page } = await launch(userData)
     try {
@@ -677,6 +705,7 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
 })
 
 /** 右键菜单与对话框的文案（ja | zh-CN | en；e2e 默认语言随系统，三种都匹配） */
@@ -687,6 +716,10 @@ const removeHint =
 const copyPathLabel = /^(パスをコピー|复制路径|Copy path)$/
 const newGroupLabel = /^(グループを新規作成|新建分组|New group)$/
 const newGroupDefault = /^(新しいグループ|新建分组|New group)$/
+const addFolderLabel = /^(フォルダーを追加|添加文件夹|Add folder)$/
+/** errors:FS_NOT_FOUND 的文案（toast） */
+const notFoundText =
+  /(ファイルまたはフォルダーが見つかりません|找不到文件或文件夹|File or folder not found)/
 
 /** 工作区切换器的文案 */
 const defaultName = /^(デフォルト|默认|Default)$/
