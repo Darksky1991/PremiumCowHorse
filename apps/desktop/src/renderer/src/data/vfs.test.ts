@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryObserver, focusManager } from '@tanstack/react-query'
 import { AppError, type FileEntry } from '@pch/shared'
 import {
+  DIRECTORY_STALE_MS,
   createWatchScheduler,
+  directoryQuery,
   directoryState,
   isNetworkUri,
+  listDirectory,
   watchableUris,
-  type DirectoryState
+  type DirectoryState,
+  type Invoke
 } from './vfs'
 
 describe('isNetworkUri', () => {
@@ -139,5 +144,160 @@ describe('watchableUris', () => {
     const recovered = new Map<string, DirectoryState>([[uri, ready]])
     expect(watchableUris([uri], failed)).toEqual([])
     expect(watchableUris([uri], recovered)).toEqual([uri])
+  })
+})
+
+/** 可控的 IPC 假实现：记录调用顺序，vfs.list 的结果由测试逐个兑现 */
+function fakeInvoke(): {
+  invoke: Invoke
+  calls: string[]
+  lists: { resolve: (v: FileEntry[]) => void; reject: (e: unknown) => void }[]
+} {
+  const calls: string[] = []
+  const lists: { resolve: (v: FileEntry[]) => void; reject: (e: unknown) => void }[] = []
+  const invoke = ((channel: string, input: { requestId?: string }) => {
+    calls.push(`${channel} ${input.requestId ?? ''}`)
+    if (channel === 'vfs.list') {
+      return new Promise<FileEntry[]>((resolve, reject) => lists.push({ resolve, reject }))
+    }
+    return Promise.resolve(undefined)
+  }) as Invoke
+  return { invoke, calls, lists }
+}
+
+const cancelled = (): AppError => new AppError({ code: 'FS_CANCELLED' })
+const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+describe('listDirectory', () => {
+  const uri = 'file:///C:/share'
+
+  it('signal 中止时以同一 requestId 通知主进程取消', async () => {
+    const { invoke, calls } = fakeInvoke()
+    const controller = new AbortController()
+    void listDirectory(uri, controller.signal, invoke).catch(() => undefined)
+    controller.abort()
+    expect(calls).toEqual([`vfs.list dir:${uri}`, `vfs.cancel dir:${uri}`])
+  })
+
+  it('请求结束后的中止不再发送取消（不会误取消之后同一 requestId 的新请求）', async () => {
+    const { invoke, calls, lists } = fakeInvoke()
+    const controller = new AbortController()
+    const p = listDirectory(uri, controller.signal, invoke)
+    lists[0]!.resolve([])
+    await p
+    controller.abort()
+    expect(calls).toEqual([`vfs.list dir:${uri}`])
+  })
+})
+
+describe('directoryQuery（TanStack Query 的取消接线）', () => {
+  const uri = 'file:///C:/share'
+  const entry = (name: string): FileEntry => ({
+    uri: `${uri}/${name}`,
+    name,
+    kind: 'file',
+    size: 0,
+    mtime: 0,
+    hidden: false
+  })
+  let client: QueryClient
+  beforeEach(() => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  })
+  afterEach(() => client.clear())
+
+  it('最后一个观察者离开（折叠 / 切换工作区）时取消进行中的列表，且不显示为错误', async () => {
+    const { invoke, calls, lists } = fakeInvoke()
+    const observer = new QueryObserver(client, directoryQuery(uri, 0, invoke))
+    const off = observer.subscribe(() => undefined)
+    await flush()
+    expect(calls).toEqual([`vfs.list dir:${uri}`])
+    off()
+    expect(calls).toEqual([`vfs.list dir:${uri}`, `vfs.cancel dir:${uri}`])
+    // 主进程随后以 FS_CANCELLED 结束该请求：被忽略
+    lists[0]!.reject(cancelled())
+    await flush()
+    const state = client.getQueryState(directoryQuery(uri, 0, invoke).queryKey)
+    expect(state?.status).not.toBe('error')
+    expect(state?.fetchStatus).toBe('idle')
+  })
+
+  it('重新获取取代进行中的请求时，取消先于新请求发出；旧请求的 FS_CANCELLED 被忽略', async () => {
+    const { invoke, calls, lists } = fakeInvoke()
+    const observer = new QueryObserver(client, directoryQuery(uri, 0, invoke))
+    const results: string[] = []
+    const off = observer.subscribe((r) => {
+      if (r.status === 'error') results.push('error')
+      if (r.data) results.push(r.data.map((e) => e.name).join(','))
+    })
+    await flush()
+    lists[0]!.resolve([entry('a')])
+    await flush()
+    // 有数据时的重新获取（vfs.changed / F5）：旧请求还在进行中
+    void observer.refetch()
+    await flush()
+    void client.invalidateQueries({ queryKey: directoryQuery(uri, 0, invoke).queryKey })
+    await flush()
+    expect(calls).toEqual([
+      `vfs.list dir:${uri}`,
+      `vfs.list dir:${uri}`,
+      `vfs.cancel dir:${uri}`,
+      `vfs.list dir:${uri}`
+    ])
+    lists[1]!.reject(cancelled())
+    lists[2]!.resolve([entry('a'), entry('b')])
+    await flush()
+    expect(results).not.toContain('error')
+    expect(observer.getCurrentResult().data?.map((e) => e.name)).toEqual(['a', 'b'])
+    off()
+  })
+})
+
+describe('directoryQuery（新鲜期与重新列出）', () => {
+  const uri = 'file:///C:/share'
+  afterEach(() => vi.useRealTimers())
+
+  it('全局 staleTime 为 Infinity 时，目录超过新鲜期后重新挂载（再次展开 / 切回工作区）与聚焦会重新列出', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 与 createQueryClient 相同的全局默认
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity, refetchOnWindowFocus: false }
+      }
+    })
+    client.mount()
+    const { invoke, calls, lists } = fakeInvoke()
+    const mountOnce = async (): Promise<() => void> => {
+      const off = new QueryObserver(client, directoryQuery(uri, 0, invoke)).subscribe(
+        () => undefined
+      )
+      await flush()
+      return off
+    }
+    try {
+      const first = await mountOnce()
+      lists[0]!.resolve([])
+      await flush()
+      first()
+      // 新鲜期内折叠后再展开：沿用缓存，不重新列出
+      vi.setSystemTime(Date.now() + DIRECTORY_STALE_MS - 1)
+      ;(await mountOnce())()
+      expect(calls).toHaveLength(1)
+      // 超过新鲜期：重新挂载即重新列出（被折叠的目录不在监听中，期间的变化只能这样发现）
+      vi.setSystemTime(Date.now() + 2)
+      const off = await mountOnce()
+      expect(calls).toHaveLength(2)
+      lists[1]!.resolve([])
+      await flush()
+      // 挂载中的目录：超过新鲜期后窗口重新获得焦点也重新列出
+      vi.setSystemTime(Date.now() + DIRECTORY_STALE_MS + 1)
+      focusManager.onFocus()
+      await flush()
+      expect(calls).toHaveLength(3)
+      off()
+    } finally {
+      client.unmount()
+      client.clear()
+    }
   })
 })

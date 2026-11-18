@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import { AppError, type ErrorCode, type FileEntry } from '@pch/shared'
+import {
+  AppError,
+  type ErrorCode,
+  type FileEntry,
+  type IpcChannel,
+  type IpcInput,
+  type IpcOutput
+} from '@pch/shared'
 import { call, subscribe } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { useSetting } from './settings'
@@ -20,20 +27,77 @@ export function isNetworkUri(uri: string): boolean {
   }
 }
 
+/** 与 lib/ipc 的 call 同签名，测试可注入假实现 */
+export type Invoke = <C extends IpcChannel>(channel: C, input: IpcInput<C>) => Promise<IpcOutput<C>>
+
 /**
- * 列出一组目录。同一 URI 用固定的 requestId（dir:<uri>），新请求会取代主进程中未完成的旧请求。
- * 窗口重新获得焦点时刷新（用 'always'：全局默认 staleTime 为 Infinity，只写 true 不会触发）；
+ * 列出一个目录。同一 URI 用固定的 requestId（dir:<uri>），新请求会取代主进程中未完成的旧请求。
+ * signal 中止（TanStack Query 取消查询）时同步发送 vfs.cancel，主进程停止 lstat、释放线程池。
+ * 中止只会发生在新请求发出之前（见 directoryQuery），且请求结束后移除监听器，
+ * 因此这里的取消不会落到之后同一 requestId 的新请求上。
+ */
+export async function listDirectory(
+  uri: string,
+  signal: AbortSignal,
+  invoke: Invoke = call
+): Promise<FileEntry[]> {
+  const requestId = `dir:${uri}`
+  const onAbort = (): void => {
+    void invoke('vfs.cancel', { requestId }).catch(() => undefined)
+  }
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    return await invoke('vfs.list', { uri, requestId })
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
+ * 目录列表的新鲜期：在此之内重新挂载 / 聚焦不重新列出（节流快速折叠展开与频繁切换窗口），
+ * 超过后重新挂载（再次展开、切回侧栏视图或工作区）与窗口重新获得焦点时重新列出。
+ * 全局默认 staleTime 为 Infinity（其他数据由主进程事件推送），目录列表单独设置：
+ * 未展开 / 不在当前工作区的目录不在监听中，期间的变化只能靠重新挂载时重新列出发现。
+ */
+export const DIRECTORY_STALE_MS = 2000
+
+export interface DirectoryQueryOptions {
+  queryKey: ReturnType<typeof queryKeys.directory>
+  queryFn: (context: { signal: AbortSignal }) => Promise<FileEntry[]>
+  staleTime: number
+  refetchOnMount: boolean
+  refetchOnWindowFocus: boolean
+  refetchInterval: number | false
+}
+
+/**
+ * 一个目录的查询选项。取消：TanStack Query 在以下时机中止 signal，均在同一 key 的新请求
+ * 发出之前同步发生——最后一个观察者离开（折叠、切换工作区，revert 回请求前的状态）、
+ * 有数据时被新的获取取代（invalidate / refetch 的 cancelRefetch）、resetQueries（重试）、
+ * 缓存回收；被取消的请求随后以 FS_CANCELLED 结束，TanStack Query 不把它记为错误。
  * UNC 路径在 remote.pollIntervalSec > 0 时按该间隔轮询。
  */
+export function directoryQuery(
+  uri: string,
+  pollSec: number,
+  invoke: Invoke = call
+): DirectoryQueryOptions {
+  return {
+    queryKey: queryKeys.directory(uri),
+    queryFn: ({ signal }: { signal: AbortSignal }) => listDirectory(uri, signal, invoke),
+    staleTime: DIRECTORY_STALE_MS,
+    refetchOnMount: true,
+    // 只对目录查询开启；聚焦事件来源见 lib/query-client.ts 的 focusManager 设置
+    refetchOnWindowFocus: true,
+    refetchInterval: pollSec > 0 && isNetworkUri(uri) ? pollSec * 1000 : (false as const)
+  }
+}
+
+/** 列出一组目录（每个目录的选项见 directoryQuery） */
 export function useDirectories(uris: string[]): Map<string, DirectoryState> {
   const pollSec = useSetting('remote.pollIntervalSec') ?? 0
   const results = useQueries({
-    queries: uris.map((uri) => ({
-      queryKey: queryKeys.directory(uri),
-      queryFn: () => call('vfs.list', { uri, requestId: `dir:${uri}` }),
-      refetchOnWindowFocus: 'always' as const,
-      refetchInterval: pollSec > 0 && isNetworkUri(uri) ? pollSec * 1000 : (false as const)
-    }))
+    queries: uris.map((uri) => directoryQuery(uri, pollSec))
   })
 
   const map = new Map<string, DirectoryState>()

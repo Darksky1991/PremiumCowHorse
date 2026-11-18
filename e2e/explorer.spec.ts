@@ -197,6 +197,91 @@ test.describe('explorer tree on real directories', () => {
     }
   })
 
+  test('focus: an unwatched directory that changed is re-listed when the window regains focus', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const design = path.join(project, '設計書')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: design })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+      await page.waitForTimeout(1000)
+
+      // 条目目录被删除 → 出错、移出监听集合；原路径重建不会被任何监听感知（父目录不在监听中）
+      rmSync(design, { recursive: true, force: true })
+      const errorRow = tree.getByRole('treeitem', { name: notFoundLabel })
+      await expect(errorRow).toBeVisible({ timeout: 5000 })
+      await page.waitForTimeout(1500)
+      mkdirSync(design)
+      writeFileSync(path.join(design, '復旧.txt'), '')
+      // 超过目录列表的新鲜期（2 秒）；没有聚焦时错误行保持不变
+      await page.waitForTimeout(2500)
+      await expect(errorRow).toBeVisible()
+
+      // 窗口重新获得焦点（Alt+Tab 切回时只有 window 的 focus，没有 visibilitychange）
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(tree.getByRole('treeitem', { name: '復旧.txt' })).toBeVisible({ timeout: 5000 })
+      await expect(errorRow).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('collapse: changes made while a directory was collapsed appear when it is expanded again', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      const design = tree.getByRole('treeitem', { name: '設計書' })
+      await design.click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+      await page.waitForTimeout(1000)
+
+      // 折叠：该目录移出监听集合（200ms 防抖），之后的变化无人感知
+      await design.click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toHaveCount(0)
+      await page.waitForTimeout(1000)
+      writeFileSync(path.join(project, '設計書', '追加.txt'), '')
+      // 超过目录列表的新鲜期（2 秒）后再展开：重新列出，而不是显示折叠前的缓存
+      await page.waitForTimeout(2500)
+      await design.click()
+      await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('workspace switch: directories are re-listed when switching back to a workspace', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
+      await page.waitForTimeout(1000)
+
+      // 切到另一个（空的）工作区：资源树卸载，旧工作区的监听集合清空
+      const other = await data(page, 'workspace.create', { name: '別件' })
+      await data(page, 'workspace.activate', { id: other.id })
+      await expect(page.getByRole('treeitem', { name: '案件' })).toHaveCount(0)
+      await page.waitForTimeout(1000)
+      writeFileSync(path.join(project, '新規.txt'), '')
+      await page.waitForTimeout(2500)
+
+      // 切回：展开状态保留，目录重新列出
+      await data(page, 'workspace.activate', { id: workspaceId })
+      await expect(tree.getByRole('treeitem', { name: '新規.txt' })).toBeVisible({ timeout: 5000 })
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
   test('drag and drop only manages entries: the disk snapshot is identical afterwards', async () => {
     const { app, page } = await launch(userData)
     try {
