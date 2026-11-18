@@ -10,7 +10,7 @@ import {
   registerPrivilegedSchemes
 } from '../windows/app-protocol'
 import { applySecurityPolicies } from '../windows/security'
-import { location } from '../vfs/location'
+import { driveTypeStatus, location } from '../vfs/location'
 import { createContainer, type Container } from './container'
 import { buildScannerConfig } from '../vfs/scanner-config'
 import { registerShutdown } from './shutdown'
@@ -41,6 +41,14 @@ export async function bootstrap(): Promise<void> {
   electronApp.setAppUserModelId(APP_USER_MODEL_ID)
   const c = await createContainer(rendererUrl)
   c.logger.info(`[app] starting v${app.getVersion()} renderer=${rendererUrl}`)
+  const driveType = driveTypeStatus()
+  if (driveType.native) {
+    c.logger.info('[vfs] drive type detection: native (koffi)')
+  } else {
+    c.logger.warn(
+      `[vfs] koffi unavailable in the main process, mapped network drives are treated as local: ${driveType.error}`
+    )
+  }
 
   nativeTheme.themeSource = c.settings.get('appearance.themeMode')
   if (!devUrl) registerAppProtocol(c.paths.renderer)

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createLocator, hostKey, location, shareKey } from './location'
+import { createLocator, driveTypeStatus, hostKey, location, shareKey } from './location'
 
 const DRIVE_FIXED = 3
 const DRIVE_REMOTE = 4
@@ -50,5 +50,9 @@ describe.runIf(process.platform === 'win32')('default locator', () => {
     expect(location(`file:///${drive}/`)).toBe('local')
     expect(shareKey(`file:///${drive}/Windows`)).toBe(drive)
     expect(hostKey(`file:///${drive}/Windows`)).toBe('local')
+  })
+
+  it('loads GetDriveTypeW through koffi', () => {
+    expect(driveTypeStatus()).toEqual({ native: true })
   })
 })

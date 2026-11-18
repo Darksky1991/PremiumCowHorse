@@ -62,22 +62,38 @@ export function createLocator(driveType: DriveTypeFn | null): Locator {
   }
 }
 
+/** GetDriveTypeW 不可用的原因（loadDriveType 失败时记下，供 driveTypeStatus 报告） */
+let loadError: string | undefined
+
 /** 用 koffi 加载 GetDriveTypeW；失败（非 Windows、原生模块缺失）返回 null */
 function loadDriveType(): DriveTypeFn | null {
-  if (process.platform !== 'win32') return null
+  if (process.platform !== 'win32') {
+    loadError = `not supported on ${process.platform}`
+    return null
+  }
   try {
     const koffi = createRequire(import.meta.url)('koffi') as typeof import('koffi')
     const GetDriveTypeW = koffi
       .load('kernel32.dll')
       .func('uint32_t __stdcall GetDriveTypeW(const char16_t *lpRootPathName)')
     return (root) => GetDriveTypeW(root) as number
-  } catch {
+  } catch (e) {
+    loadError = e instanceof Error ? e.message : String(e)
     return null
   }
 }
 
 let defaultLocator: Locator | undefined
 const getDefault = (): Locator => (defaultLocator ??= createLocator(loadDriveType()))
+
+/**
+ * 默认 locator 能否识别映射的网络盘（GetDriveTypeW 经 koffi 加载成功）。
+ * 不可用时盘符一律按本地处理；主进程启动时据此写一条日志（打包后确认 koffi 可用）。
+ */
+export function driveTypeStatus(): { native: true } | { native: false; error: string } {
+  getDefault()
+  return loadError === undefined ? { native: true } : { native: false, error: loadError }
+}
 
 export const location = (uri: string): LocationKind => getDefault().location(uri)
 export const shareKey = (uri: string): string => getDefault().shareKey(uri)
