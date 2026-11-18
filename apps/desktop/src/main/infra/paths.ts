@@ -5,7 +5,6 @@ export interface AppPaths {
   userData: string
   database: string
   logs: string
-  cache: string
   /** 渲染端构建产物（生产模式下由 app:// 协议提供，位于 asar 内） */
   renderer: string
   preload: string
@@ -29,7 +28,6 @@ export function createPaths(): AppPaths {
     userData,
     database: path.join(userData, 'data', 'pch.db'),
     logs: path.join(userData, 'logs'),
-    cache: path.join(userData, 'cache'),
     renderer: path.join(outMain, '../renderer'),
     preload: path.join(outMain, '../preload/index.js')
   }

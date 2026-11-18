@@ -17,7 +17,11 @@ export default {
     ready: 'Ready',
     crashTitle: 'Something went wrong while displaying this window',
     crashHint: 'If reloading does not help, contact support and attach the log file (main.log).',
-    reload: 'Reload'
+    reload: 'Reload',
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore',
+    close: 'Close'
   },
   explorer: {
     emptyTitle: 'This workspace is empty',

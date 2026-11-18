@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { CheckIcon, ChevronDownIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
 import {
   DropdownMenu,
@@ -12,26 +13,26 @@ import {
   DropdownMenuTrigger
 } from '@pch/ui/components/dropdown-menu'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
+import { getBootstrap } from '@renderer/lib/ipc'
 import { notifyComingSoon } from '../coming-soon'
 import { LanguageMenu } from './language-menu'
 import { ThemeMenu } from './theme-menu'
+import { WindowControls } from './window-controls'
 
 /**
- * 自绘标题栏（无边框窗口）。整条可拖动，交互元素标记 app-no-drag。
- * 左右留白使用 Window Controls Overlay 的 env() 变量，自动避开
- * Windows 的原生窗口按钮与 macOS 的红绿灯。
+ * 自绘标题栏（隐藏系统标题栏）。整条可拖动（双击最大化 / 还原由系统处理），交互元素标记 app-no-drag。
+ * Windows / Linux 在右端绘制自己的窗口按钮；macOS 使用系统红绿灯，左侧留出其位置。
  */
 export function TitleBar(): JSX.Element {
   const { t, i18n } = useTranslation()
+  const isMac = getBootstrap()?.platform === 'darwin'
 
   return (
     <header
-      className="app-drag flex h-9 shrink-0 items-center gap-1 border-b bg-sidebar text-sidebar-foreground"
-      style={{
-        paddingLeft: 'calc(env(titlebar-area-x, 0px) + 0.5rem)',
-        paddingRight:
-          'calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.5rem)'
-      }}
+      className={cn(
+        'app-drag flex h-9 shrink-0 items-center gap-1 border-b bg-sidebar text-sidebar-foreground',
+        isMac ? 'pr-2 pl-20' : 'pl-2'
+      )}
     >
       <AppMark />
       <span className="mr-2 text-[13px] font-semibold tracking-tight">{t('appName')}</span>
@@ -88,6 +89,7 @@ export function TitleBar(): JSX.Element {
 
       <ThemeMenu />
       <LanguageMenu />
+      {isMac ? null : <WindowControls />}
     </header>
   )
 }

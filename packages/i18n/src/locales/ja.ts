@@ -16,7 +16,11 @@ export default {
     crashTitle: '画面の表示中に問題が発生しました',
     crashHint:
       '再読み込みしても解決しない場合は、ログファイル（main.log）を添えて担当者に連絡してください。',
-    reload: '再読み込み'
+    reload: '再読み込み',
+    minimize: '最小化',
+    maximize: '最大化',
+    restore: '元に戻す',
+    close: '閉じる'
   },
   explorer: {
     emptyTitle: 'ワークスペースは空です',

@@ -9,4 +9,4 @@ playwright-report
 # shadcn 生成的组件保持上游原样，便于用 CLI 对比和更新
 packages/ui/src/components
 # 架构设计文档按原作者排版
-PremiumCowHorse-*.md
+doc/PremiumCowHorse-*.md

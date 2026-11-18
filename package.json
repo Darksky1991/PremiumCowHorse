@@ -10,7 +10,7 @@
     "dev": "pnpm --filter @pch/desktop dev",
     "build": "pnpm --filter @pch/desktop build",
     "start": "pnpm --filter @pch/desktop start",
-    "dist": "pnpm --filter @pch/desktop build:win",
+    "dist": "pnpm --filter @pch/desktop build:zip",
     "dist:dir": "pnpm --filter @pch/desktop build:unpack",
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "eslint --cache .",

@@ -1,1 +1,6 @@
 @import '@pch/ui/globals.css';
+
+/* React 挂载点：撑满窗口，外壳布局（h-full）才能占满整个视口 */
+#root {
+  height: 100%;
+}

@@ -1,4 +1,4 @@
-# 基于 electron-vite 官方模板（Windows 部分），追加 Electron 官方安全建议的 Fuses 配置
+# 基于 electron-vite 官方模板（Windows 部分），追加 Electron 官方安全建议的 Fuses 配置；只产出 zip 文件夹版
 appId: com.premiumcowhorse.app
 productName: PremiumCowHorse
 directories:
@@ -26,18 +26,8 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 win:
   executableName: PremiumCowHorse
-  target: nsis
-nsis:
-  artifactName: ${productName}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
-  # 按用户安装：企业终端通常没有管理员权限
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true
+  # 只提供免安装的文件夹版（zip，解压即用）。不使用安装程序；也不使用 portable 单文件 exe：
+  # 后者每次启动都要把约 300MB 解压到 %TEMP%，实测启动 24–31 秒（文件夹版约 1.3 秒）
+  target: zip
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
 npmRebuild: false
-# 使用 electron-builder 新版工具包：默认的 "0.0.0" 是 NSIS 3.0.4.1（2019 年，含 CVE-2023-37378），
-# "1.2.1" 为 NSIS 3.12。注：7-Zip 无此选项，需通过环境变量 ELECTRON_BUILDER_7ZIP_PATH 指定（见 README）
-toolsets:
-  nsis: '1.2.1'

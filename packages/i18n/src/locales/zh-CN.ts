@@ -17,7 +17,11 @@ export default {
     ready: '就绪',
     crashTitle: '界面显示时出现问题',
     crashHint: '如果重新加载后仍无法解决，请附上日志文件（main.log）联系负责人。',
-    reload: '重新加载'
+    reload: '重新加载',
+    minimize: '最小化',
+    maximize: '最大化',
+    restore: '还原',
+    close: '关闭'
   },
   explorer: {
     emptyTitle: '工作区为空',

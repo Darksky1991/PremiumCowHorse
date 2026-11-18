@@ -38,6 +38,12 @@ test.describe('first screen', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
       await expect(page.getByRole('banner')).toContainText('PremiumCowHorse')
       await expect(page.getByRole('contentinfo')).toContainText('v0.1.0')
+      // 外壳布局必须撑满窗口：状态栏贴着视口底部
+      const layout = await page.evaluate(() => ({
+        footerBottom: document.querySelector('footer')!.getBoundingClientRect().bottom,
+        viewport: window.innerHeight
+      }))
+      expect(layout.footerBottom).toBe(layout.viewport)
       await page.screenshot({ path: 'test-results/first-screen.png' })
     } finally {
       await app.close()
@@ -141,6 +147,39 @@ test.describe('first screen', () => {
       await expect(sidebar).toBeVisible()
     } finally {
       await app.close()
+    }
+  })
+
+  test('custom window controls replace the native ones and work', async () => {
+    const { app, page } = await launch(userData)
+    const win = <T>(fn: (w: Electron.BrowserWindow) => T): Promise<T> =>
+      app.evaluate(({ BrowserWindow }, f) => {
+        const w = BrowserWindow.getAllWindows()[0]!
+        return new Function('w', `return (${f})(w)`)(w)
+      }, fn.toString())
+    try {
+      // 不使用 Window Controls Overlay，系统不再绘制原生按钮
+      expect(await page.evaluate(() => navigator.windowControlsOverlay?.visible ?? false)).toBe(
+        false
+      )
+
+      const maximize = page.getByRole('button', { name: /^(最大化|Maximize)$/ })
+      await maximize.click()
+      await expect.poll(() => win((w) => w.isMaximized())).toBe(true)
+      const restore = page.getByRole('button', { name: /^(元に戻す|还原|Restore)$/ })
+      await expect(restore).toBeVisible()
+      await restore.click()
+      await expect.poll(() => win((w) => w.isMaximized())).toBe(false)
+
+      await page.getByRole('button', { name: /^(最小化|Minimize)$/ }).click()
+      await expect.poll(() => win((w) => w.isMinimized())).toBe(true)
+      await win((w) => w.restore())
+
+      const closed = app.waitForEvent('close')
+      await page.getByRole('button', { name: /^(閉じる|关闭|Close)$/ }).click()
+      await closed
+    } finally {
+      await app.close().catch(() => undefined)
     }
   })
 })

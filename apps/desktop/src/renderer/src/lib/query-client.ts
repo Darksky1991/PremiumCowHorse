@@ -26,6 +26,9 @@ export function bridgeMainEvents(client: QueryClient): () => void {
       client.setQueryData<Settings>(queryKeys.settings, (prev) =>
         prev ? { ...prev, ...patch } : prev
       )
+    }),
+    subscribe('window.stateChanged', (state) => {
+      client.setQueryData(queryKeys.windowState, state)
     })
   ]
   return () => offs.forEach((off) => off())

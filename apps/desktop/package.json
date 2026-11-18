@@ -13,7 +13,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "build:unpack": "pnpm build && electron-builder --dir",
-    "build:win": "pnpm build && electron-builder --win"
+    "build:zip": "pnpm build && electron-builder --win zip"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

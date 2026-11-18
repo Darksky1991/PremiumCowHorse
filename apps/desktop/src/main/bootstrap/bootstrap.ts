@@ -23,6 +23,9 @@ export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
 export async function bootstrap(): Promise<void> {
   configureUserData()
   if (!app.requestSingleInstanceLock()) {
+    // 已有实例在运行（同一 userData）：交给它处理（second-instance 事件会聚焦其窗口），本实例退出。
+    // 此时日志尚未初始化，只输出到控制台，避免「启动后什么也没发生」时无从排查
+    console.info('[app] another instance is already running; focusing it and exiting')
     app.quit()
     return
   }
@@ -72,6 +75,6 @@ function wireEvents(c: Container): void {
     c.windows.broadcast('settings.changed', patch)
   })
 
-  // 主题模式为「跟随系统」时，系统切换明暗也要同步原生标题栏按钮颜色
+  // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())
 }

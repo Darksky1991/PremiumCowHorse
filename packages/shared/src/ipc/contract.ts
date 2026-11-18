@@ -17,6 +17,11 @@ export interface AppInfo {
   arch: string
 }
 
+/** 发起调用的那个窗口的状态（自绘窗口按钮据此切换「最大化 / 还原」图标） */
+export interface WindowState {
+  maximized: boolean
+}
+
 /**
  * 渲染端 → 主进程的全部通道。主进程注册时必须全部实现（漏写会编译失败），
  * 渲染端调用时自动获得输入输出类型。
@@ -25,6 +30,11 @@ export const ipcContract = {
   'app.getInfo': route<AppInfo>()(z.void()),
   'settings.getAll': route<Settings>()(z.void()),
   'settings.set': route<void>()(SettingsPatch),
+  /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
+  'window.minimize': route<void>()(z.void()),
+  'window.toggleMaximize': route<void>()(z.void()),
+  'window.close': route<void>()(z.void()),
+  'window.getState': route<WindowState>()(z.void()),
   /** 渲染端未捕获的错误写入主进程日志，便于用户反馈问题时提供 main.log */
   'log.write': route<void>()(
     z.object({
@@ -47,6 +57,8 @@ export type IpcOutput<C extends IpcChannel> = IpcContract[C]['output']
 /** 主进程 → 渲染进程的广播事件 */
 export interface IpcEvents {
   'settings.changed': Partial<Settings>
+  /** 只发给状态发生变化的那个窗口 */
+  'window.stateChanged': WindowState
 }
 export type IpcEventName = keyof IpcEvents
 

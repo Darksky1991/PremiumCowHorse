@@ -1,9 +1,10 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.2　｜　日期：2026-11-18
+> 版本：v1.3　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.3 变更（M0 完成）：Windows 下不再使用系统窗口按钮（Window Controls Overlay），改为自绘窗口按钮；分发形式改为 zip 免安装文件夹版（不提供安装程序）；新增第 20 节「文档与知识管理」；修正 5.2、6.1、6.2、6.3、12.2、14.2、14.3、16.4 等处与实现不一致的描述；目录结构区分「目标结构」与「M0 已实现」
 > v1.2 变更（M0 实施后的技术栈复审）：渲染端由 Next.js 静态导出改为 electron-vite（Vite + React），去掉 tsup 与自写开发脚本；数据库访问由 Drizzle 改为 Kysely；shadcn/ui 底层由 Radix 改为 Base UI；IPC 改为单通道传输；新增模块边界 lint、渲染端错误落盘、Electron Fuses 与打包工具链说明。涉及 2.1、2.2、2.6、3、5、6.3、6.5、12.3、13、16、17、19 节
 > v1.1 变更：Office 文件改为调用本机 Office（只读 / 编辑 / 新建打开），新增第 10 节；移除 SheetJS 与 docx-preview；后续章节顺延编号
-> 选型原则：依赖库有可选项时，优先采用官方推荐、默认或代表演进方向的选项；因安全原因偏离时在文中注明
+> 选型原则：依赖包、架构与设计层面有可选项时，优先采用官方推荐、默认或代表演进方向的选项，因安全原因偏离时在文中注明；交互行为不适用此原则，以实际效果和使用者立场判断
 > 定位：面向对日 IT 保守（运维）人员的「工作区式」自定义文件管理器
 > 技术基线：Electron 45（内置 Node 24）、electron-vite（Vite + React 19）、shadcn/ui（Base UI、Tailwind CSS v4）、TypeScript
 
@@ -23,7 +24,7 @@
 | 关机后从中断处恢复 | 会话快照（窗口、标签、插件视图状态、树展开状态）按工作区持久化到 SQLite |
 | 国际化 | i18next 主进程与渲染进程共用同一份语言资源（ja / zh-CN / en） |
 | 设置等数据存 SQLite | Node 24 内置 `node:sqlite` + Kysely（类型安全查询构建器），无原生模块编译负担 |
-| 现代简约风格、可切换主题 | shadcn/ui + 自定义无边框标题栏；明/暗/跟随系统 + 多套强调色 |
+| 现代简约风格、可切换主题 | shadcn/ui + 自绘标题栏（含自绘窗口按钮，不使用系统原生按钮）；明/暗/跟随系统 + 多套强调色 |
 
 ---
 
@@ -81,7 +82,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ## 3. 技术栈与依赖清单（新引入包须知）
 
-除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。版本在初始化时以 `pnpm add` 时的最新稳定版为准并锁定。
+除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。表中包含各里程碑**计划**引入的包；实际已安装的包与版本以各 `package.json` 与 `pnpm-lock.yaml` 为准（截至 M0 尚未安装：basic-ftp、ssh2-sftp-client、chokidar、iconv-lite、jschardet、mime、@tanstack/react-virtual、@dnd-kit/*、react-hook-form、CodeMirror、react-markdown、pdfjs-dist）。新增依赖前先向需求方说明。
 
 ### 3.1 工程与构建
 
@@ -90,7 +91,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | pnpm（工具，非依赖） | monorepo 包管理 | workspace 支持好、磁盘占用小 |
 | typescript | 全项目语言 | — |
 | electron-vite（含 vite、@vitejs/plugin-react） | 构建主进程、preload、渲染端；开发时 HMR 与主进程自动重启 | 官方脚手架模板为基准；取代 v1.1 的 Next.js + tsup |
-| electron-builder | 打包与安装程序（NSIS） | 生态成熟；备选 Electron Forge |
+| electron-builder | 打包（zip 免安装文件夹版，见 16.4 节） | 生态成熟，electron-vite 模板默认；备选 Electron Forge |
 | tailwindcss v4（@tailwindcss/vite） | 样式 | shadcn/ui 前置依赖；Vite 项目官方推荐的插件方式 |
 | @electron-toolkit/tsconfig | TypeScript 预设 | electron-vite 模板默认 |
 
@@ -181,9 +182,9 @@ premium-cow-horse/
 ├── packages/
 │   ├── shared/                   # 三端共用：IPC 契约、领域类型、zod schema、URI 工具、布局 reducer
 │   ├── i18n/                     # 语言资源（ja / zh-CN / en）与 i18next 初始化工厂
-│   ├── ui/                       # shadcn/ui 组件与主题 CSS（供 web 与插件共用）
+│   ├── ui/                       # shadcn/ui（Base UI）组件与主题 CSS（供渲染端与插件共用）
 │   └── plugin-sdk/               # 预览插件的类型定义与 definePreviewPlugin 辅助函数
-├── plugins/                      # 内置预览插件，每个都是独立 workspace 包
+├── plugins/                      # 内置预览插件（M2 创建），每个都是独立 workspace 包
 │   ├── preview-folder/
 │   ├── preview-text/
 │   ├── preview-image/
@@ -193,12 +194,18 @@ premium-cow-horse/
 │   ├── preview-office/           # Office 文件启动面板（调用本机 Office）
 │   └── preview-fallback/         # 无法预览时：显示文件信息 + 用系统应用打开
 ├── e2e/                          # Playwright Electron 端到端测试
+├── doc/                          # 设计文档（本文档）：最新事实依据
+├── devDoc/                       # 开发过程记录（按日期）
+├── knowledge/                    # 开发中的 tips、错误与解决方法
+├── CLAUDE.md                     # AI 协作约定
 ├── eslint.config.mjs             # 含模块边界规则
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json            # packages/* 共用；apps/desktop 使用 @electron-toolkit/tsconfig
 ```
 
-把内置插件拆成独立包的意义：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。
+把内置插件拆成独立包的意义：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。由于 5.5 节的模块边界规则已能在 lint 层面保证同样的隔离，M2 开始时再评估是否合并为单个 `plugins/builtin` 包（每个插件一个子目录），以减少每个包各自的 package.json / tsconfig 配置。
+
+5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
 ### 5.2 主进程 `apps/desktop/src/main`
 
@@ -211,9 +218,8 @@ apps/desktop/src/
 │   │   ├── container.ts              # 组合根：手动装配所有 service（不引入 DI 框架）
 │   │   └── shutdown.ts               # 退出编排：保存会话、关闭连接池、关闭 DB
 │   ├── core/
-│   │   ├── event-bus.ts              # 主进程内部事件（类型化）
-│   │   ├── disposable.ts
-│   │   └── errors.ts                 # AppError 与错误码
+│   │   ├── event-bus.ts              # 主进程内部事件总线（类型化）
+│   │   └── events.ts                 # 主进程内部事件的类型登记（AppError 与错误码在 packages/shared）
 │   ├── infra/
 │   │   ├── db/
 │   │   │   ├── client.ts             # node:sqlite 连接、PRAGMA、Kysely、执行迁移
@@ -246,9 +252,11 @@ apps/desktop/src/
 │   │   ├── settings/
 │   │   ├── plugin/                   # 插件发现与元数据（外部插件阶段启用）
 │   │   ├── launcher/                 # 外部应用联动：Office 只读/编辑/新建打开、远程编辑会话
-│   │   └── system/                   # 在资源管理器显示、剪贴板、对话框
+│   │   ├── system/                   # 应用信息、渲染端日志写入；后续：在资源管理器显示、剪贴板、对话框
+│   │   └── window/                   # 自绘窗口按钮：最小化 / 最大化 / 关闭发起调用的窗口
 │   ├── windows/
 │   │   ├── window-factory.ts         # 统一的 BrowserWindow 创建（安全选项集中在此）
+│   │   ├── window.service.ts         # 窗口管理与事件广播（M3 起由 LayoutService 驱动）
 │   │   ├── app-protocol.ts           # app:// 协议：提供渲染端静态文件（CSP 由 index.html meta 声明）
 │   │   └── security.ts               # 导航拦截、新窗口拦截、权限请求拦截
 │   ├── menu/                         # 托盘等（M5；无边框窗口不使用原生应用菜单）
@@ -258,6 +266,8 @@ apps/desktop/src/
 └── preload/
     └── index.ts                      # 暴露 window.pch
 ```
+
+M0 已实现：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window）、`windows/`、`preload/`。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -278,12 +288,14 @@ apps/desktop/src/renderer/
     │   ├── preview/                  # 插件注册表、PreviewHost 实现、PreviewContainer
     │   ├── connections/              # 远程连接管理
     │   └── settings/                 # 设置页（作为 internal://settings 标签打开）
-    ├── data/                         # 跨功能的主进程数据查询（TanStack Query hooks，如 settings）
+    ├── data/                         # 跨功能的主进程数据查询（TanStack Query hooks，如 settings、window）
     ├── lib/                          # ipc.ts、query-client.ts、query-keys.ts、report-error.ts
     ├── providers/                    # QueryProvider、I18nProvider、ThemeProvider
     ├── stores/                       # 跨功能的 zustand store（布局镜像、UI）
     └── styles/globals.css            # 引入 packages/ui 的主题变量
 ```
+
+M0 已实现：`app/`、`features/shell/`、`data/`、`lib/`、`providers/`、`stores/`、`styles/`。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`）。
 
@@ -302,15 +314,15 @@ apps/desktop/src/renderer/
 ### 6.1 组合根（不引入 DI 框架）
 
 ```ts
-// apps/desktop/src/main/bootstrap/container.ts
-export function createContainer() {
+// apps/desktop/src/main/bootstrap/container.ts（目标形态；M0 已装配 paths、logger、db、bus、settings、i18n、windows）
+export async function createContainer(rendererUrl: string): Promise<Container> {
   const paths = createPaths();
   const logger = createLogger(paths);
-  const db = openDatabase(paths.database, logger);          // 内部执行迁移
+  const db = await openDatabase(paths.database, logger);    // 内部执行迁移
   const secrets = new SecretStore();
   const bus = new EventBus<MainEvents>();
 
-  const settings = new SettingsService(new SettingsRepo(db), bus);
+  const settings = await SettingsService.create(new SettingsRepo(db), bus);
   const connections = new ConnectionService(new ConnectionRepo(db), secrets, bus);
   const cache = new RemoteCache(paths.remoteCache, settings);
   const vfs = new VfsService([
@@ -321,21 +333,21 @@ export function createContainer() {
   ], cache, bus);
   const workspaces = new WorkspaceService(new WorkspaceRepo(db), vfs, bus);
   const layout = new LayoutService(bus);
-  const windows = new WindowService(layout, settings);
+  const windows = new WindowService(paths, settings, rendererUrl, layout);
   const sessions = new SessionService(new SessionRepo(db), layout, windows, bus);
 
   return { paths, logger, db, settings, connections, vfs, workspaces, layout, windows, sessions, bus };
 }
-export type Container = ReturnType<typeof createContainer>;
+// Container 以接口显式声明（不从返回值推断），各字段类型一目了然
 ```
 
 所有依赖关系在这一个文件里一目了然，测试时可以替换任意依赖。
 
 ### 6.2 启动与退出流程
 
-启动：单实例锁 → `protocol.registerSchemesAsPrivileged`（必须在 ready 之前）→ `app.whenReady()` → 创建容器（日志、DB 迁移、设置）→ 初始化 i18n 与主题（`nativeTheme.themeSource`）→ 注册 `app://` 与 `pcfs://` 协议 → 注册 IPC → 构建菜单 → `SessionService.restoreLastWorkspace()` 创建窗口。远程连接全部懒连接，不阻塞启动。
+启动：开发环境的独立 userData → 单实例锁 → `protocol.registerSchemesAsPrivileged`（必须在 ready 之前）→ `app.whenReady()` → 创建容器（日志、DB 迁移、设置）→ 应用主题（`nativeTheme.themeSource`）→ 注册 `app://` 协议（M2 起加 `pcfs://`）→ 安全策略 → 注册 IPC → 去掉原生应用菜单（自绘标题栏）→ 联动主进程事件 → 注册退出处理 → 创建主窗口（M3 起改为 `SessionService.restoreLastWorkspace()`）。远程连接全部懒连接，不阻塞启动。
 
-退出：`before-quit` 时立即保存会话快照 → 关闭连接池 → 关闭监听器 → 关闭数据库。会话平时也会在变化后防抖保存，即使异常断电，最多丢失约 1 秒的状态。
+退出：`before-quit` 时先阻止退出，按顺序异步释放资源（M3 起先保存会话快照 → 关闭连接池 → 关闭监听器 → 注销 IPC → 关闭数据库）后再真正退出。会话平时也会在变化后防抖保存，即使异常断电，最多丢失约 1 秒的状态。
 
 ### 6.3 IPC 契约（共享）
 
@@ -343,9 +355,10 @@ export type Container = ReturnType<typeof createContainer>;
 // packages/shared/src/ipc/contract.ts
 import { z } from 'zod';
 
-const route = <O>() => <I extends z.ZodTypeAny>(input: I) =>
+const route = <O>() => <I extends z.ZodType>(input: I) =>
   ({ input, output: undefined as unknown as O });
 
+// 目标形态节选；M0 已实现：app.getInfo、settings.getAll、settings.set、window.*、log.write
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
@@ -370,6 +383,10 @@ export const ipcContract = {
   'editSession.resolve': route<void>()(z.object({ id: z.string(), action: z.enum(['overwrite', 'uploadAsCopy', 'skip']) })),
   'system.openExternal': route<void>()(z.object({ uri: z.string() })),
   'system.revealInOs':   route<void>()(z.object({ uri: z.string() })),
+  'window.minimize':     route<void>()(z.void()),            // 自绘窗口按钮：作用于发起调用的窗口
+  'window.toggleMaximize': route<void>()(z.void()),
+  'window.close':        route<void>()(z.void()),
+  'window.getState':     route<WindowState>()(z.void()),     // { maximized }
   'log.write':           route<void>()(LogWriteInput),          // 渲染端错误写入 main.log
   // ……
 } as const;
@@ -378,7 +395,7 @@ export type IpcChannel = keyof typeof ipcContract;
 export type IpcInput<C extends IpcChannel>  = z.infer<(typeof ipcContract)[C]['input']>;
 export type IpcOutput<C extends IpcChannel> = (typeof ipcContract)[C]['output'];
 
-// 主进程 → 渲染进程的广播事件
+// 主进程 → 渲染进程的事件（大多为广播；window.stateChanged 只发给状态变化的窗口）
 export interface IpcEvents {
   'layout.changed':    WindowView;
   'vfs.changed':       { dirUri: string };
@@ -386,6 +403,7 @@ export interface IpcEvents {
   'workspace.changed': { id: string };
   'connection.status': { id: string; status: 'idle' | 'connecting' | 'online' | 'error' };
   'editSession.changed': EditSessionDto;
+  'window.stateChanged': WindowState;
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppErrorPayload };
@@ -442,7 +460,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分：`FS_NOT_FOUND`、`FS_PERMISSION_DENIED`、`CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED`、`IPC_BAD_INPUT` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：M0 已有 `UNKNOWN`、`IPC_FORBIDDEN`、`IPC_BAD_INPUT`、`IPC_UNKNOWN_CHANNEL`、`SETTINGS_INVALID`；后续按需增加 `FS_NOT_FOUND`、`FS_PERMISSION_DENIED`、`CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -859,7 +877,7 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-使用无边框窗口（`titleBarStyle: 'hidden'` + Windows 下的 `titleBarOverlay`）实现与主题一致的现代标题栏。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、远程连接、（后续）搜索与最近使用。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、远程连接、（后续）搜索与最近使用。
 
 ### 12.3 渲染端入口
 
@@ -996,11 +1014,11 @@ export type Settings = z.infer<typeof settingsSchema>;
 
 ### 14.2 国际化
 
-`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（common、explorer、tabs、settings、errors、menu）。主进程与渲染进程用同一个工厂函数创建 i18next 实例；语言切换时主进程重建原生菜单与托盘，渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。开发时用脚本校验三种语言的键是否一致。
+`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
 
 ### 14.3 主题
 
-shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通过 `<html class="dark">` 切换，强调色通过 `data-accent` 属性切换一组变量，紧凑密度通过 `data-density` 调整间距。主题以 SQLite 中的设置为唯一来源，并同步 `nativeTheme.themeSource`，使原生菜单、滚动条、标题栏按钮颜色一致。这里自行实现约 50 行的 ThemeProvider，而不使用 next-themes，因为后者以 localStorage 为存储，与「设置存 SQLite」的要求冲突（shadcn 生成的 `sonner.tsx` 默认引用 next-themes，已改为由调用方传入主题）。
+shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通过 `<html class="dark">` 切换，强调色通过 `data-accent` 属性切换一组变量，紧凑密度通过 `data-density` 调整间距。主题以 SQLite 中的设置为唯一来源，并同步 `nativeTheme.themeSource`，使滚动条、表单控件等原生绘制部分与窗口底色一致（窗口按钮由渲染端自绘，直接使用主题变量）。这里自行实现约 50 行的 ThemeProvider，而不使用 next-themes，因为后者以 localStorage 为存储，与「设置存 SQLite」的要求冲突（shadcn 生成的 `sonner.tsx` 默认引用 next-themes，已改为由调用方传入主题）。
 
 ---
 
@@ -1045,11 +1063,19 @@ export default defineConfig({
 
 根目录 `pnpm dev` 即 `electron-vite dev`：Vite dev server 提供渲染端（只监听 localhost），主进程 / preload 重新构建后自动重启 Electron，开发窗口中 F12 打开 DevTools。开发环境使用独立的 userData（`PremiumCowHorse-dev`）。
 
-### 16.4 打包
+### 16.4 打包与分发
 
-`pnpm build` 执行类型检查与 `electron-vite build`（产出 `apps/desktop/out`）；`pnpm dist` 再调用 electron-builder 生成 Windows NSIS 安装包（按用户安装，不需要管理员权限）。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。
+`pnpm build` 执行类型检查与 `electron-vite build`（产出 `apps/desktop/out`）；`pnpm dist` 再调用 electron-builder 生成 **zip 免安装文件夹版**（`PremiumCowHorse-<版本>-win-x64.zip`），解压到任意目录后运行其中的 `PremiumCowHorse.exe`，不需要安装与管理员权限。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。用户数据位于 `%APPDATA%\PremiumCowHorse`，与程序所在目录无关，替换新版本时直接覆盖程序目录即可。
 
-打包工具链注意事项：electron-builder 默认的 NSIS 3.0.4.1 含已知漏洞，已通过 `toolsets.nsis` 使用 3.12；其自带的 7-Zip 24.09 被公司漏洞管理（TVM）封锁，需安装公司批准的新版 7-Zip 并以环境变量 `ELECTRON_BUILDER_7ZIP_PATH` 指定（见 README）。
+分发形式的选择（实测）：
+
+| 形式 | 结论 | 依据 |
+|---|---|---|
+| NSIS 安装程序 | 不提供 | 需求方要求免安装 |
+| portable 单文件 exe | 不采用 | 每次启动都把约 300MB 解压到 `%TEMP%` 并被杀毒软件扫描，启动 24–31 秒；强制结束后残留解压目录 |
+| zip 文件夹版 | 采用 | 首次启动约 15 秒（杀毒软件首次扫描），之后约 1.4 秒 |
+
+打包工具链注意事项：electron-builder 自带的 7-Zip 24.09 被公司漏洞管理（TVM）封锁，需安装 7-Zip 25.01 以上版本并以 electron-builder 官方环境变量 `ELECTRON_BUILDER_7ZIP_PATH` 指定（见 README）。若将来恢复安装程序或 portable 目标（二者内部使用 NSIS），需在 `electron-builder.yml` 中设置 `toolsets.nsis: '1.2.1'`（NSIS 3.12），默认的 NSIS 3.0.4.1 含 CVE-2023-37378。
 
 ---
 
@@ -1060,7 +1086,8 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化；后续：创建工作区、添加目录、打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；后续：创建工作区、添加目录、打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
 
@@ -1070,7 +1097,7 @@ export default defineConfig({
 
 | 阶段 | 目标 | 主要交付 |
 |---|---|---|
-| M0 骨架 | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、无边框标题栏、lint 与模块边界、错误落盘、打包流水线 |
+| M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
 | M1 工作区与本地文件 | 能日常使用 | 工作区增删改与切换、条目树（group/folder/file）、本地 Provider、虚拟化资源树、拖入添加、folder 预览插件、标签栏 |
 | M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text/markdown/image/pdf/media/fallback 插件、编码检测；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
@@ -1088,7 +1115,8 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 |---|---|---|
 | `node:sqlite` 仍在演进，API 可能变化 | 数据层 | 访问收敛在 `client.ts` 与 Repository；保留切换 better-sqlite3 的路径 |
 | Kysely 0.x 版本的 API 调整（如 0.29 将迁移 API 移到 `kysely/migration`） | 数据层 | 升级时跑全部数据库测试；使用面收敛在 `infra/db` |
-| 公司漏洞管理（TVM）封锁构建工具链中的旧版程序 | 无法打包 | 工具链选用新版本（NSIS 3.12）；7-Zip 使用公司批准版本并以环境变量指定；新增构建工具时先确认版本 |
+| 公司漏洞管理（TVM）封锁构建工具链中的旧版程序 | 无法打包 | 7-Zip 使用 25.01 以上版本并以环境变量指定；若恢复 NSIS 目标则用 3.12 工具包；新增构建工具时先确认版本 |
+| 自绘窗口按钮失去 Windows 11 的贴靠布局面板（Snap Layouts） | 少一种窗口布局入口 | 双击标题栏最大化已验证可用；拖动贴靠、Win+方向键预期可用（未逐一验证）；如用户需要再评估恢复系统按钮 |
 | SMB 认证依赖 `net use`，且仅限 Windows | 未挂载 SMB | 先满足主要平台；后续用 koffi 调用 Windows API；接口不变 |
 | FTP 单连接串行、日文服务器编码各异 | 远程性能与乱码 | 连接池 + 队列；连接级编码选项 |
 | 终端策略禁止 PowerShell | Office 打开动作 | 改用 koffi 调用 `ShellExecuteExW`；默认「编辑打开」也可退回 `shell.openPath` |
@@ -1097,3 +1125,15 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
 | 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat、可取消的请求 |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
+
+---
+
+## 20. 文档与知识管理
+
+| 位置 | 内容 | 维护规则 |
+|---|---|---|
+| `doc/` | 设计文档（本文档） | 项目的**最新事实依据**。实现与设计发生变化时，在同一次改动中同步更新，并在文首记录版本与变更摘要；描述以「目标结构」与「已实现」区分，不写尚未核实的内容 |
+| `devDoc/` | 开发过程记录 | 每个开发任务一份记录（`YYYY-MM-DD-主题.md`）：目标、做了什么、关键决策与理由、验证结果、遗留事项 |
+| `knowledge/` | 开发中的 tips、错误、知识 | 每遇到一次「非显而易见」的问题记录一条：症状、原因、解决、预防；开始相关工作前先查阅，避免重复踩坑 |
+| `CLAUDE.md` | AI 协作约定 | 工作方式、验证要求、文档维护规则；约定变化时更新 |
+| `README.md` | 环境与常用命令 | 命令或环境要求变化时更新 |
