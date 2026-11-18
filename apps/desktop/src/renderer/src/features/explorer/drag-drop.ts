@@ -109,3 +109,14 @@ export function resolveDrop(
   }
   return { type: 'move', entryId: source.entryId, parentId, index }
 }
+
+/**
+ * 系统文件拖入时的 dropEffect：只用 copy / link，绝不用 move
+ * （move 会让资源管理器等来源端把原文件移走）；来源只允许 move 等其他效果时返回 null（不接受）。
+ */
+export function osDropEffect(effectAllowed: string): 'copy' | 'link' | null {
+  const allowed = effectAllowed.toLowerCase()
+  if (allowed === 'uninitialized' || allowed === 'all' || allowed.includes('copy')) return 'copy'
+  if (allowed.includes('link')) return 'link'
+  return null
+}

@@ -1,4 +1,4 @@
-import type { JSX, KeyboardEvent } from 'react'
+import { useState, type DragEvent, type JSX, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FolderPlusIcon, FolderTreeIcon, RefreshCwIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -17,9 +17,11 @@ import { Kbd } from '@pch/ui/components/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@pch/ui/components/tooltip'
 import { useEntries, useEntryActions } from '@renderer/data/entries'
 import { useActiveWorkspace } from '@renderer/data/workspace'
-import { call } from '@renderer/lib/ipc'
+import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
+import { osDropEffect, resolveDrop } from './drag-drop'
 import { ExplorerTree } from './explorer-tree'
+import { useDropExecutor } from './use-drop-executor'
 
 /** 侧栏「资源管理器」视图：标题行（刷新）+ 空状态或资源树 */
 export function ExplorerView(): JSX.Element {
@@ -105,21 +107,53 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
     }
   }
 
+  // 空状态也接受系统文件拖入（只有 os 来源）：与树的空白处相同，add 到根末尾，绝不产生文件操作
+  const execute = useDropExecutor(workspaceId)
+  const [over, setOver] = useState(false)
+  const isFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer.types).includes('Files')
+  const onDragOver = (e: DragEvent): void => {
+    const effect = isFiles(e) ? osDropEffect(e.dataTransfer.effectAllowed) : null
+    if (effect === null) return setOver(false)
+    e.dataTransfer.dropEffect = effect
+    e.preventDefault()
+    setOver(true)
+  }
+  const onDrop = (e: DragEvent): void => {
+    setOver(false)
+    if (!isFiles(e)) return
+    e.preventDefault()
+    const bridge = getBridge()
+    const paths = Array.from(e.dataTransfer.files)
+      .map((file) => bridge?.getPathForFile(file) ?? '')
+      .filter((p) => p !== '')
+    const action = resolveDrop({ type: 'os', paths }, null, 'after', [])
+    if (paths.length > 0 && action) void execute(action, [])
+  }
+
   return (
-    <Empty className="h-full border-0">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <FolderTreeIcon />
-        </EmptyMedia>
-        <EmptyTitle>{t('explorer:emptyTitle')}</EmptyTitle>
-        <EmptyDescription>{t('explorer:emptyHint')}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <Button size="sm" onClick={() => void addFolder()}>
-          <FolderPlusIcon data-icon="inline-start" />
-          {t('explorer:addFolder')}
-        </Button>
-      </EmptyContent>
-    </Empty>
+    <div
+      className={`h-full ${over ? 'bg-sidebar-accent outline outline-1 -outline-offset-1 outline-sidebar-ring' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false)
+      }}
+      onDrop={onDrop}
+    >
+      <Empty className="h-full border-0">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <FolderTreeIcon />
+          </EmptyMedia>
+          <EmptyTitle>{t('explorer:emptyTitle')}</EmptyTitle>
+          <EmptyDescription>{t('explorer:emptyHint')}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button size="sm" onClick={() => void addFolder()}>
+            <FolderPlusIcon data-icon="inline-start" />
+            {t('explorer:addFolder')}
+          </Button>
+        </EmptyContent>
+      </Empty>
+    </div>
   )
 }

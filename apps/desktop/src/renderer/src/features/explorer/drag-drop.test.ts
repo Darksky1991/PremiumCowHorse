@@ -3,6 +3,7 @@ import {
   fsEntryKind,
   isDraggableNode,
   isStatusNode,
+  osDropEffect,
   resolveDrop,
   type DragSource
 } from './drag-drop'
@@ -241,5 +242,24 @@ describe('可拖动性与固定类型', () => {
     expect(fsEntryKind('link-directory')).toBe('folder')
     expect(fsEntryKind('file')).toBe('file')
     expect(fsEntryKind('link-file')).toBe('file')
+  })
+})
+
+describe('空树 / 空状态', () => {
+  it('空树上系统文件拖到空白处 → 根末尾 add', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, null, 'after', [])).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ path: 'C:\\a.txt' }]
+    })
+  })
+
+  it('osDropEffect：只用 copy / link，不接受仅允许 move 的来源', () => {
+    expect(osDropEffect('uninitialized')).toBe('copy')
+    expect(osDropEffect('all')).toBe('copy')
+    expect(osDropEffect('copyMove')).toBe('copy')
+    expect(osDropEffect('linkMove')).toBe('link')
+    expect(osDropEffect('move')).toBeNull()
+    expect(osDropEffect('none')).toBeNull()
   })
 })

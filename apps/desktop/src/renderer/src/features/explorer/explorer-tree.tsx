@@ -10,26 +10,23 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { AppError, type FileEntry, type WorkspaceEntry } from '@pch/shared'
-import { useEntryActions } from '@renderer/data/entries'
+import type { FileEntry, WorkspaceEntry } from '@pch/shared'
 import { useSetting } from '@renderer/data/settings'
 import { useDirectories, useWatchDirectories, type DirectoryState } from '@renderer/data/vfs'
 import { getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import {
   DRAG_MIME,
-  fsEntryKind,
   isDraggableNode,
+  osDropEffect,
   positionFromOffset,
   resolveDrop,
   type DragSource,
-  type DropAction,
   type DropPosition
 } from './drag-drop'
 import { useExplorerStore } from './explorer-store'
 import { resolveSelection } from './selection'
+import { useDropExecutor } from './use-drop-executor'
 import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
 import { TreeRow } from './tree-row'
 
@@ -118,15 +115,10 @@ export function ExplorerTree({
   const items = virtualizer.getVirtualItems()
 
   // ---------- 拖放：只管理条目，绝不产生文件操作 ----------
-  const { t } = useTranslation()
-  const entryActions = useEntryActions()
+  const execute = useDropExecutor(workspaceId)
   // 条目 / 真实子项的拖动来源（dragover 阶段读不到 dataTransfer 的数据，只能保存在这里）
   const dragSourceRef = useRef<DragSource | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
-
-  const reportError = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
-  }
 
   /** 当前拖动的来源：系统文件（types 含 Files）、本树发起的拖动，其余（文本、其他窗口）忽略 */
   const currentSource = (e: DragEvent): DragSource | null => {
@@ -162,15 +154,12 @@ export function ExplorerTree({
     }
     if (source.type === 'os') {
       // 系统文件只允许 copy / link，绝不用 move：move 会让资源管理器等来源端把原文件移走
-      const allowed = e.dataTransfer.effectAllowed.toLowerCase()
-      if (allowed === 'uninitialized' || allowed === 'all' || allowed.includes('copy')) {
-        e.dataTransfer.dropEffect = 'copy'
-      } else if (allowed.includes('link')) {
-        e.dataTransfer.dropEffect = 'link'
-      } else {
+      const effect = osDropEffect(e.dataTransfer.effectAllowed)
+      if (effect === null) {
         setDropTarget(null)
         return
       }
+      e.dataTransfer.dropEffect = effect
     } else {
       e.dataTransfer.dropEffect = source.type === 'entry' ? 'move' : 'link'
     }
@@ -184,47 +173,6 @@ export function ExplorerTree({
 
   const onDragLeave = (e: DragEvent<HTMLDivElement>): void => {
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null)
-  }
-
-  /** 执行落点对应的条目操作（只调用 entry.add / entry.move，不触碰磁盘文件） */
-  const execute = async (action: DropAction): Promise<void> => {
-    if (action.type === 'move') {
-      try {
-        await entryActions.move.mutateAsync({
-          id: action.entryId,
-          parentId: action.parentId,
-          index: action.index
-        })
-      } catch (e) {
-        reportError(e)
-      }
-      return
-    }
-    for (const item of action.items) {
-      try {
-        if ('uri' in item) {
-          // 真实子项：类型由节点决定（stat 跟随链接，link-directory 按 folder 添加）
-          const node = nodes.find((n) => n.source === 'fs' && n.uri === item.uri)
-          await entryActions.add.mutateAsync({
-            kind: node ? fsEntryKind(node.kind) : 'folder',
-            workspaceId,
-            parentId: action.parentId,
-            uri: item.uri
-          })
-        } else {
-          // 系统文件的类型未知：先按 folder，类型不符时按 file 重试
-          const base = { workspaceId, parentId: action.parentId, path: item.path }
-          try {
-            await entryActions.add.mutateAsync({ kind: 'folder', ...base })
-          } catch (e) {
-            if (!(e instanceof AppError && e.code === 'ENTRY_KIND_MISMATCH')) throw e
-            await entryActions.add.mutateAsync({ kind: 'file', ...base })
-          }
-        }
-      } catch (e) {
-        reportError(e)
-      }
-    }
   }
 
   const onDrop = (e: DragEvent<HTMLDivElement>): void => {
@@ -244,7 +192,7 @@ export function ExplorerTree({
       resolved = { type: 'os', paths }
     }
     const action = resolveDrop(resolved, hit.node, hit.position, nodes)
-    if (action) void execute(action)
+    if (action) void execute(action, nodes)
   }
 
   const onNodeDragStart = (e: DragEvent<HTMLDivElement>, node: TreeNode): void => {
