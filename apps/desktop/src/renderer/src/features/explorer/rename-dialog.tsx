@@ -34,7 +34,8 @@ export function RenameDialog({
       return true
     } catch (e) {
       toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
-      return false
+      // 条目在对话框打开期间已被删除：无法重试，关闭对话框（错误已提示）
+      return e instanceof AppError && e.code === 'ENTRY_NOT_FOUND'
     }
   }
 

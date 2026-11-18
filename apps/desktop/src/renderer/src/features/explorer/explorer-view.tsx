@@ -1,6 +1,6 @@
-import { useState, type DragEvent, type JSX, type KeyboardEvent } from 'react'
+import { useRef, useState, type DragEvent, type JSX, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FolderPlusIcon, FolderTreeIcon, RefreshCwIcon } from 'lucide-react'
+import { FolderPlusIcon, FolderTreeIcon, LayersIcon, RefreshCwIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AppError } from '@pch/shared'
@@ -21,6 +21,7 @@ import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { osDropEffect, resolveDrop } from './drag-drop'
 import { ExplorerTree } from './explorer-tree'
+import { NewGroupDialog } from './new-group-dialog'
 import { useDropExecutor } from './use-drop-executor'
 
 /** 侧栏「资源管理器」视图：标题行（刷新）+ 空状态或资源树 */
@@ -130,8 +131,12 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
     if (paths.length > 0 && action) void execute(action, [])
   }
 
+  const [groupOpen, setGroupOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
   return (
     <div
+      ref={rootRef}
       className={`h-full ${over ? 'bg-sidebar-accent outline outline-1 -outline-offset-1 outline-sidebar-ring' : ''}`}
       onDragOver={onDragOver}
       onDragLeave={(e) => {
@@ -152,8 +157,19 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
             <FolderPlusIcon data-icon="inline-start" />
             {t('explorer:addFolder')}
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setGroupOpen(true)}>
+            <LayersIcon data-icon="inline-start" />
+            {t('explorer:newGroup')}
+          </Button>
         </EmptyContent>
       </Empty>
+      <NewGroupDialog
+        open={groupOpen}
+        onOpenChange={setGroupOpen}
+        workspaceId={workspaceId}
+        parentId={null}
+        finalFocus={rootRef}
+      />
     </div>
   )
 }

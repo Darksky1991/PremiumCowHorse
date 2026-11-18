@@ -46,6 +46,11 @@ export function RemoveEntryDialog({
       await remove.mutateAsync(target.entryId)
       onOpenChange(false)
     } catch (e) {
+      if (e instanceof AppError && e.code === 'ENTRY_NOT_FOUND') {
+        // 条目已不存在：移除的目标已达成，静默关闭
+        onOpenChange(false)
+        return
+      }
       toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
     } finally {
       setPending(false)

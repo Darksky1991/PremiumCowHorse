@@ -563,6 +563,67 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
+  test('context menu: the empty workspace offers a new group button', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await page.getByRole('button', { name: newGroupLabel }).click()
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toHaveValue(newGroupDefault)
+      await input.fill('案件A')
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('tree').getByRole('treeitem', { name: '案件A' })).toBeVisible()
+      expect(await data<Named[]>(page, 'entry.list', { workspaceId })).toHaveLength(1)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('context menu: dialogs close when the entry was removed in the meantime', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      const b = path.join(files, 'b.txt')
+      writeFileSync(a, '')
+      writeFileSync(b, '')
+      const entryA = await data(page, 'entry.add', {
+        kind: 'file',
+        workspaceId,
+        parentId: null,
+        path: a
+      })
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: b })
+      const tree = page.getByRole('tree')
+      await expect(tree.getByRole('treeitem')).toHaveCount(2)
+      await tree.getByRole('treeitem', { name: 'a.txt' }).click()
+
+      // 重命名：对话框打开期间条目被删除 → 提交后对话框关闭（并有错误提示）
+      await page.keyboard.press('F2')
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toBeFocused()
+      await data(page, 'entry.remove', { id: entryA.id })
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toHaveCount(0)
+      await input.fill('x.txt')
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+
+      // 移除：目标已达成 → 静默关闭，不弹错误
+      await tree.getByRole('treeitem', { name: 'b.txt' }).click()
+      const entryB = (await data<Named[]>(page, 'entry.list', { workspaceId }))[0]
+      await page.keyboard.press('Delete')
+      const alert = page.getByRole('alertdialog')
+      await expect(alert).toBeVisible()
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      await data(page, 'entry.remove', { id: entryB.id })
+      await alert.getByRole('button', { name: removeLabel }).click()
+      await expect(alert).toHaveCount(0)
+      await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 /** 错误行的可访问名称包含「重试」按钮的文字 */
