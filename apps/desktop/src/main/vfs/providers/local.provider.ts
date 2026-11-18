@@ -58,11 +58,22 @@ async function statChild(dir: string, d: Dirent): Promise<FileEntry | null> {
   const p = path.join(dir, d.name)
   const hidden = d.name.startsWith('.')
   try {
-    return { ...toFileStat(p, await fs.lstat(p)), hidden }
+    const base = { ...toFileStat(p, await fs.lstat(p)), hidden }
+    if (base.kind !== 'symlink') return base
+    return { ...base, target: await resolveTarget(p) }
   } catch (e) {
     if ((e as { code?: string }).code === 'ENOENT') return null
     const kind: FileKind = d.isSymbolicLink() ? 'symlink' : d.isDirectory() ? 'directory' : 'file'
     return { uri: pathToFileURL(p).href, name: d.name, kind, size: 0, mtime: 0, hidden }
+  }
+}
+
+/** 跟随链接取目标类型；目标不存在或无法读取（失效链接、循环、权限）一律视为 null */
+async function resolveTarget(p: string): Promise<'file' | 'directory' | null> {
+  try {
+    return (await fs.stat(p)).isDirectory() ? 'directory' : 'file'
+  } catch {
+    return null
   }
 }
 

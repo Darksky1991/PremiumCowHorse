@@ -33,6 +33,21 @@ describe('LocalProvider', () => {
     expect(byName['.hidden']).toMatchObject({ kind: 'file', hidden: true })
   })
 
+  it('resolves the target kind of junctions, and null for a dangling one', async () => {
+    const live = path.join(dir, 'link-live')
+    const dead = path.join(dir, 'link-dead')
+    const gone = path.join(root, 'gone')
+    mkdirSync(gone)
+    await fs.symlink(path.join(dir, 'sub'), live, 'junction')
+    await fs.symlink(gone, dead, 'junction')
+    rmSync(gone, { recursive: true })
+    const byName = Object.fromEntries((await provider.list(url(dir))).map((e) => [e.name, e]))
+    expect(byName['link-live']).toMatchObject({ kind: 'symlink', target: 'directory' })
+    expect(byName['link-dead']).toMatchObject({ kind: 'symlink', target: null })
+    expect('target' in byName['設計書#1.xlsx']!).toBe(false)
+    expect('target' in byName['sub']!).toBe(false)
+  })
+
   it('returns child URIs that can be stat-ed again (Japanese, spaces, #)', async () => {
     for (const e of await provider.list(url(dir))) {
       const stat = await provider.stat(new URL(e.uri))
