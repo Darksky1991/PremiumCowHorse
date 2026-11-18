@@ -15,7 +15,15 @@ export type DropPosition = 'before' | 'after' | 'inside'
 
 export type DropAction =
   | { type: 'move'; entryId: string; parentId: string | null; index: number }
-  | { type: 'add'; parentId: string | null; items: Array<{ path: string } | { uri: string }> }
+  | {
+      type: 'add'
+      parentId: string | null
+      items: Array<{ path: string } | { uri: string }>
+      /** 插在该同级条目（条目 id）之前 / 之后；缺省为追加到父节点末尾 */
+      position?: { before: string } | { after: string }
+      /** 系统拖入：拒绝系统临时目录下的路径（压缩包内的文件等） */
+      rejectTemporary?: true
+    }
 
 /** 「追加到末尾」的 index（主进程会按兄弟数量截断；折叠分组的子项数未知时使用） */
 const END = Number.MAX_SAFE_INTEGER
@@ -57,7 +65,7 @@ export function positionFromOffset(
  * 求落点对应的条目操作。
  * target 为 null 表示树的空白处（= 根末尾）。以下情况返回 null（不接受放置）：
  * 目标是真实节点或状态行；inside 的目标不是分组；条目拖到自身或自己的后代之上。
- * 'add' 总是追加到父节点末尾（entry.add 没有 index 参数），落点位置只决定父节点。
+ * 'add' 带落点的 before / after（与画线一致，引用同一父节点下的条目）；inside 与空白处追加到末尾。
  */
 export function resolveDrop(
   source: DragSource,
@@ -95,9 +103,22 @@ export function resolveDrop(
     }
   }
 
-  if (source.type === 'fs') return { type: 'add', parentId, items: [{ uri: source.uri }] }
-  if (source.type === 'os') {
-    return { type: 'add', parentId, items: source.paths.map((path) => ({ path })) }
+  if (source.type !== 'entry') {
+    // 位置引用同一父节点下的条目：before / after 为目标自身；展开分组的下缘为第一个子项之前
+    let where: { before: string } | { after: string } | undefined
+    if (target !== null) {
+      if (firstChild) {
+        const first = nodes.find(
+          (n) => n.source === 'entry' && n.parentId === target.id && !isStatusNode(n)
+        )
+        if (first) where = { before: first.entryId }
+      } else if (position !== 'inside') {
+        where = position === 'before' ? { before: target.entryId } : { after: target.entryId }
+      }
+    }
+    const base = { type: 'add' as const, parentId, ...(where ? { position: where } : {}) }
+    if (source.type === 'fs') return { ...base, items: [{ uri: source.uri }] }
+    return { ...base, items: source.paths.map((path) => ({ path })), rejectTemporary: true }
   }
 
   // 条目移动：目标（含自身）的祖先链上有被拖动的条目 → 拖到自身或后代

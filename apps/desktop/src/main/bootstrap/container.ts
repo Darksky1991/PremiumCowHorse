@@ -53,7 +53,7 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
       return settings.get(`vfs.timeoutSec.${where}`) * 1000
     }
   })
-  const workspaces = new WorkspaceService(db, vfs, bus)
+  const workspaces = new WorkspaceService(db, vfs, bus, app.getPath('temp'))
   // 扫描进程随主进程启动；配置（根、设置）由 bootstrap 在启动与工作区 / 设置变化时下发
   const scanner = new ScannerClient({
     fork: () => forkScanner(logger),

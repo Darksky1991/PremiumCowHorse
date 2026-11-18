@@ -52,15 +52,6 @@ export function isShareOffline(
   return Object.keys(offlineShares).some((k) => k.toLowerCase() === lower)
 }
 
-/**
- * 与主进程 normalizeRootUri 同规则：去掉结尾的 `/`，驱动器根 `file:///C:` 保留 `/`。
- * 渲染端把节点 URI 与 index.list 返回的（已规范化的）URI 比较时使用。
- */
-export function normalizeFileUri(uri: string): string {
-  const trimmed = uri.replace(/\/+$/, '')
-  return /^file:\/\/\/[A-Za-z]:$/.test(trimmed) ? `${trimmed}/` : trimmed
-}
-
 /** UNC（带主机名的 file://host/share/...）位置；盘符（含无法识别的映射盘）为 false */
 export function isUncUri(uri: string): boolean {
   return shareKeyOfUri(uri)?.startsWith('\\\\') ?? false

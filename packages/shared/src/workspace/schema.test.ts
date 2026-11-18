@@ -51,6 +51,27 @@ describe('EntryAddInput', () => {
     ).toBe(false)
   })
 
+  it('accepts position and rejectTemporary on folder / file entries', () => {
+    const r = EntryAddInput.safeParse({
+      ...base,
+      kind: 'file',
+      path: 'C:\\x.txt',
+      position: { after: 'e1' },
+      rejectTemporary: true
+    })
+    expect(r.success).toBe(true)
+    const folder = { ...base, kind: 'folder', uri: 'file:///C:/x', position: { before: 'e1' } }
+    expect(EntryAddInput.safeParse(folder).success).toBe(true)
+  })
+
+  it('rejects a position with both before and after, an empty id, or no key', () => {
+    const f = { ...base, kind: 'folder', path: 'C:\\x' }
+    const both = { ...f, position: { before: 'a', after: 'b' } }
+    expect(EntryAddInput.safeParse(both).success).toBe(false)
+    expect(EntryAddInput.safeParse({ ...f, position: { before: '' } }).success).toBe(false)
+    expect(EntryAddInput.safeParse({ ...f, position: {} }).success).toBe(false)
+  })
+
   it('rejects unknown keys', () => {
     expect(
       EntryAddInput.safeParse({ ...base, kind: 'group', label: 'ログ', extra: 1 }).success

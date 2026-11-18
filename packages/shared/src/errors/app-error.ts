@@ -14,6 +14,8 @@ export const ERROR_CODES = [
   'ENTRY_NOT_FOUND',
   'ENTRY_INVALID_PARENT',
   'ENTRY_KIND_MISMATCH',
+  /** 系统拖入的路径位于临时目录之下（压缩包内的文件等，Chromium 写出的临时副本） */
+  'ENTRY_TEMPORARY_PATH',
   'FS_NOT_FOUND',
   'FS_PERMISSION_DENIED',
   'FS_NOT_A_DIRECTORY',

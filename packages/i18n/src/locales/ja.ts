@@ -120,6 +120,8 @@ export default {
     ENTRY_NOT_FOUND: '項目が見つかりません',
     ENTRY_INVALID_PARENT: 'この場所には移動・追加できません（親にできるのはグループだけです）',
     ENTRY_KIND_MISMATCH: 'フォルダーとファイルの種類が一致しません',
+    ENTRY_TEMPORARY_PATH:
+      '一時ファイル（圧縮ファイル内のファイルなど）は追加できません。先に展開してください。',
     FS_NOT_FOUND: 'ファイルまたはフォルダーが見つかりません',
     FS_PERMISSION_DENIED: 'アクセス権がありません',
     FS_NOT_A_DIRECTORY: 'フォルダーではありません',

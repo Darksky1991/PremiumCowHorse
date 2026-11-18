@@ -32,27 +32,38 @@ export function useDropExecutor(
       }
       return
     }
+    // 多项按拖入顺序依次插在落点：第一项用落点的位置，之后每项插在上一项成功添加的条目之后
+    let position = action.position
     for (const item of action.items) {
       try {
+        let added
         if ('uri' in item) {
           // 真实子项：类型由节点决定（stat 跟随链接，link-directory 按 folder 添加）
           const node = nodes.find((n) => n.source === 'fs' && n.uri === item.uri)
-          await entryActions.add.mutateAsync({
+          added = await entryActions.add.mutateAsync({
             kind: node ? fsEntryKind(node.kind) : 'folder',
             workspaceId,
             parentId: action.parentId,
-            uri: item.uri
+            uri: item.uri,
+            ...(position ? { position } : {})
           })
         } else {
           // 系统文件的类型未知：先按 folder，类型不符时按 file 重试
-          const base = { workspaceId, parentId: action.parentId, path: item.path }
+          const base = {
+            workspaceId,
+            parentId: action.parentId,
+            path: item.path,
+            ...(position ? { position } : {}),
+            ...(action.rejectTemporary ? { rejectTemporary: true } : {})
+          }
           try {
-            await entryActions.add.mutateAsync({ kind: 'folder', ...base })
+            added = await entryActions.add.mutateAsync({ kind: 'folder', ...base })
           } catch (e) {
             if (!(e instanceof AppError && e.code === 'ENTRY_KIND_MISMATCH')) throw e
-            await entryActions.add.mutateAsync({ kind: 'file', ...base })
+            added = await entryActions.add.mutateAsync({ kind: 'file', ...base })
           }
         }
+        if (position) position = { after: added.id }
       } catch (e) {
         reportError(e)
       }

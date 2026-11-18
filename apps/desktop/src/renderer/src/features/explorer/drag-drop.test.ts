@@ -188,16 +188,44 @@ describe('resolveDrop：真实子目录 / 系统文件 → add', () => {
     expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt', 'C:\\b'] }, c, 'before', nodes)).toEqual({
       type: 'add',
       parentId: 'g',
-      items: [{ path: 'C:\\a.txt' }, { path: 'C:\\b' }]
+      items: [{ path: 'C:\\a.txt' }, { path: 'C:\\b' }],
+      position: { before: 'c' },
+      rejectTemporary: true
     })
   })
 
-  it('系统文件拖到根条目之后 → add 到根', () => {
+  it('系统文件拖到根条目之后 → add 到根，带 after 位置', () => {
     expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, b, 'after', nodes)).toEqual({
       type: 'add',
       parentId: null,
-      items: [{ path: 'C:\\a.txt' }]
+      items: [{ path: 'C:\\a.txt' }],
+      position: { after: 'b' },
+      rejectTemporary: true
     })
+  })
+
+  it('真实子项拖到条目之前 / 之后 → 带 before / after 位置，且不设 rejectTemporary', () => {
+    const before = resolveDrop({ type: 'fs', uri: sub.uri as string }, b, 'before', nodes)
+    expect(before).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ uri: sub.uri }],
+      position: { before: 'b' }
+    })
+    expect(before).not.toHaveProperty('rejectTemporary')
+    expect(resolveDrop({ type: 'fs', uri: sub.uri as string }, c, 'after', nodes)).toMatchObject({
+      parentId: 'g',
+      position: { after: 'c' }
+    })
+  })
+
+  it('拖到空白处或分组内部（inside）→ 不带位置（末尾）', () => {
+    for (const action of [
+      resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, null, 'after', nodes),
+      resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, g, 'inside', nodes)
+    ]) {
+      expect(action).not.toHaveProperty('position')
+    }
   })
 
   it('inside 到 folder / file 条目 → null', () => {
@@ -250,7 +278,8 @@ describe('空树 / 空状态', () => {
     expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, null, 'after', [])).toEqual({
       type: 'add',
       parentId: null,
-      items: [{ path: 'C:\\a.txt' }]
+      items: [{ path: 'C:\\a.txt' }],
+      rejectTemporary: true
     })
   })
 
@@ -278,11 +307,13 @@ describe('展开分组的下缘（after）', () => {
     })
   })
 
-  it('展开分组 after：add 来源进入该分组', () => {
+  it('展开分组 after：add 来源进入该分组，插在第一个子项之前', () => {
     expect(resolveDrop({ type: 'os', paths: ['/tmp/x'] }, g, 'after', nodes)).toEqual({
       type: 'add',
       parentId: 'g',
-      items: [{ path: '/tmp/x' }]
+      items: [{ path: '/tmp/x' }],
+      position: { before: 'c' },
+      rejectTemporary: true
     })
   })
 

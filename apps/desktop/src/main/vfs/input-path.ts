@@ -1,7 +1,6 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { AppError } from '@pch/shared'
-import { normalizeRootUri } from './normalize-uri'
+import { AppError, normalizeRootUri } from '@pch/shared'
 
 /**
  * 把用户输入的本地路径转为 file URI。

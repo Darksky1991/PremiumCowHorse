@@ -330,7 +330,7 @@ apps/desktop/src/renderer/
 
 已实现：
 - M0：`app/`、`features/shell/`、`data/`（settings、window）、`lib/`、`providers/`、`stores/`、`styles/`。
-- M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
+- M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」；URI 规范化 `normalizeRootUri` 与 `isUnderUri` 在 `packages/shared/src/vfs/normalize-uri.ts`，主进程、扫描进程、渲染端共用）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 订阅 `vfs.reachability` 写入——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
@@ -626,7 +626,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | `folder` | 指向某个目录 URI 的根 | 懒加载，来自 VFS 真实列表 |
 | `file` | 指向单个文件 URI | 无 |
 
-远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。条目规则（已实现）：父节点只能是根或同一工作区的 `group`；folder / file 条目以本地路径（`path`）或 URI（`uri`，「固定」真实子项时使用）添加，二者恰好提供一个，目标必须存在且类型一致（`ENTRY_KIND_MISMATCH`），标签缺省为 `vfs.stat` 返回的显示名称；渲染端传入的路径先规范化（去首尾空白与一对双引号，要求绝对路径、拒绝 `C:foo` 这类盘符相对路径与单独的 `\\server`，否则 `FS_INVALID_URI`）；删除 group 时连同所有后代一起删除；新增条目追加到同级末尾，移动时在一个事务内重排同级的 `sort_order`；不能把 group 移到它自己的后代下。所有写操作各自在一个事务内完成（更新 / 移动 / 删除条目时在事务内读取条目），成功后广播 `workspace.changed`。
+远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。条目规则（已实现）：父节点只能是根或同一工作区的 `group`；folder / file 条目以本地路径（`path`）或 URI（`uri`，「固定」真实子项时使用）添加，二者恰好提供一个，目标必须存在且类型一致（`ENTRY_KIND_MISMATCH`），标签缺省为 `vfs.stat` 返回的显示名称；渲染端传入的路径先规范化（去首尾空白与一对双引号，要求绝对路径、拒绝 `C:foo` 这类盘符相对路径与单独的 `\\server`，否则 `FS_INVALID_URI`）；删除 group 时连同所有后代一起删除；`entry.add` 可带 `position`（`{ before: id }` / `{ after: id }`，参照条目必须与新条目同一父节点，否则 `ENTRY_INVALID_PARENT`）插在落点处，缺省追加到同级末尾，插入与移动都在同一事务内把同级的 `sort_order` 重排为 0..n-1；`rejectTemporary: true`（只有系统拖入设置）时，路径位于主进程注入的系统临时目录（`app.getPath('temp')`，按路径段比较、不区分大小写）之下则拒绝（`ENTRY_TEMPORARY_PATH`，先于 `stat` 检查；`%TEMP%2` 这类前缀相同的目录不受影响）；不能把 group 移到它自己的后代下。所有写操作各自在一个事务内完成（更新 / 移动 / 删除条目时在事务内读取条目），成功后广播 `workspace.changed`。
 
 此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。默认工作区的 `name` 为空字符串时显示本地化名称；把它改名为空字符串即「恢复默认名称」，其他工作区改名为空 → `WORKSPACE_NAME_REQUIRED`（已实现，M1-2）。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
 
@@ -655,7 +655,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 - **拖放**（`drag-drop.ts` 的纯函数 `resolveDrop` 决定动作，执行器只调用 `entry.move` / `entry.add`）：
   - dragstart **只设置自定义 MIME** `application/x-pch-node`（JSON），不设置 `text/uri-list`、`text/plain`、`DownloadURL`，`effectAllowed` 为 `move`（条目）/ `link`（真实子项）；拖出应用时没有任何目标能接受，不会生成文件。
   - 落点：行的上 25% 为 before、下 25% 为 after、中间且为分组时为 inside（非分组按 50% 分上下）；已展开且有可见子项的分组的 after 视为「放进该分组的第 0 位」（与画线位置一致）。真实节点、状态行、自身或自身的后代作为落点时 dragover 不 `preventDefault`（禁止光标，不触发 drop）。折叠的分组悬停时不自动展开。
-  - 真实子项拖到根 / 分组 = 按 URI 添加（类型取自节点：目录与指向目录的链接为 folder）；新增条目总是追加到父节点末尾（`entry.add` 没有位置参数，before / after 只决定父节点）。
+  - 真实子项拖到根 / 分组 = 按 URI 添加（类型取自节点：目录与指向目录的链接为 folder）；新增条目按落点插入：before / after 插在目标条目之前 / 之后（与画线一致），展开分组的下缘插在第一个子项之前，inside 与空白处追加到末尾；系统拖入多个文件时按拖入顺序依次插在落点处（第一项用落点位置，之后每项插在上一项之后）。
   - **系统拖入只用 `copy` / `link`**：`dataTransfer.types` 含 `Files` 时视为系统来源，`dropEffect` 绝不设为 `move`（`move` 会让资源管理器把原文件移走）；`effectAllowed` 只允许 move 时不接受放置。路径经 preload 的 `getPathForFile` 取得，先按 folder 添加，`ENTRY_KIND_MISMATCH` 时改按 file。没有条目时的空状态也接受系统拖入（添加到根）。系统文件落在不接受的位置时不会导航到该文件：主防线是 Electron 的 `webPreferences.navigateOnDragDrop` 默认 `false`（`electron.d.ts`：「Whether dragging and dropping a file or link onto the page causes a navigation. Default is `false`.」，本项目未改动该选项），主进程的 `will-navigate` 拦截（`windows/security.ts`）是第二道防线。
   - 空状态的「添加文件夹」（系统对话框多选）与树空白处菜单一样经拖放的执行器逐项添加：某项失败只提示该项，其余项照常添加（最终审查 #29，e2e `empty state: adding several folders keeps going after one of them fails`）。
 - **右键菜单**（Base UI ContextMenu；菜单项由纯函数 `menuItemsFor(node)` 决定）：
@@ -673,8 +673,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
   刷新级别子菜单的「跟随全局（{{level}}）」显示该条目位置对应的全局默认值：UNC 为网络（`refresh.defaultLevel.network`），盘符为本地（`.local`）；**映射网络盘在渲染端无法识别（需要 `GetDriveTypeW`），显示按本地**，扫描进程仍按真实位置类型生效。单选项与勾选项都传 `closeOnClick`（Base UI 默认点击不关闭菜单）。条目的级别经 `entry.setRefreshLevel`（null = 跟随全局），「建立索引」经 `index.setTarget`，勾选状态来自 `index.list`（`data/entries.ts` 的 `useIndexTargets`，`workspace.changed` 后失效；节点 URI 与返回值按 `normalizeFileUri` 比较）。「建立索引」只用于 folder 条目与真实子目录（`directory`，不含指向目录的链接）。
   右键同时选中该节点；菜单与对话框关闭后焦点回到树。复制路径由渲染端把 file URI 转为 Windows 路径（`lib/file-uri.ts`，非 file URI 时不显示该项）后经 `system.copyText` 写入剪贴板。重命名 / 新建分组的对话框预填并全选名称；移除用 AlertDialog（默认焦点在「取消」），文案明确「只移除条目，不会删除磁盘上的文件或文件夹」（分组说明连同其下所有条目一起移除）。对话框打开期间条目已被删除：移除静默关闭（目标已达成），重命名提示错误后关闭。没有条目的工作区显示空状态，提供「添加文件夹」「新建分组」按钮。
 - **已知限制 / 待需求方决定**：
-  - **虚拟文件拖入**（未经真机验证）：从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，副本由 Chromium 在浏览器进程中写入临时目录，`getPathForFile` 返回该副本的路径，条目会指向这个临时副本。副本只在我们的 dragover 接受了放置（`preventDefault` + `copy`）之后、drop 时才写出；拖放事件中拿不到路径，dragover 阶段也分不出是否为虚拟文件，因此「拒绝 %TEMP% 下的路径」挡不住副本本身被写出（应用自身不写任何文件）。**待需求方决定**：(a) 接受 Chromium 写临时副本，照常添加（现状）；(b) 写出副本后拒绝固定的临时路径（副本仍会产生；识别方式可考虑 Chromium 临时子目录的命名特征，需实机确认；按 %TEMP% 整体拒绝会同时阻止把 %TEMP% 下的目录固定为条目，例如查看日志）；(c) 完全不接受系统拖入，只保留系统对话框。
-  - 新增条目总是追加到父节点末尾（before / after 的画线位置会误导，设计 4.10 第 3 条另行处理）。
+  - **虚拟文件拖入**（已知限制）：从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，副本由 Chromium 在浏览器进程中写入临时目录（我们接受放置之后、drop 时写出；dragover 阶段分不出是否为虚拟文件，应用自身不写任何文件），`getPathForFile` 返回该副本的路径。需求方的决定：只接受磁盘上持久存在的文件 / 目录。当前做法：系统拖入设置 `rejectTemporary`，主进程拒绝 `app.getPath('temp')` 之下的所有路径（`ENTRY_TEMPORARY_PATH`，提示「无法添加临时文件（例如压缩包内的文件），请先解压」）；副本仍由 Chromium 写入临时目录；同时意味着不能把 %TEMP% 下的目录经系统拖入固定为条目（对话框添加与「固定真实子项」不受限）。Chromium 副本目录的命名规律尚未实机确认，确认后可收窄为只拒绝该规律下的路径。
+  - 按松手位置插入与拒绝临时文件（Task 9）已实现并有单元测试（`workspace.service.test.ts`、`drag-drop.test.ts`）与 e2e（真实子项按位置固定）；系统拖入的临时目录拒绝经 `rejectTemporary` 由单元测试覆盖，真实 zip 拖入需需求方实机确认。
   - 从系统资源管理器真实拖入未自动化（Playwright 无法产生带真实路径的系统拖放，合成的 File 经 `getPathForFile` 得到空字符串），只有 `resolveDrop` 的单元测试，需需求方手动确认。
   - 映射盘符转 UNC、用 Menu 键 / Shift+F10 打开所选节点的菜单尚未实现。
 
@@ -1262,7 +1262,7 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
 | 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；折叠 / 切换工作区等不再需要的目录列表由渲染端自动取消；已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
-| 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 条目指向会被清理的临时副本 | 现状：照常添加；三个选项（照常添加 / 写出后拒绝临时路径 / 不接受系统拖入）待需求方决定，见 8.2 节 |
+| 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 副本留在临时目录（应用不写、不删） | 拒绝 `app.getPath('temp')` 之下的系统拖入路径（`ENTRY_TEMPORARY_PATH`）；待实机确认 Chromium 副本目录的规律后可收窄，见 8.2 节 |
 | `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（M1-2 已实机验证） | 展开 `案件\設計書` 时无法在资源管理器中改名 / 移动 `案件` | 已解决：2026-11-19 起不再使用 `fs.watch`，改为扫描 + 缓存（7.1、8.3 节）；枚举只在毫秒级的一次调用期间持有句柄 |
 | 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时、5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节） |
 

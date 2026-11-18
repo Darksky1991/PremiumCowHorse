@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import {
   AppError,
+  isUnderUri,
+  normalizeRootUri,
   DEFAULT_WORKSPACE_ID,
   type EntryAddInput,
   type EntryMoveInput,
@@ -16,7 +18,8 @@ import type { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import type { Database } from '../../infra/db/client'
 import { toFileUri } from '../../vfs/input-path'
-import { isUnderUri, normalizeRootUri } from '../../vfs/normalize-uri'
+import { fileUriToLocalPath } from '../../vfs/local-path'
+
 import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo, IndexTargetRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
@@ -29,7 +32,9 @@ export class WorkspaceService {
   constructor(
     private readonly db: Database,
     private readonly vfs: VfsService,
-    private readonly bus: EventBus<MainEvents>
+    private readonly bus: EventBus<MainEvents>,
+    /** 系统临时目录（app.getPath('temp')）；rejectTemporary 时位于其下的路径被拒绝。组合根注入，测试可传任意目录 */
+    private readonly tempDir: string
   ) {}
 
   // ---------- 工作区 ----------
@@ -115,6 +120,13 @@ export class WorkspaceService {
     let defaultLabel = ''
     if (input.kind !== 'group') {
       uri = input.path !== undefined ? toFileUri(input.path) : normalizeRootUri(input.uri as string)
+      // 先于 stat 检查：临时副本即使存在也不接受
+      if (
+        input.rejectTemporary === true &&
+        isUnderDirectory(fileUriToLocalPath(uri), this.tempDir)
+      ) {
+        throw new AppError({ code: 'ENTRY_TEMPORARY_PATH', detail: uri })
+      }
       const stat = await this.vfs.stat(uri)
       if ((input.kind === 'folder') !== (stat.kind === 'directory')) {
         throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${input.kind} → ${stat.kind}` })
@@ -125,6 +137,17 @@ export class WorkspaceService {
       await this.requireWorkspace(new WorkspaceRepo(trx), input.workspaceId)
       const entries = new EntryRepo(trx)
       await this.requireParent(entries, input.workspaceId, input.parentId)
+      // 位置：参照条目必须是同一父节点下的同级；插入后把同级重排为 0..n-1
+      const siblings = (await entries.listByWorkspace(input.workspaceId))
+        .filter((e) => e.parentId === input.parentId)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+      let index = siblings.length
+      if (input.kind !== 'group' && input.position !== undefined) {
+        const refId = 'before' in input.position ? input.position.before : input.position.after
+        const at = siblings.findIndex((e) => e.id === refId)
+        if (at < 0) throw new AppError({ code: 'ENTRY_INVALID_PARENT', detail: refId })
+        index = 'before' in input.position ? at : at + 1
+      }
       const now = Date.now()
       const entry: WorkspaceEntry = {
         id: randomUUID(),
@@ -133,13 +156,17 @@ export class WorkspaceService {
         kind: input.kind,
         label: input.kind === 'group' ? input.label : (input.label ?? defaultLabel),
         uri,
-        sortOrder: (await entries.maxSortOrder(input.workspaceId, input.parentId)) + 1,
+        sortOrder: index,
         meta: null,
         refreshLevel: null,
         createdAt: now,
         updatedAt: now
       }
       await entries.insert(entry)
+      for (const [i, e] of siblings.entries()) {
+        const sortOrder = i < index ? i : i + 1
+        if (e.sortOrder !== sortOrder) await entries.update(e.id, { sortOrder })
+      }
       return { workspaceId: input.workspaceId, result: entry }
     })
   }
@@ -320,6 +347,22 @@ export class WorkspaceService {
       throw new AppError({ code: 'ENTRY_INVALID_PARENT', detail: parentId })
     }
   }
+}
+
+/**
+ * target 是否等于 dir 或在其之下：Windows 路径，统一分隔符、按路径段比较、不区分大小写
+ * （`C:\\Temp2` 不在 `C:\\Temp` 之下）。
+ */
+function isUnderDirectory(target: string, dir: string): boolean {
+  const segments = (p: string): string[] =>
+    p
+      .replaceAll('/', '\\')
+      .split('\\')
+      .filter((s) => s !== '')
+      .map((s) => s.toLowerCase())
+  const base = segments(dir)
+  const t = segments(target)
+  return base.length > 0 && t.length >= base.length && base.every((s, i) => t[i] === s)
 }
 
 /** id 自身及其所有后代的 id */

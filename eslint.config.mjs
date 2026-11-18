@@ -50,7 +50,7 @@ const files = [
   { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' },
   // vfs 中不依赖 electron 的文件：扫描进程只能 import 这些
   {
-    pattern: `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list,normalize-uri}.ts`,
+    pattern: `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list}.ts`,
     category: 'vfs-portable'
   }
 ]
@@ -179,7 +179,7 @@ export default defineConfig(
     // 扫描进程运行在 utilityProcess 中，与它共用的 vfs 文件也一样：不得依赖 electron
     files: [
       'apps/desktop/src/scanner/**/*.ts',
-      `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list,normalize-uri}.ts`
+      `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list}.ts`
     ],
     rules: {
       'no-restricted-imports': [

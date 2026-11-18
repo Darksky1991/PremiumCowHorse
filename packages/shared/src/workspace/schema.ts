@@ -30,7 +30,11 @@ const targetFields = {
   parentId,
   path: z.string().min(1).optional(),
   uri: z.string().min(1).optional(),
-  label: label.optional()
+  label: label.optional(),
+  /** 插在 parentId 下某个同级条目之前 / 之后（该条目必须在同一父节点下）；缺省为追加到末尾 */
+  position: z.union([z.strictObject({ before: id }), z.strictObject({ after: id })]).optional(),
+  /** 来自系统拖入：路径位于系统临时目录之下时拒绝（ENTRY_TEMPORARY_PATH，例如压缩包内的文件） */
+  rejectTemporary: z.boolean().optional()
 }
 const exactlyOneTarget = (v: { path?: string; uri?: string }): boolean =>
   (v.path === undefined) !== (v.uri === undefined)

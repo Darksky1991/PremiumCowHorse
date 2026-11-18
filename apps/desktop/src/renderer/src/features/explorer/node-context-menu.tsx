@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppError, type RefreshLevel } from '@pch/shared'
+import { AppError, normalizeRootUri, type RefreshLevel } from '@pch/shared'
 import {
   ContextMenuCheckboxItem,
   ContextMenuContent,
@@ -30,7 +30,7 @@ import {
 import { useEntries, useEntryActions, useIndexTargets } from '@renderer/data/entries'
 import { useSetting } from '@renderer/data/settings'
 import { call } from '@renderer/lib/ipc'
-import { fileUriToWindowsPath, isUncUri, normalizeFileUri } from '@renderer/lib/file-uri'
+import { fileUriToWindowsPath, isUncUri } from '@renderer/lib/file-uri'
 import { menuItemsFor, type MenuItemId } from './menu-items'
 import type { TreeNode } from './tree-model'
 
@@ -126,7 +126,7 @@ export function NodeContextMenu({
   }
 
   const indexed =
-    uri !== null && (indexTargets ?? []).some((target) => target === normalizeFileUri(uri))
+    uri !== null && (indexTargets ?? []).some((target) => target === normalizeRootUri(uri))
   const onIndexChange = (enabled: boolean): void => {
     if (uri === null) return
     setIndexTarget.mutate({ workspaceId, uri, enabled }, { onError: reportError })

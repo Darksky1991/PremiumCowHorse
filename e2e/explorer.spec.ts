@@ -332,6 +332,14 @@ test.describe('explorer tree on real directories', () => {
       expect(pinned).toMatchObject({ kind: 'folder' })
       expect(decodeURIComponent(pinned.uri)).toMatch(/\/案件\/設計書$/)
 
+      // 真实子目录拖到某个根条目之前：按松手位置插入（不再追加到末尾），同级顺序重排
+      expect(await dragRow(page, '議事録', { row: 'ログ', at: 'top' })).toMatchObject({
+        accepted: true
+      })
+      await expect
+        .poll(async () => (await entries()).filter((e) => !e.parentId).map((e) => e.label))
+        .toEqual(['案件', '議事録', 'ログ', '設計書'])
+
       // 落在真实节点上一律不接受（dragover 不 preventDefault，drop 不会发生）
       expect(await dragRow(page, '仕様.xlsx', { row: '議事録', at: 'middle' })).toMatchObject({
         accepted: false
@@ -340,8 +348,8 @@ test.describe('explorer tree on real directories', () => {
         accepted: false
       })
 
-      // 条目数据只因上面三次被接受的拖放而变化（案件、メモ、ログ + 固定的 設計書）；磁盘完全不变
-      expect(await entries()).toHaveLength(4)
+      // 条目数据只因上面被接受的拖放而变化（案件、メモ、ログ + 固定的 設計書、議事録）；磁盘完全不变
+      expect(await entries()).toHaveLength(5)
       expect(snapshotTree(files)).toEqual(before)
     } finally {
       await app.close()

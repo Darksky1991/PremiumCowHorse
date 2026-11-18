@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  fileUriToWindowsPath,
-  isShareOffline,
-  isUncUri,
-  normalizeFileUri,
-  shareKeyOfUri
-} from './file-uri'
+import { fileUriToWindowsPath, isShareOffline, isUncUri, shareKeyOfUri } from './file-uri'
 
 describe('fileUriToWindowsPath', () => {
   it('转换盘符路径并解码百分号编码', () => {
@@ -66,15 +60,6 @@ describe('isShareOffline', () => {
   it('没有断开的共享或键无法求出时为 false', () => {
     expect(isShareOffline('file:///C:/a', {})).toBe(false)
     expect(isShareOffline('https://x/y', offline)).toBe(false)
-  })
-})
-
-describe('normalizeFileUri', () => {
-  it('去掉结尾斜杠，驱动器根保留', () => {
-    expect(normalizeFileUri('file:///C:/work/')).toBe('file:///C:/work')
-    expect(normalizeFileUri('file:///C:')).toBe('file:///C:/')
-    expect(normalizeFileUri('file:///C:/')).toBe('file:///C:/')
-    expect(normalizeFileUri('file:///C:/a')).toBe('file:///C:/a')
   })
 })
 

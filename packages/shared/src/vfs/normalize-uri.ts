@@ -17,7 +17,7 @@ export function prefixOf(root: string): string {
  * uri 是否等于 root 或在 root 之下。纯字符串比较、大小写敏感（与 URI 原样一致）：
  * Windows 路径大小写不敏感，大小写不同的同一目录会被视为不同目录——
  * 这里依赖 URI 来自同一来源（工作区条目 + pathToFileURL(path.join(...))）而保持一致。
- * 主进程（索引目标是否在 folder 之下）与扫描进程（缓存、调度器的根覆盖）共用本实现，语义必须一致。
+ * 主进程（索引目标是否在 folder 之下）、扫描进程（缓存、调度器的根覆盖）与渲染端共用本实现（不依赖 Node API），语义必须一致。
  */
 export function isUnderUri(uri: string, root: string): boolean {
   return uri === root || uri.startsWith(prefixOf(root))

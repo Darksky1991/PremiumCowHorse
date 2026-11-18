@@ -29,11 +29,16 @@ describe('WorkspaceService', () => {
     mkdirSync(at('案件 A', '設計書#1'), { recursive: true })
     writeFileSync(at('work', 'b.xlsx'), '')
     writeFileSync(at('x.txt'), '')
+    // 注入的「临时目录」是 Temp；Temp2 前缀相同但不在其下
+    mkdirSync(at('Temp', 'zip-copy'), { recursive: true })
+    mkdirSync(at('Temp2'), { recursive: true })
+    writeFileSync(at('Temp', 'zip-copy', 'f.txt'), '')
+    writeFileSync(at('Temp2', 'g.txt'), '')
     db = await openDatabase(':memory:', silent)
     const bus = new EventBus<MainEvents>()
     events = []
     bus.on('workspace.changed', (e) => events.push(e))
-    service = new WorkspaceService(db, new VfsService([new LocalProvider()]), bus)
+    service = new WorkspaceService(db, new VfsService([new LocalProvider()]), bus, at('Temp'))
   })
   afterEach(async () => {
     await db.destroy()
@@ -96,6 +101,128 @@ describe('WorkspaceService', () => {
   })
 
   describe('entries', () => {
+    const addFile = (
+      name: string,
+      extra: { parentId?: string | null; position?: { before: string } | { after: string } } = {}
+    ): Promise<WorkspaceEntry> =>
+      service.addEntry({
+        kind: 'file',
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        parentId: extra.parentId ?? null,
+        path: at(name),
+        ...(extra.position ? { position: extra.position } : {})
+      })
+    const order = async (parentId: string | null = null): Promise<string[]> =>
+      (await service.listEntries(DEFAULT_WORKSPACE_ID))
+        .filter((e) => e.parentId === parentId)
+        .sort((x, y) => x.sortOrder - y.sortOrder)
+        .map((e) => e.label)
+
+    describe('position', () => {
+      beforeEach(() => {
+        for (const n of ['p1.txt', 'p2.txt', 'p3.txt', 'n1.txt', 'n2.txt', 'n3.txt']) {
+          writeFileSync(at(n), '')
+        }
+      })
+
+      it('inserts before / after a sibling and renumbers sort_order to 0..n-1', async () => {
+        const p1 = await addFile('p1.txt')
+        const p2 = await addFile('p2.txt')
+        await addFile('p3.txt')
+        await addFile('n1.txt', { position: { before: p2.id } })
+        await addFile('n2.txt', { position: { after: p1.id } })
+        expect(await order()).toEqual(['p1.txt', 'n2.txt', 'n1.txt', 'p2.txt', 'p3.txt'])
+        const orders = (await service.listEntries(DEFAULT_WORKSPACE_ID)).map((e) => e.sortOrder)
+        expect([...orders].sort()).toEqual([0, 1, 2, 3, 4])
+      })
+
+      it('inserts before the first and after the last sibling', async () => {
+        const p1 = await addFile('p1.txt')
+        const p2 = await addFile('p2.txt')
+        await addFile('n1.txt', { position: { before: p1.id } })
+        await addFile('n2.txt', { position: { after: p2.id } })
+        expect(await order()).toEqual(['n1.txt', 'p1.txt', 'p2.txt', 'n2.txt'])
+      })
+
+      it('appends when no position is given', async () => {
+        await addFile('p1.txt')
+        await addFile('p2.txt')
+        expect(await order()).toEqual(['p1.txt', 'p2.txt'])
+      })
+
+      it('inserting several in drop order, each after the previous, keeps that order', async () => {
+        const p1 = await addFile('p1.txt')
+        await addFile('p2.txt')
+        const n1 = await addFile('n1.txt', { position: { after: p1.id } })
+        const n2 = await addFile('n2.txt', { position: { after: n1.id } })
+        await addFile('n3.txt', { position: { after: n2.id } })
+        expect(await order()).toEqual(['p1.txt', 'n1.txt', 'n2.txt', 'n3.txt', 'p2.txt'])
+      })
+
+      it('only reorders the siblings under the target parent', async () => {
+        const g = await group('G')
+        const inG = await addFile('p1.txt', { parentId: g.id })
+        await addFile('p2.txt')
+        await addFile('n1.txt', { parentId: g.id, position: { before: inG.id } })
+        expect(await order(g.id)).toEqual(['n1.txt', 'p1.txt'])
+        expect(await order()).toEqual(['G', 'p2.txt'])
+      })
+
+      it('rejects a position entry under another parent with ENTRY_INVALID_PARENT', async () => {
+        const g = await group('G')
+        const inG = await addFile('p1.txt', { parentId: g.id })
+        await expect(addFile('n1.txt', { position: { after: inG.id } })).rejects.toMatchObject({
+          code: 'ENTRY_INVALID_PARENT'
+        })
+        await expect(
+          addFile('n1.txt', { position: { before: 'no-such-entry' } })
+        ).rejects.toMatchObject({ code: 'ENTRY_INVALID_PARENT' })
+        expect(await order()).toEqual(['G'])
+      })
+    })
+
+    describe('rejectTemporary', () => {
+      const addPath = (p: string, rejectTemporary?: boolean): Promise<WorkspaceEntry> =>
+        service.addEntry({
+          kind: 'file',
+          workspaceId: DEFAULT_WORKSPACE_ID,
+          parentId: null,
+          path: p,
+          ...(rejectTemporary === undefined ? {} : { rejectTemporary })
+        })
+
+      it('rejects a file and a folder under the temp directory with ENTRY_TEMPORARY_PATH', async () => {
+        await expect(addPath(at('Temp', 'zip-copy', 'f.txt'), true)).rejects.toMatchObject({
+          code: 'ENTRY_TEMPORARY_PATH'
+        })
+        await expect(
+          service.addEntry({
+            kind: 'folder',
+            workspaceId: DEFAULT_WORKSPACE_ID,
+            parentId: null,
+            path: at('Temp', 'zip-copy'),
+            rejectTemporary: true
+          })
+        ).rejects.toMatchObject({ code: 'ENTRY_TEMPORARY_PATH' })
+        expect(await order()).toEqual([])
+      })
+
+      it('matches case-insensitively and with forward slashes', async () => {
+        const upper = at('Temp', 'zip-copy', 'f.txt').toUpperCase().replaceAll('\\', '/')
+        await expect(addPath(upper, true)).rejects.toMatchObject({ code: 'ENTRY_TEMPORARY_PATH' })
+      })
+
+      it('does not reject a sibling directory with the same prefix (Temp2)', async () => {
+        const e = await addPath(at('Temp2', 'g.txt'), true)
+        expect(e.label).toBe('g.txt')
+      })
+
+      it('allows temp paths when rejectTemporary is not set', async () => {
+        const e = await addPath(at('Temp', 'zip-copy', 'f.txt'))
+        expect(e.label).toBe('f.txt')
+      })
+    })
+
     it('adds a folder under a group and appends to the end of its siblings', async () => {
       const g = await group('設計書')
       const a = await service.addEntry({

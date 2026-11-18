@@ -1,4 +1,4 @@
-import { normalizeRootUri } from './normalize-uri'
+import { normalizeRootUri } from '@pch/shared'
 import type { RootConfig, ScanSettings, ScannerConfig, Settings, WorkspaceEntry } from '@pch/shared'
 
 /**

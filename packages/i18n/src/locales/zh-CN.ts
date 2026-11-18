@@ -117,6 +117,7 @@ export default {
     ENTRY_NOT_FOUND: '找不到该条目',
     ENTRY_INVALID_PARENT: '不能移动或添加到这里（只有分组可以作为上级）',
     ENTRY_KIND_MISMATCH: '文件夹与文件的类型不一致',
+    ENTRY_TEMPORARY_PATH: '无法添加临时文件（例如压缩包内的文件），请先解压。',
     FS_NOT_FOUND: '找不到文件或文件夹',
     FS_PERMISSION_DENIED: '没有访问权限',
     FS_NOT_A_DIRECTORY: '不是文件夹',

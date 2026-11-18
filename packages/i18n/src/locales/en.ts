@@ -121,6 +121,8 @@ export default {
     ENTRY_NOT_FOUND: 'Item not found',
     ENTRY_INVALID_PARENT: 'Cannot move or add here (only groups can contain items)',
     ENTRY_KIND_MISMATCH: 'The item type does not match (folder vs. file)',
+    ENTRY_TEMPORARY_PATH:
+      "Temporary files (such as files inside an archive) can't be added. Extract them first.",
     FS_NOT_FOUND: 'File or folder not found',
     FS_PERMISSION_DENIED: 'Access denied',
     FS_NOT_A_DIRECTORY: 'Not a folder',

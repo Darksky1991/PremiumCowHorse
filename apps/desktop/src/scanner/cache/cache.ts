@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
-import { isUnderUri as isUnder, prefixOf } from '../../main/vfs/normalize-uri'
+import { isUnderUri as isUnder, prefixOf } from '@pch/shared'
 import type { RawEntry } from '../enum/types'
 import { CACHE_VERSION, CREATE_SQL, DROP_SQL } from './cache-schema'
 
@@ -26,7 +26,7 @@ const HALF_LIFE_MS = 3 * 24 * 3600 * 1000
 
 type Row = Record<string, SQLOutputValue>
 
-// 判断「在根之下」的实现与主进程共用（vfs/normalize-uri.ts），此处保留原导出名
+// 判断「在根之下」的实现与主进程共用（packages/shared 的 vfs/normalize-uri.ts），此处保留原导出名
 export { isUnder }
 
 /** 子项 URI：与 LocalProvider.list 的生成方式完全一致（调度器把 RawEntry 转为 FileEntry 时也用它） */
