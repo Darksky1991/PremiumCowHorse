@@ -13,8 +13,7 @@ export function registerShutdown(c: Container, disposeIpc: () => void): void {
     if (state === 'stopping') return
     state = 'stopping'
     disposeIpc()
-    c.vfs
-      .dispose()
+    Promise.all([c.vfs.dispose(), c.scanner.dispose()])
       .then(() => c.db.destroy())
       .then(() => c.logger.info('[app] shutdown complete'))
       .catch((e: unknown) => c.logger.error('[app] shutdown failed', e))

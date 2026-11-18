@@ -12,6 +12,8 @@ import { SettingsService } from '../modules/settings/settings.service'
 import { WindowService } from '../windows/window.service'
 import { WorkspaceService } from '../modules/workspace/workspace.service'
 import { LocalProvider } from '../vfs/providers/local.provider'
+import { ScannerClient } from '../vfs/scanner-client'
+import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 
 export interface Container {
@@ -22,6 +24,7 @@ export interface Container {
   settings: SettingsService
   workspaces: WorkspaceService
   vfs: VfsService
+  scanner: ScannerClient
   i18n: i18n
   windows: WindowService
 }
@@ -41,8 +44,17 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     onDirectoryChanged: (uri) => bus.emit('vfs.changed', { uri })
   })
   const workspaces = new WorkspaceService(db, vfs, bus)
+  // 扫描进程随主进程启动；渲染端的请求在 Task 6 才经过它（目前不配置根，调度器空闲）
+  const scanner = new ScannerClient({
+    fork: () => forkScanner(logger),
+    cacheFile: paths.indexDb,
+    onChanged: () => {},
+    onReachability: () => {},
+    log: logger
+  })
+  scanner.start()
   const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
   const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))
 
-  return { paths, logger, db, bus, settings, workspaces, vfs, i18n, windows }
+  return { paths, logger, db, bus, settings, workspaces, vfs, scanner, i18n, windows }
 }

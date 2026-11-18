@@ -81,6 +81,14 @@ const policies = [
   allow('main-module', ['main-ipc', 'main-vfs', 'main-infra', 'main-core', 'shared']),
   // vfs：按 scheme 路由到 provider；vfs.ipc 使用路由的类型
   allow('main-vfs', ['main-ipc', 'main-core', 'main-infra', 'shared']),
+  // main-vfs 只能以 ?modulePath 引用扫描进程入口（得到打包后的文件路径，不在主进程加载其代码）
+  {
+    from: { element: { type: 'main-vfs' } },
+    allow: {
+      to: { element: { type: 'scanner' } },
+      dependency: { source: '../../scanner/main?modulePath' }
+    }
+  },
   allow('main-windows', ['main-module', 'main-infra', 'main-core', 'shared']),
   allow('main-infra', ['main-core', 'shared', 'i18n']),
   allow('main-core', ['shared']),

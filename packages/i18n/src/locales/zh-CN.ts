@@ -116,6 +116,7 @@ export default {
     FS_UNSUPPORTED_SCHEME: '不支持这种类型的位置',
     FS_CANCELLED: '操作已取消',
     FS_TIMEOUT: '没有响应，已中止',
-    FS_UNAVAILABLE: '无法访问该位置'
+    FS_UNAVAILABLE: '无法访问该位置',
+    INDEX_UNAVAILABLE: '索引不可用'
   }
 } satisfies Resource

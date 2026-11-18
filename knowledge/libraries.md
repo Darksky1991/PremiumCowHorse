@@ -126,3 +126,19 @@
 - 原因：koffi 在工作线程上执行调用，只在调用回调期间把工作线程上的 LastError 恢复到主线程（`call.cc` 的 `AsyncCall::Complete`，回调返回后还原）；promise 的后续代码在回调之后的微任务中运行。
 - 解决：在回调内同步调用 `GetLastError()`，与结果一起 resolve（`scanner/enum/win32-enumerator.ts` 的 `callAsync`）。其他要点：koffi 3 的指针是 BigInt（`INVALID_HANDLE_VALUE` 为 `0xFFFFFFFFFFFFFFFFn`，不是 `-1`）；`Buffer` 作为 `void *` 参数时直接传内存地址（不复制），异步调用期间保持引用即可；`koffi.view()` 会创建外部 ArrayBuffer，文档写明 Electron 禁止，不使用。
 - 预防：koffi 的行为先读 `node_modules/koffi/doc` 与 `src/koffi/src/*.cc`，再用小脚本实测。
+
+### node:sqlite：打开损坏的库失败后文件删不掉（`EPERM, Permission denied`）
+
+- 日期：2026-11-19
+- 症状：`index.db` 被写入垃圾内容后，`Cache.open` 抛出 `file is not a database`；随后 `rmSync(index.db)` 在 Windows 上报 `EPERM, Permission denied`，无法删除重建。
+- 原因：`new DatabaseSync(file)` 本身不读文件头，第一条语句（`PRAGMA journal_mode = WAL`）才报错；此时连接已打开，若不 `close()`，文件句柄一直留在进程里，Windows 不允许删除被打开的文件。
+- 解决：`scanner/cache/cache.ts` 的 `Cache.open` 在构造之后的任何失败都先 `db.close()` 再抛出；扫描进程删除 `index.db`、`-wal`、`-shm` 后重建一次（`scanner/main.ts` 的 `openCacheWithRecovery`），有测试。
+- 预防：打开 node:sqlite 库后的初始化语句放进 try，失败时关闭连接；「删文件重建」的测试在 Windows 上跑，Linux 上可删除已打开的文件，测不出来。
+
+### eslint-plugin-boundaries 7：按 import 写法（`?modulePath`）放行依赖
+
+- 日期：2026-11-19
+- 症状：想只允许 `main-vfs` 以 `import p from '../../scanner/main?modulePath'` 引用扫描进程入口，策略写 `dependency: { source: '**/scanner/main?modulePath' }` 不生效，仍报 `There is no policy allowing dependencies from elements of type "main-vfs" to elements of type "scanner"`。
+- 原因：`source` 是 import 的原始写法，用 picomatch 匹配（`@boundaries/elements` 的 `isMatch`，未开 `dot`）；`**` 不匹配 `..` 这样的点开头路径段。TypeScript 解析器能把带 `?modulePath` 的路径解析到目标文件，所以目标元素确实是 `scanner`。
+- 解决：`eslint.config.mjs` 中写确切的相对写法 `source: '../../scanner/main?modulePath'`（`?` 作为通配符恰好匹配字面的 `?`）；不带查询参数的普通 import 仍被拒绝（已用临时文件验证）。
+- 预防：`source` 选择器先用确切写法；需要通配时注意 `..` 段。

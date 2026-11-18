@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -255,5 +255,12 @@ describe('Cache on disk', () => {
     again.setRoots(['file:///C:/a'])
     expect(again.getEntries('file:///C:/a')).toHaveLength(1)
     again.close()
+  })
+
+  it('open closes the database when the file is not a database (so it can be deleted)', () => {
+    const f = path.join(tmp, 'index.db')
+    writeFileSync(f, 'not a sqlite database '.repeat(200))
+    expect(() => Cache.open(f)).toThrow(/not a database/)
+    expect(() => rmSync(f)).not.toThrow()
   })
 })

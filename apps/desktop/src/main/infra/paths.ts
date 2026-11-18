@@ -4,6 +4,8 @@ import { app } from 'electron'
 export interface AppPaths {
   userData: string
   database: string
+  /** 扫描进程的目录缓存库（可随时删除重建） */
+  indexDb: string
   logs: string
   /** 渲染端构建产物（生产模式下由 app:// 协议提供，位于 asar 内） */
   renderer: string
@@ -27,6 +29,7 @@ export function createPaths(): AppPaths {
   return {
     userData,
     database: path.join(userData, 'data', 'pch.db'),
+    indexDb: path.join(userData, 'cache', 'index.db'),
     logs: path.join(userData, 'logs'),
     renderer: path.join(outMain, '../renderer'),
     preload: path.join(outMain, '../preload/index.js')

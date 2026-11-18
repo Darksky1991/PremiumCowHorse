@@ -235,7 +235,7 @@ apps/desktop/src/
 │   │   │   └── migrations/           # TypeScript 迁移（随主进程打包）
 │   │   ├── logger.ts
 │   │   ├── secret-store.ts           # safeStorage 加解密
-│   │   ├── paths.ts                  # userData / cache / logs 路径
+│   │   ├── paths.ts                  # userData / cache（index.db）/ logs 路径
 │   │   └── i18n.ts                   # 主进程 i18next 实例
 │   ├── vfs/
 │   │   ├── types.ts                  # FileSystemProvider 接口
@@ -247,6 +247,8 @@ apps/desktop/src/
 │   │   ├── path-name.ts              # 显示名称（驱动器根 `C:`、UNC 共享根 `\\server\share`）
 │   │   ├── location.ts               # 位置类型 local / network（UNC、GetDriveTypeW 的 DRIVE_REMOTE）与并发分组键 shareKey / hostKey
 │   │   ├── fs-list.ts                # node:fs 列目录（readdir + 16 并发 lstat + 链接目标）：LocalProvider 与扫描进程的 fs 回退共用
+│   │   ├── scanner-client.ts         # ScannerClient：与扫描进程收发消息（按 id 对应结果）、意外退出时重启、超过上限进入降级
+│   │   ├── scanner-process.ts        # utilityProcess.fork 扫描进程（`?modulePath` 引用入口，UV_THREADPOOL_SIZE=16）
 │   │   ├── providers/
 │   │   │   ├── local.provider.ts
 │   │   │   ├── smb.provider.ts
@@ -280,18 +282,25 @@ apps/desktop/src/
 │       ├── router.ts                 # 单通道路由：来源校验 → 通道校验 → 输入校验 → 分发
 │       └── handlers.ts               # 汇总各模块 handler
 ├── scanner/                          # 扫描进程（utilityProcess；不得 import electron，只能使用 vfs 中不依赖 electron 的文件）
-│   └── enum/
-│       ├── types.ts                  # RawEntry、Enumerator 接口
-│       ├── win32-enumerator.ts       # koffi：保护访问时间的目录枚举、GetFileAttributesExW 取目录修改时间
-│       ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头，无法保护访问时间）
-│       └── create-enumerator.ts      # koffi 可用则用 win32 版，否则回退并记日志
+│   ├── main.ts                       # 进程入口：process.parentPort 收发消息；createScannerHost 组装 Enumerator + Cache + Scheduler
+│   ├── enum/
+│   │   ├── types.ts                  # RawEntry、Enumerator 接口
+│   │   ├── win32-enumerator.ts       # koffi：保护访问时间的目录枚举、GetFileAttributesExW 取目录修改时间
+│   │   ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头，无法保护访问时间）
+│   │   └── create-enumerator.ts      # koffi 可用则用 win32 版，否则回退并记日志
+│   ├── cache/                        # index.db（node:sqlite，可随时删除重建）
+│   └── schedule/                     # scope（范围计算）、scheduler（优先级、并发、退避）、backoff
 └── preload/
     └── index.ts                      # 暴露 window.pch
 ```
 
-`scanner/` 的目标结构（调度器、缓存库、进程入口与主进程客户端）见 `devDoc/2026-11-19-01-refresh-cache-design.md` 4.1 节，实现后在此补充。scanner 与 vfs 的依赖由 lint 约束：scanner 只允许 import `shared` 与 vfs 中登记为 `vfs-portable` 的文件（`local-path`、`errors`、`location`、`path-name`、`fs-list`），这些文件与 scanner 一起禁止 import `electron`。
+`scanner/` 的进程结构见 `devDoc/2026-11-19-01-refresh-cache-design.md` 4.1 节。scanner 与 vfs 的依赖由 lint 约束：scanner 只允许 import `shared` 与 vfs 中登记为 `vfs-portable` 的文件（`local-path`、`errors`、`location`、`path-name`、`fs-list`），这些文件与 scanner 一起禁止 import `electron`；反方向 `main-vfs` 只能以 `../../scanner/main?modulePath` 引用扫描进程入口（electron-vite 把入口单独打包，得到的只是文件路径，主进程不加载扫描进程的代码）。
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/enum/`（目录枚举器，已有单元测试，**扫描进程尚未接入**，应用运行时还不使用它；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；同样未接入）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`；同样未接入）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`；同样未接入）；`vfs/location.ts` 目前也只被 scanner 使用）。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+主进程与扫描进程的消息定义在 `packages/shared/src/scanner/protocol.ts`（zod，两端收到后都校验，无效消息记日志并忽略）：主 → 扫描 `init { cacheFile }`（fork 后第一条）、`configure { config: ScannerConfig }`、`list { id, uri }`、`interest { ownerId, focus, visible, offscreen }`、`windowFocus`、`releaseOwner`、`refresh { uris }`、`cacheInfo { id }`、`clearCache { id }`、`cancel { id }`（留给搜索）、`shutdown`；扫描 → 主 `result { id, ok, value | error }`、`changed { uri }`、`reachability { share, state, since }`、`log { level, message }`（扫描进程的调度器与枚举器日志经此写入 `main.log`，前缀 `[scanner]`）、`ready`。`ScannerConfig = { roots, allRootUris, indexTargets, settings }`；`Interest`、`ReachabilityEvent` 在 `shared/scanner/types.ts`。
+
+扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：直接枚举、不缓存，由 Task 6 接入）。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
+
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动，但渲染端的请求尚未经过它：`vfs.list` 仍走 `VfsService`，目前不下发配置，调度器空闲，Task 6 接入）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`vfs/location.ts` 目前也只被 scanner 使用）。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -494,7 +503,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」），`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」），`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 

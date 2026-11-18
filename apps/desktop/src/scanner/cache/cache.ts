@@ -99,24 +99,31 @@ export class Cache {
 
   private constructor(private readonly db: DatabaseSync) {}
 
-  /** user_version 不符（或为未知结构）→ 删表重建 */
+  /**
+   * user_version 不符（或为未知结构）→ 删表重建。打开失败（例如 file is not a database）时
+   * 先关闭连接再抛出：否则文件句柄不释放，Windows 上调用方无法删除损坏的文件重建。
+   */
   static open(file: string | ':memory:'): Cache {
     if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true })
     const db = new DatabaseSync(file)
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;')
-    const version = Number(db.prepare('PRAGMA user_version').get()?.user_version ?? 0)
-    if (version !== CACHE_VERSION) {
-      db.exec('BEGIN')
-      try {
-        db.exec(DROP_SQL)
-        db.exec(CREATE_SQL)
-        db.exec(`PRAGMA user_version = ${CACHE_VERSION}`)
-        db.exec('COMMIT')
-      } catch (e) {
-        db.exec('ROLLBACK')
-        db.close()
-        throw e
+    try {
+      db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;')
+      const version = Number(db.prepare('PRAGMA user_version').get()?.user_version ?? 0)
+      if (version !== CACHE_VERSION) {
+        db.exec('BEGIN')
+        try {
+          db.exec(DROP_SQL)
+          db.exec(CREATE_SQL)
+          db.exec(`PRAGMA user_version = ${CACHE_VERSION}`)
+          db.exec('COMMIT')
+        } catch (e) {
+          db.exec('ROLLBACK')
+          throw e
+        }
       }
+    } catch (e) {
+      db.close()
+      throw e
     }
     return new Cache(db)
   }

@@ -120,6 +120,7 @@ export default {
     FS_UNSUPPORTED_SCHEME: 'This kind of location is not supported',
     FS_CANCELLED: 'The operation was canceled',
     FS_TIMEOUT: 'Stopped because there was no response',
-    FS_UNAVAILABLE: 'The location is unavailable'
+    FS_UNAVAILABLE: 'The location is unavailable',
+    INDEX_UNAVAILABLE: 'The index is unavailable'
   }
 } satisfies Resource

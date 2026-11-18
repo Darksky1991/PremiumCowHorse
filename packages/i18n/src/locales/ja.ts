@@ -119,6 +119,7 @@ export default {
     FS_UNSUPPORTED_SCHEME: 'この種類の場所には対応していません',
     FS_CANCELLED: '操作をキャンセルしました',
     FS_TIMEOUT: '応答がないため中断しました',
-    FS_UNAVAILABLE: '場所にアクセスできません'
+    FS_UNAVAILABLE: '場所にアクセスできません',
+    INDEX_UNAVAILABLE: 'インデックスを利用できません'
   }
 }

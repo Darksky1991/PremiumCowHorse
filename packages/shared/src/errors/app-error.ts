@@ -21,7 +21,9 @@ export const ERROR_CODES = [
   'FS_UNSUPPORTED_SCHEME',
   'FS_CANCELLED',
   'FS_TIMEOUT',
-  'FS_UNAVAILABLE'
+  'FS_UNAVAILABLE',
+  /** 扫描进程或其缓存库（index.db）不可用 */
+  'INDEX_UNAVAILABLE'
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

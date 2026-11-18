@@ -17,3 +17,19 @@ export interface ScanSettings {
   timeoutSec: { local: number; network: number }
   activeDepth: number
 }
+
+/** 一个窗口（owner）告诉调度器的关注点与可见目录（整体替换） */
+export interface Interest {
+  focus: string | null
+  /** 视口内的已展开目录 */
+  visible: string[]
+  /** 已展开但滚出视口的目录 */
+  offscreen: string[]
+}
+
+/** 共享（`\\host\share`，小写）或卷（`C:`）的可达状态变化；since 为进入该状态的时刻（Unix 毫秒） */
+export interface ReachabilityEvent {
+  share: string
+  state: 'online' | 'offline'
+  since: number
+}

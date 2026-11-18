@@ -1,0 +1,275 @@
+import {
+  AppError,
+  ScannerToMain,
+  type DirectoryListing,
+  type Interest,
+  type MainToScanner,
+  type ReachabilityEvent,
+  type ScannerConfig
+} from '@pch/shared'
+import type { Logger } from '../infra/logger'
+
+/** 扫描进程的通信端口（生产环境为 UtilityProcess，测试中为假实现） */
+export interface ScannerPort {
+  postMessage(m: unknown): void
+  on(event: 'message', cb: (m: unknown) => void): void
+  on(event: 'exit', cb: (code: number) => void): void
+  kill(): void
+}
+
+export interface ScannerClientOptions {
+  fork: () => ScannerPort
+  /** 缓存库文件，fork 后在第一条 init 消息中下发 */
+  cacheFile: string
+  onChanged: (uri: string) => void
+  onReachability: (e: ReachabilityEvent) => void
+  log: Logger
+  /** restartWindowMs 内意外退出达到此次数即停止重启（降级模式），默认 3 */
+  maxRestarts?: number
+  /** 默认 5 分钟 */
+  restartWindowMs?: number
+  /** dispose 时等待进程自行退出的时长，超时则 kill；默认 2 秒 */
+  shutdownTimeoutMs?: number
+  now?: () => number
+}
+
+interface Pending {
+  resolve: (v: unknown) => void
+  reject: (e: AppError) => void
+}
+
+interface OwnerState {
+  focused?: boolean
+  interest?: Interest
+}
+
+const unavailable = (detail: string): AppError =>
+  new AppError({ code: 'INDEX_UNAVAILABLE', detail })
+
+/**
+ * 主进程侧的扫描进程客户端（设计 4.1）：请求按 id 对应结果；进程意外退出时以 INDEX_UNAVAILABLE
+ * 拒绝进行中的请求并重启，重启后重发 init、最后一次配置与各窗口的焦点 / 关注点；
+ * 短时间内连续退出则停止重启，available 变为 false（调用方退回直接枚举、不缓存的降级模式）。
+ */
+export class ScannerClient {
+  private readonly maxRestarts: number
+  private readonly windowMs: number
+  private readonly shutdownTimeoutMs: number
+  private readonly now: () => number
+
+  private port: ScannerPort | null = null
+  private nextId = 1
+  private readonly pending = new Map<number, Pending>()
+  private lastConfig: ScannerConfig | null = null
+  private readonly owners = new Map<number, OwnerState>()
+  private exits: number[] = []
+  private state: 'idle' | 'running' | 'unavailable' | 'disposed' = 'idle'
+  private exited: (() => void) | null = null
+
+  constructor(private readonly opts: ScannerClientOptions) {
+    this.maxRestarts = opts.maxRestarts ?? 3
+    this.windowMs = opts.restartWindowMs ?? 5 * 60_000
+    this.shutdownTimeoutMs = opts.shutdownTimeoutMs ?? 2000
+    this.now = opts.now ?? Date.now
+  }
+
+  /** false：扫描进程不可用（超过重启上限或已 dispose） */
+  get available(): boolean {
+    return this.state === 'running'
+  }
+
+  start(): void {
+    if (this.state !== 'idle') return
+    this.state = 'running'
+    this.spawn()
+  }
+
+  configure(c: ScannerConfig): void {
+    this.lastConfig = c
+    this.send({ type: 'configure', config: c })
+  }
+
+  list(uri: string): Promise<DirectoryListing> {
+    return this.request<DirectoryListing>((id) => ({ type: 'list', id, uri }))
+  }
+
+  interest(ownerId: number, i: Interest): void {
+    const interest = { focus: i.focus, visible: [...i.visible], offscreen: [...i.offscreen] }
+    this.owner(ownerId).interest = interest
+    this.send({ type: 'interest', ownerId, ...interest })
+  }
+
+  windowFocus(ownerId: number, focused: boolean): void {
+    this.owner(ownerId).focused = focused
+    this.send({ type: 'windowFocus', ownerId, focused })
+  }
+
+  releaseOwner(ownerId: number): void {
+    this.owners.delete(ownerId)
+    this.send({ type: 'releaseOwner', ownerId })
+  }
+
+  refresh(uris: string[]): void {
+    this.send({ type: 'refresh', uris })
+  }
+
+  cacheInfo(): Promise<{ bytes: number }> {
+    return this.request<{ bytes: number }>((id) => ({ type: 'cacheInfo', id }))
+  }
+
+  clearCache(): Promise<void> {
+    return this.request<void>((id) => ({ type: 'clearCache', id }))
+  }
+
+  /** 请求扫描进程退出（关闭缓存库），超时则 kill；之后所有请求以 INDEX_UNAVAILABLE 拒绝 */
+  async dispose(): Promise<void> {
+    if (this.state === 'disposed') return
+    const port = this.state === 'running' ? this.port : null
+    this.state = 'disposed'
+    this.rejectAll('scanner client disposed')
+    if (!port) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const exited = new Promise<void>((resolve) => {
+      this.exited = resolve
+      timer = setTimeout(() => {
+        this.opts.log.warn('[scanner] did not exit after shutdown; killing it')
+        try {
+          port.kill()
+        } catch (e) {
+          this.opts.log.error('[scanner] kill failed', e)
+        }
+        resolve()
+      }, this.shutdownTimeoutMs)
+    })
+    this.post(port, { type: 'shutdown' })
+    await exited
+    clearTimeout(timer)
+    this.port = null
+  }
+
+  // ---- 内部 ----
+
+  private owner(ownerId: number): OwnerState {
+    let o = this.owners.get(ownerId)
+    if (!o) {
+      o = {}
+      this.owners.set(ownerId, o)
+    }
+    return o
+  }
+
+  private spawn(): void {
+    let port: ScannerPort
+    try {
+      port = this.opts.fork()
+    } catch (e) {
+      this.opts.log.error('[scanner] fork failed', e)
+      this.giveUp('fork failed')
+      return
+    }
+    this.port = port
+    port.on('message', (m) => {
+      if (this.port === port) this.onMessage(m)
+    })
+    port.on('exit', (code) => this.onExit(port, code))
+    this.post(port, { type: 'init', cacheFile: this.opts.cacheFile })
+    if (this.lastConfig) this.post(port, { type: 'configure', config: this.lastConfig })
+    for (const [ownerId, o] of this.owners) {
+      if (o.focused !== undefined)
+        this.post(port, { type: 'windowFocus', ownerId, focused: o.focused })
+      if (o.interest) this.post(port, { type: 'interest', ownerId, ...o.interest })
+    }
+  }
+
+  private onExit(port: ScannerPort, code: number): void {
+    if (this.port !== port) return
+    if (this.state === 'disposed') {
+      this.exited?.()
+      return
+    }
+    this.port = null
+    this.rejectAll(`scanner exited (code ${code})`)
+    const t = this.now()
+    this.exits = [...this.exits.filter((x) => t - x < this.windowMs), t]
+    if (this.exits.length >= this.maxRestarts) {
+      this.giveUp(
+        `exited ${this.exits.length} times within ${this.windowMs / 1000}s (last code ${code})`
+      )
+      return
+    }
+    this.opts.log.warn(`[scanner] exited unexpectedly (code ${code}); restarting`)
+    this.spawn()
+  }
+
+  private giveUp(reason: string): void {
+    this.state = 'unavailable'
+    this.port = null
+    this.rejectAll(`scanner unavailable: ${reason}`)
+    this.opts.log.error(
+      `[scanner] ${reason}; not restarting (degraded mode: directories are listed directly without the cache)`
+    )
+  }
+
+  private onMessage(raw: unknown): void {
+    const parsed = ScannerToMain.safeParse(raw)
+    if (!parsed.success) {
+      this.opts.log.warn(`[scanner] invalid message ignored: ${parsed.error.message.slice(0, 500)}`)
+      return
+    }
+    const m = parsed.data
+    switch (m.type) {
+      case 'result': {
+        const p = this.pending.get(m.id)
+        if (!p) return
+        this.pending.delete(m.id)
+        if (m.ok) p.resolve(m.value)
+        else p.reject(new AppError(m.error))
+        return
+      }
+      case 'changed':
+        return this.opts.onChanged(m.uri)
+      case 'reachability':
+        return this.opts.onReachability({ share: m.share, state: m.state, since: m.since })
+      case 'log':
+        return this.opts.log[m.level](`[scanner] ${m.message}`)
+      case 'ready':
+        return this.opts.log.info('[scanner] ready')
+    }
+  }
+
+  private request<T>(build: (id: number) => MainToScanner): Promise<T> {
+    if (this.state !== 'running' || !this.port) {
+      return Promise.reject(unavailable(`scanner is ${this.state}`))
+    }
+    const id = this.nextId++
+    const port = this.port
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
+      if (!this.post(port, build(id))) {
+        this.pending.delete(id)
+        reject(unavailable('cannot send to the scanner'))
+      }
+    })
+  }
+
+  /** 不回应的消息：不可用时丢弃（重启后由 spawn 重发需要保持的状态） */
+  private send(m: MainToScanner): void {
+    if (this.state === 'running' && this.port) this.post(this.port, m)
+  }
+
+  private post(port: ScannerPort, m: MainToScanner): boolean {
+    try {
+      port.postMessage(m)
+      return true
+    } catch (e) {
+      this.opts.log.error(`[scanner] cannot send ${m.type}`, e)
+      return false
+    }
+  }
+
+  private rejectAll(detail: string): void {
+    const err = unavailable(detail)
+    for (const p of this.pending.values()) p.reject(err)
+    this.pending.clear()
+  }
+}

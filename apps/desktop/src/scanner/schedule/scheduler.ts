@@ -2,6 +2,7 @@ import {
   AppError,
   type DirectoryListing,
   type FileEntry,
+  type Interest,
   type RootConfig,
   type ScanSettings
 } from '@pch/shared'
@@ -18,14 +19,8 @@ export interface SchedulerEvents {
   reachability(share: string, state: 'online' | 'offline', since: number): void
 }
 
-/** 一个窗口（owner）告诉调度器的关注点与可见目录（整体替换） */
-export interface Interest {
-  focus: string | null
-  /** 视口内的已展开目录 */
-  visible: string[]
-  /** 已展开但滚出视口的目录 */
-  offscreen: string[]
-}
+/** 窗口的关注点：定义在 shared（主进程的 ScannerClient 与扫描进程共用） */
+export type { Interest }
 
 export interface SchedulerDeps {
   enumerator: Enumerator
