@@ -54,6 +54,7 @@ export default {
     SETTINGS_INVALID: '设置值不正确',
     WORKSPACE_NOT_FOUND: '找不到工作区',
     WORKSPACE_DEFAULT_PROTECTED: '默认工作区不能删除',
+    WORKSPACE_NAME_REQUIRED: '请输入名称',
     ENTRY_NOT_FOUND: '找不到该条目',
     ENTRY_INVALID_PARENT: '不能移动或添加到这里（只有分组可以作为上级）',
     ENTRY_KIND_MISMATCH: '文件夹与文件的类型不一致',
@@ -63,6 +64,7 @@ export default {
     FS_INVALID_URI: '路径格式不正确',
     FS_UNSUPPORTED_SCHEME: '不支持这种类型的位置',
     FS_CANCELLED: '操作已取消',
-    FS_TIMEOUT: '没有响应，已中止'
+    FS_TIMEOUT: '没有响应，已中止',
+    FS_UNAVAILABLE: '无法访问该位置'
   }
 } satisfies Resource

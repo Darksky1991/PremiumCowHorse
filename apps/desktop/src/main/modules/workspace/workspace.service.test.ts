@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_WORKSPACE_ID, type WorkspaceEntry } from '@pch/shared'
 import { EventBus } from '../../core/event-bus'
@@ -59,6 +59,19 @@ describe('WorkspaceService', () => {
       })
       const renamed = await service.update({ id: DEFAULT_WORKSPACE_ID, name: '共用フォルダ' })
       expect(renamed.name).toBe('共用フォルダ')
+    })
+
+    it('lets the default workspace reset to the localized name with an empty name', async () => {
+      await service.update({ id: DEFAULT_WORKSPACE_ID, name: '共用フォルダ' })
+      const reset = await service.update({ id: DEFAULT_WORKSPACE_ID, name: '' })
+      expect(reset.name).toBe('')
+    })
+
+    it('rejects an empty name for other workspaces', async () => {
+      const w = await service.create({ name: '案件B' })
+      await expect(service.update({ id: w.id, name: '' })).rejects.toMatchObject({
+        code: 'WORKSPACE_NAME_REQUIRED'
+      })
     })
 
     it('reports WORKSPACE_NOT_FOUND for unknown ids', async () => {
@@ -239,5 +252,26 @@ describe('WorkspaceService', () => {
     await service.removeEntry(g.id)
     await service.delete(w.id)
     expect(events).toEqual(Array.from({ length: 8 }, () => ({ id: w.id })))
+  })
+
+  describe('entries by uri and concurrency', () => {
+    it('adds a real directory by uri, labelled with the directory name', async () => {
+      const entry = await service.addEntry({
+        kind: 'folder',
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        parentId: null,
+        uri: pathToFileURL(at('案件 A', '設計書#1')).href
+      })
+      expect(entry.label).toBe('設計書#1')
+      expect(entry.uri).toBe(pathToFileURL(at('案件 A', '設計書#1')).href)
+    })
+
+    it('keeps sortOrder as 0..3 after 4 concurrent moves', async () => {
+      const ids = [(await group('a')).id, (await group('b')).id, (await group('c')).id]
+      ids.push((await group('d')).id)
+      await Promise.all(ids.map((id) => service.moveEntry({ id, parentId: null, index: 0 })))
+      const orders = (await snapshot()).map((e) => e.sortOrder).sort()
+      expect(orders).toEqual([0, 1, 2, 3])
+    })
   })
 })

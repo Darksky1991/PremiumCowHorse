@@ -54,6 +54,7 @@ export default {
     SETTINGS_INVALID: 'The setting value is invalid',
     WORKSPACE_NOT_FOUND: 'Workspace not found',
     WORKSPACE_DEFAULT_PROTECTED: 'The default workspace cannot be deleted',
+    WORKSPACE_NAME_REQUIRED: 'Enter a name',
     ENTRY_NOT_FOUND: 'Item not found',
     ENTRY_INVALID_PARENT: 'Cannot move or add here (only groups can contain items)',
     ENTRY_KIND_MISMATCH: 'The item type does not match (folder vs. file)',
@@ -63,6 +64,7 @@ export default {
     FS_INVALID_URI: 'The path is not valid',
     FS_UNSUPPORTED_SCHEME: 'This kind of location is not supported',
     FS_CANCELLED: 'The operation was canceled',
-    FS_TIMEOUT: 'Stopped because there was no response'
+    FS_TIMEOUT: 'Stopped because there was no response',
+    FS_UNAVAILABLE: 'The location is unavailable'
   }
 } satisfies Resource

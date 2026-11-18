@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { pathToFileURL } from 'node:url'
 import {
   AppError,
   DEFAULT_WORKSPACE_ID,
@@ -14,7 +13,7 @@ import {
 import type { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import type { Database } from '../../infra/db/client'
-import { displayName } from '../../vfs/path-name'
+import { toFileUri } from '../../vfs/input-path'
 import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
@@ -58,39 +57,46 @@ export class WorkspaceService {
       createdAt: now,
       updatedAt: now
     }
-    await this.write(workspace.id, async (trx) => {
+    await this.write(async (trx) => {
       const repo = new WorkspaceRepo(trx)
       const max = Math.max(-1, ...(await repo.list()).map((w) => w.sortOrder))
       workspace.sortOrder = max + 1
       await repo.insert(workspace)
+      return { workspaceId: workspace.id, result: undefined }
     })
     return workspace
   }
 
   async update(input: WorkspaceUpdateInput): Promise<Workspace> {
     const { id, ...patch } = input
-    return this.write(id, async (trx) => {
+    // 空名称只允许用于默认工作区（界面显示本地化的默认名称）
+    if (patch.name === '' && id !== DEFAULT_WORKSPACE_ID) {
+      throw new AppError({ code: 'WORKSPACE_NAME_REQUIRED' })
+    }
+    return this.write(async (trx) => {
       const repo = new WorkspaceRepo(trx)
       await this.requireWorkspace(repo, id)
       await repo.update(id, patch)
-      return this.requireWorkspace(repo, id)
+      return { workspaceId: id, result: await this.requireWorkspace(repo, id) }
     })
   }
 
   async delete(id: string): Promise<void> {
     if (id === DEFAULT_WORKSPACE_ID) throw new AppError({ code: 'WORKSPACE_DEFAULT_PROTECTED' })
-    await this.write(id, async (trx) => {
+    await this.write(async (trx) => {
       const repo = new WorkspaceRepo(trx)
       await this.requireWorkspace(repo, id)
       await repo.delete(id) // 条目由外键级联删除
+      return { workspaceId: id, result: undefined }
     })
   }
 
   async activate(id: string): Promise<void> {
-    await this.write(id, async (trx) => {
+    await this.write(async (trx) => {
       const repo = new WorkspaceRepo(trx)
       await this.requireWorkspace(repo, id)
       await repo.update(id, { lastOpenedAt: Date.now() })
+      return { workspaceId: id, result: undefined }
     })
   }
 
@@ -102,14 +108,17 @@ export class WorkspaceService {
 
   async addEntry(input: EntryAddInput): Promise<WorkspaceEntry> {
     // folder / file：目标必须存在且类型一致（在事务外检查，避免文件系统访问占用数据库连接）
-    const uri = input.kind === 'group' ? null : pathToFileURL(input.path).href
-    if (uri !== null) {
+    let uri: string | null = null
+    let defaultLabel = ''
+    if (input.kind !== 'group') {
+      uri = input.path !== undefined ? toFileUri(input.path) : (input.uri as string)
       const stat = await this.vfs.stat(uri)
       if ((input.kind === 'folder') !== (stat.kind === 'directory')) {
         throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${input.kind} → ${stat.kind}` })
       }
+      defaultLabel = stat.name
     }
-    return this.write(input.workspaceId, async (trx) => {
+    return this.write(async (trx) => {
       await this.requireWorkspace(new WorkspaceRepo(trx), input.workspaceId)
       const entries = new EntryRepo(trx)
       await this.requireParent(entries, input.workspaceId, input.parentId)
@@ -119,7 +128,7 @@ export class WorkspaceService {
         workspaceId: input.workspaceId,
         parentId: input.parentId,
         kind: input.kind,
-        label: input.kind === 'group' ? input.label : (input.label ?? displayName(input.path)),
+        label: input.kind === 'group' ? input.label : (input.label ?? defaultLabel),
         uri,
         sortOrder: (await entries.maxSortOrder(input.workspaceId, input.parentId)) + 1,
         meta: null,
@@ -127,27 +136,28 @@ export class WorkspaceService {
         updatedAt: now
       }
       await entries.insert(entry)
-      return entry
+      return { workspaceId: input.workspaceId, result: entry }
     })
   }
 
   async updateEntry(input: EntryUpdateInput): Promise<WorkspaceEntry> {
-    const existing = await this.requireEntry(new EntryRepo(this.db), input.id)
     const { id, ...patch } = input
-    return this.write(existing.workspaceId, async (trx) => {
+    return this.write(async (trx) => {
       const entries = new EntryRepo(trx)
+      const existing = await this.requireEntry(entries, id)
       await entries.update(id, patch)
-      return this.requireEntry(entries, id)
+      return { workspaceId: existing.workspaceId, result: await this.requireEntry(entries, id) }
     })
   }
 
   /** 删除条目；group 连同所有后代一起删除 */
   async removeEntry(id: string): Promise<void> {
-    const existing = await this.requireEntry(new EntryRepo(this.db), id)
-    await this.write(existing.workspaceId, async (trx) => {
+    await this.write(async (trx) => {
       const entries = new EntryRepo(trx)
+      const existing = await this.requireEntry(entries, id)
       const all = await entries.listByWorkspace(existing.workspaceId)
       await entries.deleteMany(subtreeIds(all, id))
+      return { workspaceId: existing.workspaceId, result: undefined }
     })
   }
 
@@ -156,9 +166,9 @@ export class WorkspaceService {
    * 并把目标同级列表（以及跨父节点移动时的原同级列表）的 sort_order 重排为 0..n-1。
    */
   async moveEntry(input: EntryMoveInput): Promise<void> {
-    const existing = await this.requireEntry(new EntryRepo(this.db), input.id)
-    await this.write(existing.workspaceId, async (trx) => {
+    await this.write(async (trx) => {
       const entries = new EntryRepo(trx)
+      const existing = await this.requireEntry(entries, input.id)
       await this.requireParent(entries, existing.workspaceId, input.parentId)
       const all = await entries.listByWorkspace(existing.workspaceId)
       if (input.parentId !== null && subtreeIds(all, existing.id).includes(input.parentId)) {
@@ -181,14 +191,20 @@ export class WorkspaceService {
           if (e.sortOrder !== i) await entries.update(e.id, { sortOrder: i })
         }
       }
+      return { workspaceId: existing.workspaceId, result: undefined }
     })
   }
 
   // ---------- 内部 ----------
 
-  /** 在事务内执行写操作，成功后发出 workspace.changed */
-  private async write<T>(workspaceId: string, fn: (trx: Database) => Promise<T>): Promise<T> {
-    const result = await this.db.transaction().execute(fn)
+  /**
+   * 在事务内执行写操作，成功后发出 workspace.changed。
+   * 回调在事务内读取数据并返回受影响的工作区 id 与结果，避免用事务外的过期读取决定 id。
+   */
+  private async write<T>(
+    fn: (trx: Database) => Promise<{ workspaceId: string; result: T }>
+  ): Promise<T> {
+    const { workspaceId, result } = await this.db.transaction().execute(fn)
     this.bus.emit('workspace.changed', { id: workspaceId })
     return result
   }

@@ -14,22 +14,35 @@ export type WorkspaceCreateInput = z.infer<typeof WorkspaceCreateInput>
 
 export const WorkspaceUpdateInput = z.strictObject({
   id,
-  name: name.optional(),
+  // 允许空字符串：仅默认工作区可用来恢复本地化的默认名称（由服务层校验）
+  name: z.string().trim().max(100).optional(),
   description: z.string().max(500).nullable().optional(),
   color: z.string().max(32).nullable().optional()
 })
 export type WorkspaceUpdateInput = z.infer<typeof WorkspaceUpdateInput>
 
 /**
- * folder / file 条目以本地路径添加，由主进程转为 URI（pathToFileURL）；
- * label 缺省为路径的最后一段。M4 再扩展为接受远程 URI。
+ * folder / file 条目以本地路径（path，由主进程转为 file URI）或 URI（uri，由 VFS 校验）添加，
+ * 二者恰好提供一个；label 缺省为目标的显示名称。
  */
-const targetFields = { workspaceId: id, parentId, path: z.string().min(1), label: label.optional() }
+const targetFields = {
+  workspaceId: id,
+  parentId,
+  path: z.string().min(1).optional(),
+  uri: z.string().min(1).optional(),
+  label: label.optional()
+}
+const exactlyOneTarget = (v: { path?: string; uri?: string }): boolean =>
+  (v.path === undefined) !== (v.uri === undefined)
 
 export const EntryAddInput = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('group'), workspaceId: id, parentId, label }),
-  z.strictObject({ kind: z.literal('folder'), ...targetFields }),
-  z.strictObject({ kind: z.literal('file'), ...targetFields })
+  z.strictObject({ kind: z.literal('folder'), ...targetFields }).refine(exactlyOneTarget, {
+    message: 'exactly one of path and uri is required'
+  }),
+  z.strictObject({ kind: z.literal('file'), ...targetFields }).refine(exactlyOneTarget, {
+    message: 'exactly one of path and uri is required'
+  })
 ])
 export type EntryAddInput = z.infer<typeof EntryAddInput>
 

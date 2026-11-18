@@ -53,6 +53,7 @@ export default {
     SETTINGS_INVALID: '設定値が正しくありません',
     WORKSPACE_NOT_FOUND: 'ワークスペースが見つかりません',
     WORKSPACE_DEFAULT_PROTECTED: 'デフォルトのワークスペースは削除できません',
+    WORKSPACE_NAME_REQUIRED: '名前を入力してください',
     ENTRY_NOT_FOUND: '項目が見つかりません',
     ENTRY_INVALID_PARENT: 'この場所には移動・追加できません（親にできるのはグループだけです）',
     ENTRY_KIND_MISMATCH: 'フォルダーとファイルの種類が一致しません',
@@ -62,6 +63,7 @@ export default {
     FS_INVALID_URI: 'パスの形式が正しくありません',
     FS_UNSUPPORTED_SCHEME: 'この種類の場所には対応していません',
     FS_CANCELLED: '操作をキャンセルしました',
-    FS_TIMEOUT: '応答がないため中断しました'
+    FS_TIMEOUT: '応答がないため中断しました',
+    FS_UNAVAILABLE: '場所にアクセスできません'
   }
 }

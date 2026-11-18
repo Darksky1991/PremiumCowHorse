@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EntryAddInput, EntryMoveInput, WorkspaceCreateInput } from './schema'
+import { EntryAddInput, EntryMoveInput, WorkspaceCreateInput, WorkspaceUpdateInput } from './schema'
 
 describe('WorkspaceCreateInput', () => {
   it('rejects a blank name', () => {
@@ -28,6 +28,23 @@ describe('EntryAddInput', () => {
     )
   })
 
+  it('accepts a folder entry with a uri instead of a path', () => {
+    expect(EntryAddInput.safeParse({ ...base, kind: 'folder', uri: 'file:///C:/x' }).success).toBe(
+      true
+    )
+  })
+
+  it('rejects a folder entry with both path and uri', () => {
+    expect(
+      EntryAddInput.safeParse({ ...base, kind: 'folder', path: 'C:\\x', uri: 'file:///C:/x' })
+        .success
+    ).toBe(false)
+  })
+
+  it('rejects a folder entry with neither path nor uri', () => {
+    expect(EntryAddInput.safeParse({ ...base, kind: 'file', label: 'x' }).success).toBe(false)
+  })
+
   it('rejects a path on group entries', () => {
     expect(
       EntryAddInput.safeParse({ ...base, kind: 'group', label: 'ログ', path: 'C:\\x' }).success
@@ -44,5 +61,15 @@ describe('EntryAddInput', () => {
 describe('EntryMoveInput', () => {
   it('rejects a negative index', () => {
     expect(EntryMoveInput.safeParse({ id: 'e1', parentId: null, index: -1 }).success).toBe(false)
+  })
+})
+
+describe('WorkspaceUpdateInput', () => {
+  it('allows an empty name (validated against the workspace by the service)', () => {
+    expect(WorkspaceUpdateInput.parse({ id: 'default', name: '  ' }).name).toBe('')
+  })
+
+  it('rejects a name longer than 100 characters', () => {
+    expect(WorkspaceUpdateInput.safeParse({ id: 'w', name: 'あ'.repeat(101) }).success).toBe(false)
   })
 })
