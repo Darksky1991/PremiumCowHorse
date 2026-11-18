@@ -24,19 +24,12 @@ export type WorkspaceUpdateInput = z.infer<typeof WorkspaceUpdateInput>
  * folder / file 条目以本地路径添加，由主进程转为 URI（pathToFileURL）；
  * label 缺省为路径的最后一段。M4 再扩展为接受远程 URI。
  */
-const targetEntry = <K extends 'folder' | 'file'>(kind: K) =>
-  z.strictObject({
-    kind: z.literal(kind),
-    workspaceId: id,
-    parentId,
-    path: z.string().min(1),
-    label: label.optional()
-  })
+const targetFields = { workspaceId: id, parentId, path: z.string().min(1), label: label.optional() }
 
 export const EntryAddInput = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('group'), workspaceId: id, parentId, label }),
-  targetEntry('folder'),
-  targetEntry('file')
+  z.strictObject({ kind: z.literal('folder'), ...targetFields }),
+  z.strictObject({ kind: z.literal('file'), ...targetFields })
 ])
 export type EntryAddInput = z.infer<typeof EntryAddInput>
 
