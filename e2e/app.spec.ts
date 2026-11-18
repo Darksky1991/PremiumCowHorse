@@ -706,6 +706,56 @@ test.describe('workspace data layer over IPC', () => {
     }
   })
 
+  test('workspace switcher: rename / delete dialogs act on the workspace they were opened for', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: defaultId } = await data(page, 'workspace.active')
+      const a = await data(page, 'workspace.create', { name: '案件A' })
+      const b = await data(page, 'workspace.create', { name: '案件B' })
+      await data(page, 'workspace.activate', { id: a.id })
+      const switcher = page.getByRole('banner').getByRole('button', { name: workspaceTrigger })
+      await expect(switcher).toHaveText('案件A')
+      const openMenuItem = async (name: RegExp): Promise<void> => {
+        await expect(page.getByRole('menu')).toHaveCount(0)
+        await switcher.click()
+        await expect(page.getByRole('menu')).toBeVisible()
+        await page.getByRole('menuitem', { name }).click()
+      }
+      // 对话框打开期间页面其余部分是 inert（aria-hidden），用 includeHidden 读取标题栏的当前工作区
+      const switcherBehindDialog = page
+        .getByRole('banner', { includeHidden: true })
+        .getByRole('button', { name: workspaceTrigger, includeHidden: true })
+      const names = async (): Promise<string[]> =>
+        (await data<Named[]>(page, 'workspace.list')).map((w) => w.name).sort()
+
+      // 重命名对话框打开期间当前工作区变了（例如另一个窗口切换）：仍然重命名打开时的工作区
+      await openMenuItem(renameWorkspaceLabel)
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toHaveValue('案件A')
+      await data(page, 'workspace.activate', { id: b.id })
+      await expect(switcherBehindDialog).toHaveText('案件B')
+      await input.fill('案件A2')
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      expect(await names()).toEqual(['', '案件A2', '案件B'])
+
+      // 删除确认框同样锁定打开时的工作区
+      await data(page, 'workspace.activate', { id: a.id })
+      await expect(switcher).toHaveText('案件A2')
+      await openMenuItem(deleteWorkspaceLabel)
+      const alert = page.getByRole('alertdialog')
+      await expect(alert).toContainText('案件A2')
+      await data(page, 'workspace.activate', { id: b.id })
+      await expect(switcherBehindDialog).toHaveText('案件B')
+      await alert.getByRole('button', { name: deleteConfirmLabel }).click()
+      await expect(alert).toHaveCount(0)
+      expect((await data<Named[]>(page, 'workspace.list')).map((w) => w.id).sort()).toEqual(
+        [defaultId, b.id].sort()
+      )
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 /** 右键菜单与对话框的文案（ja | zh-CN | en；e2e 默认语言随系统，三种都匹配） */

@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react'
 import { ChevronDownIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppError, DEFAULT_WORKSPACE_ID } from '@pch/shared'
+import { AppError, DEFAULT_WORKSPACE_ID, type Workspace } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
   DropdownMenu,
@@ -41,6 +41,16 @@ export function WorkspaceSwitcher(): JSX.Element {
   const setNewOpen = useUiStore((s) => s.setNewWorkspaceOpen)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  // 重命名 / 删除的目标在打开对话框时锁定：对话框打开期间当前工作区可能变化（主进程事件），
+  // 若跟随实时的 active，提交时会作用到另一个工作区。名称取列表中的最新值；目标被删除后沿用
+  // 打开时的快照，对话框在关闭动画期间保持挂载（焦点照常回到切换器）
+  const [locked, setLocked] = useState<Workspace | null>(null)
+  const target = locked ? (workspaces?.find((w) => w.id === locked.id) ?? locked) : null
+  const openFor = (open: (v: boolean) => void): void => {
+    if (!active) return
+    setLocked(active)
+    open(true)
+  }
 
   const defaultName = t('common:defaultWorkspace')
   const activeName = active ? workspaceDisplayName(active, defaultName) : ''
@@ -88,7 +98,7 @@ export function WorkspaceSwitcher(): JSX.Element {
             {t('workspace:newItem')}
           </DropdownMenuItem>
           {active ? (
-            <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+            <DropdownMenuItem onClick={() => openFor(setRenameOpen)}>
               <PencilIcon />
               {t('workspace:renameItem')}
             </DropdownMenuItem>
@@ -102,7 +112,7 @@ export function WorkspaceSwitcher(): JSX.Element {
             </DropdownMenuItem>
           ) : null}
           {active && !isDefault ? (
-            <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+            <DropdownMenuItem variant="destructive" onClick={() => openFor(setDeleteOpen)}>
               <Trash2Icon />
               {t('workspace:deleteItem')}
             </DropdownMenuItem>
@@ -111,19 +121,19 @@ export function WorkspaceSwitcher(): JSX.Element {
       </DropdownMenu>
 
       <NewWorkspaceDialog open={newOpen} onOpenChange={setNewOpen} />
-      {active ? (
+      {target ? (
         <>
           <RenameWorkspaceDialog
             open={renameOpen}
             onOpenChange={setRenameOpen}
-            target={active}
-            displayName={activeName}
+            target={target}
+            displayName={workspaceDisplayName(target, defaultName)}
           />
           <DeleteWorkspaceDialog
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
-            target={active}
-            displayName={activeName}
+            target={target}
+            displayName={workspaceDisplayName(target, defaultName)}
           />
         </>
       ) : null}
