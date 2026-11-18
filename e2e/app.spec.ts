@@ -624,6 +624,86 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
+  test('workspace switcher: create, switch, rename, restore default name and delete', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: defaultId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      writeFileSync(a, '')
+      await data(page, 'entry.add', {
+        kind: 'file',
+        workspaceId: defaultId,
+        parentId: null,
+        path: a
+      })
+      const tree = page.getByRole('tree')
+      const switcher = page.getByRole('banner').getByRole('button', { name: workspaceTrigger })
+      const heading = page.getByRole('heading', { level: 1 })
+      const menuOf = async (name: RegExp): Promise<void> => {
+        await switcher.click()
+        await page.getByRole('menuitem', { name }).click()
+      }
+      await expect(switcher).toHaveText(defaultName)
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
+
+      // 新建：自动切换到新工作区，标题栏、欢迎页同时更新，树换成新工作区的（空）内容
+      await menuOf(newWorkspaceLabel)
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await input.fill('案件A')
+      await page.keyboard.press('Enter')
+      await expect(switcher).toHaveText('案件A')
+      await expect(heading).toHaveText('案件A')
+      await expect(tree.getByRole('treeitem')).toHaveCount(0)
+      expect((await data(page, 'workspace.active')).name).toBe('案件A')
+
+      // 切回默认工作区：树恢复为默认工作区的条目
+      await switcher.click()
+      await page.getByRole('menuitemradio', { name: defaultName }).click()
+      await expect(switcher).toHaveText(defaultName)
+      await expect(heading).toHaveText(defaultName)
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
+
+      // 默认工作区不能删除，也没有「恢复默认名称」
+      await switcher.click()
+      await expect(page.getByRole('menuitem', { name: deleteWorkspaceLabel })).toHaveCount(0)
+      await expect(page.getByRole('menuitem', { name: restoreNameLabel })).toHaveCount(0)
+      await page.keyboard.press('Escape')
+
+      // 重命名默认工作区，再恢复默认名称
+      await menuOf(renameWorkspaceLabel)
+      await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue(defaultName)
+      await page.getByRole('dialog').getByRole('textbox').fill('共用')
+      await page.keyboard.press('Enter')
+      await expect(switcher).toHaveText('共用')
+      await expect(heading).toHaveText('共用')
+      await menuOf(restoreNameLabel)
+      await expect(switcher).toHaveText(defaultName)
+      expect((await data(page, 'workspace.active')).name).toBe('')
+
+      // 删除当前工作区：只删工作区与条目，之后回到默认工作区
+      await switcher.click()
+      await page.getByRole('menuitemradio', { name: '案件A' }).click()
+      await expect(switcher).toHaveText('案件A')
+      await menuOf(deleteWorkspaceLabel)
+      const alert = page.getByRole('alertdialog')
+      await expect(alert).toContainText(removeHint)
+      await alert.getByRole('button', { name: deleteConfirmLabel }).click()
+      await expect(alert).toHaveCount(0)
+      await expect(switcher).toHaveText(defaultName)
+      await expect(heading).toHaveText(defaultName)
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
+      expect((await data(page, 'workspace.active')).id).toBe(defaultId)
+      expect((await data<Named[]>(page, 'workspace.list')).map((w) => w.id)).toEqual([defaultId])
+      expect(existsSync(a)).toBe(true)
+
+      // 欢迎页的「新建工作区」打开同一个对话框
+      await page.getByRole('main').getByRole('button', { name: newWorkspaceWelcome }).click()
+      await expect(page.getByRole('dialog').getByRole('textbox')).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 /** 错误行的可访问名称包含「重试」按钮的文字 */
@@ -637,3 +717,15 @@ const removeHint =
 const copyPathLabel = /^(パスをコピー|复制路径|Copy path)$/
 const newGroupLabel = /^(グループを新規作成|新建分组|New group)$/
 const newGroupDefault = /^(新しいグループ|新建分组|New group)$/
+
+/** 工作区切换器的文案 */
+const defaultName = /^(デフォルト|默认|Default)$/
+const workspaceTrigger = /^(ワークスペースの切り替え|切换工作区|Switch workspace)$/
+const newWorkspaceLabel = /^(新しいワークスペース…|新建工作区…|New workspace…)$/
+const newWorkspaceWelcome = /^(新しいワークスペースを作成|新建工作区|Create a workspace)$/
+const renameWorkspaceLabel =
+  /^(現在のワークスペースの名前を変更…|重命名当前工作区…|Rename current workspace…)$/
+const restoreNameLabel = /^(既定の名前に戻す|恢复默认名称|Restore default name)$/
+const deleteWorkspaceLabel =
+  /^(現在のワークスペースを削除…|删除当前工作区…|Delete current workspace…)$/
+const deleteConfirmLabel = /^(削除|删除|Delete)$/

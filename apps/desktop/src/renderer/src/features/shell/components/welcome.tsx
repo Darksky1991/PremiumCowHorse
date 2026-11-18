@@ -5,6 +5,7 @@ import { Button } from '@pch/ui/components/button'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
 import { Separator } from '@pch/ui/components/separator'
 import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
+import { useUiStore } from '@renderer/stores/ui-store'
 import { notifyComingSoon } from '../coming-soon'
 
 /**
@@ -14,12 +15,13 @@ import { notifyComingSoon } from '../coming-soon'
 export function Welcome(): JSX.Element {
   const { t, i18n } = useTranslation(['welcome', 'common'])
   const { data: active } = useActiveWorkspace()
+  const setNewWorkspaceOpen = useUiStore((s) => s.setNewWorkspaceOpen)
   const soon = (): void => notifyComingSoon(i18n)
 
-  const actions: { icon: LucideIcon; label: string }[] = [
-    { icon: PlusIcon, label: t('newWorkspace') },
-    { icon: FolderOpenIcon, label: t('openFolder') },
-    { icon: ServerIcon, label: t('connectRemote') }
+  const actions: { icon: LucideIcon; label: string; onClick: () => void }[] = [
+    { icon: PlusIcon, label: t('newWorkspace'), onClick: () => setNewWorkspaceOpen(true) },
+    { icon: FolderOpenIcon, label: t('openFolder'), onClick: soon },
+    { icon: ServerIcon, label: t('connectRemote'), onClick: soon }
   ]
   const shortcuts: { keys: string[]; label: string }[] = [
     { keys: ['Ctrl', 'K'], label: t('shortcutCommand') },
@@ -43,9 +45,9 @@ export function Welcome(): JSX.Element {
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-medium text-muted-foreground">{t('startTitle')}</h2>
             <ul className="-ml-2.5 flex flex-col">
-              {actions.map(({ icon: Icon, label }) => (
+              {actions.map(({ icon: Icon, label, onClick }) => (
                 <li key={label}>
-                  <Button variant="ghost" className="w-full justify-start" onClick={soon}>
+                  <Button variant="ghost" className="w-full justify-start" onClick={onClick}>
                     <Icon data-icon="inline-start" />
                     {label}
                   </Button>

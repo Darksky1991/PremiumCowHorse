@@ -61,6 +61,27 @@ export default {
     copiedUri: 'URI をコピーしました',
     cancel: 'キャンセル'
   },
+  workspace: {
+    switcherLabel: 'ワークスペースの切り替え',
+    listLabel: 'ワークスペース',
+    newItem: '新しいワークスペース…',
+    renameItem: '現在のワークスペースの名前を変更…',
+    restoreName: '既定の名前に戻す',
+    deleteItem: '現在のワークスペースを削除…',
+    name: 'ワークスペース名',
+    nameRequired: '名前を入力してください',
+    cancel: 'キャンセル',
+    createTitle: '新しいワークスペース',
+    createDescription: '案件などの単位でファイルをまとめるワークスペースを作成します。',
+    create: '作成',
+    renameTitle: 'ワークスペースの名前を変更',
+    renameDescription: 'ワークスペースの表示名だけを変更します。',
+    save: '変更',
+    deleteTitle: '「{{name}}」を削除しますか？',
+    deleteDescription:
+      'ワークスペースとその項目だけを削除します。ディスク上のファイルやフォルダーは削除されません。',
+    delete: '削除'
+  },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
     emptyHint: 'SMB・FTP・SFTP サーバーを登録すると、どのワークスペースからでも参照できます。'

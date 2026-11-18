@@ -62,6 +62,27 @@ export default {
     copiedUri: 'URI copied',
     cancel: 'Cancel'
   },
+  workspace: {
+    switcherLabel: 'Switch workspace',
+    listLabel: 'Workspaces',
+    newItem: 'New workspace…',
+    renameItem: 'Rename current workspace…',
+    restoreName: 'Restore default name',
+    deleteItem: 'Delete current workspace…',
+    name: 'Workspace name',
+    nameRequired: 'Enter a name',
+    cancel: 'Cancel',
+    createTitle: 'New workspace',
+    createDescription: 'Create a workspace to keep the files for a case together.',
+    create: 'Create',
+    renameTitle: 'Rename workspace',
+    renameDescription: 'Only changes the display name of the workspace.',
+    save: 'Save',
+    deleteTitle: 'Delete "{{name}}"?',
+    deleteDescription:
+      'Only the workspace and its entries are deleted. This does not delete any files or folders on disk.',
+    delete: 'Delete'
+  },
   connections: {
     emptyTitle: 'No remote connections yet',
     emptyHint: 'Add an SMB, FTP or SFTP server once and use it from any workspace.'

@@ -59,6 +59,26 @@ export default {
     copiedUri: '已复制 URI',
     cancel: '取消'
   },
+  workspace: {
+    switcherLabel: '切换工作区',
+    listLabel: '工作区',
+    newItem: '新建工作区…',
+    renameItem: '重命名当前工作区…',
+    restoreName: '恢复默认名称',
+    deleteItem: '删除当前工作区…',
+    name: '工作区名称',
+    nameRequired: '请输入名称',
+    cancel: '取消',
+    createTitle: '新建工作区',
+    createDescription: '创建一个工作区，按案件等单位集中管理文件。',
+    create: '创建',
+    renameTitle: '重命名工作区',
+    renameDescription: '只修改工作区的显示名称。',
+    save: '保存',
+    deleteTitle: '删除“{{name}}”？',
+    deleteDescription: '只删除工作区及其条目，不会删除磁盘上的文件或文件夹。',
+    delete: '删除'
+  },
   connections: {
     emptyTitle: '还没有远程连接',
     emptyHint: '添加 SMB、FTP 或 SFTP 服务器后，任何工作区都可以引用。'

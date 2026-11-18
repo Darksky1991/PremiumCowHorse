@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { ExplorerView } from '@renderer/features/explorer'
-import { Shell, SidebarEmptyState, WorkspaceNameLabel } from '@renderer/features/shell'
+import { Shell, SidebarEmptyState } from '@renderer/features/shell'
+import { WorkspaceSwitcher } from '@renderer/features/workspace'
 
 /**
  * 根组件。M3 起按窗口角色（bootstrap 中的主窗口 / 弹出窗口）渲染不同外壳；
@@ -14,7 +15,7 @@ export function App(): JSX.Element {
         explorer: <ExplorerView />,
         connections: <SidebarEmptyState view="connections" />
       }}
-      workspaceSwitcher={<WorkspaceNameLabel />}
+      workspaceSwitcher={<WorkspaceSwitcher />}
     />
   )
 }
