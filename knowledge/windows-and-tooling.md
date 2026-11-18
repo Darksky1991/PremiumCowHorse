@@ -71,3 +71,19 @@
 - 原因：Windows 下 `open(..., 'w')` 默认把 `\n` 写成 `\r\n`；仓库按 LF 管理。
 - 解决：`io.open(path, 'w', encoding='utf8', newline='\n')`，或用 Write / Edit 工具。
 - 预防：批量修改脚本统一指定 `newline='\n'`。
+
+### Git Bash 的 `whoami` 遮蔽系统的 `whoami.exe`；Entra ID 账户名不能直接给 icacls
+
+- 日期：2026-11-19
+- 症状：测试中 `execFileSync('whoami')` 返回 `dir+yongjun.fu` 一类的名称，`icacls <dir> /deny <名称>:(WA)` 报 `No mapping between account names and security IDs was done.`；`whoami /user` 报 `extra operand '/user'`。
+- 原因：从 Git Bash 启动的进程 PATH 中 Git 的 `usr/bin/whoami` 排在 System32 之前；它输出的名称不是 Windows 账户名。
+- 解决：用 `%SystemRoot%\System32\whoami.exe /user /fo csv /nh` 取 SID，icacls 以 `*<SID>` 指定用户。
+- 预防：测试中调用 Windows 自带命令时写全路径，账户用 SID 指定。
+
+### 系统盘根目录不能以 `FILE_WRITE_ATTRIBUTES` 打开
+
+- 日期：2026-11-19
+- 症状：`CreateFileW("\\?\C:\", FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES, …)` 返回 `ERROR_ACCESS_DENIED`（5），普通子目录可以。
+- 原因：系统盘根目录的 ACL 不给普通用户写属性权限。
+- 解决：枚举器拒绝访问时去掉 `FILE_WRITE_ATTRIBUTES` 重试（此时无法用 LastAccessTime = -1 保护访问时间，按共享 / 盘符记一次日志）。
+- 预防：需要写权限的「保护性」打开都要有只读回退；测试回退路径时用 `icacls /deny *<SID>:(WA)` 构造，不去碰真实的盘根目录。

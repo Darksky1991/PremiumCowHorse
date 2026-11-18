@@ -27,6 +27,8 @@ const elements = [
   { type: 'main-infra', pattern: `${MAIN}/infra` },
   { type: 'main-core', pattern: `${MAIN}/core` },
   { type: 'preload', pattern: 'apps/desktop/src/preload' },
+  // 扫描进程（utilityProcess；不得 import electron）
+  { type: 'scanner', pattern: 'apps/desktop/src/scanner' },
   // 渲染端（架构文档 5.3 节）
   { type: 'r-app', pattern: `${RENDERER}/app` },
   { type: 'r-feature', pattern: `${RENDERER}/features/*`, capture: ['name'] },
@@ -45,7 +47,12 @@ const allow = (from, to) => ({
 /** 单个入口文件按「文件」分类（v7 中元素只描述目录） */
 const files = [
   { pattern: `${MAIN}/index.ts`, category: 'main-entry' },
-  { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' }
+  { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' },
+  // vfs 中不依赖 electron 的文件：扫描进程只能 import 这些
+  {
+    pattern: `${MAIN}/vfs/{local-path,errors,location,path-name}.ts`,
+    category: 'vfs-portable'
+  }
 ]
 
 const allowFile = (category, to) => ({
@@ -78,6 +85,11 @@ const policies = [
   allow('main-infra', ['main-core', 'shared', 'i18n']),
   allow('main-core', ['shared']),
   allow('preload', ['shared']),
+  allow('scanner', ['shared']),
+  {
+    from: { element: { type: 'scanner' } },
+    allow: { to: { file: { categories: 'vfs-portable' } } }
+  },
   // 渲染端：app → features → data / lib / stores；feature 之间不得互相 import
   allowFile('r-entry', ['r-app', 'r-provider', 'r-lib', 'r-style']),
   allow('r-app', ['r-feature', 'r-lib', 'ui', 'i18n', 'shared']),
@@ -153,6 +165,19 @@ export default defineConfig(
       'boundaries/dependencies': [2, { default: 'disallow', policies }],
       // 新增文件必须归入某个已定义的元素，避免游离于分层之外
       'boundaries/no-unknown-files': 2
+    }
+  },
+  {
+    // 扫描进程运行在 utilityProcess 中，与它共用的 vfs 文件也一样：不得依赖 electron
+    files: [
+      'apps/desktop/src/scanner/**/*.ts',
+      `${MAIN}/vfs/{local-path,errors,location,path-name}.ts`
+    ],
+    rules: {
+      'no-restricted-imports': [
+        2,
+        { paths: [{ name: 'electron', message: '扫描进程（utilityProcess）中不能使用 electron' }] }
+      ]
     }
   },
   eslintConfigPrettier

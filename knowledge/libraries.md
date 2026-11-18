@@ -118,3 +118,11 @@
 - 症状：旁边已有本地化文字时，读屏会多读一次英文「Loading」；添加 `field` 时 CLI 额外生成 `label.tsx`。
 - 解决：使用处传 `aria-hidden`（props 在后展开，可覆盖），不改组件；`label.tsx` 是 `field` 的依赖，保留。
 - 预防：shadcn 组件保持 CLI 生成的原样，无障碍属性通过 props 覆盖。
+
+### koffi 3：异步调用的 GetLastError 只能在回调内读取；指针是 BigInt；Electron 中不能用 `koffi.view`
+
+- 日期：2026-11-19
+- 症状：（预防性，实测确认）`fn.async(...)` 用 `util.promisify` 包装后，在 `await` 之后调用 `GetLastError()` 得到的不是失败调用的错误码。
+- 原因：koffi 在工作线程上执行调用，只在调用回调期间把工作线程上的 LastError 恢复到主线程（`call.cc` 的 `AsyncCall::Complete`，回调返回后还原）；promise 的后续代码在回调之后的微任务中运行。
+- 解决：在回调内同步调用 `GetLastError()`，与结果一起 resolve（`scanner/enum/win32-enumerator.ts` 的 `callAsync`）。其他要点：koffi 3 的指针是 BigInt（`INVALID_HANDLE_VALUE` 为 `0xFFFFFFFFFFFFFFFFn`，不是 `-1`）；`Buffer` 作为 `void *` 参数时直接传内存地址（不复制），异步调用期间保持引用即可；`koffi.view()` 会创建外部 ArrayBuffer，文档写明 Electron 禁止，不使用。
+- 预防：koffi 的行为先读 `node_modules/koffi/doc` 与 `src/koffi/src/*.cc`，再用小脚本实测。
