@@ -1,5 +1,6 @@
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs/promises'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import fsSync, { mkdirSync, mkdtempSync, rmSync, writeFileSync, type FSWatcher } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -203,6 +204,54 @@ describe('LocalProvider', () => {
       const onClose = vi.fn()
       provider.watch(url(dir), () => undefined, onClose).close()
       expect(onClose).not.toHaveBeenCalled()
+    })
+
+    /** 替换 fs.watch 为可手动发出事件的假 watcher（真实 fs 上难以在目录仍存在时触发异步 error） */
+    const fakeWatcher = (): EventEmitter & { close: ReturnType<typeof vi.fn> } => {
+      const fake = Object.assign(new EventEmitter(), { close: vi.fn() })
+      vi.spyOn(fsSync, 'watch').mockReturnValue(fake as unknown as FSWatcher)
+      return fake
+    }
+    const watchError = (): Error => Object.assign(new Error('watch failed'), { code: 'EPERM' })
+
+    it('on an async watcher error while the directory still exists, only reports invalidation', async () => {
+      const fake = fakeWatcher()
+      const onChange = vi.fn()
+      const onClose = vi.fn()
+      provider.watch(url(dir), onChange, onClose)
+      // 例如不支持变更通知的 NAS：fs.watch 同步成功，随后异步报错，目录本身仍然可以列出
+      fake.emit('error', watchError())
+      await waitFor(() => onClose.mock.calls.length > 0)
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(fake.close).toHaveBeenCalled()
+      // 不通知变化：否则调用方重新列出并重发集合，监听重建后再次报错，形成循环
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('on an async watcher error after the directory is gone, notifies a change then invalidation', async () => {
+      const fake = fakeWatcher()
+      const calls: string[] = []
+      provider.watch(
+        url(dir),
+        () => calls.push('change'),
+        () => calls.push('close')
+      )
+      rmSync(dir, { recursive: true, force: true })
+      fake.emit('error', watchError())
+      await waitFor(() => calls.includes('close'))
+      expect(calls).toEqual(['change', 'close'])
+    })
+
+    it('does not report invalidation when the caller closes while the error is being checked', async () => {
+      const fake = fakeWatcher()
+      const onChange = vi.fn()
+      const onClose = vi.fn()
+      const w = provider.watch(url(dir), onChange, onClose)
+      fake.emit('error', watchError())
+      w.close()
+      await new Promise((r) => setTimeout(r, 100))
+      expect(onClose).not.toHaveBeenCalled()
+      expect(onChange).not.toHaveBeenCalled()
     })
 
     it('returns a no-op handle and reports invalidation for an unwatchable path', () => {

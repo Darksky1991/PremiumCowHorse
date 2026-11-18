@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
-import { watch as fsWatch } from 'node:fs'
-import type { Dirent, Stats } from 'node:fs'
+// 经模块对象调用 watch（而非具名导入），测试可以替换为假的 watcher 以触发异步 error
+import fsSync from 'node:fs'
+import type { Dirent, FSWatcher, Stats } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { FileEntry, FileKind, FileStat } from '@pch/shared'
@@ -46,12 +47,14 @@ export class LocalProvider implements FileSystemProvider {
   }
 
   watch(uri: URL, onChange: () => void, onClose?: () => void): { close(): void } {
-    let watcher: ReturnType<typeof fsWatch> | null = null
+    let watcher: FSWatcher | null = null
+    /** 调用方主动关闭后不再报告任何事件（包括正在确认中的 error） */
+    let closedByCaller = false
     const close = (): void => {
       watcher?.close()
       watcher = null
     }
-    // 失效：先通知一次变化（让调用方重新 list 并得到 FS_NOT_FOUND 等结果），再关闭并通知失效
+    // 目录已不在：先通知一次变化（让调用方重新 list 并得到 FS_NOT_FOUND 等结果），再关闭并通知失效
     const invalidate = (): void => {
       if (!watcher) return
       close()
@@ -60,18 +63,40 @@ export class LocalProvider implements FileSystemProvider {
     }
     try {
       const dir = fileURLToPath(uri)
-      watcher = fsWatch(dir, { persistent: false }, (eventType) => {
+      watcher = fsSync.watch(dir, { persistent: false }, (eventType) => {
         onChange()
         // 目录自身被删除时平台可能只给 rename 而不给 error：确认目录是否还在
         if (eventType === 'rename') fs.stat(dir).catch(invalidate)
       })
-      // 目录被删除或失去访问权限时可能发出 error：不向上抛出
-      watcher.on('error', invalidate)
+      // 目录被删除、失去访问权限，或位置不支持变更通知（部分 NAS / Samba、WebDAV、网络抖动）时
+      // 可能异步发出 error：不向上抛出。先确认目录是否还在——仍在则只报告失效、不通知变化，
+      // 否则调用方会重新列出（成功）并重发集合，重建的监听再次报错，形成循环
+      watcher.on('error', () => {
+        if (!watcher) return
+        close()
+        fs.stat(dir).then(
+          (s) => {
+            if (closedByCaller) return
+            if (!s.isDirectory()) onChange()
+            onClose?.()
+          },
+          () => {
+            if (closedByCaller) return
+            onChange()
+            onClose?.()
+          }
+        )
+      })
     } catch {
       // 路径不存在、无权限或不是目录：视为不可监听，同样通知失效以便调用方日后重建
       onClose?.()
     }
-    return { close }
+    return {
+      close: () => {
+        closedByCaller = true
+        close()
+      }
+    }
   }
 
   async dispose(): Promise<void> {
