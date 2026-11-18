@@ -10,6 +10,35 @@ export interface SettingsTable {
   updated_at: number
 }
 
+/** boolean 列以 0 / 1 存储；时间戳为 UNIX 毫秒 */
+export interface WorkspacesTable {
+  id: string
+  name: string
+  description: string | null
+  color: string | null
+  sort_order: number
+  archived: number
+  last_opened_at: number | null
+  created_at: number
+  updated_at: number
+}
+
+/** meta 为 JSON 字符串 */
+export interface WorkspaceEntriesTable {
+  id: string
+  workspace_id: string
+  parent_id: string | null
+  kind: 'group' | 'folder' | 'file'
+  label: string
+  uri: string | null
+  sort_order: number
+  meta: string | null
+  created_at: number
+  updated_at: number
+}
+
 export interface DB {
   settings: SettingsTable
+  workspaces: WorkspacesTable
+  workspace_entries: WorkspaceEntriesTable
 }
