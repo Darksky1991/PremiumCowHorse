@@ -136,3 +136,11 @@
 - 原因：当前登录会话没有可用的交互式桌面（屏幕锁定 / 显示器休眠 / 远程会话断开等），GDI 取不到屏幕 DC。
 - 解决：确认桌面可用（解锁）后重试；无法解锁时退回 Playwright 的 `page.screenshot`（看不到系统绘制的窗口边框与按钮），并在报告中说明未做系统级截图。
 - 预防：做系统级截图前先用上面的最小命令探测。
+
+### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
+
+- 日期：2026-11-19
+- 症状：打包实测需要在 zip 版中添加条目、展开目录、截图，但 Playwright 的 `_electron.launch` 面向未打包的应用（e2e 加载 `apps/desktop`），打包版的 Fuses 关闭了 `--inspect` 等 Node 调试参数（`electron-builder.yml`）。
+- 原因：Fuses 只限制 Node 的调试参数，不限制 Chromium 的 `--remote-debugging-port`。（`_electron.launch` 驱动打包版是否可行未实测。）
+- 解决：`PremiumCowHorse.exe --user-data-dir=<临时目录> --remote-debugging-port=9333`，脚本中 `chromium.connectOverCDP('http://127.0.0.1:9333')`，取 URL 以 `app://` 开头的页面，经 `window.pch.invoke` 调用 IPC、用 locator 操作树、`page.screenshot`；结束时 `window.pch.invoke('window.close')` 让应用正常退出（扫描进程随之关闭）。性能记录：主进程中 `app.getAppMetrics()` 里 `serviceName === 'pch-scanner'` 的项给出扫描进程的 `workingSetSize` / `peakWorkingSetSize` / `privateBytes`（KB）；扫描进度用 node:sqlite 以 `readOnly: true` 打开 `<userData>/cache/index.db`（WAL，应用运行中也可读）数 `dirs.listed_at IS NOT NULL`。命令与结果见 `devDoc/2026-11-19-06-refresh-cache.md`。
+- 预防：`--remote-debugging-port` 只用于本地实测，不写进产品启动参数；脚本放在 scratchpad，不入库。

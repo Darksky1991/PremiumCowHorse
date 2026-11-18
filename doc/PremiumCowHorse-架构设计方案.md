@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.8　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.9　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.9 变更（目录刷新与缓存引擎完成，设计 `devDoc/2026-11-19-01-refresh-cache-design.md`，记录 `devDoc/2026-11-19-06-refresh-cache.md`）：删除 `fs.watch` 目录监听，改为扫描进程（utilityProcess）+ 缓存库 `index.db`：koffi 原生枚举（按隐藏属性判断、不更新目录的访问时间）、4 级刷新级别与「建立索引」、P0 / P1 / P2 调度与按位置分组的并发、按「没有进展的时间」计的超时、共享断开时显示缓存与退避重试；条目级刷新级别 / 建立索引的右键菜单与断开图标；按松手位置插入、拒绝临时目录下的系统拖入；删除「用系统应用打开」与 `system.openPath`（需求方决定：资源树只用于展示，对文件的操作都放在将来的预览窗口中，相关的未来设计段落已标注）；主进程启动时记录 koffi（GetDriveTypeW）是否可用。新增原则回归 e2e（展开 `A\B\C` 时改名 `A`）与打包实测、性能记录。涉及 5.2、6.3、7.1、7.2、7.4、8.2、8.3、9.3、9.4、10.6、13、14.1、17、18、19 节
 > v1.8 变更（M1-2 最终审查修复）：窗口聚焦刷新改为实际生效（focusManager 同时监听 `focus` 与 `visibilitychange`；目录列表单独设 2 秒新鲜期并在重新挂载 / 聚焦时重新列出，此前写的 `'always'` 在 Electron 中常见情况下不触发、且折叠后再展开会显示旧缓存）；监听出错但目录仍在时不再循环重建（provider 只报告失效、`VfsService` 对失效的 URI 退避 60 秒）；不再需要的目录列表请求会取消；`vfs.watch` 超过 500 个时截断并警告。新增已知限制 / 待需求方决定：监听句柄阻止上级目录改名或移动（三个候选方案）、虚拟文件拖入的描述按 Chromium 的实际行为改写（三个选项）；拖放导航的主防线改为 `navigateOnDragDrop` 默认值。涉及 7.1、8.2、8.3、12.1、19 节
 > v1.7 变更（M1-2 资源树完成）：工作区切换器、虚拟化资源树（懒加载、状态行、键盘）、只管理条目的拖放、右键菜单、目录监听（`vfs.watch` / `vfs.changed`）与系统操作 IPC 已实现；按代码修正 `vfs.changed` 的负载、Provider 的 `watch` 签名与错误码列表；新增已知限制（虚拟文件拖入可能固定 %TEMP% 副本；条目目录删除后重建需「重试」/ F5 / 聚焦才恢复，恢复后监听自动重建）。涉及 3.3、5.2、5.3、6.3、6.6、7.1、7.2、8.1–8.3、12.1、12.2、14.2、17、18、19 节
 > v1.6 变更（M1-2 开工前的决策）：资源树的拖放只管理自定义条目、绝不产生文件操作；树内拖动用浏览器原生拖放；列目录时解析符号链接 / 目录联接的目标类型；可把真实子目录「固定」为条目（条目也可按 URI 添加）；复制路径的格式；外壳通过插槽组合各 feature。涉及 5.3、7.1、8.2 节
@@ -200,7 +201,7 @@ premium-cow-horse/
 │           ├── markdown/
 │           ├── media/
 │           ├── office/           # Office 文件启动面板（调用本机 Office）
-│           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开
+│           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作）
 ├── e2e/                          # Playwright Electron 端到端测试
 ├── doc/                          # 设计文档（本文档）：最新事实依据
 ├── devDoc/                       # 开发过程记录（按日期）
@@ -300,7 +301,7 @@ apps/desktop/src/
 
 扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：`vfs.list` 由 `VfsService` 直接枚举、不缓存）。请求另有兜底超时：60 秒没有结果即以 `INDEX_UNAVAILABLE` 拒绝（防扫描进程的事件循环卡住、结果丢失）；结果消息校验失败但能读出 `id` 时同样以 `INDEX_UNAVAILABLE` 拒绝对应的请求。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `refresh.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 已于 2026-11-19 删除）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `refresh.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 已于 2026-11-19 删除）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -397,8 +398,10 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
   ({ input, output: undefined as unknown as O });
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
-// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel,interest,refresh,cacheInfo,clearCache}、
-// system.{revealInOs,copyText,selectPaths}、window.*、log.write
+// entry.{list,add,update,remove,move,setRefreshLevel}、index.{setTarget,list}、
+// vfs.{stat,list,cancel,interest,refresh,cacheInfo,clearCache}、system.{revealInOs,copyText,selectPaths}、
+// window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged
+// （vfs.watch 与 system.openPath 已于 2026-11-19 删除；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
@@ -510,7 +513,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」），`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」），`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -559,7 +562,8 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
 - **事件**：`vfs.changed { uri }`（缓存内容有差异时才发）→ `lib/query-client.ts` 让该目录查询失效；`vfs.reachability { share, state, since }` → `stores/reachability-store.ts` 的 `offlineShares`（断开图标在 Task 8）。`vfs.cacheInfo` / `vfs.clearCache` 已有通道，界面随 M5 设置页。
 - **取消**：目录查询的 `queryFn` 仍使用 TanStack Query 的 `signal`，中止时发送 `vfs.cancel`（requestId `dir:<uri>`，只对降级模式的直接枚举有效；经扫描进程的请求很快返回缓存，不可取消）。中止时机与「取消不会落到新请求上」的论证同 M1-2（有单元测试）。
 - 已知限制：
-  - 条目的 URI 带结尾 `/`（例如手工输入 `C:\foo\` 添加的条目）时，扫描进程中的根已规范化，`vfs.changed` 的 URI 与渲染端的查询 key 不一致，该根目录自身不会自动更新（子目录不受影响）；Task 7 的配置组装统一处理。
+  - 枚举期间（本地毫秒级；网络上的大目录可能更长）恰好在资源管理器中改名 / 移动该目录的上级可能失败，这是读取目录本身不可避免的；句柄在一次枚举结束（含出错、取消）后立即关闭，不长期持有（e2e `principle: renaming an ancestor of an expanded directory succeeds`：展开 `A\B\C` 并经过 2 个刷新间隔后改名 `A` 10 次，全部成功）。
+  - `isUnderUri` 大小写敏感：大小写不同的同一目录被视为不同目录（URI 都来自条目 + `pathToFileURL(path.join(...))`，实际保持一致）。
   - 窗口初始的焦点状态不下发；窗口在后台创建、从未获得焦点时，扫描进程仍按已聚焦调度。
   - Playwright 产生不了真实的焦点切换，e2e 直接触发 BrowserWindow 的 `blur` / `focus` 事件；真实 Alt+Tab 未验证。
 
@@ -606,7 +610,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 ### 7.4 远程文件缓存
 
-缓存路径为 `userData/cache/remote/<sha1(uri)>/<mtime>-<size>/<原文件名>`，远端 mtime 或 size 变化即视为新版本。按设置项 `remote.cacheSizeMB` 做 LRU 淘汰。缓存同时服务于「用系统应用打开远程文件」（下载后 `shell.openPath`）。Office 文件的远程编辑与回传由独立的「远程编辑会话」处理（第 10.5 节），不与只读缓存混用。
+缓存路径为 `userData/cache/remote/<sha1(uri)>/<mtime>-<size>/<原文件名>`，远端 mtime 或 size 变化即视为新版本。按设置项 `remote.cacheSizeMB` 做 LRU 淘汰。缓存同时服务于「用系统应用打开远程文件」（下载后 `shell.openPath`）——**需求方决定（2026-11-19）：资源树只用于展示，对文件的操作都放在将来的预览窗口中**，因此这一打开动作只由将来的预览窗口提供，资源树的右键菜单不提供。Office 文件的远程编辑与回传由独立的「远程编辑会话」处理（第 10.5 节），不与只读缓存混用。
 
 ### 7.5 文本编码
 
@@ -643,7 +647,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 1. 从系统资源管理器拖入文件或文件夹：preload 的 `getPathForFile` 取得路径，stat 后创建 `file` 或 `folder` 条目（只新增条目，不复制文件）。
 2. 将真实子目录或文件拖到工作区根部或某个分组：「固定」为新条目（按 URI 添加），适合把深层常用目录提到顶层；原文件不移动。
 3. 拖动条目：调整同级顺序，或放进 / 移出分组（只修改条目的父节点与顺序）。
-4. 右键菜单：打开、在新窗口打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 Windows API，引入 koffi 时补充）、新建分组、重命名条目、刷新级别、建立索引、移除条目（只移除条目，不删除真实文件，界面上明确说明）。**没有「用系统应用打开」**（2026-11-19 删除：应用本身不对文件系统产生影响；将来的预览窗口另行设计）。「打开」「在新窗口打开」随 M1-3 的标签实现。
+4. 右键菜单：打开、在新窗口打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 `WNetGetConnectionW`，koffi 已引入、尚未实现）、新建分组、重命名条目、刷新级别、建立索引、移除条目（只移除条目，不删除真实文件，界面上明确说明）。**没有「用系统应用打开」**（2026-11-19 删除：应用本身不对文件系统产生影响；将来的预览窗口另行设计）。「打开」「在新窗口打开」随 M1-3 的标签实现。
 
 **已实现（M1-2，`features/explorer`）**：
 
@@ -690,7 +694,9 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 优先级与间隔（设计 4.6；设置键见 14.1 节）：P0 = 用户动作（展开、选中、F5 / 刷新、窗口重新获得焦点时的关注点），立即；P1 = 关注点所在根的「默认」范围、根目录、可见的已展开目录、热点目录，按 `refresh.intervalSec.local`（默认 5 秒，≥ 2）/ `.network`（默认 30 秒，≥ 10）；P2 = 级别高于「默认」时多出的范围与建立索引的目录，每 `refresh.backgroundIntervalMin` 分钟一轮。所有窗口失焦时 P1 暂停。
 
-**已实现（2026-11-19，扫描引擎 Task 1–6）**：扫描进程、缓存、范围、调度见 5.2 节；渲染端接口见 7.1 节。渲染端目录查询（`data/vfs.ts` 的 `directoryQuery`）为 `staleTime: Infinity`、`refetchOnWindowFocus: false`、没有轮询；`refetchOnMount` 保持默认（`staleTime` 为 Infinity 时只对已失效的查询生效：折叠期间收到 `vfs.changed` 的目录再次展开时重新列出）。`DirectoryState` 的 ready 状态带 `state`（fresh / cached / offline）与 `checkedAt`（断开图标、浅色显示与「最后更新」提示见 8.2 节）。手动刷新（工具栏按钮 / F5）与「重试」见 7.1 节的 `vfs.refresh`。条目级的刷新级别与「建立索引」的右键菜单、断开图标已实现（8.2 节，Task 8）。e2e：`cache: an expanded directory shows the cached listing first and the change after the next check`（`vfs.list` 先返回不含新文件的缓存、`state: 'cached'`，检查后树中出现新文件；展开中的目录按刷新间隔感知新建 / 删除）、`cache: a deleted entry directory shows not-found and recovers on retry after it is re-created`、`focus: refocusing the window does not show loading for a cached directory`、`collapse: …`、`workspace switch: …`、`menu: refresh level and build index`、`offline: a root on an unreachable share shows the disconnected icon and its cached rows`（经主进程 `webContents.send('pch:event', …)` 注入 `vfs.reachability`，不新增产品 IPC）（e2e 启动后经 `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒）。
+实现取值（设计第 6 节留给实现者，常量在 `scanner/schedule/scheduler.ts` 与 `scanner/cache/cache.ts`）：兜底完整枚举 `LIST_MAX_AGE_MS` = 1 小时（`listed_at` 超过即不比较修改时间、直接枚举）；同一目录的 P0 去重 2 秒（`P0_DEDUPE_MS`），`vfs.list` 在 2 秒内确认过即为 `fresh`（`FRESH_MS`）；同一网络主机两次 P2 之间停顿 200ms（`P2_GAP_MS`，本地不停顿）；热点目录取前 `HOT_K` = 20 个，计分 = 每次访问 +1、按 3 天半衰期衰减（`HALF_LIFE_MS`）；本地合计同时最多 4 个检查（`LOCAL_LIMIT`）；扫描进程的 libuv 线程池 16（`SCANNER_THREADPOOL_SIZE`）。
+
+**已实现（2026-11-19，扫描引擎 Task 1–10；记录见 `devDoc/2026-11-19-06-refresh-cache.md`）**：扫描进程、缓存、范围、调度见 5.2 节；渲染端接口见 7.1 节。渲染端目录查询（`data/vfs.ts` 的 `directoryQuery`）为 `staleTime: Infinity`、`refetchOnWindowFocus: false`、没有轮询；`refetchOnMount` 保持默认（`staleTime` 为 Infinity 时只对已失效的查询生效：折叠期间收到 `vfs.changed` 的目录再次展开时重新列出）。`DirectoryState` 的 ready 状态带 `state`（fresh / cached / offline）与 `checkedAt`（断开图标、浅色显示与「最后更新」提示见 8.2 节）。手动刷新（工具栏按钮 / F5）与「重试」见 7.1 节的 `vfs.refresh`。条目级的刷新级别与「建立索引」的右键菜单、断开图标已实现（8.2 节，Task 8）。e2e：`cache: an expanded directory shows the cached listing first and the change after the next check`（`vfs.list` 先返回不含新文件的缓存、`state: 'cached'`，检查后树中出现新文件；展开中的目录按刷新间隔感知新建 / 删除）、`cache: a deleted entry directory shows not-found and recovers on retry after it is re-created`、`focus: refocusing the window does not show loading for a cached directory`、`collapse: …`、`workspace switch: …`、`menu: refresh level and build index`、`offline: a root on an unreachable share shows the disconnected icon and its cached rows`（经主进程 `webContents.send('pch:event', …)` 注入 `vfs.reachability`，不新增产品 IPC）（e2e 启动后经 `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒）；**原则回归** `principle: renaming an ancestor of an expanded directory succeeds`（展开 `案件\A\B\C` 并经过至少 2 个刷新间隔后，由测试进程把 `A` 改名为 `A2` 再改回，重复 10 次、间隔 300ms，全部成功；单次失败允许重试一次并记录。M1-2 的 `fs.watch` 下同样的操作会失败，见 19 节与 `knowledge/windows-and-tooling.md`）。性能记录（本机实测，两次）：本地 1 万目录 / 10 万文件的树在「全部」级别下首轮扫描约 58 秒（按卷串行，约 5.8ms / 目录），扫描进程工作集从约 86MB 升到峰值约 150MB，`index.db` 约 36MB（含 FTS5 索引）；网络位置未测（没有可用的共享）。命令与打包实测见 `devDoc/2026-11-19-06-refresh-cache.md`。
 
 ---
 
@@ -787,6 +793,8 @@ export default definePreviewPlugin<{ zoom: number }>({
 | office | Excel / Word / PowerPoint 等（扩展名可在设置中调整） | 不渲染内容，显示启动面板：只读 / 编辑 / 新建打开（按检测结果显示）与远程编辑状态，见第 10 节 |
 | fallback | 其他 | 文件信息 + 用系统默认程序打开 |
 
+需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 已删除，8.2 节）。
+
 ### 9.5 第三方插件（后续阶段）
 
 插件目录为 `userData/plugins/<id>/`，内含 `manifest.json` 与 ESM 产物；主进程的 plugin 模块负责发现与校验，渲染端通过 `pcplugin://` 协议动态 import。React 等公共依赖由宿主以 import map 方式共享，避免重复打包。由于插件代码运行在渲染进程，需提供启用开关与来源提示；对安全要求高时切换为 iframe 沙箱模式（见 9.1 的设计伏笔）。
@@ -880,8 +888,8 @@ FTP/SFTP 上的文件无法被 Office 直接写回，因此由本应用代理：
 
 ### 10.6 在界面中的体现
 
-1. 资源树和目录视图的右键菜单出现「用 {appName} 打开 ▸ 只读 / 编辑 / 新建」，子项按检测结果动态生成。
-2. 双击 Office 文件的默认动作由设置 `launcher.officeDefaultAction` 决定（只读 / 编辑 / 每次询问），默认**只读**：保守业务中查阅设计书远多于修改，且在共享盘上以编辑方式打开会锁定文件，影响同事。
+1. 目录视图（预览窗口中的 `pch.preview.folder`）的右键菜单出现「用 {appName} 打开 ▸ 只读 / 编辑 / 新建」，子项按检测结果动态生成。资源树不提供（需求方 2026-11-19 决定：资源树只用于展示，打开动作只由将来的预览窗口提供）。
+2. 在预览窗口（目录视图）中双击 Office 文件的默认动作由设置 `launcher.officeDefaultAction` 决定（只读 / 编辑 / 每次询问），默认**只读**：保守业务中查阅设计书远多于修改，且在共享盘上以编辑方式打开会锁定文件，影响同事。
 3. 在应用内以标签方式打开 Office 文件时，由内置的 `pch.preview.office` 插件显示一个启动面板：文件信息、三个打开按钮（只显示可用的）、该文件的远程编辑会话状态。这样标签、会话恢复等机制对 Office 文件依然成立。
 
 ### 10.7 代码位置
@@ -1024,7 +1032,7 @@ createRoot(document.getElementById('root')!).render(
 
 ## 13. 数据库设计
 
-位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003））。
+位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外））。
 
 ```sql
 -- 时间戳一律为 UNIX 毫秒（INTEGER）；JSON 列以 TEXT 存储
@@ -1111,6 +1119,8 @@ CREATE TABLE recent_items (
 
 密码等机密永远不发送到渲染进程：返回给前端的 `ConnectionDto` 只包含 `hasSecret: boolean`。ID 使用 `crypto.randomUUID()`，不额外引入 ID 库。
 
+**目录缓存库 `index.db`（已实现，2026-11-19）**：与 `pch.db` 分开，位于 `userData/cache/index.db`，只由扫描进程打开（`scanner/cache/cache.ts`，node:sqlite 直接使用，不经 Kysely；`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`）。它是可随时删除重建的缓存：**不做迁移**，表结构在 `scanner/cache/cache-schema.ts`，变化时递增 `CACHE_VERSION`，打开时 `user_version` 不符即删表重建；打不开（例如损坏）时删除 `index.db` / `-wal` / `-shm` 重建一次（5.2 节）。表：`dirs`（目录 URI、父 URI、上次枚举时目录自身的修改时间 `dir_mtime`、`listed_at` / `checked_at`、`state`（ok / not-found / denied / unreachable）与 `error_code`、热点计分 `visited_at` / `visit_score`）、`entries`（`(dir_uri, name)` 为主键，随目录级联删除）、FTS5 external content 表 `entries_fts`（`tokenize='trigram'`，由触发器与 `entries` 同步，供后续的搜索项目使用）。写入只在内容有差异时发生；配置下发后删除不在任何工作区任何 folder 条目之下的目录缓存。占用与清空经 `vfs.cacheInfo` / `vfs.clearCache`（界面随 M5）。
+
 ---
 
 ## 14. 设置、国际化与主题
@@ -1146,6 +1156,8 @@ export const settingsSchema = z.object({
 });
 export type Settings = z.infer<typeof settingsSchema>;
 ```
+
+已实现：上面的全部键均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除）；`refresh.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，刷新与超时的全局设置暂无界面（M5「设置页完善」），条目级的刷新级别在资源树右键菜单中设置（8.2 节）。
 
 设置页本身是一个内部标签（`internal://settings`），由内部插件渲染，因此同样支持弹出与会话恢复。修改后主进程广播 `settings.changed`，所有窗口即时生效。
 
@@ -1223,7 +1235,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级刷新级别 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
@@ -1235,12 +1247,12 @@ export default defineConfig({
 | 阶段 | 目标 | 主要交付 |
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
-| M1 工作区与本地文件 | 能日常使用 | 分三个子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
+| M1 工作区与本地文件 | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索界面**（随后，复用 `index.db` 的 FTS5 trigram 索引，设计 `devDoc/2026-11-19-02-search-design.md`）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
 | M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text/markdown/image/pdf/media/fallback 插件、编码检测；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
 | M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |
-| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、文件名搜索、工作区导出/导入（团队共享案件目录结构） |
+| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构） |
 
 M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewState 的数据结构，越早定型，后续返工越少。
 
@@ -1256,15 +1268,19 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 自绘窗口按钮失去 Windows 11 的贴靠布局面板（Snap Layouts） | 少一种窗口布局入口 | 双击标题栏最大化已验证可用；拖动贴靠、Win+方向键预期可用（未逐一验证）；如用户需要再评估恢复系统按钮 |
 | SMB 认证依赖 `net use`，且仅限 Windows | 未挂载 SMB | 先满足主要平台；后续用 koffi 调用 Windows API；接口不变 |
 | FTP 单连接串行、日文服务器编码各异 | 远程性能与乱码 | 连接池 + 队列；连接级编码选项 |
-| 终端策略禁止 PowerShell | Office 打开动作 | 改用 koffi 调用 `ShellExecuteExW`；默认「编辑打开」也可退回 `shell.openPath` |
+| 终端策略禁止 PowerShell | Office 打开动作（只在将来的预览窗口中提供） | 改用 koffi 调用 `ShellExecuteExW`（koffi 已引入）；默认「编辑打开」也可退回 `shell.openPath` |
 | 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果可手动刷新；启动时重新检测 |
 | Excel 不能同时打开两个同名工作簿 | 远程缓存副本与本地同名文件冲突 | 属 Office 自身限制，检测到同名已打开时给出提示 |
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
-| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；折叠 / 切换工作区等不再需要的目录列表由渲染端自动取消；已发出的单个系统调用无法中止） |
+| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录枚举在扫描进程中进行（koffi 异步调用在线程池执行，一次系统调用取回 64KB，不阻塞主进程与窗口）、展开时先显示缓存；降级模式的直接枚举仍为最多 16 并发的分批 stat、可取消（已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
 | 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 副本留在临时目录（应用不写、不删） | 拒绝 `app.getPath('temp')` 之下的系统拖入路径（`ENTRY_TEMPORARY_PATH`）；待实机确认 Chromium 副本目录的规律后可收窄，见 8.2 节 |
-| `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（M1-2 已实机验证） | 展开 `案件\設計書` 时无法在资源管理器中改名 / 移动 `案件` | 已解决：2026-11-19 起不再使用 `fs.watch`，改为扫描 + 缓存（7.1、8.3 节）；枚举只在毫秒级的一次调用期间持有句柄 |
-| 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时、5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节） |
+| 扫描期间持有目录句柄（M1-2 的 `fs.watch` 长期持有句柄、阻止上级改名，已于 2026-11-19 删除） | 枚举恰好与改名 / 移动上级目录重叠时，资源管理器中的操作失败 | 句柄只在一次枚举期间持有（本地毫秒级），结束（含出错、取消）立即关闭；以允许读、写、删除的共享方式打开；原则回归 e2e（展开 `A\B\C` 时改名 `A` 10 次）全部成功（8.3 节）。网络上的大目录一次枚举可能更长（未实测） |
+| 后台扫描给共享文件服务器带来负载 | 影响同事与服务器 | 网络位置默认级别为「默认」（不做全树扫描）；每台主机后台同时 1 个枚举、两次 P2 之间停顿 200ms；目录修改时间不变时不枚举；断开的共享只按退避（30 秒起、最长 5 分钟）探测一个目录。「全部」与「建立索引」用于网络上的大树时一轮可能数小时（预期的「慢而不打扰」） |
+| 枚举更新目录自身的最后访问时间（本机实测：系统管理的访问时间更新为启用） | 应用对文件系统产生了元数据变化 | koffi 枚举器以 `FILE_WRITE_ATTRIBUTES` 打开目录并把 LastAccessTime 设为 -1（此句柄不更新访问时间，本地已实测）；拿不到写属性权限（系统盘根目录、只读共享）时回退普通枚举并按共享 / 盘符记一次日志；网络共享上是否生效未验证。回退时是否可接受待需求方确认（设计第 7 节第 6 条） |
+| koffi 加载失败（二进制缺失、平台不支持、打包遗漏） | 失去原生枚举：隐藏文件退回按 `.` 判断、访问时间不受保护；主进程无法识别映射的网络盘 | 扫描进程回退 `node:fs` 枚举并记警告（`[enumerator] native enumeration unavailable …`），主进程启动时记录 `[vfs] drive type detection` 的结果；打包后实测两个进程都能加载（devDoc 06） |
+| 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时；意外退出立即重启并重发配置与关注点，5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节）；`index.db` 损坏时删除重建 |
+| `index.db` 随树的规模增大 | 占用用户磁盘 | 只缓存工作区 folder 条目之下的目录，配置变化后清理；可随时删除重建（`vfs.clearCache`，界面随 M5）；1 万目录 / 10 万文件的实测大小见 devDoc 06 |
 
 ---
 

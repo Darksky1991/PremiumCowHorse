@@ -29,6 +29,7 @@
 
 开发数据保存在 `%APPDATA%\PremiumCowHorse-dev`，与正式版分开。开发窗口中 F12 打开 DevTools。
 日志位于 `<userData>\logs\main.log`（含渲染端未捕获的错误），用户反馈问题时请附上此文件。
+目录缓存位于 `<userData>\cache\index.db`（扫描进程使用，可在应用退出后随时删除，下次启动重建）。
 
 系统级截屏（含窗口按钮、边框等系统绘制部分，需先 `pnpm build`）：
 `node scripts/os-screenshot.mjs <输出.png> [light|dark] [ja|zh-CN|en]`
@@ -38,6 +39,7 @@
 ```
 apps/desktop            Electron 应用（electron-vite 官方目录约定）
   src/main              主进程：bootstrap / ipc / modules / windows / infra / core
+  src/scanner           扫描进程（utilityProcess）：目录枚举（koffi）、缓存 index.db、调度
   src/preload           preload（sandbox，只暴露 window.pch）
   src/renderer          渲染端：app / features / providers / data / lib / stores
 packages/shared         IPC 契约、设置 schema、错误模型（三端共用）

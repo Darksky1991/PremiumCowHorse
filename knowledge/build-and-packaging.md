@@ -57,3 +57,11 @@
 - 原因：开发数据目录 `%APPDATA%\PremiumCowHorse-dev` 中残留旧迁移框架（Drizzle）建的表，新迁移框架（Kysely）不认识旧的迁移记录。
 - 解决：删除开发库 `%APPDATA%\PremiumCowHorse-dev\data\pch.db*`（应用未发布、无真实数据时）。
 - 预防：发布后不得更换迁移框架而不提供衔接迁移；开发期更换时清理开发数据目录。
+
+### 打包后的原生模块（koffi）：确认两个进程都能加载，回退不能是静默的
+
+- 日期：2026-11-19
+- 症状：`pnpm dist` 时 electron-builder 输出 `platform-specific optional dependencies not bundled … @koromix/koffi-linux-x64 …` 与 `missing optional dependencies … koffi-openbsd-*`，看起来像 koffi 没打进去。另外主进程的 `vfs/location.ts` 加载 koffi 失败时原本静默回退（映射的网络盘按本地处理），打包后无法从日志确认主进程中 koffi 是否可用。
+- 原因：警告列出的是其他平台的二进制包，本机平台的 `@koromix/koffi-win32-x64` 已打入，且 electron-builder 自动把 `.node` 放到 `resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node`（`asarUnpack` 只配置了 `resources/**`，不需要为 koffi 另加）。
+- 解决：主进程启动时按 `driveTypeStatus()` 记一条日志（`[vfs] drive type detection: native (koffi)`，失败时为警告并附原因）；扫描进程在就绪时记 `[scanner] index …, native enumeration: true`（失败时 `[enumerator] native enumeration unavailable …`）。打包实测：解压 zip 后以 `--user-data-dir=<临时目录>` 运行，main.log 中两条都为 native，资源树显示 `.dotfile`（按属性判断隐藏，回退模式会把它当作隐藏）。
+- 预防：任何原生模块的回退路径都要在日志中留下记录；打包后在 main.log 里确认每个加载它的进程都成功。

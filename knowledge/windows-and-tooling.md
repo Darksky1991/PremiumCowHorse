@@ -48,15 +48,15 @@
 - 解决：**含反斜杠的文件一律用 Write / Edit 工具写**（包括由脚本生成的文件：把脚本本身用 Write 写到临时目录再执行）。不要用 Bash heredoc 写含 `\\` 的内容，加引号也不行。
 - 预防：写完后 `grep` / `od -c` 检查一次关键的转义序列；用 heredoc 写的补丁脚本只在确认内容不含 `\\` 时使用。
 
-### `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动
+### `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（2026-11-19 起不再使用 `fs.watch`）
 
 - 日期：2026-11-19
 - 症状：资源树中展开了 `案件\設計書` 时，在资源管理器里把 `案件` 改名或移动失败（拒绝访问）。M1-2 最终审查 I4，控制者在 Windows 11 上用 node `fs.watch` + PowerShell `Rename-Item` 实机验证：监听 `A\B` 时重命名 / 移动其上级 `A` 失败；重命名被监听目录自身、或被监听目录的子目录不受影响；只监听根目录时重命名其子目录正常。
 - 原因（推测，未查 libuv 源码确认）：Windows 下 `fs.watch` 经 `ReadDirectoryChangesW` 实现，需要一直打开被监听目录的句柄；路径上的某个目录存在打开的句柄时，其上级目录不能改名 / 移动。被监听目录自身可以改名，推测是句柄以允许删除 / 改名的共享方式打开。
 - 解决：~~待需求方决定~~（候选：(1) 维持现状；(2) 每个条目根只建一个递归监听（`fs.watch(root, { recursive: true })`），只阻止条目根的上级改名；(3) 不使用 `fs.watch`，改为聚焦 / 展开时刷新 + 可选轮询。）**2026-11-19 起不再使用 `fs.watch`**：需求方选择「扫描 + 缓存」（设计 `devDoc/2026-11-19-01-refresh-cache-design.md`），目录只在一次枚举期间持有句柄，监听代码已全部删除（`doc/` 7.1、8.3 节）。
-- 预防：在 Windows 上为目录建立长期打开的句柄（监听、打开的目录流等）时，先评估对用户在资源管理器中改名 / 移动上级目录的影响。
+- 预防：在 Windows 上为目录建立长期打开的句柄（监听、打开的目录流等）时，先评估对用户在资源管理器中改名 / 移动上级目录的影响。回归测试：e2e `principle: renaming an ancestor of an expanded directory succeeds`（展开 `A\B\C`、经过 2 个刷新间隔后由测试进程改名 `A` 10 次）。2026-11-19 另用一次性脚本在测试进程内对照：`fs.watch(A\B\C)` 期间 `renameSync(A, A2)` 报 `EPERM`，关闭监听后成功——即该用例的做法能检出长期持有的句柄。
 
-### `fs.watch` 在目录仍在时异步报错：处理不当会形成「重建 → 报错 → 重列」循环
+### `fs.watch` 在目录仍在时异步报错：处理不当会形成「重建 → 报错 → 重列」循环（2026-11-19 起不再使用 `fs.watch`）
 
 - 日期：2026-11-19
 - 症状：（M1-2 最终审查 I3，由代码推断，未在真实 NAS 上复现）不支持变更通知的 NAS / Samba、WebDAV 或网络抖动时，`fs.watch` 同步成功，随后 `ReadDirectoryChangesW` 异步失败（`error` 事件）。原实现在 `error` 时先通知变化再报告失效 → 渲染端重新列出（成功）并重发监听集合 → 主进程重建监听 → 再次报错，约每 0.5 秒整体重列一次。
@@ -104,3 +104,11 @@
 - 原因：同一目录在 Windows 上有多种路径形式。
 - 解决：`WorkspaceService` 对 `tempDir`（构造时一次，`fs.realpathSync.native`）与目标路径（`fs/promises.realpath`）各取原始与 realpath 两种形式，任一命中即视为在临时目录下；realpath 失败（不存在等）回退原值。realpath 只读取，不改变文件系统。本机实测 `%TEMP%` 的短名与长名相同，其他机器上可能不同（未验证）。
 - 预防：判断「是否在某目录之下」时不要只信字符串；测试用 `fs.symlinkSync(target, link, 'junction')`（无需管理员）构造联接。
+
+### 枚举目录会更新该目录自身的最后访问时间
+
+- 日期：2026-11-19
+- 症状：（设计阶段实测，Windows 11 本机 NTFS）`fsutil behavior query disablelastaccess` 为 2（System Managed, ENABLED）时，列一次目录后该目录的 LastAccessTime 变化；子文件的访问时间不变（只有读取内容才变）。NTFS 只在与旧值相差超过约 1 小时时写入，所以短时间内重复测试看不出来。
+- 原因：目录枚举本身就是对目录的「访问」，由文件系统更新元数据，与应用是否写文件无关。这违反「应用不得对文件系统产生任何影响」。
+- 解决：koffi 枚举器（`scanner/enum/win32-enumerator.ts`）以 `FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES` + `FILE_FLAG_BACKUP_SEMANTICS` 打开目录，`SetFileInformationByHandle(FileBasicInfo)` 把 LastAccessTime 设为 -1（文档化的「此句柄后续操作不更新访问时间」），再在同一句柄上 `GetFileInformationByHandleEx(FileFullDirectoryInfo)` 枚举；目录自身的修改时间用 `GetFileAttributesExW` 取得（不打开句柄）。拿不到写属性权限（系统盘根目录、只读共享）时回退为只读句柄（访问时间不受保护，按共享 / 盘符记一次日志，见上文「系统盘根目录不能以 `FILE_WRITE_ATTRIBUTES` 打开」）。单元测试 `does not update the directory's last access time` 用「先把 atime 设到很久以前，再枚举」验证（避开 1 小时的写入阈值）。网络共享上是否生效未验证。
+- 预防：判断「是否影响文件系统」时连元数据（访问时间）一起看；测访问时间先把 atime 调到 1 小时以前，否则 NTFS 的写入阈值会让测试假通过。node:fs 回退枚举器（koffi 不可用时）无法保护访问时间。

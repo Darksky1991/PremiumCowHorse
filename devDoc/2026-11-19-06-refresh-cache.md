@@ -1,0 +1,103 @@
+# 目录刷新与缓存引擎（Task 1–10 总记录）
+
+- 日期：2026-11-19
+- 里程碑：M1（插入在 M1-2 之后、M1-3 之前）
+- 设计：[01 目录刷新与缓存引擎：设计](./2026-11-19-01-refresh-cache-design.md)；计划：[03 实施计划](./2026-11-19-03-refresh-cache-plan.md) 的 Task 1–10
+- 分任务记录：[04 资源树：断开、缓存状态与右键菜单](./2026-11-19-04-explorer-offline-and-menu.md)（Task 8）、[05 按松手位置插入与拒绝临时文件](./2026-11-19-05-drop-position-and-temp-files.md)（Task 9）
+- 现状以 [`doc/`](../doc/PremiumCowHorse-架构设计方案.md) v1.9 为准（5.2、6.3、7.1、7.2、8.2、8.3、13、14.1、18、19 节）
+- 相关提交：`5e14c8e`..`463de5f`（Task 1–9）；Task 10：`7adadd3`（e2e）、`10604ea`（主进程 koffi 日志）与本文档所在的 docs 提交
+
+## 目标
+
+M1-2 用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上级目录改名 / 移动，违反「应用本身不得对文件系统产生任何影响」。改为「扫描 + 缓存」：目录列表缓存在本地 SQLite，展开时先显示缓存、后台按离关注点的远近检查；缓存同时是文件名索引，供随后的搜索项目使用。
+
+## 做了什么（按任务）
+
+| Task | 内容                                                                                                                                                                                                                                                                                     | 提交                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1    | koffi 原生枚举器（`scanner/enum/win32-enumerator.ts`）：`CreateFileW` + LastAccessTime = -1 + `GetFileInformationByHandleEx`，按 HIDDEN 属性判断隐藏、重解析点按链接处理；`GetFileAttributesExW` 取目录修改时间；koffi 不可用时回退 `node:fs`；`vfs/location.ts`（位置类型与并发分组键） | `5e14c8e`、`7202b65` |
+| 2    | 缓存库 `index.db`（`scanner/cache/`）：`dirs` / `entries` / FTS5 trigram，差异写入、子树删除、热点计分、清理                                                                                                                                                                             | `38362a3`            |
+| 3    | 范围计算 `computeScope`（4 级、关注点、视口内外、热点、建立索引）                                                                                                                                                                                                                        | `f046304`、`60cc4f9` |
+| 4    | 调度器：P0 / P1 / P2、按卷 / 主机分组的并发、看门狗（没有进展的时间）、断开与退避                                                                                                                                                                                                        | `e3ada06`、`8d2ee15` |
+| 5    | 扫描进程（utilityProcess）与 `ScannerClient`：zod 校验的消息、意外退出重启、降级模式、`index.db` 损坏时重建                                                                                                                                                                              | `fc7d4d2`            |
+| 6    | IPC 切换：`vfs.list` 经扫描进程，`vfs.interest` / `vfs.refresh` / `vfs.cacheInfo` / `vfs.clearCache`、`vfs.reachability`；删除全部监听代码与 focusManager 设置                                                                                                                           | `bd14027`            |
+| 7    | 条目级刷新级别（迁移 0003 `refresh_level`）与建立索引（`index_targets`）、扫描配置下发、URI 规范化                                                                                                                                                                                       | `7fe7392`、`1ff1ff7` |
+| 8    | 断开图标与浅色缓存行、右键菜单（刷新级别、建立索引），删除「用系统应用打开」/ `system.openPath`（[04](./2026-11-19-04-explorer-offline-and-menu.md)）                                                                                                                                    | `ae12028`            |
+| 9    | 按松手位置插入、拒绝临时目录下的系统拖入（[05](./2026-11-19-05-drop-position-and-temp-files.md)）                                                                                                                                                                                        | `9abcf60`、`463de5f` |
+| 10   | 原则回归 e2e、主进程 koffi 状态日志、打包实测、性能记录、doc v1.9 / knowledge / README                                                                                                                                                                                                   | 见文末               |
+
+Task 10 的改动：
+
+- e2e `principle: renaming an ancestor of an expanded directory succeeds`（`e2e/explorer.spec.ts`）：展开 `案件\A\B\C`，看到 `c.txt` 后再等 4.5 秒（`launchFast` 把本地刷新间隔设为 2 秒，即至少 2 个间隔），由测试进程 `renameSync(A, A2)` 再改回，重复 10 次、每步间隔 300ms；单次失败允许重试一次并记入 annotation 与控制台；最后树中仍显示 `c.txt`。
+- 主进程 koffi 状态日志：`vfs/location.ts` 新增 `driveTypeStatus()`，`bootstrap.ts` 启动时记 `[vfs] drive type detection: native (koffi)`，不可用时为警告并附原因。原来主进程的 koffi 回退是静默的，打包后无法从日志确认主进程中 koffi 可用（单元测试 `loads GetDriveTypeW through koffi`）。
+- 文档：doc v1.9；knowledge 新增「枚举会更新目录自身的最后访问时间」「打包后的原生模块：两个进程都要确认、回退不能静默」「驱动打包后的应用（CDP）与性能记录的取数方法」，`fs.watch` 相关条目标题标注「2026-11-19 起不再使用」；README 补 `src/scanner` 与 `index.db` 的位置。
+
+## 关键决策与理由
+
+- 进程结构选方式二（独立扫描进程），理由见设计 4.0。
+- 设计第 6 节留给实现者的取值：兜底完整枚举 1 小时、P0 去重 2 秒、`fresh` 判定 2 秒、网络 P2 停顿 200ms（本地不停顿，Task 4 审查 I1）、热点 K = 20 / 半衰期 3 天、本地合计 4 个并发、线程池 16（doc 8.3 节）。
+- 原则回归用例不回退代码证明「旧实现会失败」：控制者在 M1-2 最终审查中已实测 `fs.watch` 会阻止上级目录改名（I4，`knowledge/windows-and-tooling.md`）。本任务另用一次性脚本在测试进程内对照：`fs.watch(A\B\C)` 期间 `renameSync(A, A2)` 报 `EPERM`，关闭监听后成功（`node watch-check.mjs`，scratchpad，不入库）——说明用例的做法能检出长期持有的句柄。
+
+## 验证
+
+### 已验证
+
+- 全量检查：`pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm test:e2e`（结果见文末「Task 10 检查结果」）。
+- 原则回归：上述 e2e 单独运行 1 次 + `--repeat-each 3` 3 次，共 4 次全部通过，**10 次改名均未发生重试**（`[principle] rename retries: 0`）。
+- TDD：`loads GetDriveTypeW through koffi` 先失败（`TypeError: driveTypeStatus is not a function`），实现后通过。
+- **打包实测**（`pnpm dist`，`ELECTRON_BUILDER_7ZIP_PATH` = `C:\Program Files\7-Zip\7z.exe`，未遇到 TVM 封锁）：`PremiumCowHorse-0.1.0-win-x64.zip`（155,560,588 B）解压到 `%TEMP%` 下的新目录；`resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node` 已由 electron-builder 自动解包（`asarUnpack` 无需另配）。一次性脚本 `dist-check.mjs`（scratchpad）以 `PremiumCowHorse.exe --user-data-dir=<临时目录> --remote-debugging-port=9333` 启动，经 `chromium.connectOverCDP` 添加条目 `案件`（含 `設計書\仕様.xlsx`、`README.md`、`.dotfile`）并展开。两次运行的结果一致：
+  - main.log：`[vfs] drive type detection: native (koffi)`（主进程）、`[scanner] index …\cache\index.db, native enumeration: true`、`[scanner] ready`；没有任何 warn / error 行，没有回退警告；退出时 `[app] shutdown complete`，进程以 0 退出。
+  - 树：`案件`、`設計書`、`仕様.xlsx`、`.dotfile`、`README.md`（`.dotfile` 显示 = 按属性判断隐藏，即走的是 koffi 枚举；降级模式会把它当作隐藏）；`vfs.list` 为 `fresh`；`vfs.cacheInfo` 40,960 B；退出后 `index.db` 存在（40,960 B）。
+  - 页面级整窗截图已查看：标题栏、侧栏、资源树、欢迎页、状态栏布局正常。**系统级截图（窗口边框、系统绘制部分）待桌面可用时补拍**：本次会话没有交互式桌面（屏幕锁定，`CopyFromScreen` 句柄无效，`knowledge/testing.md`）。
+  - 扫描进程就绪时间：第一次运行 `[app] starting` → `[scanner] ready` 约 9.0 秒，第二次约 2.2 秒（推测首次含杀毒软件扫描，未验证；与 Task 5 记录的约 3 秒一致）。就绪前的请求在消息队列中等待，窗口照常显示。
+  - 结束后 `Get-Process electron, PremiumCowHorse` 无残留；解压目录与临时 userData 已删除。
+- **性能记录（本地）**：一次性脚本 `perf-scan.mjs`（scratchpad），命令 `node perf-scan.mjs <仓库根目录>`（需先 `pnpm build`）。在 `%TEMP%\pch-perf-*` 合成 10 × 10 × 100 的目录树：10,110 个目录（含根 10,111 个），每个叶目录 10 个文件共 100,000 个（文件名形如 `設計書_55_5_3.txt`，内容 1 字节）。经 Playwright 启动构建产物（临时 userData），`settings.set` 把 `refresh.defaultLevel.local` 设为 `all` 后 `entry.add` 该根，每 250ms 用 node:sqlite（`readOnly`）读 `index.db` 的 `count(*) FROM dirs WHERE listed_at IS NOT NULL`、用 `app.getAppMetrics()` 取 `pch-scanner` 的内存，直到 10,111 个目录都列出过。测完删除目录树（`removed … true`）。
+
+  | 项目                                                      | 第 1 次                                                | 第 2 次                                                |
+  | --------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
+  | 合成目录树耗时（参考）                                    | 76.9 秒                                                | 77.1 秒                                                |
+  | 「全部」级别首轮扫描（entry.add → 10,111 个目录都已枚举） | 58.3 秒（约 5.8ms / 目录，按卷串行）                   | 57.5 秒                                                |
+  | 缓存的条目数                                              | 110,110（10 万文件 + 10,110 目录）                     | 110,110                                                |
+  | 扫描进程工作集：扫描前 → 峰值（`peakWorkingSetSize`）     | 86,020 KB → 148,120 KB                                 | 86,004 KB → 153,552 KB                                 |
+  | 扫描进程私有字节（采样最大）                              | 224,312 KB（扫描前 36,352 KB）                         | 233,728 KB（扫描前 35,952 KB）                         |
+  | `index.db` 大小（运行中 / 退出后）                        | 36,184,064 B + WAL 5,236,552 B / 36,225,024 B（WAL 0） | 36,061,184 B + WAL 5,281,872 B / 36,225,024 B（WAL 0） |
+  | FTS5 trigram 抽查（`"設計書_55_5"`）                      | 110 条                                                 | 110 条                                                 |
+
+  首轮扫描期间 P2 每个本地卷同时只有 1 个检查、不停顿（doc 8.3 节），所以耗时近似「目录数 × 单次枚举 + 写库」。窗口与主进程不参与枚举与写库。
+
+### 未验证
+
+- **网络位置（UNC）**：本机 `net share` 只有 `IPC$`，`\\localhost\C$` 不可访问（`Test-Path` 为 False）。按规定不新建共享、不改系统设置，因此 UNC 上的 koffi 枚举、访问时间保护（LastAccessTime = -1 是否被服务器遵守）、性能、Windows SMB 客户端约 10 秒的目录缓存的影响、DFS 命名空间的分组**均未验证**。映射网络盘的识别（`GetDriveTypeW` 返回 `DRIVE_REMOTE`）在本机没有映射盘，只有单元测试。
+- 网络上的大目录一次枚举持有句柄的时长（可能长于本地的毫秒级），以及期间上级目录改名失败的概率。
+- 真实的窗口焦点切换（Alt+Tab）：e2e 直接触发 BrowserWindow 的 `focus` / `blur`。
+- 真实的共享断开：e2e 用注入的 `vfs.reachability` 事件验证断开图标；断开判定与退避只有单元测试。
+- 从系统资源管理器真实拖入（含 zip 内的虚拟文件）：需要真实的系统拖放（设计第 7 节第 10 条）。
+- 系统级整窗截图（见上）。
+- Playwright `_electron.launch` 能否驱动打包版（Fuses 关闭了 Node 的 inspect 参数）：未试，改用 CDP。
+
+## 待需求方确认
+
+见设计 [01](./2026-11-19-01-refresh-cache-design.md) 第 7 节「待需求方确认」的 11 条（需求方睡眠期间由控制者按建议推进）。其中需要需求方明确回答或协助的：
+
+- 第 6 条：拿不到写属性权限时（系统盘根目录、只读共享）回退普通枚举、目录的访问时间会被系统更新——是否可以接受；不能接受时网络位置的「全部」与「建立索引」需要加限制或提示。
+- 第 10 条：拒绝临时文件拖入的实机试验（dragover 能否区分虚拟文件、Chromium 副本目录的规律），需要需求方用真实拖放协助；在此之前拒绝 `%TEMP%` 下的全部系统拖入路径。
+- 第 9 条：全局默认级别与刷新间隔暂无界面（M5）。
+- 其余各条（超时计法、断开单位、视口内外、P0 专用并发、隐藏判定、只调度当前工作区、保留的右键菜单项、搜索界面）按设计实现，请一并过目。
+
+## 遗留事项
+
+- 映射盘符转 UNC（`WNetGetConnectionW`，koffi 已引入）；映射盘按盘符各自成组，同一服务器的两个映射盘被视为两台主机。
+- 窗口初始的焦点状态不下发（doc 7.1 已知限制）。
+- 刷新级别 / 间隔 / 超时的全局设置界面、缓存占用与清空的界面（M5）。
+- 文件名搜索界面（下一个项目，设计 [02](./2026-11-19-02-search-design.md)）。
+- 渲染端「最后更新」提示只有单元测试（`knowledge/testing.md`）。
+
+## Task 10 检查结果
+
+在 `10604ea` 的代码 + 本次文档改动上运行 `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm test:e2e`，退出码 0：
+
+- typecheck、lint：通过（无输出错误）。
+- vitest：`Test Files 37 passed (37)`、`Tests 418 passed (418)`。
+- build：通过。
+- e2e：`30 passed (4.5m)`；其中 `principle: renaming an ancestor of an expanded directory succeeds` 通过，`[principle] rename retries: 0`。
+- 结束后 `Get-Process electron, PremiumCowHorse` 无残留进程。

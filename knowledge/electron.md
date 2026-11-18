@@ -40,7 +40,7 @@
 - 解决：现已改用 electron-vite（默认正确处理二者）。
 - 预防：自行配置打包器时检查产物中的 `require("electron")` 与 `require("node:...")`。
 
-### Windows：删除被 `fs.watch` 监听的目录只收到 `rename`，没有 `error`
+### Windows：删除被 `fs.watch` 监听的目录只收到 `rename`，没有 `error`（历史：2026-11-19 起不再使用 `fs.watch`）
 
 - 日期：2026-11-18
 - 症状：目录被删除后监听没有失效，主进程一直保留该监听（「僵尸」条目），目录重建后也不会重新监听（M1-2 Task 3 审查）。
