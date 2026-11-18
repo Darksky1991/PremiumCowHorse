@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -102,6 +102,56 @@ test.describe('explorer tree on real directories', () => {
   test.afterEach(() => {
     rmSync(userData, { recursive: true, force: true })
     rmSync(files, { recursive: true, force: true })
+  })
+
+  test('principle: renaming an ancestor of an expanded directory succeeds', async () => {
+    // 根本原则：应用不得影响文件系统。M1-2 的 fs.watch 监听 A\B\C 时，A 无法改名 / 移动
+    // （knowledge/windows-and-tooling.md）；扫描 + 缓存只在一次枚举期间持有句柄
+    const a = path.join(project, 'A')
+    const moved = path.join(project, 'A2')
+    mkdirSync(path.join(a, 'B', 'C'), { recursive: true })
+    writeFileSync(path.join(a, 'B', 'C', 'c.txt'), 'c')
+    const { app, page } = await launchFast(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      for (const name of ['案件', 'A', 'B', 'C']) {
+        await tree.getByRole('treeitem', { name, exact: true }).click()
+      }
+      await expect(tree.getByRole('treeitem', { name: 'c.txt' })).toBeVisible()
+      // 应用确实在扫描 A\B\C：经过至少 2 个刷新间隔（launchFast 设为 2 秒）
+      await page.waitForTimeout(4500)
+
+      // 改名期间扫描照常进行（关注点 C 与可见的已展开目录按 2 秒间隔检查）。
+      // 恰好与一次毫秒级的枚举重叠时改名可能失败（设计 4.2）：单次失败允许重试一次，并记录下来
+      const retries: string[] = []
+      const rename = async (from: string, to: string): Promise<void> => {
+        try {
+          renameSync(from, to)
+        } catch (e) {
+          retries.push(`${path.basename(from)} → ${path.basename(to)}: ${(e as Error).message}`)
+          await page.waitForTimeout(300)
+          renameSync(from, to)
+        }
+      }
+      for (let i = 0; i < 10; i++) {
+        await rename(a, moved)
+        await page.waitForTimeout(300)
+        await rename(moved, a)
+        await page.waitForTimeout(300)
+      }
+      test.info().annotations.push({
+        type: 'rename retries',
+        description: retries.length === 0 ? 'none' : retries.join('; ')
+      })
+      console.log(`[principle] rename retries: ${retries.length}`, retries)
+
+      // 改回原名后树照常显示
+      await expect(tree.getByRole('treeitem', { name: 'c.txt' })).toBeVisible({ timeout: 8000 })
+    } finally {
+      await app.close()
+    }
   })
 
   test('cache: an expanded directory shows the cached listing first and the change after the next check', async () => {
