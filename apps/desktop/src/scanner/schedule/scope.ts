@@ -42,6 +42,11 @@ function parentUri(uri: string): string | null {
   return parent === p ? null : pathToFileURL(parent).href
 }
 
+function sameLocalPath(a: string, b: string): boolean {
+  const norm = (u: string): string => fileUriToLocalPath(u).replace(/[\\/]+$/, '')
+  return norm(a) === norm(b)
+}
+
 /**
  * 计算扫描范围（纯函数，设计 4.5 / 4.6）。
  * 范围按「包含关注点的根中 URI 最长者」计算；若关注点落在多个根之下，级别取其中最高者。
@@ -80,6 +85,9 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
   // 所有根目录
   for (const r of input.roots) add(r.uri, 'P1', false)
 
+  // 「全部」级别的根：与关注点无关，整棵进入 frontier
+  for (const r of input.roots) if (r.level === 'all') addFrontier(r.uri, null)
+
   // 关注点
   const { focus } = input
   if (focus !== null) {
@@ -96,11 +104,15 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
         // 祖先链（至根），沿途记录以便取第 N 级祖先
         const ancestors: string[] = []
         let cur = focus
-        while (cur !== rootUri) {
+        for (;;) {
           const p = parentUri(cur)
-          if (p === null) break
+          // 越过根（含根 URI 形态不同、字符串不相等的情形）即停
+          if (p === null || !isUnder(p, rootUri)) break
+          // 与根是同一路径但 URI 写法不同（如 UNC 共享根的结尾 /）：根已加入，不重复
+          if (p !== rootUri && sameLocalPath(p, rootUri)) break
           ancestors.push(p)
           cur = p
+          if (cur === rootUri) break
         }
         for (const a of ancestors) add(a, 'P1', false)
         for (const c of input.children(focus)) add(c, 'P1', false)
@@ -115,11 +127,7 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
           addFrontier(top, up + input.activeDepth)
         }
       }
-      if (level === 'all') addFrontier(rootUri, null)
     }
-  } else {
-    // 没有关注点：各根按自身级别，「全部」的根整棵进入 frontier
-    for (const r of input.roots) if (r.level === 'all') addFrontier(r.uri, null)
   }
 
   const underRoot = (uri: string): boolean => input.roots.some((r) => isUnder(uri, r.uri))

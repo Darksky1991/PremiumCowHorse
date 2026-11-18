@@ -127,7 +127,46 @@ describe('computeScope', () => {
   it('focus outside every root yields no focus items', () => {
     const r = computeScope(input('all', { focus: 'file:///D:/x', visible: [] }))
     expect(uris(r)).toEqual([R])
-    expect(r.frontier).toEqual([])
+    expect(r.frontier).toEqual([{ uri: R, maxDepth: null }])
+  })
+
+  it('an all root is on the frontier even when the focus is in another root', () => {
+    const other = 'file:///C:/other'
+    const r = computeScope(
+      input('passive', { roots: [root('all'), root('passive', other)], focus: `${other}/q` })
+    )
+    expect(r.frontier).toEqual([{ uri: R, maxDepth: null }])
+  })
+
+  it('nested roots: an outer all root stays on the frontier', () => {
+    const r = computeScope(
+      input('passive', { roots: [root('all'), root('passive', u('a'))], focus: u('a/b') })
+    )
+    expect(r.frontier).toEqual([{ uri: R, maxDepth: null }])
+  })
+
+  it('ancestors never cross a drive root', () => {
+    const drive = 'file:///C:/'
+    const r = computeScope(
+      input('default', {
+        roots: [root('default', drive)],
+        focus: 'file:///C:/x/y',
+        children: () => []
+      })
+    )
+    expect(uris(r)).toEqual([drive, 'file:///C:/x', 'file:///C:/x/y'].sort())
+  })
+
+  it('ancestors never cross a UNC share root', () => {
+    const share = 'file://server/share'
+    const r = computeScope(
+      input('default', {
+        roots: [root('default', share)],
+        focus: 'file://server/share/x/y',
+        children: () => []
+      })
+    )
+    expect(uris(r)).toEqual([share, 'file://server/share/x', 'file://server/share/x/y'].sort())
   })
 
   it('without a focus only roots visible hot and index remain', () => {
