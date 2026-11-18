@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.7　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.8　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.8 变更（M1-2 最终审查修复）：窗口聚焦刷新改为实际生效（focusManager 同时监听 `focus` 与 `visibilitychange`；目录列表单独设 2 秒新鲜期并在重新挂载 / 聚焦时重新列出，此前写的 `'always'` 在 Electron 中常见情况下不触发、且折叠后再展开会显示旧缓存）；监听出错但目录仍在时不再循环重建（provider 只报告失效、`VfsService` 对失效的 URI 退避 60 秒）；不再需要的目录列表请求会取消；`vfs.watch` 超过 500 个时截断并警告。新增已知限制 / 待需求方决定：监听句柄阻止上级目录改名或移动（三个候选方案）、虚拟文件拖入的描述按 Chromium 的实际行为改写（三个选项）；拖放导航的主防线改为 `navigateOnDragDrop` 默认值。涉及 7.1、8.2、8.3、12.1、19 节
 > v1.7 变更（M1-2 资源树完成）：工作区切换器、虚拟化资源树（懒加载、状态行、键盘）、只管理条目的拖放、右键菜单、目录监听（`vfs.watch` / `vfs.changed`）与系统操作 IPC 已实现；按代码修正 `vfs.changed` 的负载、Provider 的 `watch` 签名与错误码列表；新增已知限制（虚拟文件拖入可能固定 %TEMP% 副本；条目目录删除后重建需「重试」/ F5 / 聚焦才恢复，恢复后监听自动重建）。涉及 3.3、5.2、5.3、6.3、6.6、7.1、7.2、8.1–8.3、12.1、12.2、14.2、17、18、19 节
 > v1.6 变更（M1-2 开工前的决策）：资源树的拖放只管理自定义条目、绝不产生文件操作；树内拖动用浏览器原生拖放；列目录时解析符号链接 / 目录联接的目标类型；可把真实子目录「固定」为条目（条目也可按 URI 添加）；复制路径的格式；外壳通过插槽组合各 feature。涉及 5.3、7.1、8.2 节
 > v1.5 变更（M1-1 数据层完成）：工作区 / 条目的存储与规则、VFS（LocalProvider、VfsService）与对应 IPC 已实现；更新 5.2、6.1、6.3、6.6、7.1、7.2、8.1、13 节的「已实现」标注与细节
@@ -499,7 +500,8 @@ export interface FileSystemProvider {
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>;
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>;
   createReadStream(uri: URL, range?: ByteRange, signal?: AbortSignal): Promise<Readable>;
-  // 不区分具体事件；监听自行失效（目录被删除、初始就无法监听）时调用 onClose 一次
+  // 不区分具体事件；监听自行失效（目录被删除、监听出错、初始就无法监听）时调用 onClose 一次，
+  // 运行中失效且目录已不在时先调用 onChange；目录仍在（只是监听出错）时不调用 onChange
   watch?(uri: URL, onChange: () => void, onClose?: () => void): { close(): void };
   dispose(): Promise<void>;
 }
@@ -521,11 +523,24 @@ export interface FileEntry {
 
 **目录监听（已实现，M1-2）**：
 
-- 渲染端按窗口告知主进程「当前需要监听的目录集合」：`vfs.watch({ uris })`（最多 500 个，整体替换该窗口的集合；owner 为调用方的 webContents id）。资源树列目录用所有已展开的可展开节点的 URI，**监听集合只取其中列表状态为「就绪」的目录**（`data/vfs.ts` 的 `watchableUris`；加载中 / 出错的目录不监听）；集合变化后 200ms 防抖发送，卸载时发送空集合。
+- 渲染端按窗口告知主进程「当前需要监听的目录集合」：`vfs.watch({ uris })`（整体替换该窗口的集合；owner 为调用方的 webContents id）。资源树列目录用所有已展开的可展开节点的 URI，**监听集合只取其中列表状态为「就绪」的目录**（`data/vfs.ts` 的 `watchableUris`；加载中 / 出错的目录不监听）；集合变化后 200ms 防抖发送，卸载时发送空集合。
+- **上限 500 个**（`VFS_WATCH_MAX`，`packages/shared` 的契约以 zod 校验）：超过上限的调用会被整次拒绝、所有监听静默失效，因此渲染端发送前截断为树中自上而下的前 500 个目录，并在控制台与 `main.log` 各记一条警告（`createWatchScheduler`，有单元测试）。超出的目录不监听，变化靠刷新 / 聚焦 / 重新展开发现。
 - `VfsService.setWatched(ownerId, uris)` 按 URI 引用计数：多个窗口监听同一目录只建立一个监听，最后一个 owner 释放时关闭；`releaseOwner(ownerId)` 在 webContents `destroyed` 时由 bootstrap 调用。不支持监听的 scheme、无法解析的 URI 静默忽略。
 - 同一目录的变化防抖 300ms 后经 `onDirectoryChanged` → 主进程事件总线 → 广播 `vfs.changed { uri }`（发给所有窗口）；渲染端在 `lib/query-client.ts` 中让 `['vfs','list',uri]` 失效并重新列出。
-- 监听自行失效（`error` 事件，或 `rename` 事件后 `fs.stat(目录)` 失败——Windows 下删除被监听的目录只有 `rename` 没有 `error`）：provider 先通知一次变化、再关闭并调用 `onClose`；`VfsService` 移除该条目与各 owner 的记录。**重建由渲染端负责**：收到属于当前集合的 `vfs.changed` 后，渲染端以同样的防抖重发完整集合，主进程据此重新建立仍然存在的目录的监听；被删除的目录列表变为出错，随即从监听集合中移除。目录在原路径重建后，列表一旦恢复为就绪（「重试」/ F5 / 窗口聚焦），它重新进入监听集合，集合变化触发 `vfs.watch`，监听随之重建（e2e `watch: a directory deleted, re-created and retried is watched again`）。
-- 已知限制：条目本身指向的目录被删除后又在原路径重建时，错误行不会自动消失——条目目录的父目录不在监听中，重建本身无人感知；需要「重试」/ F5 / 窗口重新获得焦点（之后监听自动重建，见上）。真实子目录的重建由其父目录的监听感知。监听在列表成功之后才建立（另有 200ms 防抖），列表返回到监听建立之间的变化只能靠刷新 / 窗口聚焦发现。
+- 监听自行失效：
+  - **目录已不在**（`rename` 事件后 `fs.stat(目录)` 失败——Windows 下删除被监听的目录只有 `rename` 没有 `error`；或 `error` 事件后确认目录不在）：provider 先通知一次变化、再关闭并调用 `onClose`。
+  - **目录仍在、只是监听本身出错**（`error` 事件后 `fs.stat` 成功；例如不支持变更通知的 NAS / Samba、WebDAV、网络抖动——`fs.watch` 同步成功、`ReadDirectoryChangesW` 随后异步失败）：provider 只关闭并调用 `onClose`，**不通知变化**。否则渲染端会重新列出（成功）并重发集合，重建的监听再次报错，约每 0.5 秒整体重列一次（最终审查 I3，单元测试用假 watcher 触发 `error`）。
+  - `VfsService` 移除监听条目并**记录失效时刻**；各 owner 的期望集合保持不变。**退避**：该 URI 仍留在某个 owner 的集合中时，60 秒内（`watchRetryBackoffMs` 选项）的 `setWatched` 不重建，退避结束后的下一次 `setWatched` 才重建；一旦它离开所有 owner 的集合（例如列表出错后被渲染端移出），退避记录清除，再次加入时立即重建。`dispose` 时清除。
+- **重建由渲染端负责**：收到属于当前集合的 `vfs.changed` 后，渲染端以同样的防抖重发完整集合，主进程据此重新建立仍然存在的目录的监听（不在退避中时）；被删除的目录列表变为出错，随即从监听集合中移除（退避随之清除）。目录在原路径重建后，列表一旦恢复为就绪（「重试」/ F5 / 窗口聚焦 / 重新展开），它重新进入监听集合，集合变化触发 `vfs.watch`，监听随之重建（e2e `watch: a directory deleted, re-created and retried is watched again`）。
+- **取消**（最终审查 I5）：目录查询的 `queryFn` 使用 TanStack Query 的 `signal`，中止时同步发送 `vfs.cancel`（requestId 同为 `dir:<uri>`）。TanStack Query 中止 signal 的时机：最后一个观察者离开（折叠、切换工作区、卸载视图）、有数据时被新的获取取代（`invalidateQueries` / `refetch` 的 `cancelRefetch`）、`resetQueries`（重试）、缓存回收——都在同一 key 的新请求发出之前同步发生，而同一窗口的 IPC 按发送顺序到达主进程、两个 handler 都在第一个 `await` 之前完成登记 / 取消，因此取消不会落到新请求上；请求结束后移除 abort 监听器，之后的中止不再发送。被取消的请求随后以 `FS_CANCELLED` 结束，TanStack Query 不把它记为错误（不显示错误行）。有单元测试（真实 `QueryClient` + 假 IPC，断言调用顺序与查询状态）。
+- 已知限制：
+  - 条目本身指向的目录被删除后又在原路径重建时，错误行不会立即消失——条目目录的父目录不在监听中，重建本身无人感知；需要「重试」/ F5 / 窗口重新获得焦点（距上次列出超过 2 秒）/ 重新展开（之后监听自动重建，见上）。真实子目录的重建由其父目录的监听感知。
+  - 监听在列表成功之后才建立（另有 200ms 防抖），列表返回到监听建立之间的变化只能靠刷新 / 之后的窗口聚焦或重新展开（距上次列出超过 2 秒时重新列出）发现。
+  - 监听出错但目录仍在的位置：退避结束后不会自动重建，要等集合下一次变化（展开 / 折叠其他目录、切换工作区等）触发 `setWatched`；期间的变化靠 F5 / 聚焦 / 重新展开 / UNC 轮询发现。真实子目录被删除后很快（约 300ms 防抖后该目录与父目录重新列出之前）又被重建时，它一直留在集合中，同样要等退避结束后的下一次 `setWatched` 才恢复监听。
+  - **监听句柄阻止上级目录改名 / 移动**（最终审查 I4，控制者已实机验证：Windows 11，node `fs.watch` + PowerShell `Rename-Item`）：监听 `A\B` 时，重命名或移动其上级 `A` 失败（拒绝访问）；重命名被监听目录自身、或被监听目录的子目录不受影响；只监听根目录时重命名其子目录正常。后果：资源树中展开了 `案件\設計書` 时，用户在资源管理器里把 `案件` 改名或移动会被拒绝。**待需求方决定**（未实现任何方案）：
+    1. 维持现状（实时更新优先）；
+    2. 每个条目根只建一个递归监听（`fs.watch(root, { recursive: true })`），展开的子目录不再各自持有句柄，只阻止条目根的上级改名；
+    3. 不使用 `fs.watch`，改为聚焦 / 展开时刷新 + 可选轮询（不阻止任何改名，失去实时性）。
 
 ### 7.2 各 Provider 要点
 
@@ -594,7 +609,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。默认工作区的 `name` 为空字符串时显示本地化名称；把它改名为空字符串即「恢复默认名称」，其他工作区改名为空 → `WORKSPACE_NAME_REQUIRED`（已实现，M1-2）。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
 
-工作区切换器（已实现，M1-2，`features/workspace`）：标题栏按钮显示当前工作区名称，下拉菜单含工作区列表（当前项打勾，选中即切换并关闭菜单）、新建工作区…、重命名当前工作区…、恢复默认名称（仅默认工作区且已改名时）、删除当前工作区…（默认工作区不显示）；欢迎页的「新建工作区」打开同一个对话框。新建 = `create` 后 `activate`（切换失败时提示「已创建但未能切换」并关闭对话框，避免再次提交重复创建）。**删除当前工作区时先切回默认工作区、成功后再删除**：主进程的 `workspace.delete` 不改变「当前工作区」，先删除会让 `last_opened_at` 最大的另一个工作区短暂成为当前工作区；切换失败则什么都不删。删除只删工作区与条目，确认框说明不会删除磁盘上的文件。
+工作区切换器（已实现，M1-2，`features/workspace`）：标题栏按钮显示当前工作区名称，下拉菜单含工作区列表（当前项打勾，选中即切换并关闭菜单）、新建工作区…、重命名当前工作区…、恢复默认名称（仅默认工作区且已改名时）、删除当前工作区…（默认工作区不显示）；欢迎页的「新建工作区」打开同一个对话框。新建 = `create` 后 `activate`（切换失败时提示「已创建但未能切换」并关闭对话框，避免再次提交重复创建）。**删除当前工作区时先切回默认工作区、成功后再删除**：主进程的 `workspace.delete` 不改变「当前工作区」，先删除会让 `last_opened_at` 最大的另一个工作区短暂成为当前工作区；切换失败则什么都不删。删除只删工作区与条目，确认框说明不会删除磁盘上的文件。重命名 / 删除对话框的目标在打开时锁定（工作区 id），对话框打开期间当前工作区变化（例如主进程事件）也只作用于打开时的工作区（最终审查 #51，e2e `workspace switcher: rename / delete dialogs act on the workspace they were opened for`）。
 
 ### 8.2 树的渲染
 
@@ -619,7 +634,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
   - dragstart **只设置自定义 MIME** `application/x-pch-node`（JSON），不设置 `text/uri-list`、`text/plain`、`DownloadURL`，`effectAllowed` 为 `move`（条目）/ `link`（真实子项）；拖出应用时没有任何目标能接受，不会生成文件。
   - 落点：行的上 25% 为 before、下 25% 为 after、中间且为分组时为 inside（非分组按 50% 分上下）；已展开且有可见子项的分组的 after 视为「放进该分组的第 0 位」（与画线位置一致）。真实节点、状态行、自身或自身的后代作为落点时 dragover 不 `preventDefault`（禁止光标，不触发 drop）。折叠的分组悬停时不自动展开。
   - 真实子项拖到根 / 分组 = 按 URI 添加（类型取自节点：目录与指向目录的链接为 folder）；新增条目总是追加到父节点末尾（`entry.add` 没有位置参数，before / after 只决定父节点）。
-  - **系统拖入只用 `copy` / `link`**：`dataTransfer.types` 含 `Files` 时视为系统来源，`dropEffect` 绝不设为 `move`（`move` 会让资源管理器把原文件移走）；`effectAllowed` 只允许 move 时不接受放置。路径经 preload 的 `getPathForFile` 取得，先按 folder 添加，`ENTRY_KIND_MISMATCH` 时改按 file。没有条目时的空状态也接受系统拖入（添加到根）。系统文件落在不接受的位置时，主进程的 `will-navigate` 拦截会阻止窗口导航到该文件。
+  - **系统拖入只用 `copy` / `link`**：`dataTransfer.types` 含 `Files` 时视为系统来源，`dropEffect` 绝不设为 `move`（`move` 会让资源管理器把原文件移走）；`effectAllowed` 只允许 move 时不接受放置。路径经 preload 的 `getPathForFile` 取得，先按 folder 添加，`ENTRY_KIND_MISMATCH` 时改按 file。没有条目时的空状态也接受系统拖入（添加到根）。系统文件落在不接受的位置时不会导航到该文件：主防线是 Electron 的 `webPreferences.navigateOnDragDrop` 默认 `false`（`electron.d.ts`：「Whether dragging and dropping a file or link onto the page causes a navigation. Default is `false`.」，本项目未改动该选项），主进程的 `will-navigate` 拦截（`windows/security.ts`）是第二道防线。
+  - 空状态的「添加文件夹」（系统对话框多选）与树空白处菜单一样经拖放的执行器逐项添加：某项失败只提示该项，其余项照常添加（最终审查 #29，e2e `empty state: adding several folders keeps going after one of them fails`）。
 - **右键菜单**（Base UI ContextMenu；菜单项由纯函数 `menuItemsFor(node)` 决定）：
 
   | 节点 | 菜单项 |
@@ -632,7 +648,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
   右键同时选中该节点；菜单与对话框关闭后焦点回到树。复制路径由渲染端把 file URI 转为 Windows 路径（`lib/file-uri.ts`，非 file URI 时不显示该项）后经 `system.copyText` 写入剪贴板。重命名 / 新建分组的对话框预填并全选名称；移除用 AlertDialog（默认焦点在「取消」），文案明确「只移除条目，不会删除磁盘上的文件或文件夹」（分组说明连同其下所有条目一起移除）。对话框打开期间条目已被删除：移除静默关闭（目标已达成），重命名提示错误后关闭。没有条目的工作区显示空状态，提供「添加文件夹」「新建分组」按钮。
 - **已知限制 / 待需求方决定**：
-  - 从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，Chromium 可能先在 %TEMP% 中生成副本，`getPathForFile` 返回该副本的路径，条目会指向这个临时副本（未经真机验证）。是否拒绝临时目录下的路径待需求方决定——拒绝会同时阻止把 %TEMP% 下的目录固定为条目（例如查看日志）。
+  - **虚拟文件拖入**（未经真机验证）：从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，副本由 Chromium 在浏览器进程中写入临时目录，`getPathForFile` 返回该副本的路径，条目会指向这个临时副本。副本只在我们的 dragover 接受了放置（`preventDefault` + `copy`）之后、drop 时才写出；拖放事件中拿不到路径，dragover 阶段也分不出是否为虚拟文件，因此「拒绝 %TEMP% 下的路径」挡不住副本本身被写出（应用自身不写任何文件）。**待需求方决定**：(a) 接受 Chromium 写临时副本，照常添加（现状）；(b) 写出副本后拒绝固定的临时路径（副本仍会产生；识别方式可考虑 Chromium 临时子目录的命名特征，需实机确认；按 %TEMP% 整体拒绝会同时阻止把 %TEMP% 下的目录固定为条目，例如查看日志）；(c) 完全不接受系统拖入，只保留系统对话框。
+  - 隐藏文件只按名称以 `.` 开头判断（Windows 的隐藏 / 系统属性需要原生 API，引入 koffi 后补充）；新增条目总是追加到父节点末尾（before / after 的画线位置会误导）；`system.openPath`（用系统应用打开）会直接执行 `.exe` / `.bat` / `.lnk` 等可执行文件（计划如此）。是否调整待需求方决定。
   - 从系统资源管理器真实拖入未自动化（Playwright 无法产生带真实路径的系统拖放，合成的 File 经 `getPathForFile` 得到空字符串），只有 `resolveDrop` 的单元测试，需需求方手动确认。
   - 映射盘符转 UNC、用 Menu 键 / Shift+F10 打开所选节点的菜单尚未实现。
 
@@ -648,7 +665,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 所有资源都提供：手动刷新（工具栏按钮 / F5）；窗口重新获得焦点时刷新可见的目录列表。网络路径与 FTP/SFTP 在设置 `remote.pollIntervalSec` > 0 时对已展开的目录轮询（默认 0，不轮询）。
 
-**已实现（M1-2）**：本地与网络路径（UNC、映射盘）都用 `fs.watch` 监听资源树中已展开的目录（机制与限制见 7.1 节）；「已打开的目录标签」随 M1-3 加入监听集合。目录被删除或改名时，该目录的监听自动解除，若它是条目本身则显示「找不到」错误行，若是真实子目录则随父目录的重新列出而消失，其他节点不受影响（错误行与子项消失已有 e2e；监听的解除见 Task 3 的单元测试；改名无 e2e）。窗口重新获得焦点时刷新：目录查询使用 `refetchOnWindowFocus: 'always'`（全局默认 `staleTime: Infinity` 下写 `true` 不会触发；未做 e2e）。轮询：URI 带主机名（UNC）且 `remote.pollIntervalSec` > 0 时按该间隔重新列出；映射盘符被视为本地（识别映射盘需要 Windows API），不轮询。
+**已实现（M1-2）**：本地与网络路径（UNC、映射盘）都用 `fs.watch` 监听资源树中已展开的目录（机制与限制见 7.1 节）；「已打开的目录标签」随 M1-3 加入监听集合。目录被删除或改名时，该目录的监听自动解除，若它是条目本身则显示「找不到」错误行，若是真实子目录则随父目录的重新列出而消失，其他节点不受影响（错误行与子项消失已有 e2e；监听的解除见 Task 3 的单元测试；改名无 e2e）。**重新列出（最终审查 I1 / I2）**：TanStack Query 的 focusManager 默认只监听 `visibilitychange`，Electron 中 Alt+Tab 切走再回来时页面一直可见、不会触发，因此 `lib/query-client.ts` 用 `focusManager.setEventListener` 同时监听 `window` 的 `focus` 与 `visibilitychange`（全局默认仍为 `refetchOnWindowFocus: false`，只影响显式开启的查询）。目录查询（`data/vfs.ts` 的 `directoryQuery`）单独设 `staleTime: 2000`、`refetchOnMount: true`、`refetchOnWindowFocus: true`：距上次列出超过 2 秒时，窗口重新获得焦点、再次展开折叠过的目录、切回侧栏视图或工作区都会重新列出（期间先显示缓存）；2 秒以内不重复列出（节流快速折叠展开与频繁切换窗口）。这弥补了监听覆盖不到的情况：被折叠的目录、不在当前工作区的目录已移出监听集合，此前在全局 `staleTime: Infinity` 下会显示 gcTime（5 分钟）内的旧缓存且不重新获取。e2e：`focus: an unwatched directory that changed is re-listed when the window regains focus`（以 `window.dispatchEvent(new Event('focus'))` 触发，与真实聚焦走同一个监听器；Playwright 默认开启 CDP 的焦点模拟，页面收不到真实的 focus / blur，真实 Alt+Tab 未验证）、`collapse: changes made while a directory was collapsed appear when it is expanded again`、`workspace switch: directories are re-listed when switching back to a workspace`。轮询：URI 带主机名（UNC）且 `remote.pollIntervalSec` > 0 时按该间隔重新列出；映射盘符被视为本地（识别映射盘需要 Windows API），不轮询。
 
 ---
 
@@ -941,7 +958,7 @@ export interface SessionSnapshot {
 
 主进程事件到缓存失效的桥接集中在 `lib/query-client.ts`：例如收到 `vfs.changed` 就让 `['vfs','list',uri]` 失效，收到 `settings.changed` 就更新 `['settings']` 的缓存。业务组件不直接订阅 IPC 事件。
 
-已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），只有目录列表单独开启聚焦刷新（8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId，新请求取代主进程中未完成的旧请求。例外：`useWatchDirectories` 自己订阅 `vfs.changed`，用于在监听失效后重发监听集合（7.1 节），不涉及缓存。
+已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），只有目录列表单独设 2 秒新鲜期并开启重新挂载 / 聚焦时重新列出（focusManager 同时监听 `focus` 与 `visibilitychange`，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId，新请求取代主进程中未完成的旧请求；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。例外：`useWatchDirectories` 自己订阅 `vfs.changed`，用于在监听失效后重发监听集合（7.1 节），不涉及缓存。
 
 ### 12.2 界面布局
 
@@ -1166,7 +1183,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、目录监听（新建 / 删除）、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、目录监听（新建 / 删除）、聚焦 / 折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
@@ -1203,10 +1220,11 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果可手动刷新；启动时重新检测 |
 | Excel 不能同时打开两个同名工作簿 | 远程缓存副本与本地同名文件冲突 | 属 Office 自身限制，检测到同名已打开时给出提示 |
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
-| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；已发出的单个系统调用无法中止） |
+| 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；折叠 / 切换工作区等不再需要的目录列表由渲染端自动取消；已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
-| 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 可能在 %TEMP% 生成副本（未经真机验证） | 条目指向会被清理的临时副本 | 现状：照常添加；是否拒绝临时目录下的路径待需求方决定（会同时阻止把 %TEMP% 固定为条目），见 8.2 节 |
-| 网络共享上的 `fs.watch` 依赖服务器的变更通知，可能静默失效 | 网络目录不自动刷新 | 手动刷新 / F5、窗口聚焦刷新、`remote.pollIntervalSec` 轮询兜底 |
+| 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 条目指向会被清理的临时副本 | 现状：照常添加；三个选项（照常添加 / 写出后拒绝临时路径 / 不接受系统拖入）待需求方决定，见 8.2 节 |
+| 网络共享上的 `fs.watch` 依赖服务器的变更通知，可能静默失效或异步报错 | 网络目录不自动刷新 | 监听报错但目录仍在时只解除监听、60 秒内不重建（不会循环重列，7.1 节）；手动刷新 / F5、窗口聚焦与重新展开时重新列出（距上次超过 2 秒）、`remote.pollIntervalSec` 轮询兜底 |
+| `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（已实机验证） | 展开 `案件\設計書` 时无法在资源管理器中改名 / 移动 `案件` | 现状：维持；候选（递归监听条目根 / 不用 `fs.watch` 改为刷新 + 轮询）待需求方决定，见 7.1 节 |
 
 ---
 

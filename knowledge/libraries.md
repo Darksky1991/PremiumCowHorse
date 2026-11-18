@@ -56,13 +56,23 @@
 - 解决：把常量、context、hook 拆到独立文件（如 `providers/theme-context.ts`、`features/shell/languages.ts`）。
 - 预防：组件文件只导出组件。
 
-### TanStack Query：`staleTime: Infinity` 下 `refetchOnWindowFocus: true` 不会触发
+### TanStack Query：Electron 中窗口聚焦刷新不触发；`staleTime: Infinity` 下重新挂载不重新获取
 
-- 日期：2026-11-18
-- 症状：（M1-2 Task 5 实现时发现）目录列表需要「窗口重新获得焦点时刷新」，按计划写 `refetchOnWindowFocus: true` 时聚焦不会重新获取。
-- 原因：`true` 的含义是「聚焦时若数据已过期（stale）则重新获取」；本项目全局 `staleTime: Infinity`（数据来自本机主进程，由事件推送变化），数据永远不过期。
-- 解决：`refetchOnWindowFocus: 'always'`（`renderer/src/data/vfs.ts` 的 `useDirectories`）。
-- 预防：全局 `staleTime: Infinity` 时，「按条件重新获取」的选项（`refetchOnWindowFocus`、`refetchOnMount`、`refetchOnReconnect`）要用 `'always'` 才生效。聚焦刷新目前未做 e2e。
+- 日期：2026-11-18（2026-11-19 修订：原「用 `'always'` 即可」的结论被 M1-2 最终审查推翻）
+- 症状：目录列表需要「窗口重新获得焦点时刷新」。最初按计划写 `refetchOnWindowFocus: true` 不触发，改为 `'always'` 后以为生效（未做 e2e）；最终审查指出 Alt+Tab 切走再回来仍不会重新获取，且折叠后再展开、切回工作区时显示的是 gcTime（5 分钟）内的旧缓存。
+- 原因：
+  1. 事件来源：query-core 的 focusManager（`focusManager.ts`）默认**只监听 `visibilitychange`**。Electron 中切到其他窗口时页面一直可见，只有 `window` 的 `focus` / `blur`，focusManager 收不到任何通知，`'always'` 也无从触发。
+  2. 过期判定：`true` 的含义是「若数据已过期（stale）则重新获取」，`refetchOnMount` 同理（默认 `true`）；全局 `staleTime: Infinity` 下数据永不过期，重新挂载与聚焦都不重新获取。
+- 解决：`lib/query-client.ts` 用 `focusManager.setEventListener` 同时监听 `window` 的 `focus` 与 `visibilitychange`（回调不带参数，由 focusManager 按 `document.visibilityState` 判断）；目录查询（`data/vfs.ts` 的 `directoryQuery`）单独设 `staleTime: 2000`、`refetchOnMount: true`、`refetchOnWindowFocus: true`，全局默认不变。单元测试（`focusListenerSetup`、`directoryQuery` 的新鲜期）与 e2e（聚焦 / 折叠后再展开 / 切回工作区）覆盖，并做过篡改验证。
+- 预防：在 Electron 中依赖「聚焦」的行为要先确认 focusManager 的事件来源；全局 `staleTime: Infinity` 时，需要「重新挂载 / 聚焦时重新获取」的查询单独设有限的 `staleTime`。`'always'` 只解决过期判定，不解决事件来源。e2e 中真实的 focus / blur 被 Playwright 的焦点模拟屏蔽（见 `testing.md`），用 `window.dispatchEvent(new Event('focus'))` 触发。
+
+### TanStack Query：queryFn 的 `signal` 何时中止（取消主进程中的请求）
+
+- 日期：2026-11-19
+- 症状：（M1-2 最终审查 I5）queryFn 不使用 `signal`，展开慢速网络目录后立刻折叠，主进程仍继续 lstat 最长 30 秒、占满 libuv 线程池。
+- 原因：query-core（5.107，`query.ts`）只在 queryFn 读取过 `signal`（`#abortSignalConsumed`）时，才会在最后一个观察者离开时真正取消请求；不读取则只停止重试，请求继续。
+- 解决：queryFn 接收 `{ signal }`，abort 时发送 `vfs.cancel`（`data/vfs.ts` 的 `listDirectory`）。中止时机（均同步发生在同一 key 的新请求发出之前）：最后一个观察者离开（`removeObserver` → `cancel({ revert: true })`）、有数据时被新的获取取代（`fetch` 的 `cancelRefetch`，`invalidateQueries` / `refetch` 默认开启）、`resetQueries`（`reset()` → `destroy()` → `cancel({ silent: true })`）、缓存回收。被取消的请求随后的失败被忽略，不变成 error 状态。
+- 预防：需要取消的 queryFn 必须读取 `signal`；「取消旧请求」与「新请求」共用 requestId 时，确认取消一定先于新请求发出，并在请求结束后移除 abort 监听器。
 
 ### TanStack Query：重新获取失败时保留旧 data，先看 data 会一直显示旧列表
 

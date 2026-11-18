@@ -83,7 +83,15 @@
 - 症状：（预防性）展开目录后立刻在磁盘上新建文件，可能发生在监听建立之前而不被感知，用例偶发失败。
 - 原因：渲染端在监听集合变化后 200ms 防抖才发送 `vfs.watch`，列目录请求则立即发出。
 - 解决：展开并看到子项后 `page.waitForTimeout(1000)` 再改磁盘（`e2e/explorer.spec.ts`）；有效性用「渲染端不发送 vfs.watch」的篡改确认（用例失败）。
-- 预防：不要靠窗口聚焦让用例通过——聚焦刷新会掩盖监听失效。
+- 预防：不要靠窗口聚焦让用例通过——聚焦刷新会掩盖监听失效。2026-11-19 聚焦刷新实际生效后（目录列表 2 秒新鲜期），重新做了「渲染端不发送 vfs.watch」的篡改：三个 `watch:` 用例仍然失败，聚焦刷新没有掩盖监听失效（Playwright 下页面收不到真实的 focus，见下一条）。
+
+### e2e：Playwright 默认开启焦点模拟，页面收不到真实的 focus / blur
+
+- 日期：2026-11-19
+- 症状：（M1-2 最终审查修复）想用真实聚焦验证「窗口重新获得焦点时刷新」：在主进程中 `BrowserWindow.blur()` / `focus()` / `minimize()` / `restore()`，或用系统级鼠标点击在两个窗口间切换，页面上 `window` 的 `focus` / `blur` 与 `visibilitychange` 一个都没有收到。
+- 原因：playwright-core 1.65 在主 frame 上发送 CDP `Emulation.setFocusEmulationEnabled { enabled: true }`（`coreBundle.js`），页面始终认为自己已聚焦。用 `page.context().newCDPSession(page)` 关闭焦点模拟后能收到一次 `blur`，但本环境中系统级点击不改变窗口焦点（`BrowserWindow.isFocused()` 不变），仍无法得到真实的 `focus`。
+- 解决：e2e 用 `page.evaluate(() => window.dispatchEvent(new Event('focus')))` 触发，与真实聚焦走同一个监听器（`focusManager.setEventListener` 注册在 `window` 上）；真实 Alt+Tab 记为未验证。
+- 预防：依赖焦点事件的行为不要假设 Playwright 能产生真实焦点切换；合成事件之外的验证需要手动或脱离 Playwright 进行。
 
 ### e2e：菜单项的无障碍名称包含快捷键文字；菜单 / 对话框打开时页面其余部分是 inert
 
