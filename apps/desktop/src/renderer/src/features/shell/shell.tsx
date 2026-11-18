@@ -1,8 +1,8 @@
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { useEffect } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@pch/ui/components/resizable'
-import { useUiStore } from '@renderer/stores/ui-store'
+import { useUiStore, type SidebarView } from '@renderer/stores/ui-store'
 import { ActivityBar } from './components/activity-bar'
 import { SideBar } from './components/side-bar'
 import { StatusBar } from './components/status-bar'
@@ -10,16 +10,24 @@ import { TitleBar } from './components/title-bar'
 import { Welcome } from './components/welcome'
 import { useShellShortcuts } from './use-shell-shortcuts'
 
+export interface ShellProps {
+  /** 各侧栏视图的内容，由 app/ 组合（feature 之间不互相 import） */
+  sidebarViews: Record<SidebarView, ReactNode>
+  /** 标题栏中的工作区切换器 */
+  workspaceSwitcher: ReactNode
+}
+
 /**
  * 主窗口整体布局（架构文档 12.2 节）：
  * 标题栏 / 活动栏 + 可调宽侧栏 + 内容区 / 状态栏。
  * 标签栏与 PreviewContainer 在 M1–M2 接入内容区，没有标签时显示欢迎页。
  */
-export function Shell(): JSX.Element {
+export function Shell({ sidebarViews, workspaceSwitcher }: ShellProps): JSX.Element {
   useShellShortcuts()
   const sidebarRef = usePanelRef()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUiStore((s) => s.setSidebarCollapsed)
+  const view = useUiStore((s) => s.sidebarView)
 
   // store → 面板：活动栏点击、Ctrl+B
   useEffect(() => {
@@ -31,7 +39,7 @@ export function Shell(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <TitleBar />
+      <TitleBar workspaceSwitcher={workspaceSwitcher} />
       <div className="flex min-h-0 flex-1">
         <ActivityBar />
         <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
@@ -46,7 +54,7 @@ export function Shell(): JSX.Element {
             // 面板 → store：拖拽到最小宽度以下时自动折叠
             onResize={() => setCollapsed(sidebarRef.current?.isCollapsed() ?? false)}
           >
-            <SideBar />
+            <SideBar view={view}>{sidebarViews[view]}</SideBar>
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel id="content" minSize="30">

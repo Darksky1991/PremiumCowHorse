@@ -29,6 +29,15 @@ export function bridgeMainEvents(client: QueryClient): () => void {
     }),
     subscribe('window.stateChanged', (state) => {
       client.setQueryData(queryKeys.windowState, state)
+    }),
+    // 工作区或其条目变化：工作区列表 / 当前工作区整体失效，对应工作区的条目失效
+    subscribe('workspace.changed', ({ id }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.workspaceRoot })
+      void client.invalidateQueries({ queryKey: queryKeys.entries(id) })
+    }),
+    // 被监听目录的内容变化：重新列出该目录
+    subscribe('vfs.changed', ({ uri }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.directory(uri) })
     })
   ]
   return () => offs.forEach((off) => off())

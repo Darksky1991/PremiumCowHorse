@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@pch/ui/components/button'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
 import { Separator } from '@pch/ui/components/separator'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
 import { notifyComingSoon } from '../coming-soon'
 
 /**
@@ -12,6 +13,7 @@ import { notifyComingSoon } from '../coming-soon'
  */
 export function Welcome(): JSX.Element {
   const { t, i18n } = useTranslation(['welcome', 'common'])
+  const { data: active } = useActiveWorkspace()
   const soon = (): void => notifyComingSoon(i18n)
 
   const actions: { icon: LucideIcon; label: string }[] = [
@@ -29,7 +31,9 @@ export function Welcome(): JSX.Element {
     <div className="h-full overflow-auto bg-background">
       <div className="flex max-w-3xl flex-col gap-10 px-14 pt-16 pb-10">
         <header className="flex flex-col gap-3">
-          <h1 className="text-5xl font-semibold tracking-tight">{t('common:defaultWorkspace')}</h1>
+          <h1 className="text-5xl font-semibold tracking-tight">
+            {active ? workspaceDisplayName(active, t('common:defaultWorkspace')) : null}
+          </h1>
           <p className="max-w-prose text-muted-foreground">{t('subtitle')}</p>
         </header>
 
