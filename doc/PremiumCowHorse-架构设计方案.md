@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.5　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.6　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.6 变更（M1-2 开工前的决策）：资源树的拖放只管理自定义条目、绝不产生文件操作；树内拖动用浏览器原生拖放；列目录时解析符号链接 / 目录联接的目标类型；可把真实子目录「固定」为条目（条目也可按 URI 添加）；复制路径的格式；外壳通过插槽组合各 feature。涉及 5.3、7.1、8.2 节
 > v1.5 变更（M1-1 数据层完成）：工作区 / 条目的存储与规则、VFS（LocalProvider、VfsService）与对应 IPC 已实现；更新 5.2、6.1、6.3、6.6、7.1、7.2、8.1、13 节的「已实现」标注与细节
 > v1.4 变更（M1 开工前的决策）：标签状态在 M1 即按最终设计由主进程的 layoutReducer 持有（先支持单窗口）；M1 实现最小插件体系（PreviewContainer + 只含 folder 的注册表）；内置插件合并为单个 `plugins/builtin` 包；目录变更感知改用 Node 内置 `fs.watch`（不引入 chokidar），并明确网络路径与 FTP/SFTP 的刷新策略。涉及 2.5、3.2、3.3、5.1、8.3、18 节
 > v1.3 变更（M0 完成）：Windows 下不再使用系统窗口按钮（Window Controls Overlay），改为自绘窗口按钮；分发形式改为 zip 免安装文件夹版（不提供安装程序）；新增第 20 节「文档与知识管理」；修正 5.2、6.1、6.2、6.3、12.2、14.2、14.3、16.4 等处与实现不一致的描述；目录结构区分「目标结构」与「M0 已实现」
@@ -304,7 +305,7 @@ apps/desktop/src/renderer/
 
 M0 已实现：`app/`、`features/shell/`、`data/`、`lib/`、`providers/`、`stores/`、`styles/`。
 
-切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`）。
+切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`）。外壳（`features/shell`）以插槽（props）接收侧栏视图、标题栏中的工作区切换器等，由 `app/` 负责把各个 feature 组合进去。
 
 ### 5.4 命名与编码约定
 
@@ -501,6 +502,8 @@ export interface FileEntry {
 
 已实现的是上面接口的子集（`stat`、`list`、`dispose`；`createReadStream` 于 M2、`watch` 于 M1-2 增加）。`VfsService` 负责按 scheme 路由、统一超时（默认 30 秒，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）、对目录变更发布 `vfs.changed` 事件（M1-2）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
+`FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次，资源树据此判断能否展开。监听（M1-2）：渲染端按窗口告知主进程「当前需要监听的目录集合」（`vfs.watch`），主进程增量维护各目录的监听（窗口关闭时自动清除），变化防抖后广播 `vfs.changed`。
+
 ### 7.2 各 Provider 要点
 
 **LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，目标类型待 M1-2 决定如何提供）；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
@@ -574,9 +577,12 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 主要交互：
 
-1. 从系统资源管理器拖入文件或文件夹：preload 的 `getPathForFile` 取得路径，stat 后创建 `file` 或 `folder` 条目。
-2. 将真实子目录拖到工作区根部：「固定」为新条目，适合把深层常用目录提到顶层。
-3. 右键菜单：打开、在新窗口打开、用系统应用打开、在资源管理器中显示、复制路径（本地路径 / UNC / URI 三种格式，方便贴进邮件和工单）、重命名条目、移除条目（只移除条目，不删除真实文件，界面上明确说明）。
+**拖放的原则：只管理自定义条目，绝不对真实文件做任何操作（移动、复制、删除、新建等）。** 拖放用浏览器原生拖放实现（与从系统拖入是同一套机制，不引入拖放库）。真实目录中的节点不接受放置；从应用拖到系统资源管理器也不会产生文件。
+
+1. 从系统资源管理器拖入文件或文件夹：preload 的 `getPathForFile` 取得路径，stat 后创建 `file` 或 `folder` 条目（只新增条目，不复制文件）。
+2. 将真实子目录或文件拖到工作区根部或某个分组：「固定」为新条目（按 URI 添加），适合把深层常用目录提到顶层；原文件不移动。
+3. 拖动条目：调整同级顺序，或放进 / 移出分组（只修改条目的父节点与顺序）。
+4. 右键菜单：打开、在新窗口打开、用系统应用打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 Windows API，引入 koffi 时补充）、新建分组、重命名条目、移除条目（只移除条目，不删除真实文件，界面上明确说明）。「打开」「在新窗口打开」随 M1-3 的标签实现。
 
 ### 8.3 变更感知
 
