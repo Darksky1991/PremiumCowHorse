@@ -39,16 +39,26 @@ export function useDirectories(uris: string[]): Map<string, DirectoryState> {
   const map = new Map<string, DirectoryState>()
   uris.forEach((uri, i) => {
     const r = results[i]
-    if (!r) return
-    if (r.data !== undefined) map.set(uri, { status: 'ready', items: r.data })
-    else if (r.isError) {
-      map.set(uri, {
-        status: 'error',
-        code: r.error instanceof AppError ? r.error.code : 'UNKNOWN'
-      })
-    } else map.set(uri, { status: 'loading' })
+    if (r) map.set(uri, directoryState(r))
   })
   return map
+}
+
+/**
+ * 一个目录查询的结果 → 树使用的状态。
+ * 错误优先于数据：TanStack Query 在重新获取失败时保留上一次的 data，若先看 data，
+ * 展开中被删除 / 断开的目录会一直显示旧列表（vfs.changed、F5 都无效），而不是「找不到」等错误行。
+ */
+export function directoryState(r: {
+  data: FileEntry[] | undefined
+  isError: boolean
+  error: unknown
+}): DirectoryState {
+  if (r.isError) {
+    return { status: 'error', code: r.error instanceof AppError ? r.error.code : 'UNKNOWN' }
+  }
+  if (r.data !== undefined) return { status: 'ready', items: r.data }
+  return { status: 'loading' }
 }
 
 const WATCH_DEBOUNCE_MS = 200

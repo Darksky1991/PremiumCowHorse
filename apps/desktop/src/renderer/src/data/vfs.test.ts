@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createWatchScheduler, isNetworkUri } from './vfs'
+import { AppError, type FileEntry } from '@pch/shared'
+import { createWatchScheduler, directoryState, isNetworkUri } from './vfs'
 
 describe('isNetworkUri', () => {
   it('带主机名的 file URI（UNC）是网络路径', () => {
@@ -67,5 +68,40 @@ describe('createWatchScheduler', () => {
     expect(send).toHaveBeenCalledWith([])
     vi.advanceTimersByTime(1000)
     expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('directoryState', () => {
+  const items: FileEntry[] = []
+
+  it('首次获取中为 loading，成功后为 ready', () => {
+    expect(directoryState({ data: undefined, isError: false, error: null })).toEqual({
+      status: 'loading'
+    })
+    expect(directoryState({ data: items, isError: false, error: null })).toEqual({
+      status: 'ready',
+      items
+    })
+  })
+
+  it('获取失败时为 error，并取出错误码', () => {
+    const error = new AppError({ code: 'FS_NOT_FOUND' })
+    expect(directoryState({ data: undefined, isError: true, error })).toEqual({
+      status: 'error',
+      code: 'FS_NOT_FOUND'
+    })
+    expect(directoryState({ data: undefined, isError: true, error: new Error('x') })).toEqual({
+      status: 'error',
+      code: 'UNKNOWN'
+    })
+  })
+
+  it('已列出过的目录重新获取失败（展开中被删除）时显示错误，而不是沿用旧列表', () => {
+    // TanStack Query 在重新获取失败时保留上一次的 data
+    const error = new AppError({ code: 'FS_NOT_FOUND' })
+    expect(directoryState({ data: items, isError: true, error })).toEqual({
+      status: 'error',
+      code: 'FS_NOT_FOUND'
+    })
   })
 })
