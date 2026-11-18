@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { watch as fsWatch } from 'node:fs'
 import type { Dirent, Stats } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -42,6 +43,22 @@ export class LocalProvider implements FileSystemProvider {
     } catch (e) {
       throw toAppError(e)
     }
+  }
+
+  watch(uri: URL, onChange: () => void): { close(): void } {
+    let watcher: ReturnType<typeof fsWatch> | null = null
+    const close = (): void => {
+      watcher?.close()
+      watcher = null
+    }
+    try {
+      watcher = fsWatch(fileURLToPath(uri), { persistent: false }, () => onChange())
+      // Windows 上目录被删除或失去访问权限时会发出 error：关闭自身，不向上抛出
+      watcher.on('error', close)
+    } catch {
+      // 路径不存在、无权限或不是目录：视为不可监听
+    }
+    return { close }
   }
 
   async dispose(): Promise<void> {

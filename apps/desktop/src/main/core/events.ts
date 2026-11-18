@@ -5,4 +5,6 @@ export interface MainEvents extends Record<string, unknown> {
   'settings.changed': Partial<Settings>
   /** 工作区或其条目发生变化（id 为工作区 id） */
   'workspace.changed': { id: string }
+  /** 被监听的目录内容发生变化（已防抖） */
+  'vfs.changed': { uri: string }
 }

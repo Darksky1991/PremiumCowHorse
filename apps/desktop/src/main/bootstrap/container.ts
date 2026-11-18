@@ -37,7 +37,9 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const bus = new EventBus<MainEvents>()
 
   const settings = await SettingsService.create(new SettingsRepo(db), bus)
-  const vfs = new VfsService([new LocalProvider()])
+  const vfs = new VfsService([new LocalProvider()], {
+    onDirectoryChanged: (uri) => bus.emit('vfs.changed', { uri })
+  })
   const workspaces = new WorkspaceService(db, vfs, bus)
   const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
   const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))

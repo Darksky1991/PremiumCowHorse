@@ -8,5 +8,7 @@ export interface FileSystemProvider {
   readonly scheme: 'file'
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>
+  /** 监听目录内容变化（不区分具体事件）；无法监听时返回空操作句柄，不抛出 */
+  watch?(uri: URL, onChange: () => void): { close(): void }
   dispose(): Promise<void>
 }

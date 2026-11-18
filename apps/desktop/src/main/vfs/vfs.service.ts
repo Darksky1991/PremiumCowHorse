@@ -3,6 +3,13 @@ import { toAppError } from './errors'
 import type { FileSystemProvider } from './types'
 
 const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_WATCH_DEBOUNCE_MS = 300
+
+interface WatchEntry {
+  handle: { close(): void }
+  owners: Set<number>
+  timer?: ReturnType<typeof setTimeout>
+}
 
 /**
  * 按 URI 的 scheme 路由到 provider，并统一处理取消与超时。
@@ -13,10 +20,24 @@ export class VfsService {
   private readonly providers = new Map<string, FileSystemProvider>()
   private readonly requests = new Map<string, AbortController>()
   private readonly timeoutMs: number
+  private readonly watchDebounceMs: number
+  private readonly onDirectoryChanged?: (uri: string) => void
+  /** 以 URI 字符串为 key 的活动监听（按 owner 引用计数） */
+  private readonly watches = new Map<string, WatchEntry>()
+  private readonly ownerUris = new Map<number, Set<string>>()
 
-  constructor(providers: FileSystemProvider[], opts: { timeoutMs?: number } = {}) {
+  constructor(
+    providers: FileSystemProvider[],
+    opts: {
+      timeoutMs?: number
+      onDirectoryChanged?: (uri: string) => void
+      watchDebounceMs?: number
+    } = {}
+  ) {
     for (const p of providers) this.providers.set(`${p.scheme}:`, p)
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.watchDebounceMs = opts.watchDebounceMs ?? DEFAULT_WATCH_DEBOUNCE_MS
+    this.onDirectoryChanged = opts.onDirectoryChanged
   }
 
   /** 进行中的可取消请求数（诊断用） */
@@ -37,10 +58,68 @@ export class VfsService {
     this.requests.get(requestId)?.abort()
   }
 
+  /**
+   * 以集合替换某 owner（窗口）的监听目录；同一 URI 在多个 owner 间共享一个监听。
+   * 不支持监听的 scheme、无法解析的 URI 静默忽略。
+   */
+  setWatched(ownerId: number, uris: string[]): void {
+    const next = new Set(uris)
+    const prev = this.ownerUris.get(ownerId) ?? new Set<string>()
+    for (const uri of prev) if (!next.has(uri)) this.unwatch(ownerId, uri)
+    const kept = new Set<string>()
+    for (const uri of next) if (this.watch(ownerId, uri)) kept.add(uri)
+    if (kept.size > 0) this.ownerUris.set(ownerId, kept)
+    else this.ownerUris.delete(ownerId)
+  }
+
+  releaseOwner(ownerId: number): void {
+    this.setWatched(ownerId, [])
+  }
+
   async dispose(): Promise<void> {
     for (const c of this.requests.values()) c.abort()
     this.requests.clear()
+    for (const entry of this.watches.values()) this.closeEntry(entry)
+    this.watches.clear()
+    this.ownerUris.clear()
     await Promise.all([...this.providers.values()].map((p) => p.dispose()))
+  }
+
+  private watch(ownerId: number, uri: string): boolean {
+    const existing = this.watches.get(uri)
+    if (existing) {
+      existing.owners.add(ownerId)
+      return true
+    }
+    const url = URL.canParse(uri) ? new URL(uri) : null
+    const provider = url && this.providers.get(url.protocol)
+    if (!url || !provider?.watch) return false
+    const entry: WatchEntry = { handle: { close: () => undefined }, owners: new Set([ownerId]) }
+    // 同一 URI 在防抖窗口内的多次变化合并为一次回调
+    entry.handle = provider.watch(url, () => {
+      clearTimeout(entry.timer)
+      entry.timer = setTimeout(() => {
+        entry.timer = undefined
+        this.onDirectoryChanged?.(uri)
+      }, this.watchDebounceMs)
+    })
+    this.watches.set(uri, entry)
+    return true
+  }
+
+  private unwatch(ownerId: number, uri: string): void {
+    const entry = this.watches.get(uri)
+    if (!entry) return
+    entry.owners.delete(ownerId)
+    if (entry.owners.size === 0) {
+      this.closeEntry(entry)
+      this.watches.delete(uri)
+    }
+  }
+
+  private closeEntry(entry: WatchEntry): void {
+    clearTimeout(entry.timer)
+    entry.handle.close()
   }
 
   private async run<T>(

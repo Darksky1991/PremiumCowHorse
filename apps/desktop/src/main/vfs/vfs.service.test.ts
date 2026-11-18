@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FileEntry, FileStat } from '@pch/shared'
 import type { FileSystemProvider } from './types'
 import { VfsService } from './vfs.service'
@@ -58,5 +58,80 @@ describe('VfsService', () => {
 
   it('cancelling an unknown id is a no-op', () => {
     expect(() => new VfsService([]).cancel('nope')).not.toThrow()
+  })
+})
+
+/** 记录 watch / close 调用的假 provider */
+class WatchProvider extends HangingProvider {
+  readonly watched: string[] = []
+  readonly closed: string[] = []
+  readonly triggers = new Map<string, () => void>()
+  watch(uri: URL, onChange: () => void): { close(): void } {
+    this.watched.push(uri.href)
+    this.triggers.set(uri.href, onChange)
+    return { close: () => void this.closed.push(uri.href) }
+  }
+}
+
+describe('VfsService watching', () => {
+  const A = 'file:///c:/a'
+  const B = 'file:///c:/b'
+  afterEach(() => vi.useRealTimers())
+
+  it('shares one watch between owners and closes it after the last release', () => {
+    const p = new WatchProvider()
+    const vfs = new VfsService([p])
+    vfs.setWatched(1, [A])
+    vfs.setWatched(2, [A])
+    expect(p.watched).toHaveLength(1)
+    vfs.releaseOwner(1)
+    expect(p.closed).toHaveLength(0)
+    vfs.releaseOwner(2)
+    expect(p.closed).toHaveLength(1)
+  })
+
+  it('replaces an owner watch set and closes the dropped URI', () => {
+    const p = new WatchProvider()
+    const vfs = new VfsService([p])
+    vfs.setWatched(1, [A])
+    vfs.setWatched(1, [B])
+    expect(p.watched).toEqual([new URL(A).href, new URL(B).href])
+    expect(p.closed).toEqual([new URL(A).href])
+  })
+
+  it('ignores unsupported schemes, invalid URIs and providers without watch', () => {
+    const vfs = new VfsService([new HangingProvider()])
+    expect(() => vfs.setWatched(1, ['ftp://x/y', 'not a uri', A])).not.toThrow()
+  })
+
+  it('debounces repeated changes into one callback', () => {
+    vi.useFakeTimers()
+    const p = new WatchProvider()
+    const onDirectoryChanged = vi.fn()
+    const vfs = new VfsService([p], { onDirectoryChanged })
+    vfs.setWatched(1, [A])
+    const trigger = p.triggers.get(new URL(A).href)!
+    trigger()
+    vi.advanceTimersByTime(100)
+    trigger()
+    vi.advanceTimersByTime(100)
+    trigger()
+    expect(onDirectoryChanged).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(300)
+    expect(onDirectoryChanged).toHaveBeenCalledTimes(1)
+    expect(onDirectoryChanged).toHaveBeenCalledWith(A)
+  })
+
+  it('dispose closes all watches and drops pending callbacks', async () => {
+    vi.useFakeTimers()
+    const p = new WatchProvider()
+    const onDirectoryChanged = vi.fn()
+    const vfs = new VfsService([p], { onDirectoryChanged })
+    vfs.setWatched(1, [A])
+    p.triggers.get(new URL(A).href)!()
+    await vfs.dispose()
+    vi.advanceTimersByTime(1000)
+    expect(p.closed).toHaveLength(1)
+    expect(onDirectoryChanged).not.toHaveBeenCalled()
   })
 })

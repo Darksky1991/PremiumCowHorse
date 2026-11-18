@@ -75,6 +75,12 @@ function wireEvents(c: Container): void {
     c.windows.broadcast('settings.changed', patch)
   })
   c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
+  c.bus.on('vfs.changed', (e) => c.windows.broadcast('vfs.changed', e))
+  // 窗口（webContents）销毁时释放它登记的目录监听
+  app.on('web-contents-created', (_event, contents) => {
+    const id = contents.id
+    contents.once('destroyed', () => c.vfs.releaseOwner(id))
+  })
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())

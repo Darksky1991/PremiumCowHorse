@@ -148,4 +148,43 @@ describe('LocalProvider', () => {
     const names = (await provider.list(url(dir))).map((e) => e.name).sort()
     expect(names).toEqual(['.hidden', '設計書#1.xlsx'])
   })
+
+  describe('watch', () => {
+    const waitFor = async (cond: () => boolean): Promise<void> => {
+      const end = Date.now() + 2000
+      while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 25))
+    }
+
+    it('calls back when a file is created in the watched directory', async () => {
+      const onChange = vi.fn()
+      const w = provider.watch(url(dir), onChange)
+      try {
+        writeFileSync(path.join(dir, 'new.txt'), 'x')
+        await waitFor(() => onChange.mock.calls.length > 0)
+        expect(onChange).toHaveBeenCalled()
+      } finally {
+        w.close()
+      }
+    })
+
+    it('does not throw when the watched directory is deleted', async () => {
+      const onChange = vi.fn()
+      const w = provider.watch(url(dir), onChange)
+      const uncaught = vi.fn()
+      process.on('uncaughtException', uncaught)
+      try {
+        rmSync(dir, { recursive: true, force: true })
+        await new Promise((r) => setTimeout(r, 300))
+        expect(uncaught).not.toHaveBeenCalled()
+        expect(() => w.close()).not.toThrow()
+      } finally {
+        process.off('uncaughtException', uncaught)
+      }
+    })
+
+    it('returns a no-op handle for an unwatchable path', () => {
+      const w = provider.watch(url(path.join(root, 'missing')), () => undefined)
+      expect(() => w.close()).not.toThrow()
+    })
+  })
 })

@@ -58,6 +58,8 @@ export const ipcContract = {
     z.strictObject({ uri: z.string().min(1), requestId: z.string().min(1) })
   ),
   'vfs.cancel': route<void>()(z.strictObject({ requestId: z.string().min(1) })),
+  /** 渲染端当前需要监听的目录集合（整体替换）；变化经 vfs.changed 事件广播 */
+  'vfs.watch': route<void>()(z.strictObject({ uris: z.array(z.string().min(1)).max(500) })),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -87,6 +89,8 @@ export interface IpcEvents {
   'settings.changed': Partial<Settings>
   /** 工作区或其条目发生变化（id 为工作区 id） */
   'workspace.changed': { id: string }
+  /** 被监听的目录内容发生变化（已防抖） */
+  'vfs.changed': { uri: string }
   /** 只发给状态发生变化的那个窗口 */
   'window.stateChanged': WindowState
 }
