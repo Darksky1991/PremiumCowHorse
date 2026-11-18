@@ -203,6 +203,7 @@ interface Harness {
   cache: Cache
   changed: string[]
   reach: [string, 'online' | 'offline', number][]
+  logs: [string, string][]
   s: Scheduler
 }
 
@@ -212,6 +213,7 @@ function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Har
   const cache = Cache.open(':memory:')
   const changed: string[] = []
   const reach: [string, 'online' | 'offline', number][] = []
+  const logs: [string, string][] = []
   const s = new Scheduler({
     enumerator: fs,
     cache,
@@ -222,7 +224,8 @@ function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Har
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
-    threadPoolSize: opts.threadPoolSize ?? 8
+    threadPoolSize: opts.threadPoolSize ?? 8,
+    log: (level, message) => logs.push([level, message])
   })
   for (const r of roots) fs.mkdir(r.uri)
   s.configure(
@@ -235,7 +238,7 @@ function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Har
     s.dispose()
     cache.close()
   })
-  return { clock, fs, cache, changed, reach, s }
+  return { clock, fs, cache, changed, reach, logs, s }
 }
 
 describe('Scheduler', () => {
@@ -347,13 +350,113 @@ describe('Scheduler', () => {
   })
 
   it('never runs more native calls than the thread pool', async () => {
-    const roots = ['a', 'b', 'c', 'd', 'e'].map((x) => root(`file:///C:/${x}`))
-    const { clock, fs, s } = setup(roots, { threadPoolSize: 2 })
+    const roots = [
+      'file:///C:/a',
+      'file:///D:/b',
+      'file:///E:/c',
+      'file://h1/s/x',
+      'file://h2/s/y'
+    ].map((u) => root(u))
+    const { clock, fs, s } = setup(roots, { threadPoolSize: 3 })
     fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
     s.setInterest(1, none)
     await clock.advance(20_000)
-    expect(fs.maxTotal).toBe(2)
+    expect(fs.maxTotal).toBe(3)
     for (const r of roots) expect(fs.count('list', r.uri)).toBe(1)
+  })
+
+  it('a stuck local volume does not block other volumes, network hosts or P0', async () => {
+    const stuck = ['a', 'b', 'c', 'd'].map((x) => root(`file:///C:/${x}`))
+    const E = 'file:///D:/e'
+    const { clock, fs, s } = setup([...stuck, root(E), root(N)])
+    const X = fs.mkdir('file:///D:/x')
+    // C: 上的调用不返回、也不响应中止（故障盘）
+    fs.gate = (_op, uri) =>
+      uri.startsWith('file:///C:/') ? new Promise<void>(() => {}) : undefined
+    s.setInterest(1, none)
+    await clock.advance(1000)
+    expect(fs.calls.filter((c) => c.uri.startsWith('file:///C:/'))).toHaveLength(1)
+    expect(fs.count('list', E)).toBe(1)
+    expect(fs.count('list', N)).toBe(1)
+    await expect(s.listNow(X)).resolves.toMatchObject({ state: 'fresh' })
+  })
+
+  it('local P2 does not pause and volumes advance in parallel', async () => {
+    const C = 'file:///C:/r'
+    const D = 'file:///D:/s'
+    const { clock, fs, cache } = setup([root(C, 'all'), root(D, 'all')]) // 没有 owner：只有 P2
+    const dirs = [C, fs.addDir(C, 'a'), fs.addDir(C, 'b'), D, fs.addDir(D, 'a'), fs.addDir(D, 'b')]
+    fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
+    const t0 = clock.now()
+    await clock.advance(6000) // 每卷 3 个目录 × (stat 1s + list 1s)，两卷并行、无停顿
+    for (const u of dirs) expect(cache.getDir(u)?.listedAt, u).not.toBeNull()
+    const listAt = (prefix: string): number[] =>
+      fs.calls.filter((c) => c.op === 'list' && c.uri.startsWith(prefix)).map((c) => c.at - t0)
+    expect(listAt('file:///C:/')).toEqual([1000, 3000, 5000])
+    expect(listAt('file:///D:/')).toEqual([1000, 3000, 5000])
+  })
+
+  it('a queued P0 waiter times out when the P0 lane never frees', async () => {
+    const { clock, fs, s } = setup([root(N)])
+    const A = fs.addDir(N, 'a')
+    const B = fs.addDir(N, 'b')
+    fs.gate = (op, uri, _signal, onBatch) => {
+      if (op === 'list' && uri === A) {
+        onBatch()
+        return new Promise<void>(() => {}) // 中途卡住且不返回：P0 通道一直被占着
+      }
+      return undefined
+    }
+    s.setInterest(1, none)
+    await clock.advance(0)
+    const a = s.listNow(A).then(
+      () => 'ok',
+      (e: AppError) => e.code
+    )
+    await clock.advance(0)
+    let b = 'pending'
+    void s.listNow(B).then(
+      () => (b = 'ok'),
+      (e: AppError) => (b = e.code)
+    )
+    await clock.advance(9000)
+    expect(b).toBe('pending')
+    await clock.advance(1000)
+    await expect(a).resolves.toBe('FS_TIMEOUT') // 中途超时：只算该目录
+    expect(s.isOffline(N)).toBe(false)
+    expect(b).toBe('FS_TIMEOUT') // 排队超过 timeoutSec
+  })
+
+  it('recovers when a cache call throws inside the scheduling loop', async () => {
+    const { clock, fs, s, cache, logs } = setup([root(R, 'all')])
+    const A = fs.addDir(R, 'a')
+    const hot = cache.hot.bind(cache)
+    const childDirs = cache.childDirs.bind(cache)
+    let failHot = true
+    let failChildren = true
+    cache.hot = (k: number): string[] => {
+      if (failHot) {
+        failHot = false
+        throw new Error('hot boom')
+      }
+      return hot(k)
+    }
+    // 只让调度循环（P2 取下一层）里的调用失败；applyListing 内部也调用 childDirs
+    cache.childDirs = (u: string): string[] => {
+      if (failChildren && new Error().stack?.includes('advanceLevel')) {
+        failChildren = false
+        throw new Error('childDirs boom')
+      }
+      return childDirs(u)
+    }
+    s.setInterest(1, none)
+    await clock.advance(5000)
+    expect(cache.getDir(R)?.listedAt).not.toBeNull()
+    expect(cache.getDir(A)?.listedAt).not.toBeNull()
+    expect(logs.filter(([level]) => level === 'error').map(([, m]) => m.split('\n')[0])).toEqual([
+      expect.stringContaining('hot boom'),
+      expect.stringContaining('childDirs boom')
+    ])
   })
 
   it('a slow but progressing enumeration does not time out', async () => {
@@ -588,10 +691,11 @@ describe('Scheduler', () => {
   })
 
   it('all level keeps the queue bounded by the frontier', async () => {
-    const { clock, fs, s, cache } = setup([root(R, 'all')])
+    // 网络根：同时验证同一主机两次 P2 之间的停顿
+    const { clock, fs, s, cache } = setup([root(N, 'all')])
     // 3 层、每层 50 个目录：第 2 层都在第 1 层的第一个目录下，第 3 层都在第 2 层的第一个目录下
-    const all: string[] = [R]
-    let parent = R
+    const all: string[] = [N]
+    let parent = N
     for (let level = 1; level <= 3; level++) {
       const made: string[] = []
       for (let i = 0; i < 50; i++) made.push(fs.addDir(parent, `d${level}-${i}`))

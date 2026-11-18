@@ -40,6 +40,8 @@ export interface SchedulerDeps {
    * 默认取 UV_THREADPOOL_SIZE，未设置时为 libuv 的默认值 4。
    */
   threadPoolSize?: number
+  /** 调度器自身的异常等（Task 5 接到主进程日志）；默认不输出 */
+  log?: (level: 'info' | 'warn' | 'error', message: string) => void
 }
 
 /** 无论修改时间是否变化，listed_at 超过此时长就完整枚举一次（兜底修改时间的粒度与例外） */
@@ -52,8 +54,10 @@ export const FRESH_MS = 2000
 export const P2_GAP_MS = 200
 /** 参与范围计算的热点目录数 */
 export const HOT_K = 20
-/** 本地位置同时进行的检查上限 */
+/** 本地位置（所有卷合计）同时进行的检查上限 */
 export const LOCAL_LIMIT = 4
+/** pump 出错后重试的间隔 */
+export const PUMP_RETRY_MS = 1000
 
 /** 设计 4.9 的默认值：configure 之前（例如启动时的 listNow）使用 */
 const DEFAULT_SETTINGS: ScanSettings = {
@@ -64,12 +68,14 @@ const DEFAULT_SETTINGS: ScanSettings = {
 }
 
 type Prio = 'P0' | 'P1' | 'P2' | 'probe'
-/** 网络主机的两条并发通道：P0 专用 1 个、P1/P2/探测共用 1 个 */
+/** 每个位置组（本地卷 / 网络主机）的两条并发通道：P0 专用 1 个、P1/P2/探测共用 1 个 */
 type Lane = 'p0' | 'bg'
 
 interface Waiter {
   resolve: (l: DirectoryListing) => void
   reject: (e: AppError) => void
+  /** 开始等待的时刻：排队超过 timeoutSec 以 FS_TIMEOUT 拒绝 */
+  since: number
 }
 
 interface Walk {
@@ -128,9 +134,11 @@ interface Offline {
 
 interface Slot {
   local: boolean
-  host: string
+  group: string
   lane: Lane
 }
+
+const errorText = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.message) : String(e))
 
 const cancelled = (): AppError => new AppError({ code: 'FS_CANCELLED' })
 const unavailable = (uri: string): AppError => new AppError({ code: 'FS_UNAVAILABLE', detail: uri })
@@ -195,6 +203,7 @@ export class Scheduler {
   private readonly setTimer: typeof setTimeout
   private readonly clearTimer: typeof clearTimeout
   private readonly threadPool: number
+  private readonly log: (level: 'info' | 'warn' | 'error', message: string) => void
 
   private roots: RootConfig[] = []
   private rootUris = new Set<string>()
@@ -224,7 +233,8 @@ export class Scheduler {
   private nextRoundAt = 0
 
   private inFlight = { total: 0, local: 0, network: 0 }
-  private readonly hostLanes = new Map<string, Record<Lane, number>>()
+  /** 位置组（groupKey）→ 各通道占用数 */
+  private readonly groupLanes = new Map<string, Record<Lane, number>>()
 
   private wake: { at: number; timer: ReturnType<typeof setTimeout> } | null = null
   private pumpQueued = false
@@ -237,6 +247,7 @@ export class Scheduler {
     this.now = deps.now ?? Date.now
     this.setTimer = deps.setTimer ?? setTimeout
     this.clearTimer = deps.clearTimer ?? clearTimeout
+    this.log = deps.log ?? ((): void => {})
     this.threadPool = Math.max(
       1,
       deps.threadPoolSize ?? (Number(process.env['UV_THREADPOOL_SIZE']) || 4)
@@ -330,7 +341,9 @@ export class Scheduler {
       this.requestP0(uri)
       return Promise.resolve(this.listing(uri, fresh ? 'fresh' : 'cached', dir.checkedAt))
     }
-    return new Promise((resolve, reject) => this.requestP0(uri, { waiter: { resolve, reject } }))
+    return new Promise((resolve, reject) =>
+      this.requestP0(uri, { waiter: { resolve, reject, since: this.now() } })
+    )
   }
 
   /** F5 / 重试：P0；共享断开时也立即尝试一次（不改变退避的时刻表） */
@@ -413,12 +426,36 @@ export class Scheduler {
     })
   }
 
-  /** 按 P0 → 探测 → P1 → P2 的顺序启动能启动的检查，并为最早的未来时刻设定唤醒 */
+  /**
+   * pump 在微任务 / 计时器中执行：其中的异常（缓存、范围计算）不得成为未捕获异常让扫描进程退出，
+   * 也不得让定时唤醒丢失。出错时记日志，PUMP_RETRY_MS 后重试。
+   */
   private pump(): void {
     if (this.disposed) return
-    if (this.scopeDirty) this.recompute()
+    // 出错时沿用这个重试时刻
+    let wakeAt = this.now() + PUMP_RETRY_MS
+    try {
+      wakeAt = this.pumpOnce()
+    } catch (e) {
+      this.log('error', `[scheduler] pump failed: ${errorText(e)}`)
+    } finally {
+      if (!this.disposed) this.armWake(wakeAt)
+    }
+  }
+
+  /** 按 P0 → 探测 → P1 → P2 的顺序启动能启动的检查；返回最早的未来唤醒时刻 */
+  private pumpOnce(): number {
     const now = this.now()
     let wakeAt = Infinity
+    if (this.scopeDirty) {
+      // 范围计算失败时沿用上一次的范围继续调度，稍后重试（scopeDirty 保持为 true）
+      try {
+        this.recompute()
+      } catch (e) {
+        this.log('error', `[scheduler] scope computation failed: ${errorText(e)}`)
+        wakeAt = now + PUMP_RETRY_MS
+      }
+    }
 
     for (const task of [...this.p0.values()]) {
       if (this.isOffline(task.uri) && !task.bypass) {
@@ -426,9 +463,22 @@ export class Scheduler {
         for (const w of task.waiters) w.reject(unavailable(task.uri))
         continue
       }
-      if (this.running.has(task.uri) || !this.canStart(task.uri, 'p0')) continue
-      this.p0.delete(task.uri)
-      this.start(task, 'p0')
+      if (!this.running.has(task.uri) && this.canStart(task.uri, 'p0')) {
+        this.p0.delete(task.uri)
+        this.start(task, 'p0')
+        continue
+      }
+      // 仍在排队：等待超过 timeoutSec 的调用方以 FS_TIMEOUT 拒绝（通道被不返回的调用占着时
+      // 不让界面一直「加载中」）；任务本身留在队列中，通道空出后照常检查
+      const limit = this.timeoutMs(task.uri)
+      task.waiters = task.waiters.filter((w) => {
+        if (now - w.since < limit) {
+          wakeAt = Math.min(wakeAt, w.since + limit)
+          return true
+        }
+        w.reject(new AppError({ code: 'FS_TIMEOUT', detail: `queued: ${task.uri}` }))
+        return false
+      })
     }
 
     for (const off of this.offline.values()) {
@@ -456,8 +506,7 @@ export class Scheduler {
       this.start({ uri, prio: it.tier, full: it.full, waiters: [], bypass: false }, 'bg')
     }
 
-    wakeAt = Math.min(wakeAt, this.pumpBackground(now))
-    this.armWake(wakeAt)
+    return Math.min(wakeAt, this.pumpBackground(now))
   }
 
   private armWake(at: number): void {
@@ -479,7 +528,6 @@ export class Scheduler {
 
   /** 各 owner 分别计算范围后合并（同一 URI 取更强的 tier 与 full）；没有 owner 时按无关注点计算 */
   private recompute(): void {
-    this.scopeDirty = false
     const hot = this.cache.hot(HOT_K)
     const children = (u: string): string[] => this.cache.childDirs(u)
     const interests: Interest[] =
@@ -534,6 +582,7 @@ export class Scheduler {
     }
     this.p1 = next
     this.setFrontier([...frontier].map(([uri, maxDepth]) => ({ uri, maxDepth })))
+    this.scopeDirty = false
   }
 
   private intervalFor(uri: string, tier: Tier): number {
@@ -557,7 +606,7 @@ export class Scheduler {
   private addToRound(f: FrontierItem): void {
     if (this.roundFrontier.some((g) => covers(g, f))) return
     this.roundFrontier.push(f)
-    const key = this.enumerator.hostKey(f.uri)
+    const key = this.groupKey(f.uri)
     let walk = this.walks.get(key)
     if (!walk) {
       walk = { level: [], cursor: 0, running: false }
@@ -643,38 +692,51 @@ export class Scheduler {
 
   // ---- 并发 ----
 
+  /**
+   * 并发分组：本地按卷（shareKey，如 'C:'），网络按主机（hostKey）。
+   * 一个卡住的卷 / 主机最多占 2 个线程（后台 1 + P0 1），不影响其他组。
+   */
+  private groupKey(uri: string): string {
+    return this.enumerator.location(uri) === 'local'
+      ? this.enumerator.shareKey(uri)
+      : this.enumerator.hostKey(uri)
+  }
+
+  /**
+   * 每组 P1/P2/探测 1 个 + P0 1 个；本地合计不超过 LOCAL_LIMIT；总数不超过线程池。
+   * 本地合计、网络合计、单个组都不得占用最后一个线程（线程池 − 1），卡住的一方不会堵死另一方。
+   */
   private canStart(uri: string, lane: Lane): boolean {
+    const cap = Math.max(1, this.threadPool - 1)
     if (this.inFlight.total >= this.threadPool) return false
-    if (this.enumerator.location(uri) === 'local') return this.inFlight.local < LOCAL_LIMIT
-    // 给本地至少留 1 个线程：卡住的网络调用不会把本地扫描全部堵死
-    if (this.inFlight.network >= Math.max(1, this.threadPool - 1)) return false
-    return (this.hostLanes.get(this.enumerator.hostKey(uri))?.[lane] ?? 0) < 1
+    if (this.enumerator.location(uri) === 'local') {
+      if (this.inFlight.local >= Math.min(LOCAL_LIMIT, cap)) return false
+    } else if (this.inFlight.network >= cap) return false
+    const g = this.groupLanes.get(this.groupKey(uri))
+    if (!g) return true
+    return g[lane] < 1 && g.p0 + g.bg < cap
   }
 
   private acquire(uri: string, lane: Lane): Slot {
     const local = this.enumerator.location(uri) === 'local'
-    const host = this.enumerator.hostKey(uri)
+    const group = this.groupKey(uri)
     this.inFlight.total += 1
     if (local) this.inFlight.local += 1
-    else {
-      this.inFlight.network += 1
-      const h = this.hostLanes.get(host) ?? { p0: 0, bg: 0 }
-      h[lane] += 1
-      this.hostLanes.set(host, h)
-    }
-    return { local, host, lane }
+    else this.inFlight.network += 1
+    const g = this.groupLanes.get(group) ?? { p0: 0, bg: 0 }
+    g[lane] += 1
+    this.groupLanes.set(group, g)
+    return { local, group, lane }
   }
 
   private release(slot: Slot): void {
     this.inFlight.total -= 1
     if (slot.local) this.inFlight.local -= 1
-    else {
-      this.inFlight.network -= 1
-      const h = this.hostLanes.get(slot.host)
-      if (h) {
-        h[slot.lane] -= 1
-        if (h.p0 === 0 && h.bg === 0) this.hostLanes.delete(slot.host)
-      }
+    else this.inFlight.network -= 1
+    const g = this.groupLanes.get(slot.group)
+    if (g) {
+      g[slot.lane] -= 1
+      if (g.p0 === 0 && g.bg === 0) this.groupLanes.delete(slot.group)
     }
   }
 
@@ -699,7 +761,13 @@ export class Scheduler {
           for (const w of task.waiters) w.reject(cancelled())
           return
         }
-        this.finish(task, outcome)
+        try {
+          this.finish(task, outcome)
+        } catch (e) {
+          // 不留下永远挂起的调用方
+          this.log('error', `[scheduler] finishing ${task.uri} failed: ${errorText(e)}`)
+          for (const w of task.waiters) w.reject(toAppError(e))
+        }
         this.requestPump()
       })
   }
@@ -719,7 +787,10 @@ export class Scheduler {
     }
     if (task.walk) {
       task.walk.running = false
-      this.p2NextAt.set(this.enumerator.hostKey(uri), now + P2_GAP_MS)
+      // 停顿只用于网络主机（设计 4.6：同一服务器的两个目录之间）；本地卷不停顿
+      if (this.enumerator.location(uri) === 'network') {
+        this.p2NextAt.set(this.groupKey(uri), now + P2_GAP_MS)
+      }
     }
     const item = this.p1.get(uri)
     if (item && task.prio !== 'probe') item.next = now + this.intervalFor(uri, item.tier)
@@ -784,6 +855,8 @@ export class Scheduler {
   private handleError(task: Task, error: AppError, probe: boolean): void {
     const { uri } = task
     const share = this.enumerator.shareKey(uri)
+    // 有意的选择：FS_UNAVAILABLE（网络类错误）无论出现在探测还是枚举中途都判为断开——
+    // 它是系统报告的连接错误，不是「慢」；只有超时区分阶段（中途超时只算该目录的错误）
     if (error.code === 'FS_UNAVAILABLE' || (error.code === 'FS_TIMEOUT' && probe)) {
       this.goOffline(share, uri, task.prio === 'probe')
       return
@@ -840,7 +913,7 @@ export class Scheduler {
     run: Run,
     call: (signal: AbortSignal, onBatch: () => void) => Promise<T>
   ): Promise<T> {
-    const ms = this.settings.timeoutSec[this.enumerator.location(uri)] * 1000
+    const ms = this.timeoutMs(uri)
     const controller = new AbortController()
     run.controller = controller
     return new Promise<T>((resolve, reject) => {
@@ -877,6 +950,10 @@ export class Scheduler {
         }
       )
     })
+  }
+
+  private timeoutMs(uri: string): number {
+    return this.settings.timeoutSec[this.enumerator.location(uri)] * 1000
   }
 
   private listing(
