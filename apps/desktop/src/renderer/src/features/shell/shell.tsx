@@ -54,7 +54,7 @@ export function Shell({ sidebarViews, workspaceSwitcher }: ShellProps): JSX.Elem
             // 面板 → store：拖拽到最小宽度以下时自动折叠
             onResize={() => setCollapsed(sidebarRef.current?.isCollapsed() ?? false)}
           >
-            <SideBar view={view}>{sidebarViews[view]}</SideBar>
+            <SideBar>{sidebarViews[view]}</SideBar>
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel id="content" minSize="30">

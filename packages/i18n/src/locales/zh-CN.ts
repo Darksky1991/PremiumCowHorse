@@ -27,7 +27,12 @@ export default {
     emptyTitle: '工作区为空',
     emptyHint: '把文件夹或文件拖到这里，或通过下方按钮添加。',
     addFolder: '添加文件夹',
-    addConnection: '添加远程连接'
+    addConnection: '添加远程连接',
+    title: '资源管理器',
+    refresh: '刷新',
+    loading: '正在加载…',
+    empty: '没有项目',
+    retry: '重试'
   },
   connections: {
     emptyTitle: '还没有远程连接',

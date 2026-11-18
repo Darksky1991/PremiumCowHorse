@@ -26,7 +26,12 @@ export default {
     emptyTitle: 'ワークスペースは空です',
     emptyHint: 'フォルダーやファイルをここにドラッグするか、下のボタンから追加してください。',
     addFolder: 'フォルダーを追加',
-    addConnection: 'リモート接続を追加'
+    addConnection: 'リモート接続を追加',
+    title: 'エクスプローラー',
+    refresh: '最新の情報に更新',
+    loading: '読み込み中…',
+    empty: '項目はありません',
+    retry: '再試行'
   },
   connections: {
     emptyTitle: 'リモート接続はまだありません',

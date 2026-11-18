@@ -8,5 +8,7 @@ export const queryKeys = {
   workspaces: ['workspace', 'list'] as const,
   activeWorkspace: ['workspace', 'active'] as const,
   entries: (workspaceId: string) => ['entry', 'list', workspaceId] as const,
+  /** 所有目录列表的前缀（手动刷新时一次性失效） */
+  directoryRoot: ['vfs', 'list'] as const,
   directory: (uri: string) => ['vfs', 'list', uri] as const
 }

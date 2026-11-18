@@ -27,7 +27,12 @@ export default {
     emptyTitle: 'This workspace is empty',
     emptyHint: 'Drag folders or files here, or add them with the buttons below.',
     addFolder: 'Add folder',
-    addConnection: 'Add remote connection'
+    addConnection: 'Add remote connection',
+    title: 'Explorer',
+    refresh: 'Refresh',
+    loading: 'Loading…',
+    empty: 'No items',
+    retry: 'Retry'
   },
   connections: {
     emptyTitle: 'No remote connections yet',

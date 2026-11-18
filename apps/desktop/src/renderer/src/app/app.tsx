@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { ExplorerView } from '@renderer/features/explorer'
 import { Shell, SidebarEmptyState, WorkspaceNameLabel } from '@renderer/features/shell'
 
 /**
@@ -10,7 +11,7 @@ export function App(): JSX.Element {
   return (
     <Shell
       sidebarViews={{
-        explorer: <SidebarEmptyState view="explorer" />,
+        explorer: <ExplorerView />,
         connections: <SidebarEmptyState view="connections" />
       }}
       workspaceSwitcher={<WorkspaceNameLabel />}

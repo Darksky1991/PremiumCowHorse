@@ -14,25 +14,12 @@ import type { SidebarView } from '@renderer/stores/ui-store'
 import { notifyComingSoon } from '../coming-soon'
 
 /**
- * 侧栏外框：标题 + 由 app/ 注入的视图内容。
+ * 侧栏外框：内容（含标题行）由 app/ 注入的视图提供，视图可在标题行放置自己的操作按钮。
  * 资源树（工作区条目 + 真实目录）由 features/explorer 提供，远程连接列表在 M4 由 features/connections 提供。
  */
-export function SideBar({
-  view,
-  children
-}: {
-  view: SidebarView
-  children: ReactNode
-}): JSX.Element {
-  const { t } = useTranslation()
-
+export function SideBar({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <aside className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex h-9 shrink-0 items-center px-4 text-xs font-medium text-muted-foreground">
-        {view === 'explorer' ? t('explorer') : t('connections')}
-      </div>
-      <div className="min-h-0 flex-1">{children}</div>
-    </aside>
+    <aside className="flex h-full flex-col bg-sidebar text-sidebar-foreground">{children}</aside>
   )
 }
 
@@ -43,24 +30,29 @@ export function SidebarEmptyState({ view }: { view: SidebarView }): JSX.Element 
   const ns = isExplorer ? 'explorer' : 'connections'
 
   return (
-    <Empty className="h-full border-0">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">{isExplorer ? <FolderTreeIcon /> : <ServerIcon />}</EmptyMedia>
-        <EmptyTitle>{t(`${ns}:emptyTitle`)}</EmptyTitle>
-        <EmptyDescription>{t(`${ns}:emptyHint`)}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        {isExplorer ? (
-          <Button size="sm" onClick={() => notifyComingSoon(i18n)}>
-            <FolderPlusIcon data-icon="inline-start" />
-            {t('explorer:addFolder')}
+    <div className="flex h-full flex-col">
+      <div className="flex h-9 shrink-0 items-center px-4 text-xs font-medium text-muted-foreground">
+        {t(isExplorer ? 'explorer' : 'connections')}
+      </div>
+      <Empty className="min-h-0 flex-1 border-0">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">{isExplorer ? <FolderTreeIcon /> : <ServerIcon />}</EmptyMedia>
+          <EmptyTitle>{t(`${ns}:emptyTitle`)}</EmptyTitle>
+          <EmptyDescription>{t(`${ns}:emptyHint`)}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          {isExplorer ? (
+            <Button size="sm" onClick={() => notifyComingSoon(i18n)}>
+              <FolderPlusIcon data-icon="inline-start" />
+              {t('explorer:addFolder')}
+            </Button>
+          ) : null}
+          <Button size="sm" variant="outline" onClick={() => notifyComingSoon(i18n)}>
+            <ServerIcon data-icon="inline-start" />
+            {t('explorer:addConnection')}
           </Button>
-        ) : null}
-        <Button size="sm" variant="outline" onClick={() => notifyComingSoon(i18n)}>
-          <ServerIcon data-icon="inline-start" />
-          {t('explorer:addConnection')}
-        </Button>
-      </EmptyContent>
-    </Empty>
+        </EmptyContent>
+      </Empty>
+    </div>
   )
 }

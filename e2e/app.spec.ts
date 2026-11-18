@@ -262,4 +262,62 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
+  test('explorer tree lists a folder entry lazily and supports keyboard expand / collapse', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: files })
+
+      const tree = page.getByRole('tree')
+      const root = tree.getByRole('treeitem', { name: path.basename(files) })
+      await expect(root).toHaveAttribute('aria-expanded', 'false')
+      await expect(root).toHaveAttribute('aria-level', '1')
+
+      // 点击可展开的行：选中并展开，真实子项懒加载
+      await root.click()
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+      await expect(root).toHaveAttribute('aria-selected', 'true')
+      const dir = tree.getByRole('treeitem', { name: '設計書' })
+      await expect(dir).toHaveAttribute('aria-level', '2')
+
+      // 键盘：↓ 选中子目录，→ 展开，← 折叠
+      await page.keyboard.press('ArrowDown')
+      await expect(dir).toHaveAttribute('aria-selected', 'true')
+      await page.keyboard.press('ArrowRight')
+      const file = tree.getByRole('treeitem', { name: '仕様.xlsx' })
+      await expect(file).toHaveAttribute('aria-level', '3')
+      await page.keyboard.press('ArrowLeft')
+      await expect(file).toBeHidden()
+      await expect(dir).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('explorer tree shows an error row with retry for a folder that cannot be listed', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const folder = path.join(files, '設計書')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: folder })
+      const root = page.getByRole('tree').getByRole('treeitem', { name: '設計書' })
+      await expect(root).toBeVisible()
+
+      // 添加后目录被移走：展开时列目录失败
+      rmSync(folder, { recursive: true, force: true })
+      await root.click()
+      const retry = page.getByRole('button', { name: /^(再試行|重试|Retry)$/ })
+      await expect(retry).toBeVisible()
+
+      // 目录恢复后「重试」重新列出
+      mkdirSync(folder)
+      writeFileSync(path.join(folder, '復旧.txt'), '')
+      await retry.click()
+      await expect(page.getByRole('treeitem', { name: '復旧.txt' })).toBeVisible()
+      await expect(retry).toBeHidden()
+    } finally {
+      await app.close()
+    }
+  })
 })
