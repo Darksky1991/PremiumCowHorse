@@ -655,6 +655,8 @@ test.describe('workspace data layer over IPC', () => {
       await expect(switcher).toHaveText('案件A')
       await expect(heading).toHaveText('案件A')
       await expect(tree.getByRole('treeitem')).toHaveCount(0)
+      // 对话框关闭后焦点回到切换器按钮，而不是落到 body
+      await expect(switcher).toBeFocused()
       expect((await data(page, 'workspace.active')).name).toBe('案件A')
 
       // 切回默认工作区：树恢复为默认工作区的条目
@@ -677,6 +679,7 @@ test.describe('workspace data layer over IPC', () => {
       await page.keyboard.press('Enter')
       await expect(switcher).toHaveText('共用')
       await expect(heading).toHaveText('共用')
+      await expect(switcher).toBeFocused()
       await menuOf(restoreNameLabel)
       await expect(switcher).toHaveText(defaultName)
       expect((await data(page, 'workspace.active')).name).toBe('')
@@ -692,6 +695,8 @@ test.describe('workspace data layer over IPC', () => {
       await expect(alert).toHaveCount(0)
       await expect(switcher).toHaveText(defaultName)
       await expect(heading).toHaveText(defaultName)
+      // 删除成功（触发项所在的工作区已不存在）后焦点也回到切换器按钮
+      await expect(switcher).toBeFocused()
       await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
       expect((await data(page, 'workspace.active')).id).toBe(defaultId)
       expect((await data<Named[]>(page, 'workspace.list')).map((w) => w.id)).toEqual([defaultId])

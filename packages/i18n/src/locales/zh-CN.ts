@@ -77,7 +77,8 @@ export default {
     save: '保存',
     deleteTitle: '删除“{{name}}”？',
     deleteDescription: '只删除工作区及其条目，不会删除磁盘上的文件或文件夹。',
-    delete: '删除'
+    delete: '删除',
+    createdNotActivated: '已创建，但未能切换到该工作区'
   },
   connections: {
     emptyTitle: '还没有远程连接',

@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppError, DEFAULT_WORKSPACE_ID, type Workspace } from '@pch/shared'
+import { AppError, type Workspace } from '@pch/shared'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +26,7 @@ import { Field, FieldError, FieldLabel } from '@pch/ui/components/field'
 import { Input } from '@pch/ui/components/input'
 import { Spinner } from '@pch/ui/components/spinner'
 import { useWorkspaceActions } from '@renderer/data/workspace'
+import { createAndActivate, switchToDefaultThenRemove } from './workspace-flows'
 
 /** 与 workspace.create / update 的 name 校验一致（trim 后最长 100 个字符） */
 const MAX_NAME_LENGTH = 100
@@ -147,16 +148,16 @@ export function NewWorkspaceDialog({ open, onOpenChange }: OpenProps): JSX.Eleme
   const { t } = useTranslation()
   const { create, activate } = useWorkspaceActions()
 
-  const submit = async (name: string): Promise<boolean> => {
-    try {
-      const created = await create.mutateAsync({ name })
-      await activate.mutateAsync(created.id)
-      return true
-    } catch (e) {
-      toast.error(errorMessage(t, e))
-      return false
-    }
-  }
+  const submit = (name: string): Promise<boolean> =>
+    createAndActivate(
+      {
+        create: (n) => create.mutateAsync({ name: n }),
+        activate: (id) => activate.mutateAsync(id),
+        onCreateError: (e) => toast.error(errorMessage(t, e)),
+        onActivateError: () => toast.error(t('workspace:createdNotActivated'))
+      },
+      name
+    )
 
   return (
     <NameDialog
@@ -220,24 +221,18 @@ export function DeleteWorkspaceDialog({
   const confirm = async (): Promise<void> => {
     setPending(true)
     try {
-      await remove.mutateAsync(target.id)
-      onOpenChange(false)
-    } catch (e) {
-      if (e instanceof AppError && e.code === 'WORKSPACE_NOT_FOUND') {
-        // 已经不存在：删除的目标已达成，静默关闭
-        onOpenChange(false)
-      } else {
-        toast.error(errorMessage(t, e))
-      }
-      return
+      // 先切到默认工作区再删除；target.id 在点击时锁定
+      const closed = await switchToDefaultThenRemove(
+        {
+          activate: (id) => activate.mutateAsync(id),
+          remove: (id) => remove.mutateAsync(id),
+          onError: (e) => toast.error(errorMessage(t, e))
+        },
+        target.id
+      )
+      if (closed) onOpenChange(false)
     } finally {
       setPending(false)
-    }
-    // 主进程删除时不会改变「当前工作区」，这里显式切回默认工作区
-    try {
-      await activate.mutateAsync(DEFAULT_WORKSPACE_ID)
-    } catch (e) {
-      toast.error(errorMessage(t, e))
     }
   }
 

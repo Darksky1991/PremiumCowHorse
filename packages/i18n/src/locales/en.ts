@@ -81,7 +81,8 @@ export default {
     deleteTitle: 'Delete "{{name}}"?',
     deleteDescription:
       'Only the workspace and its entries are deleted. This does not delete any files or folders on disk.',
-    delete: 'Delete'
+    delete: 'Delete',
+    createdNotActivated: 'Workspace created, but switching to it failed'
   },
   connections: {
     emptyTitle: 'No remote connections yet',

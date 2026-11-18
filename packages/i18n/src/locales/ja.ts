@@ -80,7 +80,8 @@ export default {
     deleteTitle: '「{{name}}」を削除しますか？',
     deleteDescription:
       'ワークスペースとその項目だけを削除します。ディスク上のファイルやフォルダーは削除されません。',
-    delete: '削除'
+    delete: '削除',
+    createdNotActivated: '作成しましたが、切り替えに失敗しました'
   },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
