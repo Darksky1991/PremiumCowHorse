@@ -131,6 +131,10 @@ function StatusContent({ node, onRetry }: { node: TreeNode; onRetry: () => void 
           size="xs"
           variant="ghost"
           className="shrink-0"
+          // 树只保留一个 Tab 停靠点（activedescendant 模式）：键盘路径是「选中错误行后按 Enter」；
+          // 鼠标按下时不夺取焦点，重试后该行消失也不会丢失树的焦点
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation()
             onRetry()

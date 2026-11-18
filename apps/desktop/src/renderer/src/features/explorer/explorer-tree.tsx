@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { FileEntry, WorkspaceEntry } from '@pch/shared'
@@ -6,6 +6,7 @@ import { useSetting } from '@renderer/data/settings'
 import { useDirectories, useWatchDirectories, type DirectoryState } from '@renderer/data/vfs'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { useExplorerStore } from './explorer-store'
+import { resolveSelection } from './selection'
 import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
 import { TreeRow } from './tree-row'
 
@@ -66,7 +67,15 @@ export function ExplorerTree({
   if (!sameList(required, uris)) setUris(required)
 
   const indexById = useMemo(() => new Map(nodes.map((n, i) => [n.id, i])), [nodes])
-  const selectedIndex = selectedId === null ? -1 : (indexById.get(selectedId) ?? -1)
+  // 选中的节点消失（状态行被子项取代、节点被删除）时回退，上一次的位置存为 state；
+  // 回退后的节点在 effect 中写回 store，之后的键盘操作都以它为起点
+  const [lastIndex, setLastIndex] = useState(-1)
+  const selectedIndex = resolveSelection(nodes, selectedId, lastIndex)
+  if (selectedIndex !== lastIndex) setLastIndex(selectedIndex)
+  const resolvedId = nodes[selectedIndex]?.id ?? null
+  useEffect(() => {
+    if (resolvedId !== null && resolvedId !== selectedId) select(workspaceId, resolvedId)
+  }, [resolvedId, selectedId, select, workspaceId])
 
   // 本项目未启用 React Compiler；该规则只提示「编译器会跳过此组件」，不影响运行
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -91,8 +100,8 @@ export function ExplorerTree({
   const toggleNode = (node: TreeNode): void => {
     if (
       node.expanded &&
-      selectedId !== null &&
-      isDescendant(selectedId, node.id, nodes, indexById)
+      resolvedId !== null &&
+      isDescendant(resolvedId, node.id, nodes, indexById)
     ) {
       select(workspaceId, node.id)
     }
@@ -100,6 +109,8 @@ export function ExplorerTree({
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    // 只处理树本身获得焦点时的按键：行内控件（「重试」按钮）上的 Enter / ↑↓ 交给控件自己
+    if (e.target !== e.currentTarget) return
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
     const current = nodes[selectedIndex]
     switch (e.key) {

@@ -320,4 +320,52 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
+  test('keyboard retry on the error row restores the listing and keeps the selection', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const folder = path.join(files, '設計書')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: folder })
+      const tree = page.getByRole('tree')
+      const root = tree.getByRole('treeitem', { name: '設計書' })
+      await expect(root).toBeVisible()
+
+      rmSync(folder, { recursive: true, force: true })
+      await root.click()
+      const retry = page.getByRole('button', { name: /^(再試行|重试|Retry)$/ })
+      await expect(retry).toBeVisible()
+
+      // 树内只有一个 Tab 停靠点：Tab 不会停在「重试」按钮上
+      await page.keyboard.press('Tab')
+      await expect(retry).not.toBeFocused()
+
+      // 即使焦点落在按钮上（如程序聚焦），Enter 也不会被树接管去折叠父目录
+      await retry.focus()
+      await page.keyboard.press('Enter')
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+
+      // 键盘路径：选中错误行后按 Enter 重试
+      await tree.focus()
+      await page.keyboard.press('ArrowDown')
+      const errorRow = tree.getByRole('treeitem', { name: new RegExp(retryLabel) })
+      await expect(errorRow).toHaveAttribute('aria-selected', 'true')
+      mkdirSync(folder)
+      writeFileSync(path.join(folder, '復旧.txt'), '')
+      await page.keyboard.press('Enter')
+      const restored = tree.getByRole('treeitem', { name: '復旧.txt' })
+      await expect(restored).toBeVisible()
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+
+      // 错误行消失后选择回到所属目录，↓ 继续从那里移动（而不是跳回第 0 行）
+      await expect(root).toHaveAttribute('aria-selected', 'true')
+      await page.keyboard.press('ArrowDown')
+      await expect(restored).toHaveAttribute('aria-selected', 'true')
+    } finally {
+      await app.close()
+    }
+  })
 })
+
+/** 错误行的可访问名称包含「重试」按钮的文字 */
+const retryLabel = '再試行|重试|Retry'
