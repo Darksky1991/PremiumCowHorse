@@ -1,0 +1,6 @@
+import type { Settings } from '@pch/shared'
+
+/** 主进程内部事件。新增模块时在这里登记事件类型。 */
+export interface MainEvents extends Record<string, unknown> {
+  'settings.changed': Partial<Settings>
+}

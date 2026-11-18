@@ -1,0 +1,5 @@
+# electron-vite 官方模板的格式约定
+singleQuote: true
+semi: false
+printWidth: 100
+trailingComma: none

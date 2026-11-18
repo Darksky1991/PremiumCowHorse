@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PremiumCowHorse</title>
+    <!--
+      CSP：脚本只允许同源（不允许内联脚本）。style-src 需要 'unsafe-inline'，
+      因为 Base UI 等组件通过 style 属性做浮层定位。pcfs: 为 M2 预览插件读取文件内容预留。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: pcfs:; media-src 'self' blob: pcfs:; font-src 'self' data:; connect-src 'self' pcfs:; object-src 'none'; base-uri 'none'"
+    />
+    <!-- 首帧绘制前应用主题，避免闪烁（同步执行的外部脚本，不受 CSP 内联限制） -->
+    <script src="/theme-init.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

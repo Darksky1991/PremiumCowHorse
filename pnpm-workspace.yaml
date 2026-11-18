@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - plugins/*
+
+# 只允许确实需要安装脚本的依赖执行脚本
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: false

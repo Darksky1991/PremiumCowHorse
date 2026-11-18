@@ -1,0 +1,5 @@
+# 统一使用 LF，避免 Windows 下 CRLF 造成的无意义差异与脚本问题
+* text=auto eol=lf
+*.ico binary
+*.png binary
+*.icns binary

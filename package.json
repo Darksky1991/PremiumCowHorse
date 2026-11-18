@@ -1,0 +1,36 @@
+{
+  "name": "premium-cow-horse",
+  "private": true,
+  "description": "PremiumCowHorse - 面向保守运维人员的工作区式文件管理器",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @pch/desktop dev",
+    "build": "pnpm --filter @pch/desktop build",
+    "start": "pnpm --filter @pch/desktop start",
+    "dist": "pnpm --filter @pch/desktop build:win",
+    "dist:dir": "pnpm --filter @pch/desktop build:unpack",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "lint": "eslint --cache .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-prettier": "^3.0.1",
+    "@electron-toolkit/eslint-config-ts": "^4.0.0",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^9.39.5",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-boundaries": "^7.4.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
+    "prettier": "^3.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

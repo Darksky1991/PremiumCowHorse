@@ -1,0 +1,43 @@
+# 基于 electron-vite 官方模板（Windows 部分），追加 Electron 官方安全建议的 Fuses 配置
+appId: com.premiumcowhorse.app
+productName: PremiumCowHorse
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!components.json'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!release/*'
+asarUnpack:
+  - resources/**
+# https://www.electronjs.org/docs/latest/tutorial/fuses
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+win:
+  executableName: PremiumCowHorse
+  target: nsis
+nsis:
+  artifactName: ${productName}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  # 按用户安装：企业终端通常没有管理员权限
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+npmRebuild: false
+# 使用 electron-builder 新版工具包：默认的 "0.0.0" 是 NSIS 3.0.4.1（2019 年，含 CVE-2023-37378），
+# "1.2.1" 为 NSIS 3.12。注：7-Zip 无此选项，需通过环境变量 ELECTRON_BUILDER_7ZIP_PATH 指定（见 README）
+toolsets:
+  nsis: '1.2.1'
