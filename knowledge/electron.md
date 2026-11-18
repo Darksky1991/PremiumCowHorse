@@ -58,3 +58,11 @@
   - 文件路径只能经 preload 的 `webUtils.getPathForFile(file)` 取得；页面内合成的 `File`（Playwright / `new File()`）得到空字符串，因此系统拖入无法 e2e，只能单元测试 + 手动确认。
   - （未经真机验证）从 zip 内文件、Outlook 附件、浏览器图片等「虚拟文件」拖入时，Chromium 可能先在 %TEMP% 生成副本，`getPathForFile` 返回副本路径。
 - 预防：拖放相关改动后检查 dragstart 设置的类型（e2e 断言 `dt.types` 只有自定义 MIME），系统拖入请需求方手动确认。
+
+### 看门狗从「发出调用」起计时：并发超过 libuv 线程池会把排队误判为超时
+
+- 日期：2026-11-19
+- 症状：（预防性，扫描进程调度器设计时发现）koffi 的异步调用与 `fs` 都在 libuv 线程池（默认 `UV_THREADPOOL_SIZE` = 4）中执行。若同时发出的原生调用多于线程数，多出的调用在 libuv 内部排队；调度器的看门狗从发出调用起计时，排队时间也被算进去，健康的共享会被误判为超时、甚至「断开」。另外被中止的 koffi 调用无法真正取消：系统调用返回前线程一直被占着。
+- 解决：`scanner/schedule/scheduler.ts` 让同时进行的原生调用总数不超过 `threadPoolSize`（默认取 `UV_THREADPOOL_SIZE`，未设置为 4），网络调用最多占 `threadPoolSize - 1`（给本地留 1 个）；被看门狗中止的调用在其 promise 真正 settle 之前继续占着并发名额（同一主机不会因重试而堆积卡住的线程）。
+- 注意：Win32 枚举器解析链接目标时内部还有并发的 `fs` 调用，未计入上限；扫描进程启动时（Task 5）应通过环境变量调大 `UV_THREADPOOL_SIZE`（必须在线程池首次使用之前设置，即 fork 时传入）。
+- 预防：给原生 / `fs` 调用加超时时，确认调用数受线程池约束，或从「实际开始执行」起计时。

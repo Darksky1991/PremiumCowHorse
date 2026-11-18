@@ -9,3 +9,11 @@ export interface RootConfig {
   level: RefreshLevel
   location: 'local' | 'network'
 }
+
+/** 调度器使用的设置（由设置 refresh.* / vfs.timeoutSec.* 换算，设计 4.9） */
+export interface ScanSettings {
+  intervalSec: { local: number; network: number }
+  backgroundIntervalMin: number
+  timeoutSec: { local: number; network: number }
+  activeDepth: number
+}

@@ -39,8 +39,8 @@ export function isUnder(uri: string, root: string): boolean {
   return uri === root || uri.startsWith(prefixOf(root))
 }
 
-/** 子目录 URI：与 LocalProvider.list 的生成方式完全一致 */
-function childUri(dirUri: string, name: string): string {
+/** 子项 URI：与 LocalProvider.list 的生成方式完全一致（调度器把 RawEntry 转为 FileEntry 时也用它） */
+export function childUri(dirUri: string, name: string): string {
   return pathToFileURL(path.join(fileUriToLocalPath(dirUri), name)).href
 }
 

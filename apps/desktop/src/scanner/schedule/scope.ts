@@ -35,8 +35,8 @@ export interface FrontierItem {
 
 const LEVEL_RANK: Record<RefreshLevel, number> = { passive: 0, default: 1, active: 2, all: 3 }
 
-/** 父目录 URI：用与子目录生成相同的路径函数，不手工截字符串；已到文件系统根则返回 null */
-function parentUri(uri: string): string | null {
+/** 父目录 URI：用与子目录生成相同的路径函数，不手工截字符串；已到文件系统根则返回 null（调度器也用它） */
+export function parentUri(uri: string): string | null {
   const p = fileUriToLocalPath(uri)
   const parent = path.dirname(p)
   return parent === p ? null : pathToFileURL(parent).href
