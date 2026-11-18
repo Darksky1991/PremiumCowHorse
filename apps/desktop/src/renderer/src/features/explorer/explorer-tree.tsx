@@ -6,25 +6,35 @@ import {
   useState,
   type DragEvent,
   type JSX,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type MouseEvent
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { FileEntry, WorkspaceEntry } from '@pch/shared'
+import { toast } from 'sonner'
+import { AppError, type FileEntry, type WorkspaceEntry } from '@pch/shared'
+import { ContextMenu, ContextMenuTrigger } from '@pch/ui/components/context-menu'
 import { useSetting } from '@renderer/data/settings'
 import { useDirectories, useWatchDirectories, type DirectoryState } from '@renderer/data/vfs'
-import { getBridge } from '@renderer/lib/ipc'
+import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import {
   DRAG_MIME,
   isDraggableNode,
   osDropEffect,
   positionFromOffset,
+  isStatusNode,
   resolveDrop,
   type DragSource,
   type DropPosition
 } from './drag-drop'
 import { useExplorerStore } from './explorer-store'
+import { isEntryNode } from './menu-items'
+import { NewGroupDialog } from './new-group-dialog'
+import { NodeContextMenu } from './node-context-menu'
+import { RemoveEntryDialog, type RemoveTarget } from './remove-entry-dialog'
+import { RenameDialog, type RenameTarget } from './rename-dialog'
 import { resolveSelection } from './selection'
 import { useDropExecutor } from './use-drop-executor'
 import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
@@ -37,6 +47,12 @@ interface DropTarget {
   nodeId: string | null
   position: DropPosition
 }
+/** 当前打开的对话框（关闭后保留内容，让关闭动画期间对话框不会变空） */
+type DialogState =
+  | { type: 'rename'; target: RenameTarget }
+  | { type: 'remove'; target: RemoveTarget }
+  | { type: 'newGroup'; parentId: string | null }
+
 /** 默认密度下的行高；实际高度由 measureElement 测量（紧凑密度下随 --spacing 变小） */
 const ROW_ESTIMATE = 28
 
@@ -60,6 +76,7 @@ export function ExplorerTree({
   onRetry
 }: ExplorerTreeProps): JSX.Element {
   const baseId = useId()
+  const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const showHidden = useSetting('explorer.showHiddenFiles') ?? false
   const expandedIds = useExplorerStore((s) => s.expanded[workspaceId] ?? NO_IDS)
@@ -207,6 +224,61 @@ export function ExplorerTree({
     e.dataTransfer.effectAllowed = source.type === 'entry' ? 'move' : 'link'
   }
 
+  // ---------- 右键菜单与条目操作：只管理条目，绝不产生文件操作 ----------
+  /** 右键的节点（null 为空白处）；菜单内容据此生成 */
+  const [menuNode, setMenuNode] = useState<TreeNode | null>(null)
+  const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const openDialog = (next: DialogState): void => {
+    setDialog(next)
+    setDialogOpen(true)
+  }
+
+  const onContextMenu = (
+    e: MouseEvent<HTMLDivElement> & { preventBaseUIHandler?: () => void }
+  ): void => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]')
+    const node = row ? (nodes[Number(row.dataset.index)] ?? null) : null
+    if (node !== null && isStatusNode(node)) {
+      // 状态行没有菜单：交由浏览器默认行为（Electron 中不显示任何东西）
+      e.preventBaseUIHandler?.()
+      return
+    }
+    setMenuNode(node)
+    // 与 VS Code 一致：右键同时选中该节点
+    if (node !== null) select(workspaceId, node.id)
+  }
+
+  const openRename = (node: TreeNode): void =>
+    openDialog({ type: 'rename', target: { entryId: node.entryId, label: node.label } })
+  const openRemove = (node: TreeNode): void =>
+    openDialog({
+      type: 'remove',
+      target: { entryId: node.entryId, label: node.label, isGroup: node.kind === 'group' }
+    })
+  const openNewGroup = (node: TreeNode | null): void => {
+    // 在折叠的分组下新建时先展开，新分组才看得见
+    if (node !== null && !node.expanded) toggle(workspaceId, node.id)
+    openDialog({ type: 'newGroup', parentId: node?.entryId ?? null })
+  }
+
+  /** 用系统对话框选择文件夹 / 文件并添加为根部条目（复用拖放的添加逻辑） */
+  const addPaths = async (kind: 'folder' | 'file'): Promise<void> => {
+    try {
+      const paths = await call('system.selectPaths', { kind, multiple: true })
+      if (paths.length === 0) return
+      await execute({ type: 'add', parentId: null, items: paths.map((path) => ({ path })) }, nodes)
+    } catch (e) {
+      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    }
+  }
+
+  /** 把真实子项固定为工作区根部的条目 */
+  const pin = (node: TreeNode): void => {
+    if (node.uri === null) return
+    void execute({ type: 'add', parentId: null, items: [{ uri: node.uri }] }, nodes)
+  }
+
   const moveTo = (index: number): void => {
     const i = Math.max(0, Math.min(nodes.length - 1, index))
     const node = nodes[i]
@@ -255,6 +327,14 @@ export function ExplorerTree({
         if (current?.expandable) toggleNode(current)
         else if (current?.status === 'error' && current.uri !== null) onRetry(current.uri)
         break
+      case 'F2':
+        if (!isEntryNode(current)) return
+        openRename(current)
+        break
+      case 'Delete':
+        if (!isEntryNode(current)) return
+        openRemove(current)
+        break
       default:
         return
     }
@@ -265,54 +345,96 @@ export function ExplorerTree({
   const selectedRendered = items.some((v) => v.index === selectedIndex)
 
   return (
-    <div
-      ref={scrollRef}
-      role="tree"
-      aria-label={label}
-      aria-activedescendant={selectedRendered ? rowDomId(selectedIndex) : undefined}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      className="group/tree h-full overflow-auto outline-none"
-    >
-      <div
-        role="presentation"
-        className="relative w-full"
-        style={{ height: virtualizer.getTotalSize() }}
-      >
-        {items.map((v) => {
-          const node = nodes[v.index]
-          if (!node) return null
-          return (
-            <TreeRow
-              key={v.key}
-              ref={virtualizer.measureElement}
-              node={node}
-              domId={rowDomId(v.index)}
-              index={v.index}
-              selected={v.index === selectedIndex}
-              draggable={isDraggableNode(node) && (node.source === 'entry' || node.uri !== null)}
-              dropPosition={dropTarget?.nodeId === node.id ? dropTarget.position : null}
-              onDragStart={(e) => onNodeDragStart(e, node)}
-              onDragEnd={() => {
-                dragSourceRef.current = null
-                setDropTarget(null)
-              }}
-              style={{ transform: `translateY(${v.start}px)` }}
-              onClick={() => {
-                select(workspaceId, node.id)
-                if (node.expandable) toggleNode(node)
-              }}
-              onRetry={() => {
-                if (node.uri !== null) onRetry(node.uri)
-              }}
-            />
-          )
-        })}
-      </div>
-    </div>
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger onContextMenu={onContextMenu} className="block h-full">
+          <div
+            ref={scrollRef}
+            role="tree"
+            aria-label={label}
+            aria-activedescendant={selectedRendered ? rowDomId(selectedIndex) : undefined}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className="group/tree h-full overflow-auto outline-none"
+          >
+            <div
+              role="presentation"
+              className="relative w-full"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {items.map((v) => {
+                const node = nodes[v.index]
+                if (!node) return null
+                return (
+                  <TreeRow
+                    key={v.key}
+                    ref={virtualizer.measureElement}
+                    node={node}
+                    domId={rowDomId(v.index)}
+                    index={v.index}
+                    selected={v.index === selectedIndex}
+                    draggable={
+                      isDraggableNode(node) && (node.source === 'entry' || node.uri !== null)
+                    }
+                    dropPosition={dropTarget?.nodeId === node.id ? dropTarget.position : null}
+                    onDragStart={(e) => onNodeDragStart(e, node)}
+                    onDragEnd={() => {
+                      dragSourceRef.current = null
+                      setDropTarget(null)
+                    }}
+                    style={{ transform: `translateY(${v.start}px)` }}
+                    onClick={() => {
+                      select(workspaceId, node.id)
+                      if (node.expandable) toggleNode(node)
+                    }}
+                    onRetry={() => {
+                      if (node.uri !== null) onRetry(node.uri)
+                    }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <NodeContextMenu
+          node={menuNode}
+          finalFocus={scrollRef}
+          onNewGroup={() => openNewGroup(menuNode)}
+          onAddPaths={(kind) => void addPaths(kind)}
+          onRename={() => menuNode && openRename(menuNode)}
+          onRemove={() => menuNode && openRemove(menuNode)}
+          onPin={() => menuNode && pin(menuNode)}
+        />
+      </ContextMenu>
+      {dialog?.type === 'rename' && (
+        <RenameDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          target={dialog.target}
+          finalFocus={scrollRef}
+        />
+      )}
+      {dialog?.type === 'remove' && (
+        <RemoveEntryDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          target={dialog.target}
+          finalFocus={scrollRef}
+        />
+      )}
+      {dialog?.type === 'newGroup' && (
+        <NewGroupDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          workspaceId={workspaceId}
+          parentId={dialog.parentId}
+          finalFocus={scrollRef}
+        />
+      )}
+    </>
   )
 }
 

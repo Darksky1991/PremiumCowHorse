@@ -424,7 +424,155 @@ test.describe('workspace data layer over IPC', () => {
       await app.close()
     }
   })
+
+  test('context menu: rename an entry from the tree', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      writeFileSync(a, '')
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: 'a.txt' }).click({ button: 'right' })
+      await page.getByRole('menuitem', { name: renameLabel }).click()
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toHaveValue('a.txt')
+      // 预填的名称全选，直接输入即可替换
+      await expect(input).toBeFocused()
+      expect(
+        await input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])
+      ).toEqual([0, 5])
+      await input.fill('renamed.txt')
+      await page.keyboard.press('Enter')
+      await expect(tree.getByRole('treeitem', { name: 'renamed.txt' })).toBeVisible()
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toHaveCount(0)
+      // 重命名只改条目标签，磁盘文件名不变
+      expect(existsSync(a)).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('context menu: removing an entry keeps the file on disk', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      writeFileSync(a, '')
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: 'a.txt' }).click({ button: 'right' })
+      await page.getByRole('menuitem', { name: removeLabel }).click()
+      const dialog = page.getByRole('alertdialog')
+      // 文案明确「只移除条目，不会删除磁盘上的文件」
+      await expect(dialog).toContainText(removeHint)
+      await dialog.getByRole('button', { name: removeLabel }).click()
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toHaveCount(0)
+      expect(await data<unknown[]>(page, 'entry.list', { workspaceId })).toHaveLength(0)
+      expect(existsSync(a)).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('context menu: copy path of a real child writes its local path to the clipboard', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: files })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: path.basename(files) }).click()
+      await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'right' })
+      await page.getByRole('menuitem', { name: copyPathLabel }).click()
+      await expect
+        .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()))
+        .toBe(path.join(files, '設計書'))
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('context menu: focus returns to the tree, F2 / Delete work and status rows have no menu', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const empty = path.join(files, '空')
+      mkdirSync(empty)
+      const a = path.join(files, 'a.txt')
+      writeFileSync(a, '')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: empty })
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      const tree = page.getByRole('tree')
+
+      // 状态行（空目录的「項目はありません」）没有右键菜单
+      await tree.getByRole('treeitem', { name: '空' }).click()
+      const status = tree.getByRole('treeitem', { name: /^(項目はありません|没有项目|No items)$/ })
+      await expect(status).toBeVisible()
+      await status.click({ button: 'right' })
+      await expect(page.getByRole('menu')).toHaveCount(0)
+
+      // 右键选中节点；Esc 关闭菜单后焦点回到树
+      const row = tree.getByRole('treeitem', { name: 'a.txt' })
+      await row.click({ button: 'right' })
+      await expect(page.getByRole('menu')).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(tree).toBeFocused()
+      await expect(row).toHaveAttribute('aria-selected', 'true')
+
+      // F2 重命名、Delete 移除（Esc 取消后焦点仍回到树）
+      await page.keyboard.press('F2')
+      await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue('a.txt')
+      await page.keyboard.press('Escape')
+      await expect(tree).toBeFocused()
+      await page.keyboard.press('Delete')
+      await expect(page.getByRole('alertdialog')).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(tree).toBeFocused()
+      expect(await data<unknown[]>(page, 'entry.list', { workspaceId })).toHaveLength(2)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('context menu: new group from the blank area creates a root group', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      writeFileSync(a, '')
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      const tree = page.getByRole('tree')
+      await expect(tree.getByRole('treeitem', { name: 'a.txt' })).toBeVisible()
+      await tree.click({ button: 'right', position: { x: 40, y: 300 } })
+      await page.getByRole('menuitem', { name: newGroupLabel }).click()
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toHaveValue(newGroupDefault)
+      await input.fill('案件A')
+      await page.keyboard.press('Enter')
+      await expect(tree.getByRole('treeitem', { name: '案件A' })).toBeVisible()
+      const entries = await data<Array<Named & { kind: string; parentId: string | null }>>(
+        page,
+        'entry.list',
+        { workspaceId }
+      )
+      expect(entries.find((e) => e.label === '案件A')).toMatchObject({
+        kind: 'group',
+        parentId: null
+      })
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 /** 错误行的可访问名称包含「重试」按钮的文字 */
 const retryLabel = '再試行|重试|Retry'
+
+/** 右键菜单与对话框的文案（ja | zh-CN | en；e2e 默认语言随系统，三种都匹配） */
+const renameLabel = /^(名前の変更|重命名|Rename) ?(F2)?$/
+const removeLabel = /^(ワークスペースから外す|从工作区移除|Remove from workspace) ?(Del)?$/
+const removeHint =
+  /(ディスク上のファイルやフォルダーは削除されません|不会删除磁盘上的文件或文件夹|does not delete any files or folders on disk)/
+const copyPathLabel = /^(パスをコピー|复制路径|Copy path)$/
+const newGroupLabel = /^(グループを新規作成|新建分组|New group)$/
+const newGroupDefault = /^(新しいグループ|新建分组|New group)$/

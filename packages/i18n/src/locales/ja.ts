@@ -31,7 +31,35 @@ export default {
     refresh: '最新の情報に更新',
     loading: '読み込み中…',
     empty: '項目はありません',
-    retry: '再試行'
+    retry: '再試行',
+    newGroup: 'グループを新規作成',
+    newGroupDefaultName: '新しいグループ',
+    newGroupTitle: 'グループを新規作成',
+    groupName: 'グループ名',
+    create: '作成',
+    rename: '名前の変更',
+    renameTitle: '名前の変更',
+    renameDescription:
+      'ワークスペース内での表示名だけを変更します。ディスク上の名前は変わりません。',
+    name: '名前',
+    nameRequired: '名前を入力してください',
+    save: '変更',
+    remove: 'ワークスペースから外す',
+    removeTitle: '「{{name}}」をワークスペースから外しますか？',
+    removeDescription:
+      'ワークスペースの項目だけを外します。ディスク上のファイルやフォルダーは削除されません。',
+    removeGroupDescription:
+      'このグループとその中の項目をすべてワークスペースから外します。ディスク上のファイルやフォルダーは削除されません。',
+    reveal: 'エクスプローラーで表示',
+    openWithApp: '既定のアプリで開く',
+    copyPath: 'パスをコピー',
+    copyUri: 'URI をコピー',
+    pinToRoot: 'ワークスペースのルートに固定',
+    menuAddFolder: 'フォルダーを追加…',
+    menuAddFile: 'ファイルを追加…',
+    copiedPath: 'パスをコピーしました',
+    copiedUri: 'URI をコピーしました',
+    cancel: 'キャンセル'
   },
   connections: {
     emptyTitle: 'リモート接続はまだありません',

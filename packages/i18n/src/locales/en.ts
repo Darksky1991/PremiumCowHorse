@@ -32,7 +32,35 @@ export default {
     refresh: 'Refresh',
     loading: 'Loading…',
     empty: 'No items',
-    retry: 'Retry'
+    retry: 'Retry',
+    newGroup: 'New group',
+    newGroupDefaultName: 'New group',
+    newGroupTitle: 'New group',
+    groupName: 'Group name',
+    create: 'Create',
+    rename: 'Rename',
+    renameTitle: 'Rename',
+    renameDescription:
+      'Only changes the display name in the workspace. The name on disk is not changed.',
+    name: 'Name',
+    nameRequired: 'Enter a name',
+    save: 'Rename',
+    remove: 'Remove from workspace',
+    removeTitle: 'Remove "{{name}}" from the workspace?',
+    removeDescription:
+      'Only the workspace entry is removed. This does not delete any files or folders on disk.',
+    removeGroupDescription:
+      'This group and everything inside it are removed from the workspace. This does not delete any files or folders on disk.',
+    reveal: 'Reveal in File Explorer',
+    openWithApp: 'Open with default app',
+    copyPath: 'Copy path',
+    copyUri: 'Copy URI',
+    pinToRoot: 'Pin to workspace root',
+    menuAddFolder: 'Add folder…',
+    menuAddFile: 'Add file…',
+    copiedPath: 'Path copied',
+    copiedUri: 'URI copied',
+    cancel: 'Cancel'
   },
   connections: {
     emptyTitle: 'No remote connections yet',
