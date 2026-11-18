@@ -66,9 +66,11 @@ class WatchProvider extends HangingProvider {
   readonly watched: string[] = []
   readonly closed: string[] = []
   readonly triggers = new Map<string, () => void>()
-  watch(uri: URL, onChange: () => void): { close(): void } {
+  readonly invalidators = new Map<string, () => void>()
+  watch(uri: URL, onChange: () => void, onClose?: () => void): { close(): void } {
     this.watched.push(uri.href)
     this.triggers.set(uri.href, onChange)
+    if (onClose) this.invalidators.set(uri.href, onClose)
     return { close: () => void this.closed.push(uri.href) }
   }
 }
@@ -133,5 +135,37 @@ describe('VfsService watching', () => {
     vi.advanceTimersByTime(1000)
     expect(p.closed).toHaveLength(1)
     expect(onDirectoryChanged).not.toHaveBeenCalled()
+  })
+
+  it('removes a self-invalidated watch, still notifies once, and recreates it on the next setWatched', () => {
+    vi.useFakeTimers()
+    const p = new WatchProvider()
+    const onDirectoryChanged = vi.fn()
+    const vfs = new VfsService([p], { onDirectoryChanged })
+    vfs.setWatched(1, [A])
+    const href = new URL(A).href
+    // provider 先通知变化再报告失效
+    p.triggers.get(href)!()
+    p.invalidators.get(href)!()
+    vi.advanceTimersByTime(300)
+    expect(onDirectoryChanged).toHaveBeenCalledTimes(1)
+    expect(onDirectoryChanged).toHaveBeenCalledWith(A)
+    vfs.setWatched(1, [A])
+    expect(p.watched).toEqual([href, href])
+  })
+
+  it('does not keep an entry when the provider fails synchronously during watch', () => {
+    class FailingProvider extends WatchProvider {
+      override watch(uri: URL, _onChange: () => void, onClose?: () => void): { close(): void } {
+        this.watched.push(uri.href)
+        onClose?.()
+        return { close: () => undefined }
+      }
+    }
+    const p = new FailingProvider()
+    const vfs = new VfsService([p])
+    vfs.setWatched(1, [A])
+    vfs.setWatched(1, [A])
+    expect(p.watched).toHaveLength(2)
   })
 })

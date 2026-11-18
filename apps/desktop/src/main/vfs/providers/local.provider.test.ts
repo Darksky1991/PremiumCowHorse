@@ -167,24 +167,49 @@ describe('LocalProvider', () => {
       }
     })
 
-    it('does not throw when the watched directory is deleted', async () => {
+    it('notifies and reports invalidation when the watched directory is deleted, and can be re-created', async () => {
       const onChange = vi.fn()
-      const w = provider.watch(url(dir), onChange)
+      const onClose = vi.fn()
       const uncaught = vi.fn()
       process.on('uncaughtException', uncaught)
       try {
+        const w = provider.watch(url(dir), onChange, onClose)
         rmSync(dir, { recursive: true, force: true })
-        await new Promise((r) => setTimeout(r, 300))
-        expect(uncaught).not.toHaveBeenCalled()
+        await waitFor(() => onChange.mock.calls.length > 0)
+        expect(onChange).toHaveBeenCalled()
+        // 部分平台先给 rename 再给 error：等待失效通知
+        await waitFor(() => onClose.mock.calls.length > 0)
+        expect(onClose).toHaveBeenCalledTimes(1)
         expect(() => w.close()).not.toThrow()
+        expect(uncaught).not.toHaveBeenCalled()
+
+        // 同路径重建后可再次监听并收到回调
+        mkdirSync(dir)
+        const again = vi.fn()
+        const w2 = provider.watch(url(dir), again)
+        try {
+          writeFileSync(path.join(dir, 'x.txt'), 'x')
+          await waitFor(() => again.mock.calls.length > 0)
+          expect(again).toHaveBeenCalled()
+        } finally {
+          w2.close()
+        }
       } finally {
         process.off('uncaughtException', uncaught)
       }
     })
 
-    it('returns a no-op handle for an unwatchable path', () => {
-      const w = provider.watch(url(path.join(root, 'missing')), () => undefined)
+    it('does not call onClose when the caller closes the watch', () => {
+      const onClose = vi.fn()
+      provider.watch(url(dir), () => undefined, onClose).close()
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('returns a no-op handle and reports invalidation for an unwatchable path', () => {
+      const onClose = vi.fn()
+      const w = provider.watch(url(path.join(root, 'missing')), () => undefined, onClose)
       expect(() => w.close()).not.toThrow()
+      expect(onClose).toHaveBeenCalledTimes(1)
     })
   })
 })

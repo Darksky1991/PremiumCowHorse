@@ -95,16 +95,32 @@ export class VfsService {
     const provider = url && this.providers.get(url.protocol)
     if (!url || !provider?.watch) return false
     const entry: WatchEntry = { handle: { close: () => undefined }, owners: new Set([ownerId]) }
-    // 同一 URI 在防抖窗口内的多次变化合并为一次回调
-    entry.handle = provider.watch(url, () => {
-      clearTimeout(entry.timer)
-      entry.timer = setTimeout(() => {
-        entry.timer = undefined
-        this.onDirectoryChanged?.(uri)
-      }, this.watchDebounceMs)
-    })
+    // 先登记再调用 provider：provider 可能在 watch 返回前同步报告失效
     this.watches.set(uri, entry)
-    return true
+    // 同一 URI 在防抖窗口内的多次变化合并为一次回调
+    entry.handle = provider.watch(
+      url,
+      () => {
+        clearTimeout(entry.timer)
+        entry.timer = setTimeout(() => {
+          entry.timer = undefined
+          this.onDirectoryChanged?.(uri)
+        }, this.watchDebounceMs)
+      },
+      () => this.invalidate(uri, entry)
+    )
+    return this.watches.get(uri) === entry
+  }
+
+  /** provider 报告监听已失效：移除条目与各 owner 的记录，使下次 setWatched 能重建；不取消待触发的通知 */
+  private invalidate(uri: string, entry: WatchEntry): void {
+    if (this.watches.get(uri) !== entry) return
+    this.watches.delete(uri)
+    for (const ownerId of entry.owners) {
+      const set = this.ownerUris.get(ownerId)
+      set?.delete(uri)
+      if (set?.size === 0) this.ownerUris.delete(ownerId)
+    }
   }
 
   private unwatch(ownerId: number, uri: string): void {

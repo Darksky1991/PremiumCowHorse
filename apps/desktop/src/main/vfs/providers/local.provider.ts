@@ -45,18 +45,31 @@ export class LocalProvider implements FileSystemProvider {
     }
   }
 
-  watch(uri: URL, onChange: () => void): { close(): void } {
+  watch(uri: URL, onChange: () => void, onClose?: () => void): { close(): void } {
     let watcher: ReturnType<typeof fsWatch> | null = null
     const close = (): void => {
       watcher?.close()
       watcher = null
     }
+    // 失效：先通知一次变化（让调用方重新 list 并得到 FS_NOT_FOUND 等结果），再关闭并通知失效
+    const invalidate = (): void => {
+      if (!watcher) return
+      close()
+      onChange()
+      onClose?.()
+    }
     try {
-      watcher = fsWatch(fileURLToPath(uri), { persistent: false }, () => onChange())
-      // Windows 上目录被删除或失去访问权限时会发出 error：关闭自身，不向上抛出
-      watcher.on('error', close)
+      const dir = fileURLToPath(uri)
+      watcher = fsWatch(dir, { persistent: false }, (eventType) => {
+        onChange()
+        // 目录自身被删除时平台可能只给 rename 而不给 error：确认目录是否还在
+        if (eventType === 'rename') fs.stat(dir).catch(invalidate)
+      })
+      // 目录被删除或失去访问权限时可能发出 error：不向上抛出
+      watcher.on('error', invalidate)
     } catch {
-      // 路径不存在、无权限或不是目录：视为不可监听
+      // 路径不存在、无权限或不是目录：视为不可监听，同样通知失效以便调用方日后重建
+      onClose?.()
     }
     return { close }
   }
