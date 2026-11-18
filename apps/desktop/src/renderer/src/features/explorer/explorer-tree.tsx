@@ -1,16 +1,45 @@
-import { useEffect, useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type JSX,
+  type KeyboardEvent
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { FileEntry, WorkspaceEntry } from '@pch/shared'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { AppError, type FileEntry, type WorkspaceEntry } from '@pch/shared'
+import { useEntryActions } from '@renderer/data/entries'
 import { useSetting } from '@renderer/data/settings'
 import { useDirectories, useWatchDirectories, type DirectoryState } from '@renderer/data/vfs'
+import { getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
+import {
+  DRAG_MIME,
+  fsEntryKind,
+  isDraggableNode,
+  positionFromOffset,
+  resolveDrop,
+  type DragSource,
+  type DropAction,
+  type DropPosition
+} from './drag-drop'
 import { useExplorerStore } from './explorer-store'
 import { resolveSelection } from './selection'
 import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
 import { TreeRow } from './tree-row'
 
 const NO_IDS: string[] = []
+
+/** 当前悬停的落点（nodeId 为 null 表示树的空白处） */
+interface DropTarget {
+  nodeId: string | null
+  position: DropPosition
+}
 /** 默认密度下的行高；实际高度由 measureElement 测量（紧凑密度下随 --spacing 变小） */
 const ROW_ESTIMATE = 28
 
@@ -88,6 +117,148 @@ export function ExplorerTree({
   })
   const items = virtualizer.getVirtualItems()
 
+  // ---------- 拖放：只管理条目，绝不产生文件操作 ----------
+  const { t } = useTranslation()
+  const entryActions = useEntryActions()
+  // 条目 / 真实子项的拖动来源（dragover 阶段读不到 dataTransfer 的数据，只能保存在这里）
+  const dragSourceRef = useRef<DragSource | null>(null)
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+
+  const reportError = (e: unknown): void => {
+    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+  }
+
+  /** 当前拖动的来源：系统文件（types 含 Files）、本树发起的拖动，其余（文本、其他窗口）忽略 */
+  const currentSource = (e: DragEvent): DragSource | null => {
+    const types = Array.from(e.dataTransfer.types)
+    if (types.includes('Files')) return { type: 'os', paths: [] }
+    if (types.includes(DRAG_MIME)) return dragSourceRef.current
+    return null
+  }
+
+  /** 事件位置对应的落点；落点无效（真实节点、状态行、自身后代…）时为 null */
+  const locateDrop = (
+    e: DragEvent<HTMLDivElement>,
+    source: DragSource
+  ): { target: DropTarget; node: TreeNode | null; position: DropPosition } | null => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]')
+    const node = row ? (nodes[Number(row.dataset.index)] ?? null) : null
+    let position: DropPosition = 'after'
+    if (row && node) {
+      const rect = row.getBoundingClientRect()
+      position = positionFromOffset(e.clientY - rect.top, rect.height, node.kind === 'group')
+    }
+    if (resolveDrop(source, node, position, nodes) === null) return null
+    return { target: { nodeId: node?.id ?? null, position }, node, position }
+  }
+
+  const onDragOver = (e: DragEvent<HTMLDivElement>): void => {
+    const source = currentSource(e)
+    const hit = source && locateDrop(e, source)
+    if (!source || !hit) {
+      // 不 preventDefault：浏览器显示禁止光标，也不会触发 drop
+      setDropTarget(null)
+      return
+    }
+    if (source.type === 'os') {
+      // 系统文件只允许 copy / link，绝不用 move：move 会让资源管理器等来源端把原文件移走
+      const allowed = e.dataTransfer.effectAllowed.toLowerCase()
+      if (allowed === 'uninitialized' || allowed === 'all' || allowed.includes('copy')) {
+        e.dataTransfer.dropEffect = 'copy'
+      } else if (allowed.includes('link')) {
+        e.dataTransfer.dropEffect = 'link'
+      } else {
+        setDropTarget(null)
+        return
+      }
+    } else {
+      e.dataTransfer.dropEffect = source.type === 'entry' ? 'move' : 'link'
+    }
+    e.preventDefault()
+    setDropTarget((prev) =>
+      prev?.nodeId === hit.target.nodeId && prev.position === hit.target.position
+        ? prev
+        : hit.target
+    )
+  }
+
+  const onDragLeave = (e: DragEvent<HTMLDivElement>): void => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null)
+  }
+
+  /** 执行落点对应的条目操作（只调用 entry.add / entry.move，不触碰磁盘文件） */
+  const execute = async (action: DropAction): Promise<void> => {
+    if (action.type === 'move') {
+      try {
+        await entryActions.move.mutateAsync({
+          id: action.entryId,
+          parentId: action.parentId,
+          index: action.index
+        })
+      } catch (e) {
+        reportError(e)
+      }
+      return
+    }
+    for (const item of action.items) {
+      try {
+        if ('uri' in item) {
+          // 真实子项：类型由节点决定（stat 跟随链接，link-directory 按 folder 添加）
+          const node = nodes.find((n) => n.source === 'fs' && n.uri === item.uri)
+          await entryActions.add.mutateAsync({
+            kind: node ? fsEntryKind(node.kind) : 'folder',
+            workspaceId,
+            parentId: action.parentId,
+            uri: item.uri
+          })
+        } else {
+          // 系统文件的类型未知：先按 folder，类型不符时按 file 重试
+          const base = { workspaceId, parentId: action.parentId, path: item.path }
+          try {
+            await entryActions.add.mutateAsync({ kind: 'folder', ...base })
+          } catch (e) {
+            if (!(e instanceof AppError && e.code === 'ENTRY_KIND_MISMATCH')) throw e
+            await entryActions.add.mutateAsync({ kind: 'file', ...base })
+          }
+        }
+      } catch (e) {
+        reportError(e)
+      }
+    }
+  }
+
+  const onDrop = (e: DragEvent<HTMLDivElement>): void => {
+    const source = currentSource(e)
+    setDropTarget(null)
+    if (!source) return
+    const hit = locateDrop(e, source)
+    if (!hit) return
+    e.preventDefault()
+    let resolved: DragSource = source
+    if (source.type === 'os') {
+      const bridge = getBridge()
+      const paths = Array.from(e.dataTransfer.files)
+        .map((file) => bridge?.getPathForFile(file) ?? '')
+        .filter((p) => p !== '')
+      if (paths.length === 0) return
+      resolved = { type: 'os', paths }
+    }
+    const action = resolveDrop(resolved, hit.node, hit.position, nodes)
+    if (action) void execute(action)
+  }
+
+  const onNodeDragStart = (e: DragEvent<HTMLDivElement>, node: TreeNode): void => {
+    const source: DragSource =
+      node.source === 'entry'
+        ? { type: 'entry', entryId: node.entryId }
+        : { type: 'fs', uri: node.uri ?? '' }
+    dragSourceRef.current = source
+    // 只设置自定义 MIME：不设置 text/uri-list、text/plain、DownloadURL，
+    // 拖出应用（资源管理器 / 桌面）时没有任何目标能接受，不会生成文件
+    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(source))
+    e.dataTransfer.effectAllowed = source.type === 'entry' ? 'move' : 'link'
+  }
+
   const moveTo = (index: number): void => {
     const i = Math.max(0, Math.min(nodes.length - 1, index))
     const node = nodes[i]
@@ -153,6 +324,9 @@ export function ExplorerTree({
       aria-activedescendant={selectedRendered ? rowDomId(selectedIndex) : undefined}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       className="group/tree h-full overflow-auto outline-none"
     >
       <div
@@ -171,6 +345,13 @@ export function ExplorerTree({
               domId={rowDomId(v.index)}
               index={v.index}
               selected={v.index === selectedIndex}
+              draggable={isDraggableNode(node) && (node.source === 'entry' || node.uri !== null)}
+              dropPosition={dropTarget?.nodeId === node.id ? dropTarget.position : null}
+              onDragStart={(e) => onNodeDragStart(e, node)}
+              onDragEnd={() => {
+                dragSourceRef.current = null
+                setDropTarget(null)
+              }}
               style={{ transform: `translateY(${v.start}px)` }}
               onClick={() => {
                 select(workspaceId, node.id)

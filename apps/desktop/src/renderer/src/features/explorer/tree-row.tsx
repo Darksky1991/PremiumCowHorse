@@ -1,4 +1,4 @@
-import type { CSSProperties, JSX, Ref } from 'react'
+import type { CSSProperties, DragEvent, JSX, Ref } from 'react'
 import {
   ChevronRightIcon,
   CircleAlertIcon,
@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
+import type { DropPosition } from './drag-drop'
 import type { NodeKind, TreeNode } from './tree-model'
 
 const ICONS: Record<NodeKind, LucideIcon> = {
@@ -37,8 +38,21 @@ export interface TreeRowProps {
   selected: boolean
   style: CSSProperties
   ref: Ref<HTMLDivElement>
+  /** 可作为拖动来源（状态行与失效链接不可） */
+  draggable: boolean
+  /** 拖动悬停在本行时的落点；null 表示没有 */
+  dropPosition: DropPosition | null
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void
+  onDragEnd: () => void
   onClick: () => void
   onRetry: () => void
+}
+
+/** 落点高亮：before / after 为行上 / 下边线，inside（放进分组）为背景高亮；颜色用设计 token */
+const DROP_STYLES: Record<DropPosition, string> = {
+  before: 'shadow-[inset_0_2px_0_0_var(--sidebar-ring)]',
+  after: 'shadow-[inset_0_-2px_0_0_var(--sidebar-ring)]',
+  inside: 'bg-sidebar-accent outline outline-1 -outline-offset-1 outline-sidebar-ring'
 }
 
 /** 资源树的一行：缩进 + 展开箭头 + 图标 + 名称；状态行显示加载 / 错误（含「重试」）/ 空 */
@@ -49,6 +63,10 @@ export function TreeRow({
   selected,
   style,
   ref,
+  draggable,
+  dropPosition,
+  onDragStart,
+  onDragEnd,
   onClick,
   onRetry
 }: TreeRowProps): JSX.Element {
@@ -63,6 +81,9 @@ export function TreeRow({
       aria-expanded={node.expandable ? node.expanded : undefined}
       aria-selected={selected}
       data-index={index}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onClick}
       style={{
         ...style,
@@ -73,7 +94,8 @@ export function TreeRow({
         'absolute top-0 left-0 flex h-7 w-full cursor-default items-center gap-1 pr-2 text-[13px] select-none',
         selected
           ? 'bg-sidebar-accent text-sidebar-accent-foreground group-focus/tree:outline group-focus/tree:-outline-offset-1 group-focus/tree:outline-sidebar-ring'
-          : 'hover:bg-sidebar-accent/50'
+          : 'hover:bg-sidebar-accent/50',
+        dropPosition !== null && DROP_STYLES[dropPosition]
       )}
     >
       {node.status ? (

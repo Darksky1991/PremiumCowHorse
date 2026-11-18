@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
@@ -361,6 +369,57 @@ test.describe('workspace data layer over IPC', () => {
       await expect(root).toHaveAttribute('aria-selected', 'true')
       await page.keyboard.press('ArrowDown')
       await expect(restored).toHaveAttribute('aria-selected', 'true')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('dragging an entry before another reorders entries and leaves the disk untouched', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const a = path.join(files, 'a.txt')
+      const b = path.join(files, 'b.txt')
+      writeFileSync(a, '')
+      writeFileSync(b, '')
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
+      await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: b })
+      const labels = async (): Promise<string[]> =>
+        (await data<Named[]>(page, 'entry.list', { workspaceId })).map((e) => e.label)
+      await expect(page.getByRole('tree').getByRole('treeitem')).toHaveCount(2)
+      expect(await labels()).toEqual(['a.txt', 'b.txt'])
+      const before = readdirSync(files).sort()
+
+      // 合成原生拖放事件：b 拖到 a 行的上缘（before）。dragover 已 preventDefault 才会触发 drop
+      const result = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+        const rowA = rows.find((r) => r.textContent === 'a.txt')!
+        const rowB = rows.find((r) => r.textContent === 'b.txt')!
+        const dt = new DataTransfer()
+        const fire = (el: HTMLElement, type: string, clientY: number): DragEvent => {
+          const rect = el.getBoundingClientRect()
+          const ev = new DragEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+            clientX: rect.left + 10,
+            clientY
+          })
+          el.dispatchEvent(ev)
+          return ev
+        }
+        fire(rowB, 'dragstart', rowB.getBoundingClientRect().top + 5)
+        const over = fire(rowA, 'dragover', rowA.getBoundingClientRect().top + 2)
+        fire(rowA, 'drop', rowA.getBoundingClientRect().top + 2)
+        fire(rowB, 'dragend', 0)
+        return { types: [...dt.types], overPrevented: over.defaultPrevented }
+      })
+      // 只携带自定义 MIME，没有 text/uri-list、text/plain、DownloadURL
+      expect(result.types).toEqual(['application/x-pch-node'])
+      expect(result.overPrevented).toBe(true)
+
+      await expect.poll(labels).toEqual(['b.txt', 'a.txt'])
+      expect(readdirSync(files).sort()).toEqual(before)
     } finally {
       await app.close()
     }
