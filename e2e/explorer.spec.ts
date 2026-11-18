@@ -162,6 +162,41 @@ test.describe('explorer tree on real directories', () => {
     }
   })
 
+  test('watch: a directory deleted, re-created and retried is watched again', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      const design = path.join(project, '設計書')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: design })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+      await page.waitForTimeout(1000)
+
+      // 删除 → 「找不到」行
+      rmSync(design, { recursive: true, force: true })
+      const errorRow = tree.getByRole('treeitem', { name: notFoundLabel })
+      await expect(errorRow).toBeVisible({ timeout: 5000 })
+      // 等渲染端收到 vfs.changed 后的重发（200ms 防抖）在目录不存在时完成，
+      // 否则重建赶在重发之前，监听碰巧建立成功，测不到「重建后不恢复监听」
+      await page.waitForTimeout(1500)
+
+      // 原路径重建 → 「重试」→ 列表恢复（条目根的父目录不在监听中，重建本身不会被感知）
+      mkdirSync(design)
+      writeFileSync(path.join(design, '復旧.txt'), '')
+      await errorRow.getByRole('button', { name: retryButton }).click()
+      await expect(tree.getByRole('treeitem', { name: '復旧.txt' })).toBeVisible()
+      // 列表恢复后监听集合重新包含该目录（经 200ms 防抖发送）
+      await page.waitForTimeout(1000)
+
+      // 之后的变化无需刷新即出现：监听已重新建立
+      writeFileSync(path.join(design, '追加.txt'), '')
+      await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
+    } finally {
+      await app.close()
+    }
+  })
+
   test('drag and drop only manages entries: the disk snapshot is identical afterwards', async () => {
     const { app, page } = await launch(userData)
     try {

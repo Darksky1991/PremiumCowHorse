@@ -61,6 +61,18 @@ export function directoryState(r: {
   return { status: 'loading' }
 }
 
+/**
+ * 需要监听的目录：只取列表已就绪的目录（列目录仍用全部已展开的目录）。
+ * 出错 / 加载中的目录不监听：目录被删除后从监听集合中移除，原路径重建后「重试」使列表恢复为
+ * 就绪，集合随之变化并重新发送 vfs.watch，监听得以重建（若一直留在集合中，集合不变就不会重发）。
+ */
+export function watchableUris(
+  uris: readonly string[],
+  directories: ReadonlyMap<string, DirectoryState>
+): string[] {
+  return uris.filter((uri) => directories.get(uri)?.status === 'ready')
+}
+
 const WATCH_DEBOUNCE_MS = 200
 
 export interface WatchScheduler {

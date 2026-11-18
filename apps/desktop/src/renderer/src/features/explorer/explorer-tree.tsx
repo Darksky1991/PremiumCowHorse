@@ -16,7 +16,12 @@ import { toast } from 'sonner'
 import { AppError, type FileEntry, type WorkspaceEntry } from '@pch/shared'
 import { ContextMenu, ContextMenuTrigger } from '@pch/ui/components/context-menu'
 import { useSetting } from '@renderer/data/settings'
-import { useDirectories, useWatchDirectories, type DirectoryState } from '@renderer/data/vfs'
+import {
+  useDirectories,
+  useWatchDirectories,
+  watchableUris,
+  type DirectoryState
+} from '@renderer/data/vfs'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import {
@@ -91,7 +96,9 @@ export function ExplorerTree({
   const queryClient = useQueryClient()
   const [uris, setUris] = useState<string[]>([])
   const directories = useStableDirectories(useDirectories(uris))
-  useWatchDirectories(uris)
+  // 列目录用全部已展开的目录；监听只取列表已就绪的目录（出错的目录恢复后重新监听）
+  const watched = useMemo(() => watchableUris(uris, directories), [uris, directories])
+  useWatchDirectories(watched)
 
   const nodes = useMemo(
     () => buildVisibleNodes({ entries, expanded, directories, showHidden }),

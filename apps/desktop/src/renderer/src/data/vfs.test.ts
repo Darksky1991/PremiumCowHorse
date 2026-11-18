@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError, type FileEntry } from '@pch/shared'
-import { createWatchScheduler, directoryState, isNetworkUri } from './vfs'
+import {
+  createWatchScheduler,
+  directoryState,
+  isNetworkUri,
+  watchableUris,
+  type DirectoryState
+} from './vfs'
 
 describe('isNetworkUri', () => {
   it('带主机名的 file URI（UNC）是网络路径', () => {
@@ -103,5 +109,35 @@ describe('directoryState', () => {
       status: 'error',
       code: 'FS_NOT_FOUND'
     })
+  })
+})
+
+describe('watchableUris', () => {
+  const ready: DirectoryState = { status: 'ready', items: [] }
+
+  it('只监听列表已就绪的目录，保持原顺序', () => {
+    const directories = new Map<string, DirectoryState>([
+      ['file:///C:/a', ready],
+      ['file:///C:/b', { status: 'loading' }],
+      ['file:///C:/c', { status: 'error', code: 'FS_NOT_FOUND' }],
+      ['file:///C:/d', ready]
+    ])
+    expect(
+      watchableUris(['file:///C:/d', 'file:///C:/a', 'file:///C:/b', 'file:///C:/c'], directories)
+    ).toEqual(['file:///C:/d', 'file:///C:/a'])
+  })
+
+  it('还没有状态的目录不监听', () => {
+    expect(watchableUris(['file:///C:/x'], new Map())).toEqual([])
+  })
+
+  it('出错的目录恢复为就绪后重新进入监听集合（删除后重建 → 重试）', () => {
+    const uri = 'file:///C:/x'
+    const failed = new Map<string, DirectoryState>([
+      [uri, { status: 'error', code: 'FS_NOT_FOUND' }]
+    ])
+    const recovered = new Map<string, DirectoryState>([[uri, ready]])
+    expect(watchableUris([uri], failed)).toEqual([])
+    expect(watchableUris([uri], recovered)).toEqual([uri])
   })
 })
