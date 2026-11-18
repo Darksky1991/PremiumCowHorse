@@ -60,6 +60,14 @@ export const ipcContract = {
   'vfs.cancel': route<void>()(z.strictObject({ requestId: z.string().min(1) })),
   /** 渲染端当前需要监听的目录集合（整体替换）；变化经 vfs.changed 事件广播 */
   'vfs.watch': route<void>()(z.strictObject({ uris: z.array(z.string().min(1)).max(500) })),
+  /** 系统操作（均不修改文件）：在资源管理器中显示 / 用默认程序打开 / 写剪贴板 / 选择路径对话框 */
+  'system.revealInOs': route<void>()(z.strictObject({ uri: z.string().min(1) })),
+  'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
+  'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),
+  /** 返回所选本地路径；用户取消时为空数组 */
+  'system.selectPaths': route<string[]>()(
+    z.strictObject({ kind: z.enum(['folder', 'file']), multiple: z.boolean() })
+  ),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
