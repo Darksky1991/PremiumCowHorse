@@ -10,6 +10,7 @@ import { createPaths, type AppPaths } from '../infra/paths'
 import { SettingsRepo } from '../modules/settings/settings.repo'
 import { SettingsService } from '../modules/settings/settings.service'
 import { WindowService } from '../windows/window.service'
+import { WorkspaceService } from '../modules/workspace/workspace.service'
 
 export interface Container {
   paths: AppPaths
@@ -17,6 +18,7 @@ export interface Container {
   db: Database
   bus: EventBus<MainEvents>
   settings: SettingsService
+  workspaces: WorkspaceService
   i18n: i18n
   windows: WindowService
 }
@@ -32,8 +34,9 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const bus = new EventBus<MainEvents>()
 
   const settings = await SettingsService.create(new SettingsRepo(db), bus)
+  const workspaces = new WorkspaceService(db, bus)
   const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
   const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))
 
-  return { paths, logger, db, bus, settings, i18n, windows }
+  return { paths, logger, db, bus, settings, workspaces, i18n, windows }
 }

@@ -74,6 +74,7 @@ function wireEvents(c: Container): void {
     }
     c.windows.broadcast('settings.changed', patch)
   })
+  c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())

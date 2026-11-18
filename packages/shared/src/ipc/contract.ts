@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import type { AppErrorPayload } from '../errors/app-error'
 import { SettingsPatch, type Settings } from '../settings/schema'
+import {
+  EntryAddInput,
+  EntryMoveInput,
+  EntryUpdateInput,
+  WorkspaceCreateInput,
+  WorkspaceUpdateInput
+} from '../workspace/schema'
+import type { Workspace, WorkspaceEntry } from '../workspace/types'
 
 /** route<输出类型>()(输入 schema)：输入由 zod 运行时校验，输出只做类型约束 */
 const route =
@@ -30,6 +38,19 @@ export const ipcContract = {
   'app.getInfo': route<AppInfo>()(z.void()),
   'settings.getAll': route<Settings>()(z.void()),
   'settings.set': route<void>()(SettingsPatch),
+  /** 工作区；「当前工作区」= 最近一次 activate 的工作区 */
+  'workspace.list': route<Workspace[]>()(z.void()),
+  'workspace.active': route<Workspace>()(z.void()),
+  'workspace.create': route<Workspace>()(WorkspaceCreateInput),
+  'workspace.update': route<Workspace>()(WorkspaceUpdateInput),
+  'workspace.delete': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  'workspace.activate': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /** 工作区条目（group / folder / file） */
+  'entry.list': route<WorkspaceEntry[]>()(z.strictObject({ workspaceId: z.string().min(1) })),
+  'entry.add': route<WorkspaceEntry>()(EntryAddInput),
+  'entry.update': route<WorkspaceEntry>()(EntryUpdateInput),
+  'entry.remove': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  'entry.move': route<void>()(EntryMoveInput),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -57,6 +78,8 @@ export type IpcOutput<C extends IpcChannel> = IpcContract[C]['output']
 /** 主进程 → 渲染进程的广播事件 */
 export interface IpcEvents {
   'settings.changed': Partial<Settings>
+  /** 工作区或其条目发生变化（id 为工作区 id） */
+  'workspace.changed': { id: string }
   /** 只发给状态发生变化的那个窗口 */
   'window.stateChanged': WindowState
 }
