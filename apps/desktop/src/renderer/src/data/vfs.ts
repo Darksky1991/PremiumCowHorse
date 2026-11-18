@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import {
   AppError,
+  VFS_WATCH_MAX,
   type ErrorCode,
   type FileEntry,
   type IpcChannel,
@@ -148,10 +149,15 @@ export interface WatchScheduler {
   dispose(): void
 }
 
-/** 防抖与「失效后重建」的判定逻辑；与 React 无关，便于单元测试 */
+/**
+ * 防抖与「失效后重建」的判定逻辑；与 React 无关，便于单元测试。
+ * 集合超过 vfs.watch 的上限（VFS_WATCH_MAX）时截断为前面的部分（调用方按树中自上而下的顺序给出）
+ * 并警告：超过上限的调用会被主进程的输入校验整次拒绝，所有监听都会静默失效。
+ */
 export function createWatchScheduler(
   send: (uris: string[]) => void,
-  delayMs: number = WATCH_DEBOUNCE_MS
+  delayMs: number = WATCH_DEBOUNCE_MS,
+  warn: (message: string) => void = (message) => console.warn(message)
 ): WatchScheduler {
   let current: string[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -160,7 +166,14 @@ export function createWatchScheduler(
     if (timer !== undefined) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
-      send(current)
+      if (current.length > VFS_WATCH_MAX) {
+        warn(
+          `[vfs.watch] ${current.length} directories requested; only the first ${VFS_WATCH_MAX} are watched`
+        )
+        send(current.slice(0, VFS_WATCH_MAX))
+      } else {
+        send(current)
+      }
     }, delayMs)
   }
 
@@ -186,9 +199,17 @@ export function useWatchDirectories(uris: string[]): void {
   const schedulerRef = useRef<WatchScheduler | null>(null)
 
   useEffect(() => {
-    const scheduler = createWatchScheduler((set) => {
-      void call('vfs.watch', { uris: set }).catch(() => undefined)
-    })
+    const scheduler = createWatchScheduler(
+      (set) => {
+        void call('vfs.watch', { uris: set }).catch(() => undefined)
+      },
+      WATCH_DEBOUNCE_MS,
+      // 控制台与 main.log 各记一条
+      (message) => {
+        console.warn(message)
+        void call('log.write', { level: 'warn', message }).catch(() => undefined)
+      }
+    )
     schedulerRef.current = scheduler
     const off = subscribe('vfs.changed', ({ uri }) => scheduler.notifyChanged(uri))
     return () => {
@@ -198,8 +219,8 @@ export function useWatchDirectories(uris: string[]): void {
     }
   }, [])
 
-  // 以内容而非引用判断集合是否变化
-  const key = JSON.stringify([...new Set(uris)].sort())
+  // 以内容而非引用判断集合是否变化；保持调用方的顺序（超过上限时保留靠前的目录）
+  const key = JSON.stringify([...new Set(uris)])
   useEffect(() => {
     schedulerRef.current?.set(JSON.parse(key) as string[])
   }, [key])

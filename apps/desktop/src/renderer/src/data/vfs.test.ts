@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryObserver, focusManager } from '@tanstack/react-query'
-import { AppError, type FileEntry } from '@pch/shared'
+import { AppError, VFS_WATCH_MAX, type FileEntry } from '@pch/shared'
 import {
   DIRECTORY_STALE_MS,
   createWatchScheduler,
@@ -68,6 +68,23 @@ describe('createWatchScheduler', () => {
     s.notifyChanged('file:///other')
     vi.advanceTimersByTime(1000)
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('集合超过 vfs.watch 的上限时截断为前 500 个（保留顺序靠前者）并警告，而不是整次被拒绝', () => {
+    const send = vi.fn()
+    const warn = vi.fn()
+    const s = createWatchScheduler(send, 200, warn)
+    const uris = Array.from({ length: VFS_WATCH_MAX + 3 }, (_, i) => `file:///d${i}`)
+    s.set(uris)
+    vi.advanceTimersByTime(200)
+    expect(send).toHaveBeenCalledWith(uris.slice(0, VFS_WATCH_MAX))
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]![0]).toContain(String(VFS_WATCH_MAX + 3))
+    // 上限以内不警告
+    s.set(uris.slice(0, VFS_WATCH_MAX))
+    vi.advanceTimersByTime(200)
+    expect(send).toHaveBeenLastCalledWith(uris.slice(0, VFS_WATCH_MAX))
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 
   it('dispose 取消待发送的防抖并立即发送空集合', () => {

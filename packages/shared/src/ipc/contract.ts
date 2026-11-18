@@ -11,6 +11,9 @@ import {
 import type { FileEntry, FileStat } from '../vfs/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 
+/** vfs.watch 一次可监听的目录数上限（渲染端超过时截断，见 renderer data/vfs.ts） */
+export const VFS_WATCH_MAX = 500
+
 /** route<输出类型>()(输入 schema)：输入由 zod 运行时校验，输出只做类型约束 */
 const route =
   <O>() =>
@@ -59,7 +62,9 @@ export const ipcContract = {
   ),
   'vfs.cancel': route<void>()(z.strictObject({ requestId: z.string().min(1) })),
   /** 渲染端当前需要监听的目录集合（整体替换）；变化经 vfs.changed 事件广播 */
-  'vfs.watch': route<void>()(z.strictObject({ uris: z.array(z.string().min(1)).max(500) })),
+  'vfs.watch': route<void>()(
+    z.strictObject({ uris: z.array(z.string().min(1)).max(VFS_WATCH_MAX) })
+  ),
   /** 系统操作（均不修改文件）：在资源管理器中显示 / 用默认程序打开 / 写剪贴板 / 选择路径对话框 */
   'system.revealInOs': route<void>()(z.strictObject({ uri: z.string().min(1) })),
   'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
