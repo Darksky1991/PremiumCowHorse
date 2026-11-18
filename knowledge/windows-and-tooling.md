@@ -96,3 +96,11 @@
 - 原因：命令文本经过工具层与 shell 两次转义处理，heredoc 里的反斜杠不保证按字面写入。
 - 解决：含反斜杠的内容用 Edit / Write 工具写；脚本里需要路径转换时用 `pathToFileURL` 等函数而不是手写转义；写完用 `grep -n` 或 Read 核对实际落盘内容。
 - 预防：测试里 UNC 键写成 `'\\server\share'`（运行时为 `\server\share`）并在用例名里不要出现反斜杠（`no-useless-escape`）。
+
+### 临时目录判断要同时比较原始路径与 realpath
+
+- 日期：2026-11-19
+- 症状：只做字符串比较时，8.3 短文件名（`C:/Users/YONGJU~1/.../Temp`）与长名不一致，或经目录联接 / 符号链接指向临时目录内的路径，会漏判。
+- 原因：同一目录在 Windows 上有多种路径形式。
+- 解决：`WorkspaceService` 对 `tempDir`（构造时一次，`fs.realpathSync.native`）与目标路径（`fs/promises.realpath`）各取原始与 realpath 两种形式，任一命中即视为在临时目录下；realpath 失败（不存在等）回退原值。realpath 只读取，不改变文件系统。本机实测 `%TEMP%` 的短名与长名相同，其他机器上可能不同（未验证）。
+- 预防：判断「是否在某目录之下」时不要只信字符串；测试用 `fs.symlinkSync(target, link, 'junction')`（无需管理员）构造联接。

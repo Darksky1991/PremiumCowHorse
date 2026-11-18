@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
+import { realpath } from 'node:fs/promises'
 import {
   AppError,
   isUnderUri,
@@ -29,13 +31,24 @@ import { WorkspaceRepo } from './workspace.repo'
  * 成功后发出一次 workspace.changed（条目变化时 id 为所属工作区）。
  */
 export class WorkspaceService {
+  /** 临时目录的原始形式与 realpath 形式（构造时解析一次；realpath 失败时只有原始形式） */
+  private readonly tempDirs: string[]
+
   constructor(
     private readonly db: Database,
     private readonly vfs: VfsService,
     private readonly bus: EventBus<MainEvents>,
     /** 系统临时目录（app.getPath('temp')）；rejectTemporary 时位于其下的路径被拒绝。组合根注入，测试可传任意目录 */
-    private readonly tempDir: string
-  ) {}
+    tempDir: string
+  ) {
+    this.tempDirs = [tempDir]
+    try {
+      const real = realpathSync.native(tempDir)
+      if (real !== tempDir) this.tempDirs.push(real)
+    } catch {
+      // 临时目录不存在或无法解析：只用原始形式
+    }
+  }
 
   // ---------- 工作区 ----------
 
@@ -121,10 +134,7 @@ export class WorkspaceService {
     if (input.kind !== 'group') {
       uri = input.path !== undefined ? toFileUri(input.path) : normalizeRootUri(input.uri as string)
       // 先于 stat 检查：临时副本即使存在也不接受
-      if (
-        input.rejectTemporary === true &&
-        isUnderDirectory(fileUriToLocalPath(uri), this.tempDir)
-      ) {
+      if (input.rejectTemporary === true && (await this.isTemporary(fileUriToLocalPath(uri)))) {
         throw new AppError({ code: 'ENTRY_TEMPORARY_PATH', detail: uri })
       }
       const stat = await this.vfs.stat(uri)
@@ -287,6 +297,20 @@ export class WorkspaceService {
   }
 
   // ---------- 内部 ----------
+
+  /**
+   * 路径是否位于临时目录之下：原始形式或 realpath 形式（解决 8.3 短名 / 长名不一致、
+   * 符号链接与目录联接指向临时目录内）任一命中即是。realpath 只读取，失败（不存在等）时回退原值。
+   */
+  private async isTemporary(target: string): Promise<boolean> {
+    const forms = [target]
+    try {
+      forms.push(await realpath(target))
+    } catch {
+      // 不存在或无法解析：只用原始形式（之后 stat 会报告错误）
+    }
+    return forms.some((f) => this.tempDirs.some((dir) => isUnderDirectory(f, dir)))
+  }
 
   /**
    * 在事务内执行写操作，成功后发出 workspace.changed。

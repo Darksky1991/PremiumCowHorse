@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -210,6 +210,20 @@ describe('WorkspaceService', () => {
       it('matches case-insensitively and with forward slashes', async () => {
         const upper = at('Temp', 'zip-copy', 'f.txt').toUpperCase().replaceAll('\\', '/')
         await expect(addPath(upper, true)).rejects.toMatchObject({ code: 'ENTRY_TEMPORARY_PATH' })
+      })
+
+      it('rejects a path reached through a directory junction that points into the temp directory', async () => {
+        symlinkSync(at('Temp', 'zip-copy'), at('junc'), 'junction')
+        await expect(addPath(at('junc', 'f.txt'), true)).rejects.toMatchObject({
+          code: 'ENTRY_TEMPORARY_PATH'
+        })
+        // 不设标志时照常添加
+        expect((await addPath(at('junc', 'f.txt'))).label).toBe('f.txt')
+      })
+
+      it('does not reject a path whose junction points outside the temp directory', async () => {
+        symlinkSync(at('Temp2'), at('junc2'), 'junction')
+        expect((await addPath(at('junc2', 'g.txt'), true)).label).toBe('g.txt')
       })
 
       it('does not reject a sibling directory with the same prefix (Temp2)', async () => {
