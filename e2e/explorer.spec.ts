@@ -347,4 +347,121 @@ test.describe('explorer tree on real directories', () => {
       await app.close()
     }
   })
+
+  /** 右键 → 刷新级别子菜单（点击触发器展开），返回子菜单中的单选项 */
+  async function openLevelMenu(
+    page: Page,
+    row: string
+  ): Promise<(name: RegExp) => ReturnType<Page['getByRole']>> {
+    await page.getByRole('tree').getByRole('treeitem', { name: row }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: /^(更新レベル|刷新级别|Refresh level)/ }).click()
+    return (name) => page.getByRole('menuitemradio', { name })
+  }
+
+  test('menu: refresh level and build index', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      const rootUri = pathToFileURL(project).href
+      const entries = (): Promise<(Entry & { refreshLevel: string | null })[]> =>
+        data(page, 'entry.list', { workspaceId })
+
+      // 初始：跟随全局（本地全局默认为 積極 / 积极 / Active）被选中
+      let radio = await openLevelMenu(page, '案件')
+      await expect(
+        radio(/^(全体設定に従う|跟随全局|Use global setting).*(積極|积极|Active)/)
+      ).toBeChecked()
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      // 选择「全部」→ 保存到条目，菜单关闭
+      radio = await openLevelMenu(page, '案件')
+      await radio(/^(すべて|全部|All)$/).click()
+      await expect(page.getByRole('menu')).toHaveCount(0)
+      await expect
+        .poll(async () => (await entries()).find((e) => e.label === '案件')?.refreshLevel)
+        .toBe('all')
+
+      // 重新打开：「全部」为选中
+      radio = await openLevelMenu(page, '案件')
+      await expect(radio(/^(すべて|全部|All)$/)).toBeChecked()
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      // 建立索引：勾选 → index.list 含该目录；重新打开显示已勾选
+      await tree.getByRole('treeitem', { name: '案件' }).click({ button: 'right' })
+      const build = page.getByRole('menuitemcheckbox', {
+        name: /^(インデックスを作成|建立索引|Build index)/
+      })
+      await expect(build).not.toBeChecked()
+      await build.click()
+      await expect
+        .poll(() => data<string[]>(page, 'index.list', { workspaceId }))
+        .toEqual([rootUri])
+      await tree.getByRole('treeitem', { name: '案件' }).click({ button: 'right' })
+      await expect(build).toBeChecked()
+      await page.keyboard.press('Escape')
+
+      // 真实子目录也可以建立索引；没有「用默认应用打开」
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'right' })
+      await expect(
+        page.getByRole('menuitem', {
+          name: /既定のアプリで開く|用默认应用打开|Open with default app/
+        })
+      ).toHaveCount(0)
+      await page
+        .getByRole('menuitemcheckbox', { name: /^(インデックスを作成|建立索引|Build index)/ })
+        .click()
+      await expect
+        .poll(async () => (await data<string[]>(page, 'index.list', { workspaceId })).length)
+        .toBe(2)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('offline: a root on an unreachable share shows the disconnected icon and its cached rows', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      const root = tree.getByRole('treeitem', { name: '案件' })
+      await root.click()
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
+      const icon = root.getByRole('img', { name: /^(切断|已断开|Disconnected)$/ })
+      await expect(icon).toHaveCount(0)
+
+      // 主进程测试钩子：以与产品相同的信封向窗口发出 vfs.reachability（不新增产品 IPC）
+      const share = `${path.parse(project).root[0]!.toUpperCase()}:`
+      const send = (state: 'offline' | 'online'): Promise<void> =>
+        app.evaluate(
+          ({ BrowserWindow }, e) => {
+            for (const w of BrowserWindow.getAllWindows()) {
+              w.webContents.send('pch:event', { event: 'vfs.reachability', payload: e })
+            }
+          },
+          { share, state, since: Date.now() }
+        )
+
+      await send('offline')
+      await expect(icon).toBeVisible()
+      // 其下行仍显示缓存内容，文字为浅色
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
+      await expect(
+        tree.getByRole('treeitem', { name: 'README.md' }).locator('span').first()
+      ).toHaveClass(/text-muted-foreground/)
+
+      await send('online')
+      await expect(icon).toHaveCount(0)
+      await expect(
+        tree.getByRole('treeitem', { name: 'README.md' }).locator('span').first()
+      ).not.toHaveClass(/text-muted-foreground/)
+    } finally {
+      await app.close()
+    }
+  })
 })

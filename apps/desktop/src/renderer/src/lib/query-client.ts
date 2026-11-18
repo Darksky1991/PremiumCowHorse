@@ -35,6 +35,7 @@ export function bridgeMainEvents(client: QueryClient): () => void {
     subscribe('workspace.changed', ({ id }) => {
       void client.invalidateQueries({ queryKey: queryKeys.workspaceRoot })
       void client.invalidateQueries({ queryKey: queryKeys.entries(id) })
+      void client.invalidateQueries({ queryKey: queryKeys.indexTargets(id) })
     }),
     // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）
     subscribe('vfs.changed', ({ uri }) => {

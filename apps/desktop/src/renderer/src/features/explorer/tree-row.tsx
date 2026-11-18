@@ -10,6 +10,7 @@ import {
   FolderRootIcon,
   FolderSymlinkIcon,
   LayersIcon,
+  UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -70,6 +71,7 @@ export function TreeRow({
   onClick,
   onRetry
 }: TreeRowProps): JSX.Element {
+  const { t, i18n } = useTranslation()
   const Icon = node.kind === 'directory' && node.expanded ? FolderOpenIcon : ICONS[node.kind]
 
   return (
@@ -117,13 +119,37 @@ export function TreeRow({
               node.kind === 'link-broken' && 'text-destructive'
             )}
           />
-          <span className="min-w-0 truncate" title={node.label}>
+          <span
+            className={cn('min-w-0 truncate', node.dimmed && 'text-muted-foreground')}
+            title={rowTitle(
+              node,
+              t('explorer:lastUpdated', { time: formatTime(node, i18n.language) })
+            )}
+          >
             {node.label}
           </span>
+          {node.offline ? (
+            <UnplugIcon
+              role="img"
+              aria-label={t('explorer:disconnected')}
+              className="ml-auto size-4 shrink-0 text-muted-foreground"
+            />
+          ) : null}
         </>
       )}
     </div>
   )
+}
+
+/** 显示缓存内容的目录（cached / offline）：悬停显示上次检查的时刻；其余行只显示名称 */
+function rowTitle(node: TreeNode, lastUpdated: string): string {
+  return node.checkedAt === undefined || node.checkedAt === null
+    ? node.label
+    : `${node.label}\n${lastUpdated}`
+}
+
+function formatTime(node: TreeNode, language: string): string {
+  return node.checkedAt == null ? '' : new Date(node.checkedAt).toLocaleString(language)
 }
 
 function StatusContent({ node, onRetry }: { node: TreeNode; onRetry: () => void }): JSX.Element {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { fileUriToWindowsPath } from './file-uri'
+import {
+  fileUriToWindowsPath,
+  isShareOffline,
+  isUncUri,
+  normalizeFileUri,
+  shareKeyOfUri
+} from './file-uri'
 
 describe('fileUriToWindowsPath', () => {
   it('转换盘符路径并解码百分号编码', () => {
@@ -24,5 +30,58 @@ describe('fileUriToWindowsPath', () => {
     expect(fileUriToWindowsPath('smb://server/share')).toBeNull()
     expect(fileUriToWindowsPath('not a uri')).toBeNull()
     expect(fileUriToWindowsPath('file:///C:/%E0%A4%A')).toBeNull()
+  })
+})
+
+describe('shareKeyOfUri', () => {
+  it('盘符 → 大写盘符加冒号；UNC → 小写的主机与共享名', () => {
+    expect(shareKeyOfUri('file:///c:/work/a')).toBe('C:')
+    expect(shareKeyOfUri('file:///C:/')).toBe('C:')
+    expect(shareKeyOfUri('file://Server/Share/x/y')).toBe('\\\\server\\share')
+    expect(shareKeyOfUri('file://server/%E5%85%B1%E6%9C%89')).toBe('\\\\server\\共有')
+  })
+
+  it('非 file 协议或无法解析返回 null', () => {
+    expect(shareKeyOfUri('https://example.com/a')).toBeNull()
+    expect(shareKeyOfUri('not a uri')).toBeNull()
+  })
+})
+
+describe('isShareOffline', () => {
+  const offline = { '\\\\server\\share': 1, 'Z:': 2 }
+
+  it('UNC 根与其子路径匹配，其他共享不匹配', () => {
+    expect(isShareOffline('file://server/share', offline)).toBe(true)
+    expect(isShareOffline('file://server/share/案件/a', offline)).toBe(true)
+    expect(isShareOffline('file://server/other', offline)).toBe(false)
+    expect(isShareOffline('file://other/share', offline)).toBe(false)
+  })
+
+  it('盘符（含映射盘）按盘符匹配，不区分大小写', () => {
+    expect(isShareOffline('file:///Z:/data', offline)).toBe(true)
+    expect(isShareOffline('file:///z:/data', offline)).toBe(true)
+    expect(isShareOffline('file:///C:/data', offline)).toBe(false)
+  })
+
+  it('没有断开的共享或键无法求出时为 false', () => {
+    expect(isShareOffline('file:///C:/a', {})).toBe(false)
+    expect(isShareOffline('https://x/y', offline)).toBe(false)
+  })
+})
+
+describe('normalizeFileUri', () => {
+  it('去掉结尾斜杠，驱动器根保留', () => {
+    expect(normalizeFileUri('file:///C:/work/')).toBe('file:///C:/work')
+    expect(normalizeFileUri('file:///C:')).toBe('file:///C:/')
+    expect(normalizeFileUri('file:///C:/')).toBe('file:///C:/')
+    expect(normalizeFileUri('file:///C:/a')).toBe('file:///C:/a')
+  })
+})
+
+describe('isUncUri', () => {
+  it('带主机名为 UNC，盘符为本地', () => {
+    expect(isUncUri('file://server/share/x')).toBe(true)
+    expect(isUncUri('file:///C:/x')).toBe(false)
+    expect(isUncUri('https://x/y')).toBe(false)
   })
 })

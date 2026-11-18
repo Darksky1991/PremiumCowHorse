@@ -1,5 +1,4 @@
 import { app, BrowserWindow, clipboard, dialog, shell, webContents } from 'electron'
-import { AppError } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 import type { HandlersOf } from '../../ipc/router'
 import { fileUriToLocalPath } from '../../vfs/local-path'
@@ -7,12 +6,7 @@ import { fileUriToLocalPath } from '../../vfs/local-path'
 export function systemHandlers(
   logger: Logger
 ): HandlersOf<
-  | 'app.getInfo'
-  | 'log.write'
-  | 'system.revealInOs'
-  | 'system.openPath'
-  | 'system.copyText'
-  | 'system.selectPaths'
+  'app.getInfo' | 'log.write' | 'system.revealInOs' | 'system.copyText' | 'system.selectPaths'
 > {
   return {
     'app.getInfo': async () => ({
@@ -29,11 +23,6 @@ export function systemHandlers(
     },
     'system.revealInOs': async ({ uri }) => {
       shell.showItemInFolder(fileUriToLocalPath(uri))
-    },
-    'system.openPath': async ({ uri }) => {
-      // shell.openPath 失败时返回错误描述字符串，成功时返回空字符串
-      const error = await shell.openPath(fileUriToLocalPath(uri))
-      if (error) throw new AppError({ code: 'UNKNOWN', detail: error })
     },
     'system.copyText': async ({ text }) => {
       clipboard.writeText(text)

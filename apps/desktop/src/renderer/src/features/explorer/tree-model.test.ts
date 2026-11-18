@@ -322,3 +322,49 @@ describe('requiredDirectoryUris', () => {
     ).toEqual([`${ROOT}/shared`])
   })
 })
+
+describe('offline roots and cached listings', () => {
+  const NET = 'file://srv/share/案件'
+
+  it('marks the root entry on an offline share and dims everything below it', () => {
+    const offlineRoot = entry('n', 'folder', { uri: NET })
+    const localRoot = entry('l', 'folder', { uri: `${ROOT}/l`, sortOrder: 1 })
+    const sub = item(NET, 'sub', 'directory')
+    const nodes = buildVisibleNodes({
+      entries: [offlineRoot, localRoot],
+      expanded: new Set(['entry:n', 'entry:l', 'fs:n:sub']),
+      directories: new Map<string, DirectoryState>([
+        [NET, ready([sub])],
+        [sub.uri, ready([item(sub.uri, 'a.txt', 'file')])],
+        [`${ROOT}/l`, ready([item(`${ROOT}/l`, 'b.txt', 'file')])]
+      ]),
+      showHidden: false,
+      offlineShares: { '\\\\srv\\share': 1 }
+    })
+    const byId = new Map(nodes.map((n) => [n.id, n]))
+    expect(byId.get('entry:n')?.offline).toBe(true)
+    expect(byId.get('entry:n')?.dimmed).toBeUndefined()
+    expect(byId.get('fs:n:sub')?.dimmed).toBe(true)
+    expect(byId.get('fs:n:sub/a.txt')?.dimmed).toBe(true)
+    expect(byId.get('entry:l')?.offline).toBeUndefined()
+    expect(byId.get('fs:l:b.txt')?.dimmed).toBeUndefined()
+  })
+
+  it('carries the last-checked time on directories showing cached or offline listings', () => {
+    const f = entry('f', 'folder')
+    const uri = f.uri as string
+    const sub = item(uri, 'sub', 'directory')
+    const nodes = buildVisibleNodes({
+      entries: [f],
+      expanded: new Set(['entry:f', 'fs:f:sub']),
+      directories: new Map<string, DirectoryState>([
+        [uri, { status: 'ready', items: [sub], state: 'cached', checkedAt: 1234 }],
+        [sub.uri, { status: 'ready', items: [], state: 'fresh', checkedAt: 5678 }]
+      ]),
+      showHidden: false
+    })
+    expect(nodes.find((n) => n.id === 'entry:f')?.checkedAt).toBe(1234)
+    // fresh 的目录与未展开的目录没有标注
+    expect(nodes.find((n) => n.id === 'fs:f:sub')?.checkedAt).toBeUndefined()
+  })
+})

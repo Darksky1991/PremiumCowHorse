@@ -47,6 +47,19 @@ describe('bridgeMainEvents', () => {
     expect(client.getQueryState(b)?.isInvalidated).toBe(false)
   })
 
+  it('workspace.changed 使该工作区的条目与索引目标失效', () => {
+    const entries = queryKeys.entries('w1')
+    const index = queryKeys.indexTargets('w1')
+    const other = queryKeys.indexTargets('w2')
+    client.setQueryData(entries, [])
+    client.setQueryData(index, [])
+    client.setQueryData(other, [])
+    emit('workspace.changed', { id: 'w1' })
+    expect(client.getQueryState(entries)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(index)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(other)?.isInvalidated).toBe(false)
+  })
+
   it('全局默认：永不过期、聚焦时不重新获取、不重试', () => {
     expect(client.getDefaultOptions().queries).toMatchObject({
       staleTime: Infinity,

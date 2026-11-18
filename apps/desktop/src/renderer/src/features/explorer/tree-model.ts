@@ -1,5 +1,6 @@
 import type { ErrorCode, FileEntry, WorkspaceEntry } from '@pch/shared'
 import type { DirectoryState } from '@renderer/data/vfs'
+import { isShareOffline } from '@renderer/lib/file-uri'
 
 export type NodeKind =
   'group' | 'folder' | 'file' | 'directory' | 'link-directory' | 'link-file' | 'link-broken'
@@ -22,6 +23,12 @@ export interface TreeNode {
   expanded: boolean
   status?: 'loading' | 'error' | 'empty'
   errorCode?: ErrorCode
+  /** 条目节点所在的共享 / 卷已断开（行尾显示「断开」图标） */
+  offline?: true
+  /** 位于断开的根条目之下（显示缓存内容，文字用浅色） */
+  dimmed?: true
+  /** 该目录显示的是缓存内容（state 为 cached / offline）时，上次检查的时刻；null 为没有记录 */
+  checkedAt?: number | null
 }
 
 export interface TreeInput {
@@ -31,6 +38,8 @@ export interface TreeInput {
   /** 目录 URI → 列表状态（缺失视为加载中） */
   directories: ReadonlyMap<string, DirectoryState>
   showHidden: boolean
+  /** 断开的共享 / 卷（reachability-store 的 offlineShares）；缺省为没有断开 */
+  offlineShares?: Readonly<Record<string, number>>
 }
 
 const collator = new Intl.Collator('ja', { numeric: true })
@@ -74,8 +83,16 @@ function sortedChildren(items: FileEntry[], showHidden: boolean): FileEntry[] {
 
 /** 把当前展开的节点拍平成一维数组（交给虚拟滚动） */
 export function buildVisibleNodes(input: TreeInput): TreeNode[] {
-  const { entries, expanded, directories, showHidden } = input
+  const { entries, expanded, directories, showHidden, offlineShares = {} } = input
   const out: TreeNode[] = []
+
+  /** 目录显示的是缓存内容时的「上次检查」标注（没有展开 / 刚确认过的目录没有） */
+  const cacheInfo = (uri: string | null): Pick<TreeNode, 'checkedAt'> => {
+    const state = uri === null ? undefined : directories.get(uri)
+    return state?.status === 'ready' && state.state !== 'fresh'
+      ? { checkedAt: state.checkedAt }
+      : {}
+  }
 
   const childrenOf = new Map<string | null, WorkspaceEntry[]>()
   for (const e of entries) {
@@ -107,7 +124,7 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
   }
 
   /** 展开中的真实目录：列出子项，或产出一行状态 */
-  const visitDirectory = (parent: TreeNode, relPath: string): void => {
+  const visitDirectory = (parent: TreeNode, relPath: string, dimmed: boolean): void => {
     const state = parent.uri === null ? undefined : directories.get(parent.uri)
     if (state === undefined || state.status === 'loading') return pushStatus(parent, 'loading')
     if (state.status === 'error') return pushStatus(parent, 'error', state.code)
@@ -129,10 +146,12 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
         entryId: parent.entryId,
         uri: item.uri,
         expandable,
-        expanded: expandable && expanded.has(id)
+        expanded: expandable && expanded.has(id),
+        ...(dimmed && { dimmed: true as const }),
+        ...(expandable && cacheInfo(item.uri))
       }
       out.push(node)
-      if (node.expanded) visitDirectory(node, path)
+      if (node.expanded) visitDirectory(node, path, dimmed)
     }
   }
 
@@ -143,6 +162,7 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
   ): void => {
     for (const e of childrenOf.get(parentId) ?? []) {
       const id = `entry:${e.id}`
+      const offline = e.uri !== null && isShareOffline(e.uri, offlineShares)
       const expandable = e.kind !== 'file'
       const node: TreeNode = {
         id,
@@ -154,11 +174,13 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
         entryId: e.id,
         uri: e.uri,
         expandable,
-        expanded: expandable && expanded.has(id)
+        expanded: expandable && expanded.has(id),
+        ...(offline && { offline: true as const }),
+        ...(e.kind === 'folder' && cacheInfo(e.uri))
       }
       out.push(node)
       if (!node.expanded) continue
-      if (e.kind === 'folder') visitDirectory(node, '')
+      if (e.kind === 'folder') visitDirectory(node, '', offline)
       else if (childrenOf.has(e.id)) visitEntries(e.id, id, depth + 1)
       // 展开的空分组也给出「空」提示，避免看起来像没有反应
       else pushStatus(node, 'empty')

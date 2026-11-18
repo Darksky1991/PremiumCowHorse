@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { useReachabilityStore } from '@renderer/stores/reachability-store'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
@@ -85,6 +86,7 @@ export function ExplorerTree({
   const toggle = useExplorerStore((s) => s.toggle)
   const select = useExplorerStore((s) => s.select)
   const expanded = useMemo(() => new Set(expandedIds), [expandedIds])
+  const offlineShares = useReachabilityStore((s) => s.offlineShares)
 
   // 需要列出的目录依赖父目录的列表（子目录的 URI 来自父目录的列表）。
   // 查询集合存为 state，变化时在渲染中同步（React 推荐的「根据渲染结果调整 state」写法）；
@@ -94,8 +96,8 @@ export function ExplorerTree({
   const directories = useStableDirectories(useDirectories(uris))
 
   const nodes = useMemo(
-    () => buildVisibleNodes({ entries, expanded, directories, showHidden }),
-    [entries, expanded, directories, showHidden]
+    () => buildVisibleNodes({ entries, expanded, directories, showHidden, offlineShares }),
+    [entries, expanded, directories, showHidden, offlineShares]
   )
   const required = useMemo(
     () =>
@@ -416,6 +418,7 @@ export function ExplorerTree({
           </div>
         </ContextMenuTrigger>
         <NodeContextMenu
+          workspaceId={workspaceId}
           node={menuNode}
           finalFocus={scrollRef}
           onNewGroup={() => openNewGroup(menuNode)}

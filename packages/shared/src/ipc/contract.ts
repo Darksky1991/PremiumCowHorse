@@ -88,9 +88,8 @@ export const ipcContract = {
   /** 目录缓存（userData/cache/index.db）的占用与清空；界面随 M5 设置页 */
   'vfs.cacheInfo': route<{ bytes: number }>()(z.strictObject({})),
   'vfs.clearCache': route<void>()(z.strictObject({})),
-  /** 系统操作（均不修改文件）：在资源管理器中显示 / 用默认程序打开 / 写剪贴板 / 选择路径对话框 */
+  /** 系统操作（均不修改文件）：在资源管理器中显示 / 写剪贴板 / 选择路径对话框 */
   'system.revealInOs': route<void>()(z.strictObject({ uri: z.string().min(1) })),
-  'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
   'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),
   /** 返回所选本地路径；用户取消时为空数组 */
   'system.selectPaths': route<string[]>()(

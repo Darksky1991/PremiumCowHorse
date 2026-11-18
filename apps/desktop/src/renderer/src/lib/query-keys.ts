@@ -8,6 +8,8 @@ export const queryKeys = {
   workspaces: ['workspace', 'list'] as const,
   activeWorkspace: ['workspace', 'active'] as const,
   entries: (workspaceId: string) => ['entry', 'list', workspaceId] as const,
+  /** 工作区的「建立索引」目录（URI 列表） */
+  indexTargets: (workspaceId: string) => ['entry', 'index', workspaceId] as const,
   /** 所有目录列表的前缀（手动刷新时一次性失效） */
   directoryRoot: ['vfs', 'list'] as const,
   directory: (uri: string) => ['vfs', 'list', uri] as const

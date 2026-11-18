@@ -29,18 +29,20 @@ describe('menuItemsFor', () => {
     ])
   })
 
-  it('folder 条目没有「用系统应用打开」，file 条目有', () => {
+  it('folder 条目：刷新级别与建立索引；file 条目只有显示与复制', () => {
     expect(menuItemsFor(node({ kind: 'folder' }))).toEqual([
       'reveal',
       'copyPath',
       'copyUri',
+      'separator',
+      'refreshLevel',
+      'buildIndex',
       'separator',
       'rename',
       'remove'
     ])
     expect(menuItemsFor(node({ kind: 'file' }))).toEqual([
       'reveal',
-      'open',
       'copyPath',
       'copyUri',
       'separator',
@@ -49,19 +51,36 @@ describe('menuItemsFor', () => {
     ])
   })
 
-  it('真实子项：目录无「打开」，文件有；都可固定到根部，不能重命名或移除', () => {
+  it('任何节点都没有「用系统应用打开」', () => {
+    const fs = { source: 'fs' as const, id: 'fs:e1:a' }
+    const kinds: NodeKind[] = [
+      'group',
+      'folder',
+      'file',
+      'directory',
+      'link-file',
+      'link-directory'
+    ]
+    for (const kind of kinds) {
+      expect(menuItemsFor(node({ ...fs, kind }))).not.toContain('open')
+      expect(menuItemsFor(node({ kind }))).not.toContain('open')
+    }
+  })
+
+  it('真实子目录：可建立索引与固定到根部；文件只可固定；都不能重命名或移除', () => {
     const fs = { source: 'fs' as const, id: 'fs:e1:a' }
     expect(menuItemsFor(node({ ...fs, kind: 'directory' }))).toEqual([
       'reveal',
       'copyPath',
       'copyUri',
       'separator',
+      'buildIndex',
+      'separator',
       'pinToRoot'
     ])
     for (const kind of ['file', 'link-file'] as const) {
       expect(menuItemsFor(node({ ...fs, kind }))).toEqual([
         'reveal',
-        'open',
         'copyPath',
         'copyUri',
         'separator',
@@ -69,6 +88,7 @@ describe('menuItemsFor', () => {
       ])
     }
     expect(menuItemsFor(node({ ...fs, kind: 'link-directory' }))).toContain('pinToRoot')
+    expect(menuItemsFor(node({ ...fs, kind: 'link-directory' }))).not.toContain('buildIndex')
   })
 
   it('失效链接：只有显示与复制，没有「打开」和「固定」', () => {

@@ -120,3 +120,19 @@
 - 解决：`e2e/explorer.spec.ts` 的 `launchFast` 在启动后、添加任何条目之前经 IPC `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒；等待变化的断言给 5–8 秒。主进程不主动下发窗口初始的焦点状态（扫描进程把发来关注点的新窗口视为已聚焦），后台启动的测试窗口不会一开始就暂停 P1。
 - 有效性：把配置下发改为空的根（不缓存、不调度）后，两个 `cache:` 用例都失败（`state` 为 `fresh` 而不是 `cached`；删除后的「找不到」行不出现）。
 - 预防：运行 e2e 时不要操作其他窗口；新增依赖检查的用例时先确认目录在调度范围内（根、关注点、视口内的已展开目录），只靠 `vfs.list` 的 P0 时注意 2 秒去重。
+
+### e2e：注入主进程事件（如 `vfs.reachability`）用 `webContents.send('pch:event', …)`，不为测试新增产品 IPC
+
+- 日期：2026-11-19
+- 症状：想验证「共享断开」的界面，但真实断开无法在 e2e 中制造，也不该为此新增产品通道。
+- 原因：渲染端只订阅 `pch:event` 通道上的 `{ event, payload }` 信封（`packages/shared/src/ipc/transport.ts`），主进程广播也是同一写法。
+- 解决：`app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('pch:event', { event: 'vfs.reachability', payload: e })), payload)`（见 `e2e/explorer.spec.ts` 的 `offline:` 用例）。`share` 取临时目录所在盘符（`C:`）。
+- 局限：「缓存内容（cached）显示最后更新时间」依赖列表的 `state` 为 `cached`，而添加条目会让扫描进程立即检查、展开时已是 `fresh`，e2e 中无法稳定复现，该部分只有 `tree-model.test.ts` 的单元测试。
+
+### `scripts/os-screenshot.mjs`：`CopyFromScreen` 报 `The handle is invalid`
+
+- 日期：2026-11-19
+- 症状：系统级截图失败（`Exception calling "CopyFromScreen" ... The handle is invalid`），连 PowerShell 单独调用 `CopyFromScreen` 也失败。
+- 原因：当前登录会话没有可用的交互式桌面（屏幕锁定 / 显示器休眠 / 远程会话断开等），GDI 取不到屏幕 DC。
+- 解决：确认桌面可用（解锁）后重试；无法解锁时退回 Playwright 的 `page.screenshot`（看不到系统绘制的窗口边框与按钮），并在报告中说明未做系统级截图。
+- 预防：做系统级截图前先用上面的最小命令探测。
