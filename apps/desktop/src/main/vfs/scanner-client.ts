@@ -30,12 +30,19 @@ export interface ScannerClientOptions {
   restartWindowMs?: number
   /** dispose 时等待进程自行退出的时长，超时则 kill；默认 2 秒 */
   shutdownTimeoutMs?: number
+  /**
+   * 请求的兜底超时：超过此时长没有结果即以 INDEX_UNAVAILABLE 拒绝（默认 60 秒）。
+   * 扫描进程自身的超时（timeoutSec、排队的 P0 等待者）远短于此；这里只防扫描进程的事件循环卡住、
+   * 结果消息丢失等情况让调用方永远等待。
+   */
+  requestTimeoutMs?: number
   now?: () => number
 }
 
 interface Pending {
   resolve: (v: unknown) => void
   reject: (e: AppError) => void
+  timer: ReturnType<typeof setTimeout>
 }
 
 interface OwnerState {
@@ -55,6 +62,7 @@ export class ScannerClient {
   private readonly maxRestarts: number
   private readonly windowMs: number
   private readonly shutdownTimeoutMs: number
+  private readonly requestTimeoutMs: number
   private readonly now: () => number
 
   private port: ScannerPort | null = null
@@ -70,6 +78,7 @@ export class ScannerClient {
     this.maxRestarts = opts.maxRestarts ?? 3
     this.windowMs = opts.restartWindowMs ?? 5 * 60_000
     this.shutdownTimeoutMs = opts.shutdownTimeoutMs ?? 2000
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? 60_000
     this.now = opts.now ?? Date.now
   }
 
@@ -214,14 +223,16 @@ export class ScannerClient {
     const parsed = ScannerToMain.safeParse(raw)
     if (!parsed.success) {
       this.opts.log.warn(`[scanner] invalid message ignored: ${parsed.error.message.slice(0, 500)}`)
+      // 结果消息无效但能读出 id：拒绝对应的请求，不让调用方等到兜底超时
+      const id = resultId(raw)
+      if (id !== null) this.settle(id)?.reject(unavailable('invalid result from the scanner'))
       return
     }
     const m = parsed.data
     switch (m.type) {
       case 'result': {
-        const p = this.pending.get(m.id)
+        const p = this.settle(m.id)
         if (!p) return
-        this.pending.delete(m.id)
         if (m.ok) p.resolve(m.value)
         else p.reject(new AppError(m.error))
         return
@@ -243,13 +254,30 @@ export class ScannerClient {
     }
     const id = this.nextId++
     const port = this.port
+    const message = build(id)
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
-      if (!this.post(port, build(id))) {
-        this.pending.delete(id)
+      const timer = setTimeout(() => {
+        if (!this.settle(id)) return
+        this.opts.log.warn(
+          `[scanner] ${message.type} #${id} got no result within ${this.requestTimeoutMs / 1000}s`
+        )
+        reject(unavailable(`no result within ${this.requestTimeoutMs / 1000}s`))
+      }, this.requestTimeoutMs)
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
+      if (!this.post(port, message)) {
+        this.settle(id)
         reject(unavailable('cannot send to the scanner'))
       }
     })
+  }
+
+  /** 取出并移除进行中的请求（清除其兜底计时器）；未知或已结束的 id 返回 undefined */
+  private settle(id: number): Pending | undefined {
+    const p = this.pending.get(id)
+    if (!p) return undefined
+    this.pending.delete(id)
+    clearTimeout(p.timer)
+    return p
   }
 
   /** 不回应的消息：不可用时丢弃（重启后由 spawn 重发需要保持的状态） */
@@ -269,7 +297,17 @@ export class ScannerClient {
 
   private rejectAll(detail: string): void {
     const err = unavailable(detail)
-    for (const p of this.pending.values()) p.reject(err)
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer)
+      p.reject(err)
+    }
     this.pending.clear()
   }
+}
+
+/** 未通过校验的消息若是 result 且带整数 id，返回该 id */
+function resultId(raw: unknown): number | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const { type, id } = raw as { type?: unknown; id?: unknown }
+  return type === 'result' && Number.isInteger(id) ? (id as number) : null
 }

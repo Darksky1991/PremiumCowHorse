@@ -13,15 +13,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
-import { AppError, type FileEntry, type WorkspaceEntry } from '@pch/shared'
+import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
 import { ContextMenu, ContextMenuTrigger } from '@pch/ui/components/context-menu'
 import { useSetting } from '@renderer/data/settings'
-import {
-  useDirectories,
-  useWatchDirectories,
-  watchableUris,
-  type DirectoryState
-} from '@renderer/data/vfs'
+import { useDirectories, useVfsInterest, type DirectoryState } from '@renderer/data/vfs'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import {
@@ -35,6 +30,7 @@ import {
   type DropPosition
 } from './drag-drop'
 import { useExplorerStore } from './explorer-store'
+import { interestFromTree } from './interest'
 import { isEntryNode } from './menu-items'
 import { NewGroupDialog } from './new-group-dialog'
 import { NodeContextMenu } from './node-context-menu'
@@ -66,7 +62,7 @@ export interface ExplorerTreeProps {
   entries: WorkspaceEntry[]
   /** tree 的无障碍名称 */
   label: string
-  /** 状态行的「重试」：让该目录重新获取 */
+  /** 状态行的「重试」：让扫描进程立即检查该目录并重新获取 */
   onRetry: (uri: string) => void
 }
 
@@ -96,9 +92,6 @@ export function ExplorerTree({
   const queryClient = useQueryClient()
   const [uris, setUris] = useState<string[]>([])
   const directories = useStableDirectories(useDirectories(uris))
-  // 列目录用全部已展开的目录；监听只取列表已就绪的目录（出错的目录恢复后重新监听）
-  const watched = useMemo(() => watchableUris(uris, directories), [uris, directories])
-  useWatchDirectories(watched)
 
   const nodes = useMemo(
     () => buildVisibleNodes({ entries, expanded, directories, showHidden }),
@@ -109,8 +102,10 @@ export function ExplorerTree({
       resolveDirectoryUris({ entries, expanded, showHidden }, (uri) => {
         const known = directories.get(uri)
         if (known) return known
-        const items = queryClient.getQueryData<FileEntry[]>(queryKeys.directory(uri))
-        return items ? { status: 'ready', items } : undefined
+        const data = queryClient.getQueryData<DirectoryListing>(queryKeys.directory(uri))
+        return data
+          ? { status: 'ready', items: data.items, state: data.state, checkedAt: data.checkedAt }
+          : undefined
       }),
     [entries, expanded, showHidden, directories, queryClient]
   )
@@ -137,6 +132,20 @@ export function ExplorerTree({
     overscan: 10
   })
   const items = virtualizer.getVirtualItems()
+
+  // 告诉扫描进程本窗口的关注点（选中节点所在的目录）与视口内外的已展开目录（300ms 防抖）
+  const rangeStart = items[0]?.index ?? -1
+  const rangeEnd = items.at(-1)?.index ?? -1
+  const interest = useMemo(
+    () =>
+      interestFromTree(
+        nodes,
+        rangeStart < 0 ? null : { start: rangeStart, end: rangeEnd },
+        resolvedId
+      ),
+    [nodes, rangeStart, rangeEnd, resolvedId]
+  )
+  useVfsInterest(interest)
 
   // ---------- 拖放：只管理条目，绝不产生文件操作 ----------
   const execute = useDropExecutor(workspaceId)
@@ -450,7 +459,14 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 }
 
 function sameState(a: DirectoryState, b: DirectoryState): boolean {
-  if (a.status === 'ready') return b.status === 'ready' && a.items === b.items
+  if (a.status === 'ready') {
+    return (
+      b.status === 'ready' &&
+      a.items === b.items &&
+      a.state === b.state &&
+      a.checkedAt === b.checkedAt
+    )
+  }
   if (a.status === 'error') return b.status === 'error' && a.code === b.code
   return b.status === a.status
 }

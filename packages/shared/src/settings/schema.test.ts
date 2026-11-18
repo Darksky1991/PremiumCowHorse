@@ -40,6 +40,50 @@ describe('SettingsPatch', () => {
   })
 })
 
+describe('刷新与超时的设置（设计 4.9）', () => {
+  it('默认值', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      'refresh.defaultLevel.local': 'active',
+      'refresh.defaultLevel.network': 'default',
+      'refresh.activeDepth': 3,
+      'refresh.intervalSec.local': 5,
+      'refresh.intervalSec.network': 30,
+      'refresh.backgroundIntervalMin': 10,
+      'vfs.timeoutSec.local': 5,
+      'vfs.timeoutSec.network': 10
+    })
+    expect(Object.hasOwn(DEFAULT_SETTINGS, 'remote.pollIntervalSec')).toBe(false)
+  })
+
+  it.each([
+    ['refresh.defaultLevel.local', 'sometimes'],
+    ['refresh.activeDepth', 0],
+    ['refresh.activeDepth', 11],
+    ['refresh.intervalSec.local', 1],
+    ['refresh.intervalSec.network', 9],
+    ['refresh.backgroundIntervalMin', 0],
+    ['vfs.timeoutSec.local', 0],
+    ['vfs.timeoutSec.local', 61],
+    ['vfs.timeoutSec.network', 9],
+    ['vfs.timeoutSec.network', 121],
+    ['remote.pollIntervalSec', 0]
+  ] as const)('拒绝 %s = %j', (key, value) => {
+    expect(SettingsPatch.safeParse({ [key]: value }).success).toBe(false)
+  })
+
+  it.each([
+    ['refresh.defaultLevel.network', 'all'],
+    ['refresh.activeDepth', 10],
+    ['refresh.intervalSec.local', 2],
+    ['refresh.intervalSec.network', 10],
+    ['refresh.backgroundIntervalMin', 1],
+    ['vfs.timeoutSec.local', 60],
+    ['vfs.timeoutSec.network', 120]
+  ] as const)('接受边界值 %s = %j', (key, value) => {
+    expect(SettingsPatch.safeParse({ [key]: value }).success).toBe(true)
+  })
+})
+
 describe('resolveLanguage', () => {
   it.each([
     ['ja-JP', 'ja'],

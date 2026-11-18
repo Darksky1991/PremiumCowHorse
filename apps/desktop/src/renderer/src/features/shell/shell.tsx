@@ -8,6 +8,7 @@ import { SideBar } from './components/side-bar'
 import { StatusBar } from './components/status-bar'
 import { TitleBar } from './components/title-bar'
 import { Welcome } from './components/welcome'
+import { useReachabilityEvents } from './use-reachability-events'
 import { useShellShortcuts } from './use-shell-shortcuts'
 
 export interface ShellProps {
@@ -24,6 +25,7 @@ export interface ShellProps {
  */
 export function Shell({ sidebarViews, workspaceSwitcher }: ShellProps): JSX.Element {
   useShellShortcuts()
+  useReachabilityEvents()
   const sidebarRef = usePanelRef()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUiStore((s) => s.setSidebarCollapsed)

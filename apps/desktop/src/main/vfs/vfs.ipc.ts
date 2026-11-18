@@ -1,14 +1,54 @@
+import { AppError, type DirectoryListing } from '@pch/shared'
 import type { HandlersOf } from '../ipc/router'
+import type { ScannerClient } from './scanner-client'
 import type { VfsService } from './vfs.service'
 
-/** 参数已由路由按契约校验，这里只转发给 VfsService */
+/** handler 用到的 ScannerClient 部分（测试可注入假实现） */
+export type ScannerApi = Pick<
+  ScannerClient,
+  'available' | 'list' | 'interest' | 'refresh' | 'cacheInfo' | 'clearCache'
+>
+
+/** 扫描进程不可用（超过重启上限、index.db 打不开、请求兜底超时等） */
+const isUnavailable = (e: unknown): boolean =>
+  e instanceof AppError && e.code === 'INDEX_UNAVAILABLE'
+
+/**
+ * 参数已由路由按契约校验。目录列表经扫描进程（缓存 + 调度）；扫描进程不可用时退回
+ * VfsService 直接枚举、不缓存（降级模式，设计 4.1）。
+ */
 export function vfsHandlers(
-  vfs: VfsService
-): HandlersOf<'vfs.stat' | 'vfs.list' | 'vfs.cancel' | 'vfs.watch'> {
+  vfs: VfsService,
+  scanner: ScannerApi
+): HandlersOf<
+  | 'vfs.stat'
+  | 'vfs.list'
+  | 'vfs.cancel'
+  | 'vfs.interest'
+  | 'vfs.refresh'
+  | 'vfs.cacheInfo'
+  | 'vfs.clearCache'
+> {
+  const listDirectly = async (uri: string, requestId?: string): Promise<DirectoryListing> => ({
+    items: await vfs.list(uri, requestId),
+    state: 'fresh',
+    checkedAt: Date.now()
+  })
   return {
     'vfs.stat': ({ uri }) => vfs.stat(uri),
-    'vfs.list': ({ uri, requestId }) => vfs.list(uri, requestId),
+    'vfs.list': async ({ uri, requestId }) => {
+      if (!scanner.available) return listDirectly(uri, requestId)
+      try {
+        return await scanner.list(uri)
+      } catch (e) {
+        if (!isUnavailable(e)) throw e
+        return listDirectly(uri, requestId)
+      }
+    },
     'vfs.cancel': async ({ requestId }) => vfs.cancel(requestId),
-    'vfs.watch': async ({ uris }, ctx) => vfs.setWatched(ctx.senderId, uris)
+    'vfs.interest': async (interest, ctx) => scanner.interest(ctx.senderId, interest),
+    'vfs.refresh': async ({ uris }) => scanner.refresh(uris),
+    'vfs.cacheInfo': () => scanner.cacheInfo(),
+    'vfs.clearCache': () => scanner.clearCache()
   }
 }

@@ -109,7 +109,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | zod | IPC 输入、设置项、连接配置的校验（三端共用） | 事实标准；同时服务 react-hook-form |
 | basic-ftp | FTP / FTPS 客户端 | 纯 JS、维护活跃、支持断点续传（startAt） |
 | ssh2-sftp-client | SFTP 客户端 | 基于 ssh2，API 友好 |
-| （不引入）Node 内置 `fs.watch` | 目录变更监听（8.3 节） | v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
+| （不再使用）Node 内置 `fs.watch` | 目录变更监听（M1-2；2026-11-19 起改为扫描 + 缓存，8.3 节） | 监听句柄阻止上级目录改名 / 移动，已删除。v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
 | electron-log | 日志落盘与轮转 | Electron 场景最常用 |
 | koffi 3.3.8（已引入） | FFI 调用 Windows API：目录枚举（`CreateFileW` + `GetFileInformationByHandleEx`，可保护目录访问时间、取得隐藏属性）、`GetDriveTypeW`（区分映射的网络盘） | Node-API 预编译二进制在可选依赖 `@koromix/koffi-win32-x64` 中，安装脚本只检查二进制能否加载、不联网下载；无需针对 Electron ABI 重新编译；打包时 electron-builder 自动把 `koffi.node` 解包到 `app.asar.unpacked` |
 | iconv-lite + jschardet | 文本编码检测与转换 | 对日项目大量 Shift_JIS / EUC-JP 的 CSV、日志、bat |
@@ -224,6 +224,7 @@ apps/desktop/src/
 │   ├── bootstrap/
 │   │   ├── bootstrap.ts              # 启动编排（顺序见 6.2）
 │   │   ├── container.ts              # 组合根：手动装配所有 service（不引入 DI 框架）
+│   │   ├── scanner-config.ts         # 下发给扫描进程的配置（当前工作区的根、按位置的默认级别、ScanSettings）
 │   │   └── shutdown.ts               # 退出编排：保存会话、关闭连接池、关闭 DB
 │   ├── core/
 │   │   ├── event-bus.ts              # 主进程内部事件总线（类型化）
@@ -240,8 +241,8 @@ apps/desktop/src/
 │   ├── vfs/
 │   │   ├── types.ts                  # FileSystemProvider 接口
 │   │   ├── errors.ts                 # Node 文件系统错误 → AppError（FS_*）
-│   │   ├── vfs.service.ts            # 按 scheme 路由到 provider；取消与超时
-│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list / vfs.cancel / vfs.watch
+│   │   ├── vfs.service.ts            # 一次性调用：按 scheme 路由到 provider；取消与超时（vfs.timeoutSec.*）
+│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list（经扫描进程，不可用时直接枚举）/ vfs.cancel / vfs.interest / vfs.refresh / vfs.cacheInfo / vfs.clearCache
 │   │   ├── input-path.ts             # 渲染端传入的本地路径 → file URI（去引号 / 空白、拒绝相对路径）
 │   │   ├── local-path.ts             # file URI → 本地路径（系统操作 IPC 使用）
 │   │   ├── path-name.ts              # 显示名称（驱动器根 `C:`、UNC 共享根 `\\server\share`）
@@ -298,9 +299,9 @@ apps/desktop/src/
 
 主进程与扫描进程的消息定义在 `packages/shared/src/scanner/protocol.ts`（zod，两端收到后都校验，无效消息记日志并忽略）：主 → 扫描 `init { cacheFile }`（fork 后第一条）、`configure { config: ScannerConfig }`、`list { id, uri }`、`interest { ownerId, focus, visible, offscreen }`、`windowFocus`、`releaseOwner`、`refresh { uris }`、`cacheInfo { id }`、`clearCache { id }`、`cancel { id }`（留给搜索）、`shutdown`；扫描 → 主 `result { id, ok, value | error }`、`changed { uri }`、`reachability { share, state, since }`、`log { level, message }`（扫描进程的调度器与枚举器日志经此写入 `main.log`，前缀 `[scanner]`）、`ready`。`ScannerConfig = { roots, allRootUris, indexTargets, settings }`；`Interest`、`ReachabilityEvent` 在 `shared/scanner/types.ts`。
 
-扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：直接枚举、不缓存，由 Task 6 接入）。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
+扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：`vfs.list` 由 `VfsService` 直接枚举、不缓存）。请求另有兜底超时：60 秒没有结果即以 `INDEX_UNAVAILABLE` 拒绝（防扫描进程的事件循环卡住、结果丢失）；结果消息校验失败但能读出 `id` 时同样以 `INDEX_UNAVAILABLE` 拒绝对应的请求。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动，但渲染端的请求尚未经过它：`vfs.list` 仍走 `VfsService`，目前不下发配置，调度器空闲，Task 6 接入）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`vfs/location.ts` 目前也只被 scanner 使用）。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`bootstrap/scanner-config.ts` 在启动、`workspace.changed`（含切换工作区）与 `refresh.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`：按关注点所在根的级别算出 P1 目录集合与后台展开的 frontier `{uri, maxDepth}`；`RootConfig` / `RefreshLevel` 在 `shared/scanner/types.ts`）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / P1 各窗口范围按刷新间隔 / P2 frontier 每 `backgroundIntervalMin` 分钟一轮按层展开（游标从 `cache.childDirs` 取下一层，内存中只保存一层；本地按卷、网络按主机分组，同一网络主机两次 P2 之间停顿 200ms，本地不停顿），各窗口的范围分别计算后合并、全部失焦时 P1 暂停；并发：每个位置组（本地卷 / 网络主机）后台 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -330,7 +331,8 @@ apps/desktop/src/renderer/
 
 已实现：
 - M0：`app/`、`features/shell/`、`data/`（settings、window）、`lib/`、`providers/`、`stores/`、`styles/`。
-- M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与监听的 hooks）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
+- M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
+- 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 订阅 `vfs.reachability` 写入——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
@@ -396,7 +398,7 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
   ({ input, output: undefined as unknown as O });
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
-// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel,watch}、
+// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel,interest,refresh,cacheInfo,clearCache}、
 // system.{revealInOs,openPath,copyText,selectPaths}、window.*、log.write
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
@@ -405,11 +407,14 @@ export const ipcContract = {
   'entry.list':          route<WorkspaceEntry[]>()(z.object({ workspaceId: z.string() })),
   'entry.add':           route<WorkspaceEntry>()(EntryAddInput),
   'entry.move':          route<void>()(EntryMoveInput),
-  'vfs.list':            route<FileEntry[]>()(z.object({ uri: z.string(), requestId: z.string() })),
+  'vfs.list':            route<DirectoryListing>()(z.object({ uri: z.string(), requestId: z.string().optional() })),  // { items, state: fresh|cached|offline, checkedAt }
   'vfs.stat':            route<FileStat>()(z.object({ uri: z.string() })),
   'vfs.readText':        route<TextContent>()(ReadTextInput),
   'vfs.cancel':          route<void>()(z.object({ requestId: z.string() })),
-  'vfs.watch':           route<void>()(z.object({ uris: z.array(z.string()).max(500) })),  // 整体替换本窗口的监听集合
+  'vfs.interest':        route<void>()(z.object({ focus: z.string().nullable(), visible: z.array(z.string()).max(2000), offscreen: z.array(z.string()).max(5000) })),  // 整体替换本窗口的关注点
+  'vfs.refresh':         route<void>()(z.object({ uris: z.array(z.string()).max(500) })),  // F5 / 重试：P0
+  'vfs.cacheInfo':       route<{ bytes: number }>()(z.object({})),
+  'vfs.clearCache':      route<void>()(z.object({})),
   'layout.dispatch':     route<void>()(LayoutAction),        // 打开/关闭/移动/弹出标签
   'layout.getWindow':    route<WindowView>()(z.object({ windowId: z.string() })),
   'connection.save':     route<ConnectionDto>()(ConnectionSaveInput),
@@ -441,7 +446,8 @@ export type IpcOutput<C extends IpcChannel> = (typeof ipcContract)[C]['output'];
 // 主进程 → 渲染进程的事件（大多为广播；window.stateChanged 只发给状态变化的窗口）
 export interface IpcEvents {
   'layout.changed':    WindowView;
-  'vfs.changed':       { uri: string };             // 被监听目录的 URI（已防抖）
+  'vfs.changed':       { uri: string };             // 缓存内容有变化的目录（扫描进程）
+  'vfs.reachability':  { share: string; state: 'online' | 'offline'; since: number };  // 共享 / 卷断开或恢复
   'settings.changed':  Partial<Settings>;
   'workspace.changed': { id: string };
   'connection.status': { id: string; status: 'idle' | 'connecting' | 'online' | 'error' };
@@ -515,14 +521,11 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 // apps/desktop/src/main/vfs/types.ts
 export interface FileSystemProvider {
   readonly scheme: 'file' | 'smb' | 'ftp' | 'sftp';
-  readonly capabilities: { watch: boolean; rangeRead: boolean; write: boolean };
+  readonly capabilities: { rangeRead: boolean; write: boolean };
 
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>;
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>;
   createReadStream(uri: URL, range?: ByteRange, signal?: AbortSignal): Promise<Readable>;
-  // 不区分具体事件；监听自行失效（目录被删除、监听出错、初始就无法监听）时调用 onClose 一次，
-  // 运行中失效且目录已不在时先调用 onChange；目录仍在（只是监听出错）时不调用 onChange
-  watch?(uri: URL, onChange: () => void, onClose?: () => void): { close(): void };
   dispose(): Promise<void>;
 }
 
@@ -537,34 +540,31 @@ export interface FileEntry {
 }
 ```
 
-已实现的是上面接口的子集（`stat`、`list`、`watch`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入，provider 是否支持监听以是否实现 `watch` 判断）。`VfsService` 负责按 scheme 路由、统一超时（默认 30 秒，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）、对目录变更发布 `vfs.changed` 事件（M1-2）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
+已实现的是上面接口的子集（`stat`、`list`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入）。`watch` 已于 2026-11-19 删除（目录的持续刷新改由扫描进程负责，见下文），目标结构中也不再有 `watch`。`VfsService` 只负责一次性调用（`stat`、条目添加时的校验、扫描进程不可用时的直接枚举）：按 scheme 路由、统一超时（按位置取 `vfs.timeoutSec.local` / `vfs.timeoutSec.network`，整次调用的总时长，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
 `FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次（计入同一并发上限），资源树据此判断能否展开（已实现，M1-2）。目标是文件以外的类型（如设备）也归为 `'file'`；目标 stat 因任何原因失败（不存在、循环、权限、网络）都为 `null`；lstat 本身失败的降级项不带 `target`，资源树按失效链接处理。
 
-**目录监听（已实现，M1-2）**：
+**目录刷新：扫描 + 缓存（2026-11-19 起取代目录监听，设计见 `devDoc/2026-11-19-01-refresh-cache-design.md`）**：
 
-- 渲染端按窗口告知主进程「当前需要监听的目录集合」：`vfs.watch({ uris })`（整体替换该窗口的集合；owner 为调用方的 webContents id）。资源树列目录用所有已展开的可展开节点的 URI，**监听集合只取其中列表状态为「就绪」的目录**（`data/vfs.ts` 的 `watchableUris`；加载中 / 出错的目录不监听）；集合变化后 200ms 防抖发送，卸载时发送空集合。
-- **上限 500 个**（`VFS_WATCH_MAX`，`packages/shared` 的契约以 zod 校验）：超过上限的调用会被整次拒绝、所有监听静默失效，因此渲染端发送前截断为树中自上而下的前 500 个目录，并在控制台与 `main.log` 各记一条警告（`createWatchScheduler`，有单元测试）。超出的目录不监听，变化靠刷新 / 聚焦 / 重新展开发现。
-- `VfsService.setWatched(ownerId, uris)` 按 URI 引用计数：多个窗口监听同一目录只建立一个监听，最后一个 owner 释放时关闭；`releaseOwner(ownerId)` 在 webContents `destroyed` 时由 bootstrap 调用。不支持监听的 scheme、无法解析的 URI 静默忽略。
-- 同一目录的变化防抖 300ms 后经 `onDirectoryChanged` → 主进程事件总线 → 广播 `vfs.changed { uri }`（发给所有窗口）；渲染端在 `lib/query-client.ts` 中让 `['vfs','list',uri]` 失效并重新列出。
-- 监听自行失效：
-  - **目录已不在**（`rename` 事件后 `fs.stat(目录)` 失败——Windows 下删除被监听的目录只有 `rename` 没有 `error`；或 `error` 事件后确认目录不在）：provider 先通知一次变化、再关闭并调用 `onClose`。
-  - **目录仍在、只是监听本身出错**（`error` 事件后 `fs.stat` 成功；例如不支持变更通知的 NAS / Samba、WebDAV、网络抖动——`fs.watch` 同步成功、`ReadDirectoryChangesW` 随后异步失败）：provider 只关闭并调用 `onClose`，**不通知变化**。否则渲染端会重新列出（成功）并重发集合，重建的监听再次报错，约每 0.5 秒整体重列一次（最终审查 I3，单元测试用假 watcher 触发 `error`）。
-  - `VfsService` 移除监听条目并**记录失效时刻**；各 owner 的期望集合保持不变。**退避**：该 URI 仍留在某个 owner 的集合中时，60 秒内（`watchRetryBackoffMs` 选项）的 `setWatched` 不重建，退避结束后的下一次 `setWatched` 才重建；一旦它离开所有 owner 的集合（例如列表出错后被渲染端移出），退避记录清除，再次加入时立即重建。`dispose` 时清除。
-- **重建由渲染端负责**：收到属于当前集合的 `vfs.changed` 后，渲染端以同样的防抖重发完整集合，主进程据此重新建立仍然存在的目录的监听（不在退避中时）；被删除的目录列表变为出错，随即从监听集合中移除（退避随之清除）。目录在原路径重建后，列表一旦恢复为就绪（「重试」/ F5 / 窗口聚焦 / 重新展开），它重新进入监听集合，集合变化触发 `vfs.watch`，监听随之重建（e2e `watch: a directory deleted, re-created and retried is watched again`）。
-- **取消**（最终审查 I5）：目录查询的 `queryFn` 使用 TanStack Query 的 `signal`，中止时同步发送 `vfs.cancel`（requestId 同为 `dir:<uri>`）。TanStack Query 中止 signal 的时机：最后一个观察者离开（折叠、切换工作区、卸载视图）、有数据时被新的获取取代（`invalidateQueries` / `refetch` 的 `cancelRefetch`）、`resetQueries`（重试）、缓存回收——都在同一 key 的新请求发出之前同步发生，而同一窗口的 IPC 按发送顺序到达主进程、两个 handler 都在第一个 `await` 之前完成登记 / 取消，因此取消不会落到新请求上；请求结束后移除 abort 监听器，之后的中止不再发送。被取消的请求随后以 `FS_CANCELLED` 结束，TanStack Query 不把它记为错误（不显示错误行）。有单元测试（真实 `QueryClient` + 假 IPC，断言调用顺序与查询状态）。
+M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上级目录改名 / 移动（违反「应用不得影响文件系统」），因此删除了全部监听代码（`vfs.watch`、`VfsService.setWatched`、`LocalProvider.watch`、渲染端的 `createWatchScheduler` / `useWatchDirectories` / `watchableUris`、`VFS_WATCH_MAX`、目录列表的 2 秒新鲜期与 focusManager 的聚焦设置、设置 `remote.pollIntervalSec`），改为扫描进程（5.2 节）缓存目录列表并按优先级检查。
+
+已实现：
+
+- **`vfs.list({ uri, requestId? })` → `DirectoryListing { items, state, checkedAt }`**：主进程经 `ScannerClient` 交给扫描进程——有缓存立即返回缓存（`state: 'cached'`，2 秒内确认过则 `'fresh'`）并以 P0 安排检查；没有缓存则枚举后返回（`'fresh'`）；所在共享断开时返回缓存（`'offline'`），没有缓存则 `FS_UNAVAILABLE`。**降级**：`ScannerClient.available` 为 `false`，或扫描进程以 `INDEX_UNAVAILABLE` 拒绝（例如 `index.db` 打不开、请求兜底超时）时，由 `VfsService.list` 直接枚举（`state: 'fresh'`、`checkedAt: Date.now()`，不缓存，requestId 的取消只在这里有效）；扫描进程返回的文件系统错误（`FS_NOT_FOUND` 等）原样抛出、不回退（`vfs.ipc.test.ts`）。
+- **`vfs.interest({ focus, visible, offscreen })`**（按窗口整体替换，owner = 调用方的 webContents id）：渲染端 `features/explorer/interest.ts` 的纯函数 `interestFromTree(nodes, range, selectedId)` 求出——关注点：目录节点（条目根、目录、链接目录）为自身 URI，文件 / 链接文件 / 失效链接为父目录，分组、状态行、文件条目为 `null`；`visible`：虚拟滚动实际渲染的行范围（含 overscan）内的行所属的已展开目录与行本身为已展开目录者；`offscreen`：其余已展开目录（加载中 / 出错的目录也算已展开）。按树中顺序去重，超过上限（2000 / 5000）截断。`data/vfs.ts` 的 `useVfsInterest` 以 300ms 防抖发送（内容不变不重发），卸载（切换工作区、侧栏切到其他视图）时发送空关注点。
+- **窗口焦点**：主进程在 `browser-window-created` 时给每个 BrowserWindow 的 `focus` / `blur` 接上 `scanner.windowFocus(webContents.id, focused)`（所有窗口失焦时 P1 暂停，重新获得焦点时关注点进入 P0），webContents `destroyed` 时 `releaseOwner`。初始状态不主动发送（扫描进程把发来关注点的新窗口视为已聚焦）。
+- **配置下发**（`bootstrap/scanner-config.ts`，Task 7 由 `buildScannerConfig` 取代）：roots = 当前工作区的全部 folder 条目，级别取全局默认 `refresh.defaultLevel.local` / `.network`；`allRootUris` = 所有工作区的 folder 条目；`indexTargets` 为空；`settings` 由 `refresh.*` / `vfs.timeoutSec.*` 组装。根 URI 规范化为不带结尾 `/`（驱动器根 `file:///C:/` 除外；缓存的 `isUnder` 依赖这一点）。启动、`workspace.changed`（含切换工作区）、`refresh.*` / `vfs.*` 设置变化时重新下发；多次下发并发时只发最后一次。
+- **`vfs.refresh({ uris })`**（≤ 500）：F5 / 刷新按钮对所有已展开目录（渲染端 TanStack Query 中有观察者的目录查询）分批发送，再让条目与所有目录查询失效；状态行的「重试」对该目录发送，再让该查询失效（期间保持错误行）。断开的共享也立即尝试一次。
+- **事件**：`vfs.changed { uri }`（缓存内容有差异时才发）→ `lib/query-client.ts` 让该目录查询失效；`vfs.reachability { share, state, since }` → `stores/reachability-store.ts` 的 `offlineShares`（断开图标在 Task 8）。`vfs.cacheInfo` / `vfs.clearCache` 已有通道，界面随 M5 设置页。
+- **取消**：目录查询的 `queryFn` 仍使用 TanStack Query 的 `signal`，中止时发送 `vfs.cancel`（requestId `dir:<uri>`，只对降级模式的直接枚举有效；经扫描进程的请求很快返回缓存，不可取消）。中止时机与「取消不会落到新请求上」的论证同 M1-2（有单元测试）。
 - 已知限制：
-  - 条目本身指向的目录被删除后又在原路径重建时，错误行不会立即消失——条目目录的父目录不在监听中，重建本身无人感知；需要「重试」/ F5 / 窗口重新获得焦点（距上次列出超过 2 秒）/ 重新展开（之后监听自动重建，见上）。真实子目录的重建由其父目录的监听感知。
-  - 监听在列表成功之后才建立（另有 200ms 防抖），列表返回到监听建立之间的变化只能靠刷新 / 之后的窗口聚焦或重新展开（距上次列出超过 2 秒时重新列出）发现。
-  - 监听出错但目录仍在的位置：退避结束后不会自动重建，要等集合下一次变化（展开 / 折叠其他目录、切换工作区等）触发 `setWatched`；期间的变化靠 F5 / 聚焦 / 重新展开 / UNC 轮询发现。真实子目录被删除后很快（约 300ms 防抖后该目录与父目录重新列出之前）又被重建时，它一直留在集合中，同样要等退避结束后的下一次 `setWatched` 才恢复监听。
-  - **监听句柄阻止上级目录改名 / 移动**（最终审查 I4，控制者已实机验证：Windows 11，node `fs.watch` + PowerShell `Rename-Item`）：监听 `A\B` 时，重命名或移动其上级 `A` 失败（拒绝访问）；重命名被监听目录自身、或被监听目录的子目录不受影响；只监听根目录时重命名其子目录正常。后果：资源树中展开了 `案件\設計書` 时，用户在资源管理器里把 `案件` 改名或移动会被拒绝。**待需求方决定**（未实现任何方案）：
-    1. 维持现状（实时更新优先）；
-    2. 每个条目根只建一个递归监听（`fs.watch(root, { recursive: true })`），展开的子目录不再各自持有句柄，只阻止条目根的上级改名；
-    3. 不使用 `fs.watch`，改为聚焦 / 展开时刷新 + 可选轮询（不阻止任何改名，失去实时性）。
+  - 条目的 URI 带结尾 `/`（例如手工输入 `C:\foo\` 添加的条目）时，扫描进程中的根已规范化，`vfs.changed` 的 URI 与渲染端的查询 key 不一致，该根目录自身不会自动更新（子目录不受影响）；Task 7 的配置组装统一处理。
+  - 窗口初始的焦点状态不下发；窗口在后台创建、从未获得焦点时，扫描进程仍按已聚焦调度。
+  - Playwright 产生不了真实的焦点切换，e2e 直接触发 BrowserWindow 的 `blur` / `focus` 事件；真实 Alt+Tab 未验证。
 
 ### 7.2 各 Provider 要点
 
-**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；`watch` 用 `fs.watch(dir, { persistent: false })`，非递归；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作；这部分在 `vfs/fs-list.ts`，与扫描进程的 fs 回退枚举器共用）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：LocalProvider 只把以 `.` 开头的名称视为隐藏。按 Windows 隐藏属性判断（有 `FILE_ATTRIBUTE_HIDDEN` 即隐藏，只有 SYSTEM 的照常显示）的实现在扫描进程的 koffi 枚举器 `scanner/enum/win32-enumerator.ts` 中，它同时以 LastAccessTime = -1 的句柄枚举、不更新目录自身的最后访问时间（本机 NTFS 已实测；网络共享未验证）；**扫描进程尚未接入**，接入前界面仍按 `.` 判断。
+**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；不监听（`watch` 已于 2026-11-19 删除）；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作；这部分在 `vfs/fs-list.ts`，与扫描进程的 fs 回退枚举器共用）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：LocalProvider 只把以 `.` 开头的名称视为隐藏。按 Windows 隐藏属性判断（有 `FILE_ATTRIBUTE_HIDDEN` 即隐藏，只有 SYSTEM 的照常显示）的实现在扫描进程的 koffi 枚举器 `scanner/enum/win32-enumerator.ts` 中，它同时以 LastAccessTime = -1 的句柄枚举、不更新目录自身的最后访问时间（本机 NTFS 已实测；网络共享未验证）；资源树的目录列表经扫描进程，因此按属性判断；只有降级模式（扫描进程不可用、由 `VfsService` 直接枚举）按 `.` 判断。
 
 **SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
@@ -646,8 +646,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 **已实现（M1-2，`features/explorer`）**：
 
-- **模型**（`tree-model.ts`，纯函数）：`buildVisibleNodes({ entries, expanded, directories, showHidden })` 把条目（按 `sort_order`）与已展开目录的列表拍平为可见节点；节点 id 为 `entry:<entryId>` 与 `fs:<entryId>:<相对路径>`（各段 `/` 连接），状态行为 `<父 id>#status`。真实子项可展开者（目录、指向目录的链接）优先，名称按 `Intl.Collator('ja', { numeric: true })` 排序（`第2章` 在 `第10章` 前）；`explorer.showHiddenFiles` 关闭时隐藏 `.` 开头的项。节点类型：`group` / `folder` / `file` / `directory` / `link-directory`（可展开）/ `link-file` / `link-broken`（`target` 为 `null` 或缺失，不可展开）。需要列出与监听的目录集合由 `resolveDirectoryUris` 求出：同时查 TanStack Query 缓存，已缓存的多层展开目录一次求出（避免每发现一层多渲染一次）。
-- **渲染**：`@tanstack/react-virtual`（`estimateSize` 28、`measureElement` 实测行高，紧凑密度下行高随 `--spacing` 缩小，`overscan` 10），只渲染可见行（1 万项的目录 DOM 中约 30–40 行）。展开 / 选中状态存于 zustand（`explorer-store.ts`，按工作区区分，目前只在内存中，M3 起纳入会话快照）；切换工作区时树按 `workspaceId` 重新挂载，旧工作区的监听集合随之清空。
+- **模型**（`tree-model.ts`，纯函数）：`buildVisibleNodes({ entries, expanded, directories, showHidden })` 把条目（按 `sort_order`）与已展开目录的列表拍平为可见节点；节点 id 为 `entry:<entryId>` 与 `fs:<entryId>:<相对路径>`（各段 `/` 连接），状态行为 `<父 id>#status`。真实子项可展开者（目录、指向目录的链接）优先，名称按 `Intl.Collator('ja', { numeric: true })` 排序（`第2章` 在 `第10章` 前）；`explorer.showHiddenFiles` 关闭时隐藏 `.` 开头的项。节点类型：`group` / `folder` / `file` / `directory` / `link-directory`（可展开）/ `link-file` / `link-broken`（`target` 为 `null` 或缺失，不可展开）。需要列出的目录集合由 `resolveDirectoryUris` 求出：同时查 TanStack Query 缓存，已缓存的多层展开目录一次求出（避免每发现一层多渲染一次）。
+- **渲染**：`@tanstack/react-virtual`（`estimateSize` 28、`measureElement` 实测行高，紧凑密度下行高随 `--spacing` 缩小，`overscan` 10），只渲染可见行（1 万项的目录 DOM 中约 30–40 行）。展开 / 选中状态存于 zustand（`explorer-store.ts`，按工作区区分，目前只在内存中，M3 起纳入会话快照）；切换工作区时树按 `workspaceId` 重新挂载，旧工作区的关注点随之清空（发送空 `vfs.interest`）。
 - **状态行**：展开中的目录在加载中 / 出错 / 为空（过滤后）时产出一行状态行（展开的空分组也显示「没有项目」）。错误行显示 `errors:<code>` 文案（如「找不到文件或文件夹」「无法访问该位置」）与「重试」；**最近一次获取的错误优先于缓存中的旧列表**（TanStack Query 在重新获取失败时保留旧 data，若以 data 为先，展开中被删除的目录会一直显示旧列表）。「重试」= `resetQueries`（清掉错误后重新获取，期间显示加载中）；刷新按钮 / F5 = 让条目与所有目录列表失效（保留旧数据显示）。状态行可被选中（在错误行上按 Enter = 重试），但不可拖动、不接受放置、没有右键菜单、F2 / Delete 无效；「重试」按钮不在 Tab 顺序中（`tabIndex=-1`，鼠标按下不夺取焦点）。选中的状态行消失时选择回到其父节点；选中的节点被删除时停在原位置（钳制到末行）。
 - **键盘与无障碍**：`role="tree"` 只有一个 Tab 停靠点（`aria-activedescendant`），行为 `treeitem`（`aria-level`、`aria-expanded`、`aria-selected`）；↑↓ 移动选择，→ 展开 / 进入首个子项，← 折叠 / 回到父项，Enter 展开或折叠，F2 重命名、Delete 移除（仅条目），F5 刷新（焦点在资源管理器视图内时）。树只处理自身获得焦点时的按键，行内控件上的按键交给控件。折叠时若选中项在其子孙中，选择移到被折叠的节点。
 - **拖放**（`drag-drop.ts` 的纯函数 `resolveDrop` 决定动作，执行器只调用 `entry.move` / `entry.add`）：
@@ -675,17 +675,17 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 ### 8.3 变更感知
 
-只监听「已展开的目录」和「已打开的目录标签」，非递归；变更时（防抖后）广播 `vfs.changed`，渲染端让对应 query 失效。按资源类型：
+不监听（2026-11-19 起不再使用 `fs.watch`，原因见 7.1 节）。目录列表缓存在扫描进程的 `index.db` 中，展开、选中、切回窗口时先显示缓存，扫描进程按「离关注点的远近」检查后，内容有差异才广播 `vfs.changed`，渲染端让对应 query 失效（读缓存，很快）。按资源类型：
 
-| 资源 | 变更感知 |
+| 资源 | 检查方式 |
 |---|---|
-| 本地磁盘 | Node 内置 `fs.watch`（Windows 下即系统原生的目录监听） |
-| 网络路径：UNC、映射的网络盘（M1）、未挂载 SMB（M4，内部转换为 UNC） | 同样尝试 `fs.watch`（Windows 经 SMB 变更通知实现，取决于服务器支持，断线后可能静默失效）；监听出错时降级为不监听、不打扰用户 |
-| FTP / SFTP（M4） | 协议没有变更通知，不监听 |
+| 本地磁盘 | 目录修改时间 + 枚举（koffi 原生枚举，不更新目录的访问时间）；关注点与视口内的已展开目录每次完整枚举 |
+| 网络路径：UNC、映射的网络盘（M1）、未挂载 SMB（M4，内部转换为 UNC） | 同本地；每台服务器同时 1 个后台检查 + 1 个用户动作；断开时显示缓存、按退避重试 |
+| FTP / SFTP（M4） | 目录修改时间不可靠 → 检查 = 重新列出 |
 
-所有资源都提供：手动刷新（工具栏按钮 / F5）；窗口重新获得焦点时刷新可见的目录列表。网络路径与 FTP/SFTP 在设置 `remote.pollIntervalSec` > 0 时对已展开的目录轮询（默认 0，不轮询）。
+优先级与间隔（设计 4.6；设置键见 14.1 节）：P0 = 用户动作（展开、选中、F5 / 刷新、窗口重新获得焦点时的关注点），立即；P1 = 关注点所在根的「默认」范围、根目录、可见的已展开目录、热点目录，按 `refresh.intervalSec.local`（默认 5 秒，≥ 2）/ `.network`（默认 30 秒，≥ 10）；P2 = 级别高于「默认」时多出的范围与建立索引的目录，每 `refresh.backgroundIntervalMin` 分钟一轮。所有窗口失焦时 P1 暂停。
 
-**已实现（M1-2）**：本地与网络路径（UNC、映射盘）都用 `fs.watch` 监听资源树中已展开的目录（机制与限制见 7.1 节）；「已打开的目录标签」随 M1-3 加入监听集合。目录被删除或改名时，该目录的监听自动解除，若它是条目本身则显示「找不到」错误行，若是真实子目录则随父目录的重新列出而消失，其他节点不受影响（错误行与子项消失已有 e2e；监听的解除见 Task 3 的单元测试；改名无 e2e）。**重新列出（最终审查 I1 / I2）**：TanStack Query 的 focusManager 默认只监听 `visibilitychange`，Electron 中 Alt+Tab 切走再回来时页面一直可见、不会触发，因此 `lib/query-client.ts` 用 `focusManager.setEventListener` 同时监听 `window` 的 `focus` 与 `visibilitychange`（全局默认仍为 `refetchOnWindowFocus: false`，只影响显式开启的查询）。目录查询（`data/vfs.ts` 的 `directoryQuery`）单独设 `staleTime: 2000`、`refetchOnMount: true`、`refetchOnWindowFocus: true`：距上次列出超过 2 秒时，窗口重新获得焦点、再次展开折叠过的目录、切回侧栏视图或工作区都会重新列出（期间先显示缓存）；2 秒以内不重复列出（节流快速折叠展开与频繁切换窗口）。这弥补了监听覆盖不到的情况：被折叠的目录、不在当前工作区的目录已移出监听集合，此前在全局 `staleTime: Infinity` 下会显示 gcTime（5 分钟）内的旧缓存且不重新获取。e2e：`focus: an unwatched directory that changed is re-listed when the window regains focus`（以 `window.dispatchEvent(new Event('focus'))` 触发，与真实聚焦走同一个监听器；Playwright 默认开启 CDP 的焦点模拟，页面收不到真实的 focus / blur，真实 Alt+Tab 未验证）、`collapse: changes made while a directory was collapsed appear when it is expanded again`、`workspace switch: directories are re-listed when switching back to a workspace`。轮询：URI 带主机名（UNC）且 `remote.pollIntervalSec` > 0 时按该间隔重新列出；映射盘符被视为本地（识别映射盘需要 Windows API），不轮询。
+**已实现（2026-11-19，扫描引擎 Task 1–6）**：扫描进程、缓存、范围、调度见 5.2 节；渲染端接口见 7.1 节。渲染端目录查询（`data/vfs.ts` 的 `directoryQuery`）为 `staleTime: Infinity`、`refetchOnWindowFocus: false`、没有轮询；`refetchOnMount` 保持默认（`staleTime` 为 Infinity 时只对已失效的查询生效：折叠期间收到 `vfs.changed` 的目录再次展开时重新列出）。`DirectoryState` 的 ready 状态带 `state`（fresh / cached / offline）与 `checkedAt`（浅色显示与「最后更新」提示在 Task 8）。手动刷新（工具栏按钮 / F5）与「重试」见 7.1 节的 `vfs.refresh`。条目级的刷新级别、「建立索引」、断开图标随后续任务加入。e2e：`cache: an expanded directory shows the cached listing first and the change after the next check`（`vfs.list` 先返回不含新文件的缓存、`state: 'cached'`，检查后树中出现新文件；展开中的目录按刷新间隔感知新建 / 删除）、`cache: a deleted entry directory shows not-found and recovers on retry after it is re-created`、`focus: refocusing the window does not show loading for a cached directory`、`collapse: …`、`workspace switch: …`（e2e 启动后经 `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒）。
 
 ---
 
@@ -978,7 +978,7 @@ export interface SessionSnapshot {
 
 主进程事件到缓存失效的桥接集中在 `lib/query-client.ts`：例如收到 `vfs.changed` 就让 `['vfs','list',uri]` 失效，收到 `settings.changed` 就更新 `['settings']` 的缓存。业务组件不直接订阅 IPC 事件。
 
-已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），只有目录列表单独设 2 秒新鲜期并开启重新挂载 / 聚焦时重新列出（focusManager 同时监听 `focus` 与 `visibilitychange`，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId，新请求取代主进程中未完成的旧请求；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。例外：`useWatchDirectories` 自己订阅 `vfs.changed`，用于在监听失效后重发监听集合（7.1 节），不涉及缓存。
+已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），目录列表同样不按时间或聚焦重新获取（新鲜度由扫描进程负责，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。例外：`vfs.reachability` 由外壳（`features/shell`）订阅并写入 `stores/reachability-store.ts`（分层规则：store 只能由 feature 写入）。
 
 ### 12.2 界面布局
 
@@ -1119,7 +1119,14 @@ export const settingsSchema = z.object({
   'session.restoreOnStartup':    z.boolean().default(true),
   'window.onDetachedClose':      z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),
   'remote.cacheSizeMB':          z.number().int().min(100).default(1024),
-  'remote.pollIntervalSec':      z.number().int().min(0).default(0),   // 0 表示不轮询
+  'refresh.defaultLevel.local':  z.enum(['passive', 'default', 'active', 'all']).default('active'),
+  'refresh.defaultLevel.network': z.enum(['passive', 'default', 'active', 'all']).default('default'),
+  'refresh.activeDepth':         z.number().int().min(1).max(10).default(3),
+  'refresh.intervalSec.local':   z.number().int().min(2).default(5),     // P1 检查间隔
+  'refresh.intervalSec.network': z.number().int().min(10).default(30),
+  'refresh.backgroundIntervalMin': z.number().int().min(1).default(10),  // P2 一轮的间隔
+  'vfs.timeoutSec.local':        z.number().int().min(1).max(60).default(5),
+  'vfs.timeoutSec.network':      z.number().int().min(10).max(120).default(10),
   'launcher.officeExtensions':   z.array(z.string()).default(['xlsx', 'xlsm', 'xls', 'xltx', 'docx', 'doc', 'dotx', 'pptx', 'ppt', 'potx']),
   'launcher.officeDefaultAction': z.enum(['readOnly', 'edit', 'ask']).default('readOnly'),
   'launcher.autoUploadRemoteEdits': z.boolean().default(true),         // 远程编辑会话保存后自动上传
@@ -1203,7 +1210,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、目录监听（新建 / 删除）、聚焦 / 折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
@@ -1243,8 +1250,8 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；折叠 / 切换工作区等不再需要的目录列表由渲染端自动取消；已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
 | 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 条目指向会被清理的临时副本 | 现状：照常添加；三个选项（照常添加 / 写出后拒绝临时路径 / 不接受系统拖入）待需求方决定，见 8.2 节 |
-| 网络共享上的 `fs.watch` 依赖服务器的变更通知，可能静默失效或异步报错 | 网络目录不自动刷新 | 监听报错但目录仍在时只解除监听、60 秒内不重建（不会循环重列，7.1 节）；手动刷新 / F5、窗口聚焦与重新展开时重新列出（距上次超过 2 秒）、`remote.pollIntervalSec` 轮询兜底 |
-| `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（已实机验证） | 展开 `案件\設計書` 时无法在资源管理器中改名 / 移动 `案件` | 现状：维持；候选（递归监听条目根 / 不用 `fs.watch` 改为刷新 + 轮询）待需求方决定，见 7.1 节 |
+| `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（M1-2 已实机验证） | 展开 `案件\設計書` 时无法在资源管理器中改名 / 移动 `案件` | 已解决：2026-11-19 起不再使用 `fs.watch`，改为扫描 + 缓存（7.1、8.3 节）；枚举只在毫秒级的一次调用期间持有句柄 |
+| 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时、5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节） |
 
 ---
 

@@ -12,6 +12,7 @@ import { SettingsService } from '../modules/settings/settings.service'
 import { WindowService } from '../windows/window.service'
 import { WorkspaceService } from '../modules/workspace/workspace.service'
 import { LocalProvider } from '../vfs/providers/local.provider'
+import { location } from '../vfs/location'
 import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
@@ -40,16 +41,25 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const bus = new EventBus<MainEvents>()
 
   const settings = await SettingsService.create(new SettingsRepo(db), bus)
+  // 一次性调用（stat、条目添加的校验、降级模式的直接枚举）的超时按位置取 vfs.timeoutSec.*（总时长）
   const vfs = new VfsService([new LocalProvider()], {
-    onDirectoryChanged: (uri) => bus.emit('vfs.changed', { uri })
+    timeoutMs: (uri) => {
+      let where: 'local' | 'network' = 'network'
+      try {
+        where = location(uri)
+      } catch {
+        // 无法判断位置（例如不规范的 file URI）：按较长的网络超时
+      }
+      return settings.get(`vfs.timeoutSec.${where}`) * 1000
+    }
   })
   const workspaces = new WorkspaceService(db, vfs, bus)
-  // 扫描进程随主进程启动；渲染端的请求在 Task 6 才经过它（目前不配置根，调度器空闲）
+  // 扫描进程随主进程启动；配置（根、设置）由 bootstrap 在启动与工作区 / 设置变化时下发
   const scanner = new ScannerClient({
     fork: () => forkScanner(logger),
     cacheFile: paths.indexDb,
-    onChanged: () => {},
-    onReachability: () => {},
+    onChanged: (uri) => bus.emit('vfs.changed', { uri }),
+    onReachability: (e) => bus.emit('vfs.reachability', e),
     log: logger
   })
   scanner.start()

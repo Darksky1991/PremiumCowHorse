@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
+import { pathToFileURL } from 'node:url'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { data, launch, snapshotTree, type Named } from './support'
 
 /** 「找不到」错误行的文案（errors:FS_NOT_FOUND，ja | zh-CN | en） */
@@ -10,6 +11,17 @@ const notFoundLabel =
 const retryButton = /^(再試行|重试|Retry)$/
 
 type Entry = Named & { kind: string; parentId: string | null }
+type Listing = { items: Named[]; state: 'fresh' | 'cached' | 'offline'; checkedAt: number | null }
+
+/**
+ * 启动后把本地的刷新间隔设为下限 2 秒（默认 5 秒），让「下一次检查」在用例的等待时间内发生。
+ * 在添加任何条目之前设置：调度器已排期的目录不会因设置变化而提前（只影响之后的排期）。
+ */
+async function launchFast(userData: string): Promise<{ app: ElectronApplication; page: Page }> {
+  const launched = await launch(userData)
+  await data(launched.page, 'settings.set', { 'refresh.intervalSec.local': 2 })
+  return launched
+}
 
 /** 落点：行的上缘（before）、中间（分组为 inside）、下缘（after）；null 为树的空白处 */
 type DropAt = { row: string; at: 'top' | 'middle' | 'bottom' } | null
@@ -92,135 +104,74 @@ test.describe('explorer tree on real directories', () => {
     rmSync(files, { recursive: true, force: true })
   })
 
-  test('watch: files created on disk appear in expanded directories without a manual refresh', async () => {
-    const { app, page } = await launch(userData)
+  test('cache: an expanded directory shows the cached listing first and the change after the next check', async () => {
+    const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
-      const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
-      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
-      // 监听集合在展开后经 200ms 防抖才发给主进程；在那之前的变化只能靠刷新 / 窗口聚焦发现
-      await page.waitForTimeout(1000)
-
-      // 根条目目录与展开中的子目录都在监听：新建的文件 / 目录无需刷新即出现
-      writeFileSync(path.join(project, '設計書', '追加.txt'), '')
-      mkdirSync(path.join(project, '新規フォルダー'))
-      await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
-      await expect(tree.getByRole('treeitem', { name: '新規フォルダー' })).toBeVisible({
-        timeout: 5000
-      })
-
-      // 删除同样被感知
-      rmSync(path.join(project, 'README.md'))
-      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toHaveCount(0, {
-        timeout: 5000
-      })
-    } finally {
-      await app.close()
-    }
-  })
-
-  test('watch: deleting an expanded directory shows a not-found row and leaves other nodes alone', async () => {
-    const { app, page } = await launch(userData)
-    try {
-      const { id: workspaceId } = await data(page, 'workspace.active')
       const design = path.join(project, '設計書')
-      const minutes = path.join(project, '議事録')
-      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: design })
-      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
-      const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '設計書' }).first().click()
-      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: '議事録' }).click()
-      await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toBeVisible()
-      await page.waitForTimeout(1000)
+      const designUri = pathToFileURL(design).href
+      const names = (l: Listing): string[] => l.items.map((i) => i.name)
 
-      // 条目指向的目录在展开状态下被删除：该节点显示「找不到」与「重试」，无需手动刷新
-      rmSync(design, { recursive: true, force: true })
-      const errorRow = tree.getByRole('treeitem', { name: notFoundLabel })
-      await expect(errorRow).toBeVisible({ timeout: 5000 })
-      await expect(errorRow.getByRole('button', { name: retryButton })).toBeVisible()
-      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toHaveCount(0)
+      // 树中尚未展开、未选中：该子目录不在调度范围内。首次列出 → 枚举后存入缓存
+      const first = await data<Listing>(page, 'vfs.list', { uri: designUri })
+      expect(names(first)).toEqual(['仕様.xlsx'])
 
-      // 真实子目录在展开状态下被删除：它与其子项从父目录的列表中消失
-      rmSync(minutes, { recursive: true, force: true })
-      await expect(tree.getByRole('treeitem', { name: '議事録' })).toHaveCount(0, { timeout: 5000 })
-      await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toHaveCount(0)
-
-      // 其他节点不受影响，仍可操作
-      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
-      await expect(tree.getByRole('treeitem', { name: '案件' })).toHaveAttribute(
-        'aria-expanded',
-        'true'
-      )
-      await expect(tree.getByRole('treeitem', { name: notFoundLabel })).toHaveCount(1)
-    } finally {
-      await app.close()
-    }
-  })
-
-  test('watch: a directory deleted, re-created and retried is watched again', async () => {
-    const { app, page } = await launch(userData)
-    try {
-      const { id: workspaceId } = await data(page, 'workspace.active')
-      const design = path.join(project, '設計書')
-      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: design })
-      const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
-      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
-      await page.waitForTimeout(1000)
-
-      // 删除 → 「找不到」行
-      rmSync(design, { recursive: true, force: true })
-      const errorRow = tree.getByRole('treeitem', { name: notFoundLabel })
-      await expect(errorRow).toBeVisible({ timeout: 5000 })
-      // 等渲染端收到 vfs.changed 后的重发（200ms 防抖）在目录不存在时完成，
-      // 否则重建赶在重发之前，监听碰巧建立成功，测不到「重建后不恢复监听」
-      await page.waitForTimeout(1500)
-
-      // 原路径重建 → 「重试」→ 列表恢复（条目根的父目录不在监听中，重建本身不会被感知）
-      mkdirSync(design)
-      writeFileSync(path.join(design, '復旧.txt'), '')
-      await errorRow.getByRole('button', { name: retryButton }).click()
-      await expect(tree.getByRole('treeitem', { name: '復旧.txt' })).toBeVisible()
-      // 列表恢复后监听集合重新包含该目录（经 200ms 防抖发送）
-      await page.waitForTimeout(1000)
-
-      // 之后的变化无需刷新即出现：监听已重新建立
+      // 磁盘上的变化；超过刷新间隔（2 秒）后再列出：先返回缓存（不含新文件），状态为 cached
       writeFileSync(path.join(design, '追加.txt'), '')
+      await page.waitForTimeout(3000)
+      const second = await data<Listing>(page, 'vfs.list', { uri: designUri })
+      expect(second.state).toBe('cached')
+      expect(names(second)).toEqual(['仕様.xlsx'])
+
+      // 那次列出同时安排了检查：树中展开后显示新文件（无需手动刷新）
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
       await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
+
+      // 展开中的目录按刷新间隔检查：新建 / 删除无需手动刷新即出现 / 消失
+      writeFileSync(path.join(design, '新規.txt'), '')
+      rmSync(path.join(project, 'README.md'))
+      await expect(tree.getByRole('treeitem', { name: '新規.txt' })).toBeVisible({ timeout: 8000 })
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toHaveCount(0, {
+        timeout: 8000
+      })
+
+      // 展开中的真实子目录被删除：它与其子项从父目录的列表中消失
+      rmSync(design, { recursive: true, force: true })
+      await expect(tree.getByRole('treeitem', { name: '設計書' })).toHaveCount(0, {
+        timeout: 8000
+      })
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toHaveCount(0)
     } finally {
       await app.close()
     }
   })
 
-  test('focus: an unwatched directory that changed is re-listed when the window regains focus', async () => {
-    const { app, page } = await launch(userData)
+  test('cache: a deleted entry directory shows not-found and recovers on retry after it is re-created', async () => {
+    const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
-      const design = path.join(project, '設計書')
-      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: design })
+      const minutes = path.join(project, '議事録')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: minutes })
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
-      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
-      await page.waitForTimeout(1000)
+      await tree.getByRole('treeitem', { name: '議事録' }).first().click()
+      await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toBeVisible()
 
-      // 条目目录被删除 → 出错、移出监听集合；原路径重建不会被任何监听感知（父目录不在监听中）
-      rmSync(design, { recursive: true, force: true })
+      // 条目指向的目录在展开状态下被删除：下一次检查后显示「找不到」与「重试」，其他节点不受影响
+      rmSync(minutes, { recursive: true, force: true })
       const errorRow = tree.getByRole('treeitem', { name: notFoundLabel })
-      await expect(errorRow).toBeVisible({ timeout: 5000 })
-      await page.waitForTimeout(1500)
-      mkdirSync(design)
-      writeFileSync(path.join(design, '復旧.txt'), '')
-      // 超过目录列表的新鲜期（2 秒）；没有聚焦时错误行保持不变
-      await page.waitForTimeout(2500)
-      await expect(errorRow).toBeVisible()
+      await expect(errorRow).toBeVisible({ timeout: 8000 })
+      await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toHaveCount(0)
+      await expect(tree.getByRole('treeitem', { name: '案件' })).toBeVisible()
 
-      // 窗口重新获得焦点（Alt+Tab 切回时只有 window 的 focus，没有 visibilitychange）
-      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      // 原路径重建 →「重试」（vfs.refresh + 重新获取）→ 列表恢复
+      mkdirSync(minutes)
+      writeFileSync(path.join(minutes, '復旧.txt'), '')
+      await errorRow.getByRole('button', { name: retryButton }).click()
       await expect(tree.getByRole('treeitem', { name: '復旧.txt' })).toBeVisible({ timeout: 5000 })
       await expect(errorRow).toHaveCount(0)
     } finally {
@@ -228,8 +179,56 @@ test.describe('explorer tree on real directories', () => {
     }
   })
 
+  test('focus: refocusing the window does not show loading for a cached directory', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+
+      // 从这里开始记录树中是否出现过「加载中」行
+      await page.evaluate(() => {
+        const w = window as unknown as { sawLoading: boolean }
+        w.sawLoading = false
+        const el = document.querySelector('[role="tree"]')!
+        const check = (): void => {
+          if (/読み込み中|正在加载|Loading/.test(el.textContent ?? '')) w.sawLoading = true
+        }
+        new MutationObserver(check).observe(el, {
+          subtree: true,
+          childList: true,
+          characterData: true
+        })
+      })
+
+      // 失焦 → 磁盘变化 → 重新获得焦点。Playwright 产生不了真实的焦点切换（knowledge/testing.md），
+      // 直接触发 BrowserWindow 的 blur / focus（主进程据此通知扫描进程），页面上同时派发 focus
+      const emit = (event: 'blur' | 'focus'): Promise<void> =>
+        app.evaluate(({ BrowserWindow }, e) => {
+          BrowserWindow.getAllWindows()[0]!.emit(e)
+        }, event)
+      await emit('blur')
+      writeFileSync(path.join(project, '設計書', '追加.txt'), '')
+      await page.waitForTimeout(500)
+      await emit('focus')
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+
+      // 缓存内容一直显示，检查后出现新文件；期间没有「加载中」
+      await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 8000 })
+      await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
+      expect(
+        await page.evaluate(() => (window as unknown as { sawLoading: boolean }).sawLoading)
+      ).toBe(false)
+    } finally {
+      await app.close()
+    }
+  })
+
   test('collapse: changes made while a directory was collapsed appear when it is expanded again', async () => {
-    const { app, page } = await launch(userData)
+    const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
@@ -238,15 +237,13 @@ test.describe('explorer tree on real directories', () => {
       const design = tree.getByRole('treeitem', { name: '設計書' })
       await design.click()
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
-      await page.waitForTimeout(1000)
 
-      // 折叠：该目录移出监听集合（200ms 防抖），之后的变化无人感知
+      // 折叠：查询变为非活动（渲染端的缓存保留）；该目录仍是关注点（选中），扫描进程照常检查
       await design.click()
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toHaveCount(0)
-      await page.waitForTimeout(1000)
       writeFileSync(path.join(project, '設計書', '追加.txt'), '')
-      // 超过目录列表的新鲜期（2 秒）后再展开：重新列出，而不是显示折叠前的缓存
-      await page.waitForTimeout(2500)
+      // 等下一次检查发现变化（vfs.changed 让非活动查询失效）后再展开：重新列出，而不是显示折叠前的列表
+      await page.waitForTimeout(3000)
       await design.click()
       await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
@@ -256,16 +253,15 @@ test.describe('explorer tree on real directories', () => {
   })
 
   test('workspace switch: directories are re-listed when switching back to a workspace', async () => {
-    const { app, page } = await launch(userData)
+    const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
       await tree.getByRole('treeitem', { name: '案件' }).click()
       await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
-      await page.waitForTimeout(1000)
 
-      // 切到另一个（空的）工作区：资源树卸载，旧工作区的监听集合清空
+      // 切到另一个（空的）工作区：资源树卸载（发送空关注点），旧工作区的根不再调度（缓存保留）
       const other = await data(page, 'workspace.create', { name: '別件' })
       await data(page, 'workspace.activate', { id: other.id })
       await expect(page.getByRole('treeitem', { name: '案件' })).toHaveCount(0)
@@ -273,7 +269,7 @@ test.describe('explorer tree on real directories', () => {
       writeFileSync(path.join(project, '新規.txt'), '')
       await page.waitForTimeout(2500)
 
-      // 切回：展开状态保留，目录重新列出
+      // 切回：展开状态保留；根重新参与调度，检查发现变化后重新列出
       await data(page, 'workspace.activate', { id: workspaceId })
       await expect(tree.getByRole('treeitem', { name: '新規.txt' })).toBeVisible({ timeout: 5000 })
       await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
@@ -283,7 +279,7 @@ test.describe('explorer tree on real directories', () => {
   })
 
   test('drag and drop only manages entries: the disk snapshot is identical afterwards', async () => {
-    const { app, page } = await launch(userData)
+    const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       const readme = path.join(project, 'README.md')

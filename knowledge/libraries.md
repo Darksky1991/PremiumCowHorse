@@ -65,6 +65,7 @@
   2. 过期判定：`true` 的含义是「若数据已过期（stale）则重新获取」，`refetchOnMount` 同理（默认 `true`）；全局 `staleTime: Infinity` 下数据永不过期，重新挂载与聚焦都不重新获取。
 - 解决：`lib/query-client.ts` 用 `focusManager.setEventListener` 同时监听 `window` 的 `focus` 与 `visibilitychange`（回调不带参数，由 focusManager 按 `document.visibilityState` 判断）；目录查询（`data/vfs.ts` 的 `directoryQuery`）单独设 `staleTime: 2000`、`refetchOnMount: true`、`refetchOnWindowFocus: true`，全局默认不变。单元测试（`focusListenerSetup`、`directoryQuery` 的新鲜期）与 e2e（聚焦 / 折叠后再展开 / 切回工作区）覆盖，并做过篡改验证。
 - 预防：在 Electron 中依赖「聚焦」的行为要先确认 focusManager 的事件来源；全局 `staleTime: Infinity` 时，需要「重新挂载 / 聚焦时重新获取」的查询单独设有限的 `staleTime`。`'always'` 只解决过期判定，不解决事件来源。e2e 中真实的 focus / blur 被 Playwright 的焦点模拟屏蔽（见 `testing.md`），用 `window.dispatchEvent(new Event('focus'))` 触发。
+- 现状（2026-11-19）：上面的「解决」**已不再使用**——目录的新鲜度改由扫描进程负责（`fs.watch` 删除），目录查询改回 `staleTime: Infinity`、`refetchOnWindowFocus: false`，`focusListenerSetup` 与 2 秒新鲜期已删除；窗口焦点由主进程的 BrowserWindow `focus` / `blur` 事件告知扫描进程。两条原因（focusManager 只听 `visibilitychange`；`staleTime: Infinity` 下 `refetchOnMount: true` 只对已失效的查询生效）仍然成立：后者正好用来让「折叠期间收到 `vfs.changed` 的目录」在再次展开时重新列出（`data/vfs.test.ts`）。
 
 ### TanStack Query：queryFn 的 `signal` 何时中止（取消主进程中的请求）
 

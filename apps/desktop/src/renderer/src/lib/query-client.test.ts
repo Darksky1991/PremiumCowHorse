@@ -1,23 +1,57 @@
-import { describe, expect, it, vi } from 'vitest'
-import { focusListenerSetup } from './query-client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { QueryClient } from '@tanstack/react-query'
+import type { PchBridge } from '@pch/shared'
+import { bridgeMainEvents, createQueryClient } from './query-client'
+import { queryKeys } from './query-keys'
 
-describe('focusListenerSetup', () => {
-  it('window 的 focus 与 visibilitychange 都通知 TanStack Query 重新判断焦点', () => {
-    const target = new EventTarget()
-    const handleFocus = vi.fn()
-    const cleanup = focusListenerSetup(target)(handleFocus)
-    // Electron 中 Alt+Tab 切回窗口时页面一直可见，只有 focus，没有 visibilitychange
-    target.dispatchEvent(new Event('focus'))
-    expect(handleFocus).toHaveBeenCalledTimes(1)
-    // 最小化后恢复等情况仍由 visibilitychange 覆盖
-    target.dispatchEvent(new Event('visibilitychange'))
-    expect(handleFocus).toHaveBeenCalledTimes(2)
-    // 不带参数：由 focusManager 按 document.visibilityState 判断，而不是强制设为已聚焦
-    expect(handleFocus).toHaveBeenLastCalledWith()
+/** 假的 window.pch：on() 登记的监听器由测试直接触发 */
+function stubBridge(): { emit: (event: string, payload: unknown) => void } {
+  const listeners = new Map<string, Set<(p: unknown) => void>>()
+  const bridge: PchBridge = {
+    invoke: async () => ({ ok: true, data: undefined }),
+    on: (event, listener) => {
+      const set = listeners.get(event) ?? new Set()
+      set.add(listener)
+      listeners.set(event, set)
+      return () => set.delete(listener)
+    },
+    getPathForFile: () => '',
+    bootstrap: null
+  }
+  vi.stubGlobal('window', { pch: bridge })
+  return { emit: (event, payload) => listeners.get(event)?.forEach((l) => l(payload)) }
+}
 
-    cleanup?.()
-    target.dispatchEvent(new Event('focus'))
-    target.dispatchEvent(new Event('visibilitychange'))
-    expect(handleFocus).toHaveBeenCalledTimes(2)
+describe('bridgeMainEvents', () => {
+  let client: QueryClient
+  let off: () => void
+  let emit: (event: string, payload: unknown) => void
+  beforeEach(() => {
+    emit = stubBridge().emit
+    client = createQueryClient()
+    off = bridgeMainEvents(client)
+  })
+  afterEach(() => {
+    off()
+    client.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('vfs.changed 只让该目录的查询失效', () => {
+    const a = queryKeys.directory('file:///C:/a')
+    const b = queryKeys.directory('file:///C:/b')
+    client.setQueryData(a, { items: [], state: 'fresh', checkedAt: 1 })
+    client.setQueryData(b, { items: [], state: 'fresh', checkedAt: 1 })
+    emit('vfs.changed', { uri: 'file:///C:/a' })
+    expect(client.getQueryState(a)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(b)?.isInvalidated).toBe(false)
+  })
+
+  it('全局默认：永不过期、聚焦时不重新获取、不重试', () => {
+    expect(client.getDefaultOptions().queries).toMatchObject({
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      retry: false
+    })
   })
 })

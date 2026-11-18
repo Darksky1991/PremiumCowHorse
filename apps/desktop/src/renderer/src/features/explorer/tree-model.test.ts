@@ -46,7 +46,12 @@ function item(
   }
 }
 
-const ready = (items: FileEntry[]): DirectoryState => ({ status: 'ready', items })
+const ready = (items: FileEntry[]): DirectoryState => ({
+  status: 'ready',
+  items,
+  state: 'fresh',
+  checkedAt: 0
+})
 
 function build(
   entries: WorkspaceEntry[],

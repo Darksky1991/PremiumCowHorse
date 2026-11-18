@@ -47,6 +47,7 @@
 - 原因：本机（Windows 11）实测删除被监听的目录时，`fs.watch` 只发出 `rename` 事件，不发出 `error`；只在 `error` 时关闭的写法永远不会判定失效。
 - 解决：`LocalProvider.watch` 在 `rename` 事件后 `fs.stat(目录)`，失败即视为失效：先通知一次变化，再关闭并调用 `onClose`（`vfs/providers/local.provider.ts`），`VfsService` 据此删除条目以便重建。
 - 预防：依赖平台文件事件的逻辑要在目标平台上实测「目录自身被删除 / 改名」。rename 后 stat 失败的原因也可能是权限或网络，目前一律视为失效。
+- 现状（2026-11-19）：**不再使用 `fs.watch`**（监听句柄阻止上级目录改名，见 `windows-and-tooling.md`），`LocalProvider.watch` 已删除，本条只作历史记录。目录被删除改由扫描进程的检查发现（`FS_NOT_FOUND` → 删除缓存子树并发 `vfs.changed`）。
 
 ### 原生拖放：dragover 读不到数据、系统文件不能用 `move`、合成的 File 没有路径
 

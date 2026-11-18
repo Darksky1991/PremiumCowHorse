@@ -211,6 +211,58 @@ describe('ScannerClient', () => {
     expect(onChanged).not.toHaveBeenCalled()
   })
 
+  it('rejects a request with INDEX_UNAVAILABLE when the scanner does not answer within 60 seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client, port, log } = setup()
+      const slow = client.list('file:///C:/a')
+      const answered = client.cacheInfo()
+      port().emit({
+        type: 'result',
+        id: port().last('cacheInfo').id,
+        ok: true,
+        value: { bytes: 1 }
+      })
+      await expect(answered).resolves.toEqual({ bytes: 1 })
+      const code = codeOf(slow)
+      await vi.advanceTimersByTimeAsync(59_999)
+      let settled = false
+      void code.then(() => (settled = true))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(code).resolves.toBe('INDEX_UNAVAILABLE')
+      expect(log.warn).toHaveBeenCalled()
+      // 迟到的结果被忽略；之后的请求照常
+      port().emit({ type: 'result', id: port().last('list').id, ok: true, value: listing('late') })
+      const next = client.list('file:///C:/b')
+      port().emit({ type: 'result', id: port().last('list').id, ok: true, value: listing('b') })
+      await expect(next).resolves.toEqual(listing('b'))
+      // 已回应的请求不留下计时器
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects the matching request with INDEX_UNAVAILABLE when its result fails validation', async () => {
+    const { client, port, log } = setup()
+    const bad = client.list('file:///C:/a')
+    const other = client.list('file:///C:/b')
+    const [ra, rb] = port().sent.filter((m) => m.type === 'list') as Array<
+      Extract<MainToScanner, { type: 'list' }>
+    >
+    // ok: false 却没有合法的 error
+    port().emit({ type: 'result', id: ra!.id, ok: false, error: { code: 'NOT_A_CODE' } })
+    await expect(codeOf(bad)).resolves.toBe('INDEX_UNAVAILABLE')
+    expect(log.warn).toHaveBeenCalledTimes(1)
+    // 读不出 id 的无效消息只记日志，不影响其他请求
+    port().emit({ type: 'result', id: 'x', ok: true })
+    expect(log.warn).toHaveBeenCalledTimes(2)
+    port().emit({ type: 'result', id: rb!.id, ok: true, value: listing('b') })
+    await expect(other).resolves.toEqual(listing('b'))
+  })
+
   it('dispose sends shutdown, rejects pending requests and does not restart', async () => {
     const { client, fork, port } = setup()
     const pending = client.list('file:///C:/a')

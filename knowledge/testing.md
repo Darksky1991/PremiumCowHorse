@@ -77,13 +77,14 @@
 - 方法：`e2e/support.ts` 的 `snapshotTree(root)`：递归 `lstat`，每项「相对路径 | 类型 | 大小 | mtime」排序后比较，根目录的 mtime 也记录。只比较 `readdirSync` 的文件名发现不了内容修改与子目录内的新建 / 删除。
 - 有效性：快照后用 `utimesSync` 改一个 mtime，比较即失败（M1-2 Task 10 的篡改验证）。
 
-### e2e：目录监听用例要等监听建立后再改磁盘
+### e2e：目录监听用例要等监听建立后再改磁盘（2026-11-19 起不适用）
 
 - 日期：2026-11-18
 - 症状：（预防性）展开目录后立刻在磁盘上新建文件，可能发生在监听建立之前而不被感知，用例偶发失败。
 - 原因：渲染端在监听集合变化后 200ms 防抖才发送 `vfs.watch`，列目录请求则立即发出。
 - 解决：展开并看到子项后 `page.waitForTimeout(1000)` 再改磁盘（`e2e/explorer.spec.ts`）；有效性用「渲染端不发送 vfs.watch」的篡改确认（用例失败）。
 - 预防：不要靠窗口聚焦让用例通过——聚焦刷新会掩盖监听失效。2026-11-19 聚焦刷新实际生效后（目录列表 2 秒新鲜期），重新做了「渲染端不发送 vfs.watch」的篡改：三个 `watch:` 用例仍然失败，聚焦刷新没有掩盖监听失效（Playwright 下页面收不到真实的 focus，见下一条）。
+- 现状（2026-11-19）：`vfs.watch` 与三个 `watch:` 用例已删除（改为扫描 + 缓存）。新的 `cache:` 用例依赖扫描进程按刷新间隔检查，见下文「e2e：扫描引擎的用例」。
 
 ### e2e：Playwright 默认开启焦点模拟，页面收不到真实的 focus / blur
 
@@ -91,6 +92,7 @@
 - 症状：（M1-2 最终审查修复）想用真实聚焦验证「窗口重新获得焦点时刷新」：在主进程中 `BrowserWindow.blur()` / `focus()` / `minimize()` / `restore()`，或用系统级鼠标点击在两个窗口间切换，页面上 `window` 的 `focus` / `blur` 与 `visibilitychange` 一个都没有收到。
 - 原因：playwright-core 1.65 在主 frame 上发送 CDP `Emulation.setFocusEmulationEnabled { enabled: true }`（`coreBundle.js`），页面始终认为自己已聚焦。用 `page.context().newCDPSession(page)` 关闭焦点模拟后能收到一次 `blur`，但本环境中系统级点击不改变窗口焦点（`BrowserWindow.isFocused()` 不变），仍无法得到真实的 `focus`。
 - 解决：e2e 用 `page.evaluate(() => window.dispatchEvent(new Event('focus')))` 触发，与真实聚焦走同一个监听器（`focusManager.setEventListener` 注册在 `window` 上）；真实 Alt+Tab 记为未验证。
+  - 2026-11-19 起渲染端不再监听聚焦（focusManager 的设置已删除），窗口焦点由主进程的 BrowserWindow `focus` / `blur` 事件告知扫描进程。e2e 改为在主进程中直接触发这两个事件：`app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows()[0]!.emit(e), 'blur')`（`focus:` 用例），只验证我们的接线，真实切换仍未验证。
 - 预防：依赖焦点事件的行为不要假设 Playwright 能产生真实焦点切换；合成事件之外的验证需要手动或脱离 Playwright 进行。
 
 ### e2e：菜单项的无障碍名称包含快捷键文字；菜单 / 对话框打开时页面其余部分是 inert
@@ -107,3 +109,14 @@
 - 症状：篡改后用 `git checkout -- file` 还原，对尚未 `git add` 的新文件静默无效，篡改留在了工作区。
 - 解决：篡改前把文件复制到临时目录（scratchpad，不要复制到仓库的上级目录），用备份还原；还原后 `grep` 篡改标记（如 `TAMPER`）确认为 0。
 - 预防：篡改时在改动处加统一的标记注释，便于检查是否已全部还原。
+
+### e2e：扫描引擎的用例——刷新间隔要在添加条目之前设置；窗口真的失焦会让用例超时
+
+- 日期：2026-11-19
+- 症状：（预防性）`cache:` 等用例依赖扫描进程「下一次检查」发现磁盘变化。默认的本地刷新间隔 5 秒接近断言的等待时间，用例容易偶发超时。
+- 原因：
+  1. 调度器对已排期的目录沿用原来的到期时刻，设置变化（`refresh.intervalSec.*`）只影响之后进入范围的目录。
+  2. 所有窗口失焦时 P1 暂停（设计 4.6）。主进程的 BrowserWindow 在 e2e 运行中真的失去焦点（例如运行期间在其他窗口中操作），展开中的目录就不再检查，等待变化的断言超时。
+- 解决：`e2e/explorer.spec.ts` 的 `launchFast` 在启动后、添加任何条目之前经 IPC `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒；等待变化的断言给 5–8 秒。主进程不主动下发窗口初始的焦点状态（扫描进程把发来关注点的新窗口视为已聚焦），后台启动的测试窗口不会一开始就暂停 P1。
+- 有效性：把配置下发改为空的根（不缓存、不调度）后，两个 `cache:` 用例都失败（`state` 为 `fresh` 而不是 `cached`；删除后的「找不到」行不出现）。
+- 预防：运行 e2e 时不要操作其他窗口；新增依赖检查的用例时先确认目录在调度范围内（根、关注点、视口内的已展开目录），只靠 `vfs.list` 的 P0 时注意 2 秒去重。

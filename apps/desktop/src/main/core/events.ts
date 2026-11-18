@@ -1,10 +1,12 @@
-import type { Settings } from '@pch/shared'
+import type { ReachabilityEvent, Settings } from '@pch/shared'
 
 /** 主进程内部事件。新增模块时在这里登记事件类型。 */
 export interface MainEvents extends Record<string, unknown> {
   'settings.changed': Partial<Settings>
   /** 工作区或其条目发生变化（id 为工作区 id） */
   'workspace.changed': { id: string }
-  /** 被监听的目录内容发生变化（已防抖） */
+  /** 目录的缓存内容有变化（扫描进程） */
   'vfs.changed': { uri: string }
+  /** 共享 / 卷断开或恢复（扫描进程） */
+  'vfs.reachability': ReachabilityEvent
 }

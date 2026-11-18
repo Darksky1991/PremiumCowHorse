@@ -13,6 +13,6 @@ export function createHandlers(c: Container): Handlers {
     ...settingsHandlers(c.settings),
     ...windowHandlers(),
     ...workspaceHandlers(c.workspaces),
-    ...vfsHandlers(c.vfs)
+    ...vfsHandlers(c.vfs, c.scanner)
   }
 }

@@ -1,47 +1,47 @@
 import { useEffect, useRef } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, type QueryClient } from '@tanstack/react-query'
 import {
   AppError,
-  VFS_WATCH_MAX,
+  VFS_REFRESH_MAX,
+  type DirectoryListing,
   type ErrorCode,
   type FileEntry,
+  type Interest,
   type IpcChannel,
   type IpcInput,
   type IpcOutput
 } from '@pch/shared'
-import { call, subscribe } from '@renderer/lib/ipc'
+import { call } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
-import { useSetting } from './settings'
 
+/**
+ * 树使用的目录状态。ready 时带上扫描进程给出的 state（fresh：刚确认过；cached：缓存内容、
+ * 检查已安排；offline：所在共享断开）与上次检查的时刻（没有记录时为 null）。
+ */
 export type DirectoryState =
   | { status: 'loading' }
   | { status: 'error'; code: ErrorCode }
-  | { status: 'ready'; items: FileEntry[] }
-
-/** 带主机名的 file URI（UNC 路径）视为网络位置；映射盘符被视为本地 */
-export function isNetworkUri(uri: string): boolean {
-  try {
-    const u = new URL(uri)
-    return u.protocol === 'file:' && u.hostname !== ''
-  } catch {
-    return false
-  }
-}
+  | {
+      status: 'ready'
+      items: FileEntry[]
+      state: DirectoryListing['state']
+      checkedAt: number | null
+    }
 
 /** 与 lib/ipc 的 call 同签名，测试可注入假实现 */
 export type Invoke = <C extends IpcChannel>(channel: C, input: IpcInput<C>) => Promise<IpcOutput<C>>
 
 /**
- * 列出一个目录。同一 URI 用固定的 requestId（dir:<uri>），新请求会取代主进程中未完成的旧请求。
- * signal 中止（TanStack Query 取消查询）时同步发送 vfs.cancel，主进程停止 lstat、释放线程池。
+ * 列出一个目录。同一 URI 用固定的 requestId（dir:<uri>）：扫描进程不可用、主进程直接枚举时，
+ * 新请求会取代未完成的旧请求；signal 中止（TanStack Query 取消查询）时同步发送 vfs.cancel。
  * 中止只会发生在新请求发出之前（见 directoryQuery），且请求结束后移除监听器，
- * 因此这里的取消不会落到之后同一 requestId 的新请求上。
+ * 因此这里的取消不会落到之后同一 requestId 的新请求上。经扫描进程的请求不可取消（很快返回缓存）。
  */
 export async function listDirectory(
   uri: string,
   signal: AbortSignal,
   invoke: Invoke = call
-): Promise<FileEntry[]> {
+): Promise<DirectoryListing> {
   const requestId = `dir:${uri}`
   const onAbort = (): void => {
     void invoke('vfs.cancel', { requestId }).catch(() => undefined)
@@ -54,52 +54,38 @@ export async function listDirectory(
   }
 }
 
-/**
- * 目录列表的新鲜期：在此之内重新挂载 / 聚焦不重新列出（节流快速折叠展开与频繁切换窗口），
- * 超过后重新挂载（再次展开、切回侧栏视图或工作区）与窗口重新获得焦点时重新列出。
- * 全局默认 staleTime 为 Infinity（其他数据由主进程事件推送），目录列表单独设置：
- * 未展开 / 不在当前工作区的目录不在监听中，期间的变化只能靠重新挂载时重新列出发现。
- */
-export const DIRECTORY_STALE_MS = 2000
-
 export interface DirectoryQueryOptions {
   queryKey: ReturnType<typeof queryKeys.directory>
-  queryFn: (context: { signal: AbortSignal }) => Promise<FileEntry[]>
+  queryFn: (context: { signal: AbortSignal }) => Promise<DirectoryListing>
   staleTime: number
   refetchOnMount: boolean
   refetchOnWindowFocus: boolean
-  refetchInterval: number | false
 }
 
 /**
- * 一个目录的查询选项。取消：TanStack Query 在以下时机中止 signal，均在同一 key 的新请求
- * 发出之前同步发生——最后一个观察者离开（折叠、切换工作区，revert 回请求前的状态）、
- * 有数据时被新的获取取代（invalidate / refetch 的 cancelRefetch）、resetQueries（重试）、
+ * 一个目录的查询选项。目录的新鲜度由扫描进程负责（缓存 + 按优先级检查，设计 4.8）：
+ * 内容有变化时主进程广播 vfs.changed，lib/query-client.ts 让该查询失效。因此
+ * staleTime 为 Infinity、聚焦时不重新获取（窗口焦点由主进程的窗口事件告知扫描进程）、没有轮询。
+ * refetchOnMount 保持 true：staleTime 为 Infinity 时它只对「已失效」的查询生效——
+ * 折叠期间收到 vfs.changed 的目录（非活动查询只被标记失效），再次展开时重新列出。
+ *
+ * 取消：TanStack Query 在以下时机中止 signal，均在同一 key 的新请求发出之前同步发生——
+ * 最后一个观察者离开（折叠、切换工作区）、有数据时被新的获取取代（invalidate 的 cancelRefetch）、
  * 缓存回收；被取消的请求随后以 FS_CANCELLED 结束，TanStack Query 不把它记为错误。
- * UNC 路径在 remote.pollIntervalSec > 0 时按该间隔轮询。
  */
-export function directoryQuery(
-  uri: string,
-  pollSec: number,
-  invoke: Invoke = call
-): DirectoryQueryOptions {
+export function directoryQuery(uri: string, invoke: Invoke = call): DirectoryQueryOptions {
   return {
     queryKey: queryKeys.directory(uri),
     queryFn: ({ signal }: { signal: AbortSignal }) => listDirectory(uri, signal, invoke),
-    staleTime: DIRECTORY_STALE_MS,
+    staleTime: Infinity,
     refetchOnMount: true,
-    // 只对目录查询开启；聚焦事件来源见 lib/query-client.ts 的 focusManager 设置
-    refetchOnWindowFocus: true,
-    refetchInterval: pollSec > 0 && isNetworkUri(uri) ? pollSec * 1000 : (false as const)
+    refetchOnWindowFocus: false
   }
 }
 
 /** 列出一组目录（每个目录的选项见 directoryQuery） */
 export function useDirectories(uris: string[]): Map<string, DirectoryState> {
-  const pollSec = useSetting('remote.pollIntervalSec') ?? 0
-  const results = useQueries({
-    queries: uris.map((uri) => directoryQuery(uri, pollSec))
-  })
+  const results = useQueries({ queries: uris.map((uri) => directoryQuery(uri)) })
 
   const map = new Map<string, DirectoryState>()
   uris.forEach((uri, i) => {
@@ -115,113 +101,118 @@ export function useDirectories(uris: string[]): Map<string, DirectoryState> {
  * 展开中被删除 / 断开的目录会一直显示旧列表（vfs.changed、F5 都无效），而不是「找不到」等错误行。
  */
 export function directoryState(r: {
-  data: FileEntry[] | undefined
+  data: DirectoryListing | undefined
   isError: boolean
   error: unknown
 }): DirectoryState {
   if (r.isError) {
     return { status: 'error', code: r.error instanceof AppError ? r.error.code : 'UNKNOWN' }
   }
-  if (r.data !== undefined) return { status: 'ready', items: r.data }
+  if (r.data !== undefined) {
+    return {
+      status: 'ready',
+      items: r.data.items,
+      state: r.data.state,
+      checkedAt: r.data.checkedAt
+    }
+  }
   return { status: 'loading' }
 }
 
-/**
- * 需要监听的目录：只取列表已就绪的目录（列目录仍用全部已展开的目录）。
- * 出错 / 加载中的目录不监听：目录被删除后从监听集合中移除，原路径重建后「重试」使列表恢复为
- * 就绪，集合随之变化并重新发送 vfs.watch，监听得以重建（若一直留在集合中，集合不变就不会重发）。
- */
-export function watchableUris(
-  uris: readonly string[],
-  directories: ReadonlyMap<string, DirectoryState>
-): string[] {
-  return uris.filter((uri) => directories.get(uri)?.status === 'ready')
+/** 当前显示中（有观察者）的目录查询的 URI，即树中所有已展开的目录 */
+function activeDirectoryUris(client: QueryClient): string[] {
+  return client
+    .getQueryCache()
+    .findAll({ queryKey: queryKeys.directoryRoot, type: 'active' })
+    .map((q) => q.queryKey[2])
+    .filter((uri): uri is string => typeof uri === 'string')
 }
 
-const WATCH_DEBOUNCE_MS = 200
+/** vfs.refresh 按上限分批；失败不影响之后的重新列出 */
+async function sendRefresh(uris: string[], invoke: Invoke): Promise<void> {
+  for (let i = 0; i < uris.length; i += VFS_REFRESH_MAX) {
+    await invoke('vfs.refresh', { uris: uris.slice(i, i + VFS_REFRESH_MAX) }).catch(() => undefined)
+  }
+}
 
-export interface WatchScheduler {
-  /** 设置期望的监听集合（防抖后发送） */
-  set(uris: string[]): void
-  /** 收到 vfs.changed：若该目录在当前集合中，防抖后重发完整集合（主进程在监听失效时会移除该条目） */
-  notifyChanged(uri: string): void
-  /** 取消待发送的防抖并立即发送空集合 */
+/**
+ * F5 / 刷新按钮：让扫描进程立即检查所有已展开的目录（P0，断开的共享也尝试一次），
+ * 再让所有目录查询失效（显示中的重新列出，其余只标记失效）。
+ */
+export async function refreshDirectories(
+  client: QueryClient,
+  invoke: Invoke = call
+): Promise<void> {
+  await sendRefresh(activeDirectoryUris(client), invoke)
+  // 不等待重新列出完成（结果经查询状态反映到树上）
+  void client.invalidateQueries({ queryKey: queryKeys.directoryRoot })
+}
+
+/** 状态行的「重试」：立即检查该目录，再让该查询重新获取 */
+export async function retryDirectory(
+  client: QueryClient,
+  uri: string,
+  invoke: Invoke = call
+): Promise<void> {
+  await sendRefresh([uri], invoke)
+  void client.invalidateQueries({ queryKey: queryKeys.directory(uri) })
+}
+
+const INTEREST_DEBOUNCE_MS = 300
+const EMPTY_INTEREST: Interest = { focus: null, visible: [], offscreen: [] }
+
+export interface InterestSender {
+  /** 设置当前关注点（防抖后发送；与上次发送的内容相同则不发送） */
+  set(interest: Interest): void
+  /** 取消待发送的防抖并立即发送空关注点 */
   dispose(): void
 }
 
-/**
- * 防抖与「失效后重建」的判定逻辑；与 React 无关，便于单元测试。
- * 集合超过 vfs.watch 的上限（VFS_WATCH_MAX）时截断为前面的部分（调用方按树中自上而下的顺序给出）
- * 并警告：超过上限的调用会被主进程的输入校验整次拒绝，所有监听都会静默失效。
- */
-export function createWatchScheduler(
-  send: (uris: string[]) => void,
-  delayMs: number = WATCH_DEBOUNCE_MS,
-  warn: (message: string) => void = (message) => console.warn(message)
-): WatchScheduler {
-  let current: string[] = []
+/** vfs.interest 的防抖（滚动停止后发送，设计 4.6）；与 React 无关，便于单元测试 */
+export function createInterestSender(
+  send: (interest: Interest) => void,
+  delayMs: number = INTEREST_DEBOUNCE_MS
+): InterestSender {
   let timer: ReturnType<typeof setTimeout> | undefined
-
-  const schedule = (): void => {
-    if (timer !== undefined) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = undefined
-      if (current.length > VFS_WATCH_MAX) {
-        warn(
-          `[vfs.watch] ${current.length} directories requested; only the first ${VFS_WATCH_MAX} are watched`
-        )
-        send(current.slice(0, VFS_WATCH_MAX))
-      } else {
-        send(current)
-      }
-    }, delayMs)
-  }
-
+  let lastSent: string | null = null
   return {
-    set(uris) {
-      current = uris
-      schedule()
-    },
-    notifyChanged(uri) {
-      if (current.includes(uri)) schedule()
+    set(interest) {
+      if (timer !== undefined) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = undefined
+        const key = JSON.stringify(interest)
+        if (key === lastSent) return
+        lastSent = key
+        send(interest)
+      }, delayMs)
     },
     dispose() {
       if (timer !== undefined) clearTimeout(timer)
       timer = undefined
-      current = []
-      send([])
+      lastSent = null
+      send(EMPTY_INTEREST)
     }
   }
 }
 
-/** 把当前需要监听的目录集合同步给主进程；卸载时清空 */
-export function useWatchDirectories(uris: string[]): void {
-  const schedulerRef = useRef<WatchScheduler | null>(null)
+/** 把本窗口的关注点同步给主进程（扫描进程据此调度）；卸载时发送空关注点 */
+export function useVfsInterest(interest: Interest): void {
+  const senderRef = useRef<InterestSender | null>(null)
 
   useEffect(() => {
-    const scheduler = createWatchScheduler(
-      (set) => {
-        void call('vfs.watch', { uris: set }).catch(() => undefined)
-      },
-      WATCH_DEBOUNCE_MS,
-      // 控制台与 main.log 各记一条
-      (message) => {
-        console.warn(message)
-        void call('log.write', { level: 'warn', message }).catch(() => undefined)
-      }
-    )
-    schedulerRef.current = scheduler
-    const off = subscribe('vfs.changed', ({ uri }) => scheduler.notifyChanged(uri))
+    const sender = createInterestSender((i) => {
+      void call('vfs.interest', i).catch(() => undefined)
+    })
+    senderRef.current = sender
     return () => {
-      off()
-      scheduler.dispose()
-      schedulerRef.current = null
+      sender.dispose()
+      senderRef.current = null
     }
   }, [])
 
-  // 以内容而非引用判断集合是否变化；保持调用方的顺序（超过上限时保留靠前的目录）
-  const key = JSON.stringify([...new Set(uris)])
+  // 以内容而非引用判断是否变化
+  const key = JSON.stringify(interest)
   useEffect(() => {
-    schedulerRef.current?.set(JSON.parse(key) as string[])
+    senderRef.current?.set(JSON.parse(key) as Interest)
   }, [key])
 }

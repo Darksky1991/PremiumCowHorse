@@ -16,6 +16,7 @@ import {
 import { Kbd } from '@pch/ui/components/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@pch/ui/components/tooltip'
 import { useEntries } from '@renderer/data/entries'
+import { refreshDirectories, retryDirectory } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
@@ -32,16 +33,19 @@ export function ExplorerView(): JSX.Element {
   const workspaceId = workspace?.id
   const { data: entries } = useEntries(workspaceId)
 
-  /** 刷新：条目列表与所有正在显示的目录列表重新获取（未显示的只标记为过期） */
+  /**
+   * 刷新（F5 / 按钮）：条目列表重新获取；扫描进程立即检查所有已展开的目录（P0），
+   * 目录列表重新获取（显示中的重新列出，未显示的只标记为失效）
+   */
   const refresh = (): void => {
     if (workspaceId === undefined) return
     void queryClient.invalidateQueries({ queryKey: queryKeys.entries(workspaceId) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.directoryRoot })
+    void refreshDirectories(queryClient)
   }
 
-  /** 重试：清除该目录的错误状态并重新获取（期间显示加载中） */
+  /** 重试：扫描进程立即检查该目录，再重新获取（期间保持错误行，结果出来后替换） */
   const retry = (uri: string): void => {
-    void queryClient.resetQueries({ queryKey: queryKeys.directory(uri) })
+    void retryDirectory(queryClient, uri)
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {

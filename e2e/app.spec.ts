@@ -205,8 +205,13 @@ test.describe('workspace data layer over IPC', () => {
       const entries = await data<Named[]>(page, 'entry.list', { workspaceId })
       expect(entries.map((e) => e.id)).toEqual([entry.id])
 
-      const listed = await data<Named[]>(page, 'vfs.list', { uri: entry.uri, requestId: 'e2e-1' })
-      expect(listed.map((f) => f.name)).toEqual(['仕様.xlsx'])
+      const listed = await data<{ items: Named[]; state: string }>(page, 'vfs.list', {
+        uri: entry.uri,
+        requestId: 'e2e-1'
+      })
+      expect(listed.items.map((f) => f.name)).toEqual(['仕様.xlsx'])
+      // 首次列出：没有缓存，扫描进程枚举后返回
+      expect(listed.state).toBe('fresh')
 
       const missing = await invoke(page, 'entry.add', {
         kind: 'folder',
