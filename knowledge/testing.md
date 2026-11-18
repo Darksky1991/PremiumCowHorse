@@ -64,3 +64,38 @@
 
 - 日期：2026-11-18
 - 方法：以 `<userData>\logs\main.log` 出现的时间为准（`--user-data-dir` 指向临时目录，避免污染正式数据）。首次启动包含杀毒软件扫描时间，需至少测两次。
+
+### e2e：合成原生拖放事件驱动 React 的拖放处理
+
+- 日期：2026-11-18
+- 方法：在 `page.evaluate` 中 `const dt = new DataTransfer()`，对来源行 / 目标行依次 `dispatchEvent(new DragEvent('dragstart' | 'dragover' | 'drop' | 'dragend', { bubbles: true, cancelable: true, dataTransfer: dt, clientX, clientY }))`。`dragover` 的 `defaultPrevented` 即「是否接受放置」，未被阻止时不再发 `drop`（与浏览器一致）。辅助函数见 `e2e/explorer.spec.ts` 的 `dragRow`。
+- 限制：合成的 `File` 没有真实路径（`getPathForFile` 返回空字符串），系统文件拖入不能这样测（见 electron.md）。
+
+### e2e：证明「磁盘没有被改动」用递归快照，而不是只比较文件名
+
+- 日期：2026-11-18
+- 方法：`e2e/support.ts` 的 `snapshotTree(root)`：递归 `lstat`，每项「相对路径 | 类型 | 大小 | mtime」排序后比较，根目录的 mtime 也记录。只比较 `readdirSync` 的文件名发现不了内容修改与子目录内的新建 / 删除。
+- 有效性：快照后用 `utimesSync` 改一个 mtime，比较即失败（M1-2 Task 10 的篡改验证）。
+
+### e2e：目录监听用例要等监听建立后再改磁盘
+
+- 日期：2026-11-18
+- 症状：（预防性）展开目录后立刻在磁盘上新建文件，可能发生在监听建立之前而不被感知，用例偶发失败。
+- 原因：渲染端在监听集合变化后 200ms 防抖才发送 `vfs.watch`，列目录请求则立即发出。
+- 解决：展开并看到子项后 `page.waitForTimeout(1000)` 再改磁盘（`e2e/explorer.spec.ts`）；有效性用「渲染端不发送 vfs.watch」的篡改确认（用例失败）。
+- 预防：不要靠窗口聚焦让用例通过——聚焦刷新会掩盖监听失效。
+
+### e2e：菜单项的无障碍名称包含快捷键文字；菜单 / 对话框打开时页面其余部分是 inert
+
+- 日期：2026-11-18
+- 症状：`getByRole('menuitem', { name: /^重命名$/ })` 找不到；菜单打开期间 `getByRole('treeitem')` 找不到树中的行。
+- 原因：`ContextMenuShortcut` 的文字并入了菜单项名称（「重命名F2」）；Base UI 在菜单 / 对话框打开时把其余部分设为 inert（aria-hidden）。
+- 解决：正则允许可选的快捷键后缀（`/^(名前の変更|重命名|Rename) ?(F2)?$/`）；对树的断言放到菜单关闭之后。
+- 预防：断言「某菜单项不存在」之前先等菜单本身可见，否则断言在菜单渲染前就空洞地通过。
+
+### 临时篡改验证：`git checkout -- <file>` 还原不了未跟踪的新文件
+
+- 日期：2026-11-18
+- 症状：篡改后用 `git checkout -- file` 还原，对尚未 `git add` 的新文件静默无效，篡改留在了工作区。
+- 解决：篡改前把文件复制到临时目录（scratchpad，不要复制到仓库的上级目录），用备份还原；还原后 `grep` 篡改标记（如 `TAMPER`）确认为 0。
+- 预防：篡改时在改动处加统一的标记注释，便于检查是否已全部还原。

@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.6　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.7　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.7 变更（M1-2 资源树完成）：工作区切换器、虚拟化资源树（懒加载、状态行、键盘）、只管理条目的拖放、右键菜单、目录监听（`vfs.watch` / `vfs.changed`）与系统操作 IPC 已实现；按代码修正 `vfs.changed` 的负载、Provider 的 `watch` 签名与错误码列表；新增已知限制（虚拟文件拖入可能固定 %TEMP% 副本、目录删除后重建不自动恢复监听）。涉及 3.3、5.2、5.3、6.3、6.6、7.1、7.2、8.1–8.3、12.1、12.2、14.2、17、18、19 节
 > v1.6 变更（M1-2 开工前的决策）：资源树的拖放只管理自定义条目、绝不产生文件操作；树内拖动用浏览器原生拖放；列目录时解析符号链接 / 目录联接的目标类型；可把真实子目录「固定」为条目（条目也可按 URI 添加）；复制路径的格式；外壳通过插槽组合各 feature。涉及 5.3、7.1、8.2 节
 > v1.5 变更（M1-1 数据层完成）：工作区 / 条目的存储与规则、VFS（LocalProvider、VfsService）与对应 IPC 已实现；更新 5.2、6.1、6.3、6.6、7.1、7.2、8.1、13 节的「已实现」标注与细节
 > v1.4 变更（M1 开工前的决策）：标签状态在 M1 即按最终设计由主进程的 layoutReducer 持有（先支持单窗口）；M1 实现最小插件体系（PreviewContainer + 只含 folder 的注册表）；内置插件合并为单个 `plugins/builtin` 包；目录变更感知改用 Node 内置 `fs.watch`（不引入 chokidar），并明确网络路径与 FTP/SFTP 的刷新策略。涉及 2.5、3.2、3.3、5.1、8.3、18 节
@@ -85,7 +86,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ## 3. 技术栈与依赖清单（新引入包须知）
 
-除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。表中包含各里程碑**计划**引入的包；实际已安装的包与版本以各 `package.json` 与 `pnpm-lock.yaml` 为准（截至 M0 尚未安装：basic-ftp、ssh2-sftp-client、iconv-lite、jschardet、mime、@tanstack/react-virtual、@dnd-kit/*、react-hook-form、CodeMirror、react-markdown、pdfjs-dist）。新增依赖前先向需求方说明。
+除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。表中包含各里程碑**计划**引入的包；实际已安装的包与版本以各 `package.json` 与 `pnpm-lock.yaml` 为准（截至 M1-2 尚未安装：basic-ftp、ssh2-sftp-client、iconv-lite、jschardet、mime、@dnd-kit/*、react-hook-form、CodeMirror、react-markdown、pdfjs-dist；@tanstack/react-virtual 于 M1-2 安装）。新增依赖前先向需求方说明。
 
 ### 3.1 工程与构建
 
@@ -120,8 +121,8 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | @tanstack/react-query | 「来自主进程的数据」的缓存、失效、加载状态 | 目录列表、工作区、连接等天然是异步数据 |
 | zustand | 纯 UI 状态（布局镜像、树展开、侧栏等） | 轻量、无样板代码；备选 Jotai |
 | react-i18next | React 绑定 | 与 i18next 配套 |
-| @tanstack/react-virtual | 文件树、目录列表虚拟滚动 | 上万文件的目录也流畅（M1 引入，需求方已确认） |
-| @dnd-kit/core、@dnd-kit/sortable | 标签排序、树条目拖拽 | 可访问性好；备选 pragmatic-drag-and-drop |
+| @tanstack/react-virtual | 文件树、目录列表虚拟滚动 | 上万文件的目录也流畅（M1-2 引入 3.14，需求方已确认） |
+| @dnd-kit/core、@dnd-kit/sortable | 标签排序（是否引入在 M1-3 决定） | 可访问性好；备选 pragmatic-drag-and-drop。资源树不使用：v1.6 起树内拖动与系统拖入共用浏览器原生拖放（8.2 节） |
 | react-hook-form + @hookform/resolvers | 设置页、连接编辑表单 | shadcn Form 组件的官方搭配 |
 | lucide-react | 图标 | shadcn 默认图标库 |
 | shadcn 组件附带依赖 | @base-ui/react（v1.2 由 radix-ui 改为 shadcn 当前默认的 Base UI）、react-resizable-panels（分栏）、sonner（通知）、class-variance-authority、cn（shadcn 官方的类名合并库，替代 clsx + tailwind-merge）、tw-animate-css；命令面板等组件随里程碑按需添加 | 由 shadcn CLI 随组件安装 |
@@ -238,7 +239,10 @@ apps/desktop/src/
 │   │   ├── types.ts                  # FileSystemProvider 接口
 │   │   ├── errors.ts                 # Node 文件系统错误 → AppError（FS_*）
 │   │   ├── vfs.service.ts            # 按 scheme 路由到 provider；取消与超时
-│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list / vfs.cancel
+│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list / vfs.cancel / vfs.watch
+│   │   ├── input-path.ts             # 渲染端传入的本地路径 → file URI（去引号 / 空白、拒绝相对路径）
+│   │   ├── local-path.ts             # file URI → 本地路径（系统操作 IPC 使用）
+│   │   ├── path-name.ts              # 显示名称（驱动器根 `C:`、UNC 共享根 `\\server\share`）
 │   │   ├── providers/
 │   │   │   ├── local.provider.ts
 │   │   │   ├── smb.provider.ts
@@ -260,7 +264,7 @@ apps/desktop/src/
 │   │   ├── settings/
 │   │   ├── plugin/                   # 插件发现与元数据（外部插件阶段启用）
 │   │   ├── launcher/                 # 外部应用联动：Office 只读/编辑/新建打开、远程编辑会话
-│   │   ├── system/                   # 应用信息、渲染端日志写入；后续：在资源管理器显示、剪贴板、对话框
+│   │   ├── system/                   # 应用信息、渲染端日志写入、在资源管理器显示、用系统应用打开、剪贴板、选择路径对话框
 │   │   └── window/                   # 自绘窗口按钮：最小化 / 最大化 / 关闭发起调用的窗口
 │   ├── windows/
 │   │   ├── window-factory.ts         # 统一的 BrowserWindow 创建（安全选项集中在此）
@@ -275,7 +279,7 @@ apps/desktop/src/
     └── index.ts                      # 暴露 window.pch
 ```
 
-已实现（M0、M1-1）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`。
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -303,9 +307,13 @@ apps/desktop/src/renderer/
     └── styles/globals.css            # 引入 packages/ui 的主题变量
 ```
 
-M0 已实现：`app/`、`features/shell/`、`data/`、`lib/`、`providers/`、`stores/`、`styles/`。
+已实现：
+- M0：`app/`、`features/shell/`、`data/`（settings、window）、`lib/`、`providers/`、`stores/`、`styles/`。
+- M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与监听的 hooks）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
 
-切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`）。外壳（`features/shell`）以插槽（props）接收侧栏视图、标题栏中的工作区切换器等，由 `app/` 负责把各个 feature 组合进去。
+切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
+
+外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher` 等组合进去。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
 
 ### 5.4 命名与编码约定
 
@@ -367,7 +375,8 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
   ({ input, output: undefined as unknown as O });
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
-// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel}、window.*、log.write
+// entry.{list,add,update,remove,move}、vfs.{stat,list,cancel,watch}、
+// system.{revealInOs,openPath,copyText,selectPaths}、window.*、log.write
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
@@ -379,6 +388,7 @@ export const ipcContract = {
   'vfs.stat':            route<FileStat>()(z.object({ uri: z.string() })),
   'vfs.readText':        route<TextContent>()(ReadTextInput),
   'vfs.cancel':          route<void>()(z.object({ requestId: z.string() })),
+  'vfs.watch':           route<void>()(z.object({ uris: z.array(z.string()).max(500) })),  // 整体替换本窗口的监听集合
   'layout.dispatch':     route<void>()(LayoutAction),        // 打开/关闭/移动/弹出标签
   'layout.getWindow':    route<WindowView>()(z.object({ windowId: z.string() })),
   'connection.save':     route<ConnectionDto>()(ConnectionSaveInput),
@@ -392,6 +402,9 @@ export const ipcContract = {
   'editSession.resolve': route<void>()(z.object({ id: z.string(), action: z.enum(['overwrite', 'uploadAsCopy', 'skip']) })),
   'system.openExternal': route<void>()(z.object({ uri: z.string() })),
   'system.revealInOs':   route<void>()(z.object({ uri: z.string() })),
+  'system.openPath':     route<void>()(z.object({ uri: z.string() })),      // shell.openPath（用系统关联的应用打开）
+  'system.copyText':     route<void>()(z.object({ text: z.string().max(32768) })),
+  'system.selectPaths':  route<string[]>()(z.object({ kind: z.enum(['folder', 'file']), multiple: z.boolean() })),  // 取消时为空数组
   'window.minimize':     route<void>()(z.void()),            // 自绘窗口按钮：作用于发起调用的窗口
   'window.toggleMaximize': route<void>()(z.void()),
   'window.close':        route<void>()(z.void()),
@@ -407,7 +420,7 @@ export type IpcOutput<C extends IpcChannel> = (typeof ipcContract)[C]['output'];
 // 主进程 → 渲染进程的事件（大多为广播；window.stateChanged 只发给状态变化的窗口）
 export interface IpcEvents {
   'layout.changed':    WindowView;
-  'vfs.changed':       { dirUri: string };
+  'vfs.changed':       { uri: string };             // 被监听目录的 URI（已防抖）
   'settings.changed':  Partial<Settings>;
   'workspace.changed': { id: string };
   'connection.status': { id: string; status: 'idle' | 'connecting' | 'online' | 'error' };
@@ -469,7 +482,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」），`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -486,7 +499,8 @@ export interface FileSystemProvider {
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>;
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>;
   createReadStream(uri: URL, range?: ByteRange, signal?: AbortSignal): Promise<Readable>;
-  watch?(uri: URL, onChange: (e: FileChangeEvent) => void): Disposable;
+  // 不区分具体事件；监听自行失效（目录被删除、初始就无法监听）时调用 onClose 一次
+  watch?(uri: URL, onChange: () => void, onClose?: () => void): { close(): void };
   dispose(): Promise<void>;
 }
 
@@ -494,19 +508,28 @@ export interface FileEntry {
   uri: string;
   name: string;
   kind: 'file' | 'directory' | 'symlink';
+  target?: 'file' | 'directory' | null;   // 仅 symlink：链接 / 目录联接的目标类型，null 为失效
   size: number;
   mtime: number;
   hidden: boolean;
 }
 ```
 
-已实现的是上面接口的子集（`stat`、`list`、`dispose`；`createReadStream` 于 M2、`watch` 于 M1-2 增加）。`VfsService` 负责按 scheme 路由、统一超时（默认 30 秒，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）、对目录变更发布 `vfs.changed` 事件（M1-2）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
+已实现的是上面接口的子集（`stat`、`list`、`watch`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入，provider 是否支持监听以是否实现 `watch` 判断）。`VfsService` 负责按 scheme 路由、统一超时（默认 30 秒，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）、对目录变更发布 `vfs.changed` 事件（M1-2）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
-`FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次，资源树据此判断能否展开。监听（M1-2）：渲染端按窗口告知主进程「当前需要监听的目录集合」（`vfs.watch`），主进程增量维护各目录的监听（窗口关闭时自动清除），变化防抖后广播 `vfs.changed`。
+`FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次（计入同一并发上限），资源树据此判断能否展开（已实现，M1-2）。目标是文件以外的类型（如设备）也归为 `'file'`；目标 stat 因任何原因失败（不存在、循环、权限、网络）都为 `null`；lstat 本身失败的降级项不带 `target`，资源树按失效链接处理。
+
+**目录监听（已实现，M1-2）**：
+
+- 渲染端按窗口告知主进程「当前需要监听的目录集合」：`vfs.watch({ uris })`（最多 500 个，整体替换该窗口的集合；owner 为调用方的 webContents id）。资源树的集合 = 所有已展开的可展开节点的 URI，与要列出的目录完全相同；集合变化后 200ms 防抖发送，卸载时发送空集合。
+- `VfsService.setWatched(ownerId, uris)` 按 URI 引用计数：多个窗口监听同一目录只建立一个监听，最后一个 owner 释放时关闭；`releaseOwner(ownerId)` 在 webContents `destroyed` 时由 bootstrap 调用。不支持监听的 scheme、无法解析的 URI 静默忽略。
+- 同一目录的变化防抖 300ms 后经 `onDirectoryChanged` → 主进程事件总线 → 广播 `vfs.changed { uri }`（发给所有窗口）；渲染端在 `lib/query-client.ts` 中让 `['vfs','list',uri]` 失效并重新列出。
+- 监听自行失效（`error` 事件，或 `rename` 事件后 `fs.stat(目录)` 失败——Windows 下删除被监听的目录只有 `rename` 没有 `error`）：provider 先通知一次变化、再关闭并调用 `onClose`；`VfsService` 移除该条目与各 owner 的记录。**重建由渲染端负责**：收到属于当前集合的 `vfs.changed` 后，渲染端以同样的防抖重发完整集合，主进程据此重新建立仍然存在的目录的监听。
+- 已知限制：目录被删除后又在原路径重建时，若重建发生在渲染端重发集合之后（重发时目录不存在，监听建立失败），之后不会自动恢复监听；列表可通过「重试」/ F5 / 窗口重新获得焦点恢复，但之后的变化要等集合变化（折叠再展开）才重新被监听（2026-11-18 e2e 诊断确认）。监听在列目录请求发出约 200ms 后才建立，这段时间内的变化只能靠刷新 / 窗口聚焦发现。
 
 ### 7.2 各 Provider 要点
 
-**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，目标类型待 M1-2 决定如何提供）；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
+**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；`watch` 用 `fs.watch(dir, { persistent: false })`，非递归；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
 
 **SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
@@ -567,9 +590,11 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | `folder` | 指向某个目录 URI 的根 | 懒加载，来自 VFS 真实列表 |
 | `file` | 指向单个文件 URI | 无 |
 
-远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。条目规则（已实现）：父节点只能是根或同一工作区的 `group`；folder / file 条目以本地路径添加，目标必须存在且类型一致（`ENTRY_KIND_MISMATCH`）；删除 group 时连同所有后代一起删除；新增条目追加到同级末尾，移动时在一个事务内重排同级的 `sort_order`；不能把 group 移到它自己的后代下。所有写操作各自在一个事务内完成，成功后广播 `workspace.changed`。
+远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。条目规则（已实现）：父节点只能是根或同一工作区的 `group`；folder / file 条目以本地路径（`path`）或 URI（`uri`，「固定」真实子项时使用）添加，二者恰好提供一个，目标必须存在且类型一致（`ENTRY_KIND_MISMATCH`），标签缺省为 `vfs.stat` 返回的显示名称；渲染端传入的路径先规范化（去首尾空白与一对双引号，要求绝对路径、拒绝 `C:foo` 这类盘符相对路径与单独的 `\\server`，否则 `FS_INVALID_URI`）；删除 group 时连同所有后代一起删除；新增条目追加到同级末尾，移动时在一个事务内重排同级的 `sort_order`；不能把 group 移到它自己的后代下。所有写操作各自在一个事务内完成（更新 / 移动 / 删除条目时在事务内读取条目），成功后广播 `workspace.changed`。
 
-此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
+此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。默认工作区的 `name` 为空字符串时显示本地化名称；把它改名为空字符串即「恢复默认名称」，其他工作区改名为空 → `WORKSPACE_NAME_REQUIRED`（已实现，M1-2）。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
+
+工作区切换器（已实现，M1-2，`features/workspace`）：标题栏按钮显示当前工作区名称，下拉菜单含工作区列表（当前项打勾，选中即切换并关闭菜单）、新建工作区…、重命名当前工作区…、恢复默认名称（仅默认工作区且已改名时）、删除当前工作区…（默认工作区不显示）；欢迎页的「新建工作区」打开同一个对话框。新建 = `create` 后 `activate`（切换失败时提示「已创建但未能切换」并关闭对话框，避免再次提交重复创建）。**删除当前工作区时先切回默认工作区、成功后再删除**：主进程的 `workspace.delete` 不改变「当前工作区」，先删除会让 `last_opened_at` 最大的另一个工作区短暂成为当前工作区；切换失败则什么都不删。删除只删工作区与条目，确认框说明不会删除磁盘上的文件。
 
 ### 8.2 树的渲染
 
@@ -584,6 +609,33 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 3. 拖动条目：调整同级顺序，或放进 / 移出分组（只修改条目的父节点与顺序）。
 4. 右键菜单：打开、在新窗口打开、用系统应用打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 Windows API，引入 koffi 时补充）、新建分组、重命名条目、移除条目（只移除条目，不删除真实文件，界面上明确说明）。「打开」「在新窗口打开」随 M1-3 的标签实现。
 
+**已实现（M1-2，`features/explorer`）**：
+
+- **模型**（`tree-model.ts`，纯函数）：`buildVisibleNodes({ entries, expanded, directories, showHidden })` 把条目（按 `sort_order`）与已展开目录的列表拍平为可见节点；节点 id 为 `entry:<entryId>` 与 `fs:<entryId>:<相对路径>`（各段 `/` 连接），状态行为 `<父 id>#status`。真实子项可展开者（目录、指向目录的链接）优先，名称按 `Intl.Collator('ja', { numeric: true })` 排序（`第2章` 在 `第10章` 前）；`explorer.showHiddenFiles` 关闭时隐藏 `.` 开头的项。节点类型：`group` / `folder` / `file` / `directory` / `link-directory`（可展开）/ `link-file` / `link-broken`（`target` 为 `null` 或缺失，不可展开）。需要列出与监听的目录集合由 `resolveDirectoryUris` 求出：同时查 TanStack Query 缓存，已缓存的多层展开目录一次求出（避免每发现一层多渲染一次）。
+- **渲染**：`@tanstack/react-virtual`（`estimateSize` 28、`measureElement` 实测行高，紧凑密度下行高随 `--spacing` 缩小，`overscan` 10），只渲染可见行（1 万项的目录 DOM 中约 30–40 行）。展开 / 选中状态存于 zustand（`explorer-store.ts`，按工作区区分，目前只在内存中，M3 起纳入会话快照）；切换工作区时树按 `workspaceId` 重新挂载，旧工作区的监听集合随之清空。
+- **状态行**：展开中的目录在加载中 / 出错 / 为空（过滤后）时产出一行状态行（展开的空分组也显示「没有项目」）。错误行显示 `errors:<code>` 文案（如「找不到文件或文件夹」「无法访问该位置」）与「重试」；**最近一次获取的错误优先于缓存中的旧列表**（TanStack Query 在重新获取失败时保留旧 data，若以 data 为先，展开中被删除的目录会一直显示旧列表）。「重试」= `resetQueries`（清掉错误后重新获取，期间显示加载中）；刷新按钮 / F5 = 让条目与所有目录列表失效（保留旧数据显示）。状态行可被选中（在错误行上按 Enter = 重试），但不可拖动、不接受放置、没有右键菜单、F2 / Delete 无效；「重试」按钮不在 Tab 顺序中（`tabIndex=-1`，鼠标按下不夺取焦点）。选中的状态行消失时选择回到其父节点；选中的节点被删除时停在原位置（钳制到末行）。
+- **键盘与无障碍**：`role="tree"` 只有一个 Tab 停靠点（`aria-activedescendant`），行为 `treeitem`（`aria-level`、`aria-expanded`、`aria-selected`）；↑↓ 移动选择，→ 展开 / 进入首个子项，← 折叠 / 回到父项，Enter 展开或折叠，F2 重命名、Delete 移除（仅条目），F5 刷新（焦点在资源管理器视图内时）。树只处理自身获得焦点时的按键，行内控件上的按键交给控件。折叠时若选中项在其子孙中，选择移到被折叠的节点。
+- **拖放**（`drag-drop.ts` 的纯函数 `resolveDrop` 决定动作，执行器只调用 `entry.move` / `entry.add`）：
+  - dragstart **只设置自定义 MIME** `application/x-pch-node`（JSON），不设置 `text/uri-list`、`text/plain`、`DownloadURL`，`effectAllowed` 为 `move`（条目）/ `link`（真实子项）；拖出应用时没有任何目标能接受，不会生成文件。
+  - 落点：行的上 25% 为 before、下 25% 为 after、中间且为分组时为 inside（非分组按 50% 分上下）；已展开且有可见子项的分组的 after 视为「放进该分组的第 0 位」（与画线位置一致）。真实节点、状态行、自身或自身的后代作为落点时 dragover 不 `preventDefault`（禁止光标，不触发 drop）。折叠的分组悬停时不自动展开。
+  - 真实子项拖到根 / 分组 = 按 URI 添加（类型取自节点：目录与指向目录的链接为 folder）；新增条目总是追加到父节点末尾（`entry.add` 没有位置参数，before / after 只决定父节点）。
+  - **系统拖入只用 `copy` / `link`**：`dataTransfer.types` 含 `Files` 时视为系统来源，`dropEffect` 绝不设为 `move`（`move` 会让资源管理器把原文件移走）；`effectAllowed` 只允许 move 时不接受放置。路径经 preload 的 `getPathForFile` 取得，先按 folder 添加，`ENTRY_KIND_MISMATCH` 时改按 file。没有条目时的空状态也接受系统拖入（添加到根）。系统文件落在不接受的位置时，主进程的 `will-navigate` 拦截会阻止窗口导航到该文件。
+- **右键菜单**（Base UI ContextMenu；菜单项由纯函数 `menuItemsFor(node)` 决定）：
+
+  | 节点 | 菜单项 |
+  |---|---|
+  | 分组 | 新建分组（子分组）、重命名 F2、移除 Del |
+  | folder / file 条目 | 在资源管理器中显示、用系统应用打开（仅 file）、复制路径、复制 URI、重命名、移除 |
+  | 真实子项 | 在资源管理器中显示、用系统应用打开（仅文件）、复制路径、复制 URI、固定到工作区根部 |
+  | 失效链接 | 在资源管理器中显示、复制路径、复制 URI |
+  | 树空白处 | 新建分组、添加文件夹…、添加文件…（系统对话框，添加到根） |
+
+  右键同时选中该节点；菜单与对话框关闭后焦点回到树。复制路径由渲染端把 file URI 转为 Windows 路径（`lib/file-uri.ts`，非 file URI 时不显示该项）后经 `system.copyText` 写入剪贴板。重命名 / 新建分组的对话框预填并全选名称；移除用 AlertDialog（默认焦点在「取消」），文案明确「只移除条目，不会删除磁盘上的文件或文件夹」（分组说明连同其下所有条目一起移除）。对话框打开期间条目已被删除：移除静默关闭（目标已达成），重命名提示错误后关闭。没有条目的工作区显示空状态，提供「添加文件夹」「新建分组」按钮。
+- **已知限制 / 待需求方决定**：
+  - 从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，Chromium 可能先在 %TEMP% 中生成副本，`getPathForFile` 返回该副本的路径，条目会指向这个临时副本（未经真机验证）。是否拒绝临时目录下的路径待需求方决定——拒绝会同时阻止把 %TEMP% 下的目录固定为条目（例如查看日志）。
+  - 从系统资源管理器真实拖入未自动化（Playwright 无法产生带真实路径的系统拖放，合成的 File 经 `getPathForFile` 得到空字符串），只有 `resolveDrop` 的单元测试，需需求方手动确认。
+  - 映射盘符转 UNC、用 Menu 键 / Shift+F10 打开所选节点的菜单尚未实现。
+
 ### 8.3 变更感知
 
 只监听「已展开的目录」和「已打开的目录标签」，非递归；变更时（防抖后）广播 `vfs.changed`，渲染端让对应 query 失效。按资源类型：
@@ -595,6 +647,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | FTP / SFTP（M4） | 协议没有变更通知，不监听 |
 
 所有资源都提供：手动刷新（工具栏按钮 / F5）；窗口重新获得焦点时刷新可见的目录列表。网络路径与 FTP/SFTP 在设置 `remote.pollIntervalSec` > 0 时对已展开的目录轮询（默认 0，不轮询）。
+
+**已实现（M1-2）**：本地与网络路径（UNC、映射盘）都用 `fs.watch` 监听资源树中已展开的目录（机制与限制见 7.1 节）；「已打开的目录标签」随 M1-3 加入监听集合。目录被删除或改名时，该目录的监听自动解除，若它是条目本身则显示「找不到」错误行，若是真实子目录则随父目录的重新列出而消失，其他节点不受影响（e2e 验证）。窗口重新获得焦点时刷新：目录查询使用 `refetchOnWindowFocus: 'always'`（全局默认 `staleTime: Infinity` 下写 `true` 不会触发；未做 e2e）。轮询：URI 带主机名（UNC）且 `remote.pollIntervalSec` > 0 时按该间隔重新列出；映射盘符被视为本地（识别映射盘需要 Windows API），不轮询。
 
 ---
 
@@ -885,7 +939,9 @@ export interface SessionSnapshot {
 | 纯 UI 状态 | zustand | 树展开/选中、侧栏宽度、命令面板开关 |
 | 表单状态 | react-hook-form + zod | 连接编辑、设置页 |
 
-主进程事件到缓存失效的桥接集中在 `lib/query-client.ts`：例如收到 `vfs.changed` 就让 `['vfs','list',dirUri]` 失效，收到 `settings.changed` 就更新 `['settings']` 的缓存。业务组件不直接订阅 IPC 事件。
+主进程事件到缓存失效的桥接集中在 `lib/query-client.ts`：例如收到 `vfs.changed` 就让 `['vfs','list',uri]` 失效，收到 `settings.changed` 就更新 `['settings']` 的缓存。业务组件不直接订阅 IPC 事件。
+
+已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），只有目录列表单独开启聚焦刷新（8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId，新请求取代主进程中未完成的旧请求。例外：`useWatchDirectories` 自己订阅 `vfs.changed`，用于在监听失效后重发监听集合（7.1 节），不涉及缓存。
 
 ### 12.2 界面布局
 
@@ -901,7 +957,7 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、远程连接、（后续）搜索与最近使用。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、远程连接、（后续）搜索与最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；欢迎页标题显示当前工作区名称；标签栏与 PreviewContainer 随 M1-3 实现。
 
 ### 12.3 渲染端入口
 
@@ -1038,7 +1094,7 @@ export type Settings = z.infer<typeof settingsSchema>;
 
 ### 14.2 国际化
 
-`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
+`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；M1-2 增加 workspace；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
 
 ### 14.3 主题
 
@@ -1110,7 +1166,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；后续：创建工作区、添加目录、打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、目录监听（新建 / 删除）、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
@@ -1122,7 +1178,7 @@ export default defineConfig({
 | 阶段 | 目标 | 主要交付 |
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
-| M1 工作区与本地文件 | 能日常使用 | 分三个子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
+| M1 工作区与本地文件 | 能日常使用 | 分三个子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
 | M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text/markdown/image/pdf/media/fallback 插件、编码检测；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
@@ -1149,6 +1205,8 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
 | 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录分批 stat（已实现：最多 16 并发）、可取消的请求（已实现；已发出的单个系统调用无法中止） |
 | 多窗口状态不一致 | 标签丢失或重复 | 主进程单一事实来源 + 纯函数 reducer + 单元测试覆盖 |
+| 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 可能在 %TEMP% 生成副本（未经真机验证） | 条目指向会被清理的临时副本 | 现状：照常添加；是否拒绝临时目录下的路径待需求方决定（会同时阻止把 %TEMP% 固定为条目），见 8.2 节 |
+| 网络共享上的 `fs.watch` 依赖服务器的变更通知，可能静默失效 | 网络目录不自动刷新 | 手动刷新 / F5、窗口聚焦刷新、`remote.pollIntervalSec` 轮询兜底 |
 
 ---
 

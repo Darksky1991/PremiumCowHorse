@@ -39,3 +39,22 @@
 - 原因：①`noExternal: [/.*/]` 优先于 `external: ['electron']`，把 npm 的 `electron` 启动器包打进了主进程；②tsup 默认去掉 `node:` 前缀，而 `node:sqlite` 只能带前缀引用。
 - 解决：现已改用 electron-vite（默认正确处理二者）。
 - 预防：自行配置打包器时检查产物中的 `require("electron")` 与 `require("node:...")`。
+
+### Windows：删除被 `fs.watch` 监听的目录只收到 `rename`，没有 `error`
+
+- 日期：2026-11-18
+- 症状：目录被删除后监听没有失效，主进程一直保留该监听（「僵尸」条目），目录重建后也不会重新监听（M1-2 Task 3 审查）。
+- 原因：本机（Windows 11）实测删除被监听的目录时，`fs.watch` 只发出 `rename` 事件，不发出 `error`；只在 `error` 时关闭的写法永远不会判定失效。
+- 解决：`LocalProvider.watch` 在 `rename` 事件后 `fs.stat(目录)`，失败即视为失效：先通知一次变化，再关闭并调用 `onClose`（`vfs/providers/local.provider.ts`），`VfsService` 据此删除条目以便重建。
+- 预防：依赖平台文件事件的逻辑要在目标平台上实测「目录自身被删除 / 改名」。rename 后 stat 失败的原因也可能是权限或网络，目前一律视为失效。
+
+### 原生拖放：dragover 读不到数据、系统文件不能用 `move`、合成的 File 没有路径
+
+- 日期：2026-11-18
+- 要点（M1-2 Task 7）：
+  - dragover 阶段 `dataTransfer.getData()` 返回空，只能读 `types`；树内拖动的来源要在 dragstart 时存进 ref。源行被虚拟滚动卸载时 `dragend` 可能不触发，所以「是否系统文件」用 `types.includes('Files')` 判断，不依赖该 ref。
+  - 从资源管理器拖入时 `dropEffect` 若设为 `move`，来源端会把原文件**移走**；只能用 `copy` / `link`，且要落在 `effectAllowed` 允许的范围内，否则 drop 被取消（`features/explorer/drag-drop.ts` 的 `osDropEffect`）。
+  - 拖出应用时，只要 dragstart 不设置 `text/uri-list`、`DownloadURL`、文件，系统资源管理器 / 桌面就没有可落地的数据。
+  - 文件路径只能经 preload 的 `webUtils.getPathForFile(file)` 取得；页面内合成的 `File`（Playwright / `new File()`）得到空字符串，因此系统拖入无法 e2e，只能单元测试 + 手动确认。
+  - （未经真机验证）从 zip 内文件、Outlook 附件、浏览器图片等「虚拟文件」拖入时，Chromium 可能先在 %TEMP% 生成副本，`getPathForFile` 返回副本路径。
+- 预防：拖放相关改动后检查 dragstart 设置的类型（e2e 断言 `dt.types` 只有自定义 MIME），系统拖入请需求方手动确认。
