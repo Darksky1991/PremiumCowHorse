@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.3　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.4　｜　日期：2026-11-18　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.4 变更（M1 开工前的决策）：标签状态在 M1 即按最终设计由主进程的 layoutReducer 持有（先支持单窗口）；M1 实现最小插件体系（PreviewContainer + 只含 folder 的注册表）；内置插件合并为单个 `plugins/builtin` 包；目录变更感知改用 Node 内置 `fs.watch`（不引入 chokidar），并明确网络路径与 FTP/SFTP 的刷新策略。涉及 2.5、3.2、3.3、5.1、8.3、18 节
 > v1.3 变更（M0 完成）：Windows 下不再使用系统窗口按钮（Window Controls Overlay），改为自绘窗口按钮；分发形式改为 zip 免安装文件夹版（不提供安装程序）；新增第 20 节「文档与知识管理」；修正 5.2、6.1、6.2、6.3、12.2、14.2、14.3、16.4 等处与实现不一致的描述；目录结构区分「目标结构」与「M0 已实现」
 > v1.2 变更（M0 实施后的技术栈复审）：渲染端由 Next.js 静态导出改为 electron-vite（Vite + React），去掉 tsup 与自写开发脚本；数据库访问由 Drizzle 改为 Kysely；shadcn/ui 底层由 Radix 改为 Base UI；IPC 改为单通道传输；新增模块边界 lint、渲染端错误落盘、Electron Fuses 与打包工具链说明。涉及 2.1、2.2、2.6、3、5、6.3、6.5、12.3、13、16、17、19 节
 > v1.1 变更：Office 文件改为调用本机 Office（只读 / 编辑 / 新建打开），新增第 10 节；移除 SheetJS 与 docx-preview；后续章节顺延编号
@@ -68,7 +69,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ### 2.5 主进程是「窗口与标签」状态的唯一事实来源
 
-多窗口下如果每个渲染进程各自保存标签状态，移动标签、弹出窗口、会话保存都会出现一致性问题。因此布局状态（Layout）由主进程持有，渲染进程只发送「意图」（打开、关闭、移动、弹出），主进程用一个**纯函数 reducer** 计算新状态并广播给相关窗口。reducer 放在 `packages/shared`，可单元测试。
+多窗口下如果每个渲染进程各自保存标签状态，移动标签、弹出窗口、会话保存都会出现一致性问题。因此布局状态（Layout）由主进程持有，渲染进程只发送「意图」（打开、关闭、移动、弹出），主进程用一个**纯函数 reducer** 计算新状态并广播给相关窗口。reducer 放在 `packages/shared`，可单元测试。M1 即按此实现（先只支持单窗口），M3 在其上增加弹出窗口与会话持久化，不需要返工。
 
 ### 2.6 IPC：类型化契约 + zod 校验 + 单通道传输（自研薄封装）
 
@@ -82,7 +83,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ## 3. 技术栈与依赖清单（新引入包须知）
 
-除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。表中包含各里程碑**计划**引入的包；实际已安装的包与版本以各 `package.json` 与 `pnpm-lock.yaml` 为准（截至 M0 尚未安装：basic-ftp、ssh2-sftp-client、chokidar、iconv-lite、jschardet、mime、@tanstack/react-virtual、@dnd-kit/*、react-hook-form、CodeMirror、react-markdown、pdfjs-dist）。新增依赖前先向需求方说明。
+除指定的 Electron、shadcn/ui 外（v1.2 起不再使用 Next.js，见 2.1 节），以下均为**新引入**的包，按用途分组说明。表中包含各里程碑**计划**引入的包；实际已安装的包与版本以各 `package.json` 与 `pnpm-lock.yaml` 为准（截至 M0 尚未安装：basic-ftp、ssh2-sftp-client、iconv-lite、jschardet、mime、@tanstack/react-virtual、@dnd-kit/*、react-hook-form、CodeMirror、react-markdown、pdfjs-dist）。新增依赖前先向需求方说明。
 
 ### 3.1 工程与构建
 
@@ -104,7 +105,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | zod | IPC 输入、设置项、连接配置的校验（三端共用） | 事实标准；同时服务 react-hook-form |
 | basic-ftp | FTP / FTPS 客户端 | 纯 JS、维护活跃、支持断点续传（startAt） |
 | ssh2-sftp-client | SFTP 客户端 | 基于 ssh2，API 友好 |
-| chokidar | 本地目录变更监听 | 纯 JS，免编译；备选 @parcel/watcher（原生，性能更好） |
+| （不引入）Node 内置 `fs.watch` | 目录变更监听（8.3 节） | v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
 | electron-log | 日志落盘与轮转 | Electron 场景最常用 |
 | iconv-lite + jschardet | 文本编码检测与转换 | 对日项目大量 Shift_JIS / EUC-JP 的 CSV、日志、bat |
 | mime | 由扩展名推断 MIME | 体积小 |
@@ -117,7 +118,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | @tanstack/react-query | 「来自主进程的数据」的缓存、失效、加载状态 | 目录列表、工作区、连接等天然是异步数据 |
 | zustand | 纯 UI 状态（布局镜像、树展开、侧栏等） | 轻量、无样板代码；备选 Jotai |
 | react-i18next | React 绑定 | 与 i18next 配套 |
-| @tanstack/react-virtual | 文件树、目录列表虚拟滚动 | 上万文件的目录也流畅 |
+| @tanstack/react-virtual | 文件树、目录列表虚拟滚动 | 上万文件的目录也流畅（M1 引入，需求方已确认） |
 | @dnd-kit/core、@dnd-kit/sortable | 标签排序、树条目拖拽 | 可访问性好；备选 pragmatic-drag-and-drop |
 | react-hook-form + @hookform/resolvers | 设置页、连接编辑表单 | shadcn Form 组件的官方搭配 |
 | lucide-react | 图标 | shadcn 默认图标库 |
@@ -184,15 +185,17 @@ premium-cow-horse/
 │   ├── i18n/                     # 语言资源（ja / zh-CN / en）与 i18next 初始化工厂
 │   ├── ui/                       # shadcn/ui（Base UI）组件与主题 CSS（供渲染端与插件共用）
 │   └── plugin-sdk/               # 预览插件的类型定义与 definePreviewPlugin 辅助函数
-├── plugins/                      # 内置预览插件（M2 创建），每个都是独立 workspace 包
-│   ├── preview-folder/
-│   ├── preview-text/
-│   ├── preview-image/
-│   ├── preview-pdf/
-│   ├── preview-markdown/
-│   ├── preview-media/
-│   ├── preview-office/           # Office 文件启动面板（调用本机 Office）
-│   └── preview-fallback/         # 无法预览时：显示文件信息 + 用系统应用打开
+├── plugins/
+│   └── builtin/                  # 内置预览插件（单个 workspace 包，M1 创建），每个插件一个子目录
+│       └── src/
+│           ├── folder/           # M1
+│           ├── text/
+│           ├── image/
+│           ├── pdf/
+│           ├── markdown/
+│           ├── media/
+│           ├── office/           # Office 文件启动面板（调用本机 Office）
+│           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开
 ├── e2e/                          # Playwright Electron 端到端测试
 ├── doc/                          # 设计文档（本文档）：最新事实依据
 ├── devDoc/                       # 开发过程记录（按日期）
@@ -203,7 +206,7 @@ premium-cow-horse/
 └── tsconfig.base.json            # packages/* 共用；apps/desktop 使用 @electron-toolkit/tsconfig
 ```
 
-把内置插件拆成独立包的意义：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。由于 5.5 节的模块边界规则已能在 lint 层面保证同样的隔离，M2 开始时再评估是否合并为单个 `plugins/builtin` 包（每个插件一个子目录），以减少每个包各自的 package.json / tsconfig 配置。
+内置插件放在独立于应用的包中：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。v1.4 起所有内置插件合并为单个 `plugins/builtin` 包（每个插件一个子目录），插件之间、插件与应用之间的隔离由 5.5 节的模块边界规则保证，只需维护一份 package.json / tsconfig。
 
 5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
@@ -556,7 +559,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | `folder` | 指向某个目录 URI 的根 | 懒加载，来自 VFS 真实列表 |
 | `file` | 指向单个文件 URI | 无 |
 
-远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。此外提供一个默认的「共通」工作区，用于不属于任何案件的常用目录。
+远程连接配置是全局的（多个工作区可复用同一台服务器），条目通过 URI 中的 connectionId 引用。此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
 
 ### 8.2 树的渲染
 
@@ -570,7 +573,15 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 ### 8.3 变更感知
 
-本地目录：仅对「已展开的目录」和「已打开的目录标签」用 chokidar 监听，变更时广播 `vfs.changed`，渲染端让对应 query 失效。远程目录：手动刷新为主，可在设置中开启轮询间隔。
+只监听「已展开的目录」和「已打开的目录标签」，非递归；变更时（防抖后）广播 `vfs.changed`，渲染端让对应 query 失效。按资源类型：
+
+| 资源 | 变更感知 |
+|---|---|
+| 本地磁盘 | Node 内置 `fs.watch`（Windows 下即系统原生的目录监听） |
+| 网络路径：UNC、映射的网络盘（M1）、未挂载 SMB（M4，内部转换为 UNC） | 同样尝试 `fs.watch`（Windows 经 SMB 变更通知实现，取决于服务器支持，断线后可能静默失效）；监听出错时降级为不监听、不打扰用户 |
+| FTP / SFTP（M4） | 协议没有变更通知，不监听 |
+
+所有资源都提供：手动刷新（工具栏按钮 / F5）；窗口重新获得焦点时刷新可见的目录列表。网络路径与 FTP/SFTP 在设置 `remote.pollIntervalSec` > 0 时对已展开的目录轮询（默认 0，不轮询）。
 
 ---
 
@@ -1098,7 +1109,7 @@ export default defineConfig({
 | 阶段 | 目标 | 主要交付 |
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
-| M1 工作区与本地文件 | 能日常使用 | 工作区增删改与切换、条目树（group/folder/file）、本地 Provider、虚拟化资源树、拖入添加、folder 预览插件、标签栏 |
+| M1 工作区与本地文件 | 能日常使用 | 分三个子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
 | M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text/markdown/image/pdf/media/fallback 插件、编码检测；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |

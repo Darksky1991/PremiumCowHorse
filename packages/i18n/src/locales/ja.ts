@@ -2,7 +2,7 @@ export default {
   common: {
     appName: 'PremiumCowHorse',
     workspace: 'ワークスペース',
-    defaultWorkspace: '共通',
+    defaultWorkspace: 'デフォルト',
     search: 'ファイルやコマンドを検索…',
     explorer: 'エクスプローラー',
     connections: 'リモート接続',
@@ -50,6 +50,18 @@ export default {
     IPC_FORBIDDEN: '許可されていない呼び出しです',
     IPC_BAD_INPUT: '入力内容が正しくありません',
     IPC_UNKNOWN_CHANNEL: '不明な操作です',
-    SETTINGS_INVALID: '設定値が正しくありません'
+    SETTINGS_INVALID: '設定値が正しくありません',
+    WORKSPACE_NOT_FOUND: 'ワークスペースが見つかりません',
+    WORKSPACE_DEFAULT_PROTECTED: 'デフォルトのワークスペースは削除できません',
+    ENTRY_NOT_FOUND: '項目が見つかりません',
+    ENTRY_INVALID_PARENT: 'この場所には移動・追加できません（親にできるのはグループだけです）',
+    ENTRY_KIND_MISMATCH: 'フォルダーとファイルの種類が一致しません',
+    FS_NOT_FOUND: 'ファイルまたはフォルダーが見つかりません',
+    FS_PERMISSION_DENIED: 'アクセス権がありません',
+    FS_NOT_A_DIRECTORY: 'フォルダーではありません',
+    FS_INVALID_URI: 'パスの形式が正しくありません',
+    FS_UNSUPPORTED_SCHEME: 'この種類の場所には対応していません',
+    FS_CANCELLED: '操作をキャンセルしました',
+    FS_TIMEOUT: '応答がないため中断しました'
   }
 }

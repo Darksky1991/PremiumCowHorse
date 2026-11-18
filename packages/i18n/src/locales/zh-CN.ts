@@ -4,7 +4,7 @@ export default {
   common: {
     appName: 'PremiumCowHorse',
     workspace: '工作区',
-    defaultWorkspace: '共通',
+    defaultWorkspace: '默认',
     search: '搜索文件或命令…',
     explorer: '资源管理器',
     connections: '远程连接',
@@ -51,6 +51,18 @@ export default {
     IPC_FORBIDDEN: '不允许的调用',
     IPC_BAD_INPUT: '输入内容不正确',
     IPC_UNKNOWN_CHANNEL: '未知的操作',
-    SETTINGS_INVALID: '设置值不正确'
+    SETTINGS_INVALID: '设置值不正确',
+    WORKSPACE_NOT_FOUND: '找不到工作区',
+    WORKSPACE_DEFAULT_PROTECTED: '默认工作区不能删除',
+    ENTRY_NOT_FOUND: '找不到该条目',
+    ENTRY_INVALID_PARENT: '不能移动或添加到这里（只有分组可以作为上级）',
+    ENTRY_KIND_MISMATCH: '文件夹与文件的类型不一致',
+    FS_NOT_FOUND: '找不到文件或文件夹',
+    FS_PERMISSION_DENIED: '没有访问权限',
+    FS_NOT_A_DIRECTORY: '不是文件夹',
+    FS_INVALID_URI: '路径格式不正确',
+    FS_UNSUPPORTED_SCHEME: '不支持这种类型的位置',
+    FS_CANCELLED: '操作已取消',
+    FS_TIMEOUT: '没有响应，已中止'
   }
 } satisfies Resource

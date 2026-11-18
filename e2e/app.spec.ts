@@ -117,7 +117,7 @@ test.describe('first screen', () => {
 
       await page.getByRole('button', { name: /言語|语言|Language/ }).click()
       await page.getByRole('menuitemradio', { name: 'English' }).click()
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Common')
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Default')
       await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     } finally {
       await app.close()
@@ -126,7 +126,7 @@ test.describe('first screen', () => {
     ;({ app, page } = await launch(userData))
     try {
       await expect(page.locator('html')).toHaveClass(/dark/)
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Common')
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Default')
       expect(
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getTitle())
       ).toBe('PremiumCowHorse')
