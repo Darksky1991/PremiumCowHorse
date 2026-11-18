@@ -7,7 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LocalProvider } from '../../main/vfs/providers/local.provider'
 import { createEnumerator } from './create-enumerator'
 import type { Enumerator, RawEntry } from './types'
-import { createWin32Enumerator } from './win32-enumerator'
+import {
+  createWin32Enumerator,
+  loadKernel32,
+  type Kernel32,
+  type NativeFn
+} from './win32-enumerator'
 
 const url = (p: string): string => pathToFileURL(p).href
 const byName = (entries: RawEntry[]): Record<string, RawEntry> =>
@@ -15,6 +20,50 @@ const byName = (entries: RawEntry[]): Record<string, RawEntry> =>
 const noop = (): void => {}
 const signal = (): AbortSignal => new AbortController().signal
 const hoursAgo = (h: number): Date => new Date(Date.now() - h * 3600_000)
+
+type Callback = (err: unknown, value: unknown) => void
+/** 只提供 .async 的假原生函数（枚举器只用异步调用；同步调用只在关闭句柄的兜底中使用） */
+const fakeFn = (
+  async: (...args: unknown[]) => void,
+  sync?: (...args: unknown[]) => unknown
+): NativeFn =>
+  Object.assign(
+    sync ??
+      (() => {
+        throw new Error('unexpected sync call')
+      }),
+    { async }
+  ) as unknown as NativeFn
+
+/**
+ * 包装真实的 kernel32：记录 CreateFileW 得到的句柄与 CloseHandle 关闭的句柄，
+ * 并用 override 替换个别函数
+ */
+function spyKernel32(override: Partial<Kernel32>): {
+  k: Kernel32
+  opened: unknown[]
+  closed: unknown[]
+} {
+  const real = loadKernel32()
+  const opened: unknown[] = []
+  const closed: unknown[] = []
+  const k: Kernel32 = {
+    ...real,
+    CreateFileW: fakeFn((...args) => {
+      const cb = args.pop() as Callback
+      real.CreateFileW.async(...args, (err: unknown, value: unknown) => {
+        opened.push(value)
+        cb(err, value)
+      })
+    }),
+    CloseHandle: fakeFn((h, cb) => {
+      closed.push(h)
+      real.CloseHandle.async(h, cb)
+    }),
+    ...override
+  }
+  return { k, opened, closed }
+}
 
 describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
   let root: string
@@ -201,6 +250,49 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     } finally {
       execFileSync('icacls', [dir, '/remove:d', user])
     }
+  })
+
+  it('closes the handle when protecting the access time fails in koffi', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const { k, opened, closed } = spyKernel32({
+      // koffi 层的失败（不是 Win32 的 FALSE 返回值）：回调收到 err
+      SetFileInformationByHandle: fakeFn((...args) => {
+        ;(args.pop() as Callback)(new Error('koffi failure'), undefined)
+      })
+    })
+    const failing = createWin32Enumerator(log, k)
+    await expect(failing.list(url(root), { signal: signal(), onBatch: noop })).rejects.toThrow(
+      'koffi failure'
+    )
+    expect(opened).toHaveLength(1)
+    expect(closed).toEqual(opened)
+  })
+
+  it('closes the handle when enumeration throws, falling back to a sync close if needed', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const real = loadKernel32()
+    const syncClosed: unknown[] = []
+    const { k, opened } = spyKernel32({
+      // 例如 koffi 的异步队列已满：.async 同步抛出
+      GetFileInformationByHandleEx: fakeFn(() => {
+        throw new Error('queue full')
+      }),
+      CloseHandle: fakeFn(
+        () => {
+          throw new Error('queue full')
+        },
+        (h) => {
+          syncClosed.push(h)
+          return real.CloseHandle(h)
+        }
+      )
+    })
+    const failing = createWin32Enumerator(log, k)
+    await expect(failing.list(url(root), { signal: signal(), onBatch: noop })).rejects.toThrow(
+      'queue full'
+    )
+    expect(opened).toHaveLength(1)
+    expect(syncClosed).toEqual(opened)
   })
 
   it('delegates location keys to the shared locator', () => {

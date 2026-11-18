@@ -3,13 +3,13 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { AppError } from '@pch/shared'
 import { toAppError } from '../../main/vfs/errors'
+import { mapLimited, resolveTarget, throwIfAborted } from '../../main/vfs/fs-list'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
 import { hostKey, location, shareKey } from '../../main/vfs/location'
-import { mapLimited, resolveTarget, throwIfAborted } from './fs-enumerator'
 import type { Enumerator, RawEntry } from './types'
 
 type Koffi = typeof import('koffi')
-type NativeFn = ReturnType<import('koffi').LibraryHandle['func']>
+export type NativeFn = ReturnType<import('koffi').LibraryHandle['func']>
 
 // CreateFileW
 const FILE_LIST_DIRECTORY = 0x0001
@@ -65,7 +65,7 @@ const BASIC_LAST_ACCESS_TIME = 8
 const ATTR_DATA_SIZE = 36
 const ATTR_LAST_WRITE_TIME = 20
 
-interface Kernel32 {
+export interface Kernel32 {
   koffi: Koffi
   CreateFileW: NativeFn
   SetFileInformationByHandle: NativeFn
@@ -79,7 +79,7 @@ interface Kernel32 {
 let kernel32: Kernel32 | undefined
 
 /** 加载 koffi 与 kernel32 的函数（进程内一次）；失败时抛出，由 createEnumerator 回退到 fs */
-function loadKernel32(): Kernel32 {
+export function loadKernel32(): Kernel32 {
   if (kernel32) return kernel32
   if (process.platform !== 'win32') throw new Error(`not Windows (${process.platform})`)
   const koffi = createRequire(import.meta.url)('koffi') as Koffi
@@ -153,8 +153,11 @@ function win32Error(code: number, p: string): AppError {
  * 普通枚举会把目录自身的最后访问时间更新为当前时间。拿不到写属性权限时用只读句柄枚举
  * （此时无法保护访问时间），每个共享 / 盘符只记一次日志。
  */
-export function createWin32Enumerator(log: (msg: string) => void): Enumerator {
-  const k = loadKernel32()
+export function createWin32Enumerator(
+  log: (msg: string) => void,
+  /** 测试用：替换个别原生函数（例如注入会失败的调用） */
+  k: Kernel32 = loadKernel32()
+): Enumerator {
   const warned = new Set<string>()
   const warnUnprotected = (uri: string, reason: string): void => {
     const key = shareKey(uri)
@@ -168,7 +171,11 @@ export function createWin32Enumerator(log: (msg: string) => void): Enumerator {
   const isValid = (h: unknown): h is bigint =>
     typeof h === 'bigint' && h !== 0n && h !== k.invalidHandle
 
-  const openDir = async (uri: string, p: string): Promise<bigint> => {
+  /**
+   * 打开目录句柄。writable = 以 FILE_WRITE_ATTRIBUTES 打开（可以保护访问时间）。
+   * 这里只打开，不做其他调用：句柄一旦得到就由调用方的 try/finally 负责关闭。
+   */
+  const openDir = async (uri: string, p: string): Promise<{ h: bigint; writable: boolean }> => {
     const name = path.win32.toNamespacedPath(p) // \\?\ 前缀：路径超过 260 字符也能打开
     const open = (access: number): Promise<{ value: unknown; error: number }> =>
       callAsync(
@@ -183,20 +190,7 @@ export function createWin32Enumerator(log: (msg: string) => void): Enumerator {
         null
       )
     const rw = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES)
-    if (isValid(rw.value)) {
-      const info = Buffer.alloc(BASIC_INFO_SIZE) // 其他时间为 0、属性为 0：不修改
-      info.writeBigInt64LE(-1n, BASIC_LAST_ACCESS_TIME)
-      const set = await callAsync(
-        k,
-        k.SetFileInformationByHandle,
-        rw.value,
-        FileBasicInfo,
-        info,
-        BASIC_INFO_SIZE
-      )
-      if (!set.value) warnUnprotected(uri, `SetFileInformationByHandle: win32 error ${set.error}`)
-      return rw.value
-    }
+    if (isValid(rw.value)) return { h: rw.value, writable: true }
     // 只读共享、ACL 不允许写属性、写保护的介质：退回只读句柄
     if (rw.error !== ERROR_ACCESS_DENIED && rw.error !== ERROR_WRITE_PROTECT) {
       throw win32Error(rw.error, p)
@@ -204,7 +198,35 @@ export function createWin32Enumerator(log: (msg: string) => void): Enumerator {
     const ro = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
     if (!isValid(ro.value)) throw win32Error(ro.error, p)
     warnUnprotected(uri, `no write-attributes access: win32 error ${rw.error}`)
-    return ro.value
+    return { h: ro.value, writable: false }
+  }
+
+  /** 把句柄的 LastAccessTime 设为 -1：其他时间为 0、属性为 0（均不修改）；失败只记日志 */
+  const protectAccessTime = async (uri: string, h: bigint): Promise<void> => {
+    const info = Buffer.alloc(BASIC_INFO_SIZE)
+    info.writeBigInt64LE(-1n, BASIC_LAST_ACCESS_TIME)
+    const set = await callAsync(
+      k,
+      k.SetFileInformationByHandle,
+      h,
+      FileBasicInfo,
+      info,
+      BASIC_INFO_SIZE
+    )
+    if (!set.value) warnUnprotected(uri, `SetFileInformationByHandle: win32 error ${set.error}`)
+  }
+
+  /** 关闭句柄；异步调用本身失败（如 koffi 的异步队列已满）时退回同步调用，保证不残留 */
+  const closeHandle = async (h: bigint): Promise<void> => {
+    try {
+      await callAsync(k, k.CloseHandle, h)
+    } catch {
+      try {
+        k.CloseHandle(h)
+      } catch {
+        // 无法再做什么：同步调用也失败只可能是 koffi 自身异常
+      }
+    }
   }
 
   const readAll = async (
@@ -268,12 +290,14 @@ export function createWin32Enumerator(log: (msg: string) => void): Enumerator {
       try {
         throwIfAborted(signal)
         const p = fileUriToLocalPath(uri)
-        const h = await openDir(uri, p)
+        const { h, writable } = await openDir(uri, p)
         let entries: RawEntry[]
+        // 从得到句柄到枚举结束的任何失败（含 koffi 层的异常、中止）都关闭句柄
         try {
+          if (writable) await protectAccessTime(uri, h)
           entries = await readAll(h, p, signal, onBatch)
         } finally {
-          await callAsync(k, k.CloseHandle, h).catch(() => {})
+          await closeHandle(h)
         }
         const links = entries.filter((e) => e.kind === 'symlink')
         await mapLimited(links, LINK_CONCURRENCY, signal, async (e) => {

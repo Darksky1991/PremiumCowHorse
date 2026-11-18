@@ -111,6 +111,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | ssh2-sftp-client | SFTP 客户端 | 基于 ssh2，API 友好 |
 | （不引入）Node 内置 `fs.watch` | 目录变更监听（8.3 节） | v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
 | electron-log | 日志落盘与轮转 | Electron 场景最常用 |
+| koffi 3.3.8（已引入） | FFI 调用 Windows API：目录枚举（`CreateFileW` + `GetFileInformationByHandleEx`，可保护目录访问时间、取得隐藏属性）、`GetDriveTypeW`（区分映射的网络盘） | Node-API 预编译二进制在可选依赖 `@koromix/koffi-win32-x64` 中，安装脚本只检查二进制能否加载、不联网下载；无需针对 Electron ABI 重新编译；打包时 electron-builder 自动把 `koffi.node` 解包到 `app.asar.unpacked` |
 | iconv-lite + jschardet | 文本编码检测与转换 | 对日项目大量 Shift_JIS / EUC-JP 的 CSV、日志、bat |
 | mime | 由扩展名推断 MIME | 体积小 |
 | i18next | 国际化核心（主进程菜单、对话框也要翻译） | 与渲染端共享资源 |
@@ -149,7 +150,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ### 3.6 后续阶段可能引入（届时再确认）
 
-electron-updater（自动更新）、koffi（FFI 调用 Windows API：用 `WNetAddConnection2` 做 SMB 认证以替代 `net use`；用 `ShellExecuteExW` 调用 Office 打开动作以替代 PowerShell，适用于终端策略禁止 PowerShell 的环境）。
+electron-updater（自动更新）。koffi 已作为依赖引入（3.2 节），以下用途尚未实现：用 `WNetAddConnection2` 做 SMB 认证以替代 `net use`；用 `ShellExecuteExW` 调用 Office 打开动作以替代 PowerShell（适用于终端策略禁止 PowerShell 的环境）；用 `WNetGetConnectionW` 把映射盘符转换为 UNC。
 
 ---
 
@@ -244,6 +245,8 @@ apps/desktop/src/
 │   │   ├── input-path.ts             # 渲染端传入的本地路径 → file URI（去引号 / 空白、拒绝相对路径）
 │   │   ├── local-path.ts             # file URI → 本地路径（系统操作 IPC 使用）
 │   │   ├── path-name.ts              # 显示名称（驱动器根 `C:`、UNC 共享根 `\\server\share`）
+│   │   ├── location.ts               # 位置类型 local / network（UNC、GetDriveTypeW 的 DRIVE_REMOTE）与并发分组键 shareKey / hostKey
+│   │   ├── fs-list.ts                # node:fs 列目录（readdir + 16 并发 lstat + 链接目标）：LocalProvider 与扫描进程的 fs 回退共用
 │   │   ├── providers/
 │   │   │   ├── local.provider.ts
 │   │   │   ├── smb.provider.ts
@@ -276,11 +279,19 @@ apps/desktop/src/
 │   └── ipc/
 │       ├── router.ts                 # 单通道路由：来源校验 → 通道校验 → 输入校验 → 分发
 │       └── handlers.ts               # 汇总各模块 handler
+├── scanner/                          # 扫描进程（utilityProcess；不得 import electron，只能使用 vfs 中不依赖 electron 的文件）
+│   └── enum/
+│       ├── types.ts                  # RawEntry、Enumerator 接口
+│       ├── win32-enumerator.ts       # koffi：保护访问时间的目录枚举、GetFileAttributesExW 取目录修改时间
+│       ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头，无法保护访问时间）
+│       └── create-enumerator.ts      # koffi 可用则用 win32 版，否则回退并记日志
 └── preload/
     └── index.ts                      # 暴露 window.pch
 ```
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+`scanner/` 的目标结构（调度器、缓存库、进程入口与主进程客户端）见 `devDoc/2026-11-19-01-refresh-cache-design.md` 4.1 节，实现后在此补充。scanner 与 vfs 的依赖由 lint 约束：scanner 只允许 import `shared` 与 vfs 中登记为 `vfs-portable` 的文件（`local-path`、`errors`、`location`、`path-name`、`fs-list`），这些文件与 scanner 一起禁止 import `electron`。
+
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/enum/`（目录枚举器，已有单元测试，**扫描进程尚未接入**，应用运行时还不使用它；`vfs/location.ts` 目前也只被 scanner 使用）。M1-2 在 `vfs/` 中加入目录监听（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `openPath` / `copyText` / `selectPaths`（均不修改文件）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -544,7 +555,7 @@ export interface FileEntry {
 
 ### 7.2 各 Provider 要点
 
-**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；`watch` 用 `fs.watch(dir, { persistent: false })`，非递归；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：Windows 的系统隐藏属性需要原生 API，目前只把以 `.` 开头的名称视为隐藏（引入 koffi 后补充）。
+**LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；`watch` 用 `fs.watch(dir, { persistent: false })`，非递归；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作；这部分在 `vfs/fs-list.ts`，与扫描进程的 fs 回退枚举器共用）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：LocalProvider 只把以 `.` 开头的名称视为隐藏。按 Windows 隐藏属性判断（有 `FILE_ATTRIBUTE_HIDDEN` 即隐藏，只有 SYSTEM 的照常显示）的实现在扫描进程的 koffi 枚举器 `scanner/enum/win32-enumerator.ts` 中，它同时以 LastAccessTime = -1 的句柄枚举、不更新目录自身的最后访问时间（本机 NTFS 已实测；网络共享未验证）；**扫描进程尚未接入**，接入前界面仍按 `.` 判断。
 
 **SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
@@ -649,7 +660,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
   右键同时选中该节点；菜单与对话框关闭后焦点回到树。复制路径由渲染端把 file URI 转为 Windows 路径（`lib/file-uri.ts`，非 file URI 时不显示该项）后经 `system.copyText` 写入剪贴板。重命名 / 新建分组的对话框预填并全选名称；移除用 AlertDialog（默认焦点在「取消」），文案明确「只移除条目，不会删除磁盘上的文件或文件夹」（分组说明连同其下所有条目一起移除）。对话框打开期间条目已被删除：移除静默关闭（目标已达成），重命名提示错误后关闭。没有条目的工作区显示空状态，提供「添加文件夹」「新建分组」按钮。
 - **已知限制 / 待需求方决定**：
   - **虚拟文件拖入**（未经真机验证）：从 zip 内的文件、Outlook 附件、浏览器中的图片等「虚拟文件」拖入时，副本由 Chromium 在浏览器进程中写入临时目录，`getPathForFile` 返回该副本的路径，条目会指向这个临时副本。副本只在我们的 dragover 接受了放置（`preventDefault` + `copy`）之后、drop 时才写出；拖放事件中拿不到路径，dragover 阶段也分不出是否为虚拟文件，因此「拒绝 %TEMP% 下的路径」挡不住副本本身被写出（应用自身不写任何文件）。**待需求方决定**：(a) 接受 Chromium 写临时副本，照常添加（现状）；(b) 写出副本后拒绝固定的临时路径（副本仍会产生；识别方式可考虑 Chromium 临时子目录的命名特征，需实机确认；按 %TEMP% 整体拒绝会同时阻止把 %TEMP% 下的目录固定为条目，例如查看日志）；(c) 完全不接受系统拖入，只保留系统对话框。
-  - 隐藏文件只按名称以 `.` 开头判断（Windows 的隐藏 / 系统属性需要原生 API，引入 koffi 后补充）；新增条目总是追加到父节点末尾（before / after 的画线位置会误导）；`system.openPath`（用系统应用打开）会直接执行 `.exe` / `.bat` / `.lnk` 等可执行文件（计划如此）。是否调整待需求方决定。
+  - 隐藏文件只按名称以 `.` 开头判断（按 Windows 隐藏属性判断的枚举器已实现，随扫描进程接入后生效，见 7.2 节）；新增条目总是追加到父节点末尾（before / after 的画线位置会误导）；`system.openPath`（用系统应用打开）会直接执行 `.exe` / `.bat` / `.lnk` 等可执行文件（计划如此）。是否调整待需求方决定。
   - 从系统资源管理器真实拖入未自动化（Playwright 无法产生带真实路径的系统拖放，合成的 File 经 `getPathForFile` 得到空字符串），只有 `resolveDrop` 的单元测试，需需求方手动确认。
   - 映射盘符转 UNC、用 Menu 键 / Shift+F10 打开所选节点的菜单尚未实现。
 

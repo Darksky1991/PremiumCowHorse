@@ -11,7 +11,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LocalProvider } from '../../main/vfs/providers/local.provider'
 import { FsEnumerator } from './fs-enumerator'
+import type { FileEntry } from '@pch/shared'
 import type { RawEntry } from './types'
 
 const url = (p: string): string => pathToFileURL(p).href
@@ -79,6 +81,36 @@ describe('FsEnumerator', () => {
       else mkdirSync(path.join(root, n))
     }
     expect((await list(root)).map((e) => e.name).sort()).toEqual(names)
+  })
+
+  it('returns the same names, kinds, targets, sizes and mtimes as LocalProvider.list', async () => {
+    const target = path.join(root, 'target')
+    const gone = path.join(root, 'gone')
+    mkdirSync(target)
+    mkdirSync(gone)
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    writeFileSync(path.join(root, '.hidden'), 'x')
+    symlinkSync(target, path.join(root, 'j'), 'junction')
+    symlinkSync(gone, path.join(root, 'dead'), 'junction')
+    rmSync(gone, { recursive: true })
+    // 比较 uri / hidden 以外的全部字段（target 只在 symlink 上出现，也要一致）
+    const strip = (xs: RawEntry[] | FileEntry[]): Record<string, unknown>[] =>
+      xs
+        .map((x) => {
+          const picked: Record<string, unknown> = {
+            name: x.name,
+            kind: x.kind,
+            size: x.size,
+            mtime: x.mtime
+          }
+          if ('target' in x) picked.target = x.target
+          return picked
+        })
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    const viaProvider = await new LocalProvider().list(pathToFileURL(root))
+    expect(strip(await list(root))).toEqual(strip(viaProvider))
+    // hidden 的规则相同（fs 回退按 . 开头）
+    expect(byName(await list(root))['.hidden']!.hidden).toBe(true)
   })
 
   it('statDir returns the directory mtime', async () => {
