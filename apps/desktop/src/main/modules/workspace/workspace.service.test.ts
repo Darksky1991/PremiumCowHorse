@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_WORKSPACE_ID, type WorkspaceEntry } from '@pch/shared'
@@ -5,6 +8,8 @@ import { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import { openDatabase, type Database } from '../../infra/db/client'
 import type { Logger } from '../../infra/logger'
+import { LocalProvider } from '../../vfs/providers/local.provider'
+import { VfsService } from '../../vfs/vfs.service'
 import { WorkspaceService } from './workspace.service'
 
 const noop = (): void => undefined
@@ -14,16 +19,25 @@ describe('WorkspaceService', () => {
   let db: Database
   let service: WorkspaceService
   let events: MainEvents['workspace.changed'][]
+  /** 临时目录：work/a（目录）、work/b.xlsx、案件 A/設計書#1（目录）、x.txt */
+  let root: string
+  const at = (...parts: string[]): string => path.join(root, ...parts)
 
   beforeEach(async () => {
+    root = mkdtempSync(path.join(tmpdir(), 'pch-ws-'))
+    mkdirSync(at('work', 'a'), { recursive: true })
+    mkdirSync(at('案件 A', '設計書#1'), { recursive: true })
+    writeFileSync(at('work', 'b.xlsx'), '')
+    writeFileSync(at('x.txt'), '')
     db = await openDatabase(':memory:', silent)
     const bus = new EventBus<MainEvents>()
     events = []
     bus.on('workspace.changed', (e) => events.push(e))
-    service = new WorkspaceService(db, bus)
+    service = new WorkspaceService(db, new VfsService([new LocalProvider()]), bus)
   })
   afterEach(async () => {
     await db.destroy()
+    rmSync(root, { recursive: true, force: true })
   })
 
   const group = (
@@ -75,27 +89,47 @@ describe('WorkspaceService', () => {
         kind: 'folder',
         workspaceId: DEFAULT_WORKSPACE_ID,
         parentId: g.id,
-        path: 'C:\\work\\a'
+        path: at('work', 'a')
       })
       const b = await service.addEntry({
         kind: 'file',
         workspaceId: DEFAULT_WORKSPACE_ID,
         parentId: g.id,
-        path: 'C:\\work\\b.xlsx'
+        path: at('work', 'b.xlsx')
       })
       expect([a.parentId, a.sortOrder, b.sortOrder]).toEqual([g.id, 0, 1])
     })
 
     it('keeps a URI that round-trips paths with Japanese, spaces and #', async () => {
-      const path = 'C:\\案件 A\\設計書#1'
+      const p = at('案件 A', '設計書#1')
       const e = await service.addEntry({
         kind: 'folder',
         workspaceId: DEFAULT_WORKSPACE_ID,
         parentId: null,
-        path
+        path: p
       })
-      expect(fileURLToPath(e.uri!)).toBe(path)
+      expect(fileURLToPath(e.uri!)).toBe(p)
       expect(e.label).toBe('設計書#1')
+    })
+
+    it('rejects a path that does not exist with FS_NOT_FOUND', async () => {
+      await expect(
+        service.addEntry({
+          kind: 'folder',
+          workspaceId: DEFAULT_WORKSPACE_ID,
+          parentId: null,
+          path: at('nope')
+        })
+      ).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+    })
+
+    it('rejects a folder entry pointing at a file and a file entry pointing at a folder', async () => {
+      const add = (kind: 'folder' | 'file', p: string): Promise<WorkspaceEntry> =>
+        service.addEntry({ kind, workspaceId: DEFAULT_WORKSPACE_ID, parentId: null, path: p })
+      await expect(add('folder', at('x.txt'))).rejects.toMatchObject({
+        code: 'ENTRY_KIND_MISMATCH'
+      })
+      await expect(add('file', at('work'))).rejects.toMatchObject({ code: 'ENTRY_KIND_MISMATCH' })
     })
 
     it('rejects a parent that is not a group', async () => {
@@ -103,7 +137,7 @@ describe('WorkspaceService', () => {
         kind: 'file',
         workspaceId: DEFAULT_WORKSPACE_ID,
         parentId: null,
-        path: 'C:\\x.txt'
+        path: at('x.txt')
       })
       await expect(group('子', f.id)).rejects.toMatchObject({ code: 'ENTRY_INVALID_PARENT' })
     })

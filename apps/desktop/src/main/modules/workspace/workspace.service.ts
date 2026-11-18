@@ -15,6 +15,7 @@ import {
 import type { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import type { Database } from '../../infra/db/client'
+import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
 
@@ -25,6 +26,7 @@ import { WorkspaceRepo } from './workspace.repo'
 export class WorkspaceService {
   constructor(
     private readonly db: Database,
+    private readonly vfs: VfsService,
     private readonly bus: EventBus<MainEvents>
   ) {}
 
@@ -99,6 +101,14 @@ export class WorkspaceService {
   }
 
   async addEntry(input: EntryAddInput): Promise<WorkspaceEntry> {
+    // folder / file：目标必须存在且类型一致（在事务外检查，避免文件系统访问占用数据库连接）
+    const uri = input.kind === 'group' ? null : pathToFileURL(input.path).href
+    if (uri !== null) {
+      const stat = await this.vfs.stat(uri)
+      if ((input.kind === 'folder') !== (stat.kind === 'directory')) {
+        throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${input.kind} → ${stat.kind}` })
+      }
+    }
     return this.write(input.workspaceId, async (trx) => {
       await this.requireWorkspace(new WorkspaceRepo(trx), input.workspaceId)
       const entries = new EntryRepo(trx)
@@ -110,7 +120,7 @@ export class WorkspaceService {
         parentId: input.parentId,
         kind: input.kind,
         label: input.kind === 'group' ? input.label : (input.label ?? path.basename(input.path)),
-        uri: input.kind === 'group' ? null : pathToFileURL(input.path).href,
+        uri,
         sortOrder: (await entries.maxSortOrder(input.workspaceId, input.parentId)) + 1,
         meta: null,
         createdAt: now,

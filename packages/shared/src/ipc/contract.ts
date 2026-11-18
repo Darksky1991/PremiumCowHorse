@@ -8,6 +8,7 @@ import {
   WorkspaceCreateInput,
   WorkspaceUpdateInput
 } from '../workspace/schema'
+import type { FileEntry, FileStat } from '../vfs/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 
 /** route<输出类型>()(输入 schema)：输入由 zod 运行时校验，输出只做类型约束 */
@@ -51,6 +52,12 @@ export const ipcContract = {
   'entry.update': route<WorkspaceEntry>()(EntryUpdateInput),
   'entry.remove': route<void>()(z.strictObject({ id: z.string().min(1) })),
   'entry.move': route<void>()(EntryMoveInput),
+  /** 文件系统（经 VfsService 按 scheme 路由）；requestId 用于取消，同一 id 的新请求取代旧请求 */
+  'vfs.stat': route<FileStat>()(z.strictObject({ uri: z.string().min(1) })),
+  'vfs.list': route<FileEntry[]>()(
+    z.strictObject({ uri: z.string().min(1), requestId: z.string().min(1) })
+  ),
+  'vfs.cancel': route<void>()(z.strictObject({ requestId: z.string().min(1) })),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
