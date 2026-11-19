@@ -101,7 +101,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), 'pch-enum-'))
     log = vi.fn<(msg: string) => void>()
-    en = createWin32Enumerator(log)
+    en = createWin32Enumerator()
   })
   afterEach(() => {
     rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
@@ -185,20 +185,6 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     expect((await en.statDir(url(deep), signal())).mtime).toBeCloseTo(statSync(deep).mtimeMs, 3)
   })
 
-  it("does not update the directory's last access time", async () => {
-    writeFileSync(path.join(root, 'a.txt'), 'abc')
-    mkdirSync(path.join(root, 'sub'))
-    utimesSync(root, hoursAgo(3), hoursAgo(3))
-    const before = statSync(root)
-    await list(root)
-    const after = statSync(root)
-    expect(after.atimeMs).toBe(before.atimeMs)
-    // 访问时间保护本身也不得改动其他时间
-    expect(after.mtimeMs).toBe(before.mtimeMs)
-    expect(after.ctimeMs).toBe(before.ctimeMs)
-    expect(log).not.toHaveBeenCalled()
-  })
-
   it('statDir returns the directory mtime and does not change atime', async () => {
     writeFileSync(path.join(root, 'a.txt'), 'abc')
     utimesSync(root, hoursAgo(3), hoursAgo(2))
@@ -257,8 +243,29 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     })
   })
 
-  it('falls back to a read-only handle where attributes cannot be written, logging once', async () => {
-    // 对当前用户拒绝「写入属性」（WA）：只能以只读句柄打开，访问时间无法保护
+  it('opens directories without requesting write access', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const real = loadKernel32()
+    const access: number[] = []
+    const k: Kernel32 = {
+      ...real,
+      CreateFileW: fakeFn((...args) => {
+        access.push(args[1] as number)
+        real.CreateFileW.async(...args)
+      })
+    }
+    const entries = await createWin32Enumerator(k).list(url(root), {
+      signal: signal(),
+      onBatch: noop
+    })
+    expect(byName(entries)['a.txt']).toMatchObject({ kind: 'file', size: 3 })
+    expect(access).toHaveLength(1)
+    expect(access[0]! & 0x0100).toBe(0) // 不含 FILE_WRITE_ATTRIBUTES
+    expect(access[0]! & 0x0002).toBe(0) // 不含 FILE_ADD_FILE
+  })
+
+  it('lists a directory on which the current user is denied write-attributes', async () => {
+    // 对当前用户拒绝「写入属性」（WA）：只读打开不受影响
     const dir = path.join(root, 'locked')
     mkdirSync(dir)
     writeFileSync(path.join(dir, 'a.txt'), 'abc')
@@ -272,23 +279,20 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     execFileSync('icacls', [dir, '/deny', `${user}:(WA)`])
     try {
       expect(byName(await list(dir))['a.txt']).toMatchObject({ kind: 'file', size: 3 })
-      await list(dir)
-      expect(log).toHaveBeenCalledTimes(1)
-      expect(log.mock.calls[0]![0]).toContain('access time')
     } finally {
       execFileSync('icacls', [dir, '/remove:d', user])
     }
   })
 
-  it('closes the handle when protecting the access time fails in koffi', async () => {
+  it('closes the handle when the first enumeration call fails in koffi', async () => {
     writeFileSync(path.join(root, 'a.txt'), 'abc')
     const { k, opened, closed } = spyKernel32({
       // koffi 层的失败（不是 Win32 的 FALSE 返回值）：回调收到 err
-      SetFileInformationByHandle: fakeFn((...args) => {
+      GetFileInformationByHandleEx: fakeFn((...args) => {
         ;(args.pop() as Callback)(new Error('koffi failure'), undefined)
       })
     })
-    const failing = createWin32Enumerator(log, k)
+    const failing = createWin32Enumerator(k)
     await expect(failing.list(url(root), { signal: signal(), onBatch: noop })).rejects.toThrow(
       'koffi failure'
     )
@@ -315,7 +319,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
         }
       )
     })
-    const failing = createWin32Enumerator(log, k)
+    const failing = createWin32Enumerator(k)
     await expect(failing.list(url(root), { signal: signal(), onBatch: noop })).rejects.toThrow(
       'queue full'
     )
@@ -336,7 +340,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
           fail(args.pop() as Callback, code, real.invalidHandle)
         })
       }
-      const e = await createWin32Enumerator(log, k)
+      const e = await createWin32Enumerator(k)
         .list(url(root), { signal: signal(), onBatch: noop })
         .then(
           () => null,
@@ -345,7 +349,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
       return { code: (e as { code?: unknown } | null)?.code, opens }
     }
     // 53 BAD_NETPATH、64 NETNAME_DELETED、67 BAD_NET_NAME、121 SEM_TIMEOUT、1231 NETWORK_UNREACHABLE、
-    // 21 NOT_READY：位置整体不可用，不再尝试只读打开
+    // 21 NOT_READY：位置整体不可用
     for (const code of [21, 53, 64, 67, 121, 1231, 1232, 2250]) {
       expect(await codeFor(code), String(code)).toEqual({ code: 'FS_UNAVAILABLE', opens: 1 })
     }
@@ -353,33 +357,6 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     for (const code of [31, 32, 1117]) {
       expect((await codeFor(code)).code, String(code)).toBe('UNKNOWN')
     }
-  })
-
-  it('falls back to a read-only handle when the write-attributes open fails with another refusal', async () => {
-    writeFileSync(path.join(root, 'a.txt'), 'abc')
-    const { real, GetLastError, fail } = forcedErrors()
-    const access: number[] = []
-    const k: Kernel32 = {
-      ...real,
-      GetLastError,
-      CreateFileW: fakeFn((...args) => {
-        const cb = args.pop() as Callback
-        access.push(args[1] as number)
-        // 第一次（带 FILE_WRITE_ATTRIBUTES）以 50 ERROR_NOT_SUPPORTED 拒绝（部分 NAS）
-        if (access.length === 1) fail(cb, 50, real.invalidHandle)
-        else real.CreateFileW.async(...args, cb)
-      }),
-      CloseHandle: fakeFn((h, cb) => real.CloseHandle.async(h, cb))
-    }
-    const entries = await createWin32Enumerator(log, k).list(url(root), {
-      signal: signal(),
-      onBatch: noop
-    })
-    expect(byName(entries)['a.txt']).toMatchObject({ kind: 'file', size: 3 })
-    expect(access).toHaveLength(2)
-    expect(access[1]! & 0x0100).toBe(0) // 第二次不带写属性
-    expect(log).toHaveBeenCalledTimes(1)
-    expect(log.mock.calls[0]![0]).toContain('win32 error 50')
   })
 
   it('maps ERROR_INVALID_PARAMETER to not-a-directory only on the first batch of a non-directory', async () => {
@@ -397,7 +374,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
           else real.GetFileInformationByHandleEx.async(...args, cb)
         })
       }
-      return createWin32Enumerator(log, k)
+      return createWin32Enumerator(k)
         .list(url(root), { signal: signal(), onBatch: noop })
         .then(
           () => null,

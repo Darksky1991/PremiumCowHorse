@@ -14,12 +14,10 @@ export type NativeFn = ReturnType<import('koffi').LibraryHandle['func']>
 // CreateFileW
 const FILE_LIST_DIRECTORY = 0x0001
 const FILE_READ_ATTRIBUTES = 0x0080
-const FILE_WRITE_ATTRIBUTES = 0x0100
 const FILE_SHARE_ALL = 0x1 | 0x2 | 0x4 // READ | WRITE | DELETE：不妨碍其他程序改名、删除
 const OPEN_EXISTING = 3
 const FILE_FLAG_BACKUP_SEMANTICS = 0x02000000 // 打开目录必需
 // FILE_INFO_BY_HANDLE_CLASS（minwinbase.h）
-const FileBasicInfo = 0
 const FileFullDirectoryInfo = 14
 const FileFullDirectoryRestartInfo = 15
 // 文件属性
@@ -83,9 +81,6 @@ const DIR = {
   eaSize: 64, // 有 REPARSE_POINT 属性时为重解析标签（MS-FSCC）
   fileName: 68
 }
-/** FILE_BASIC_INFO：4 个 LARGE_INTEGER 时间 + DWORD 属性，按 8 字节对齐为 40 字节 */
-const BASIC_INFO_SIZE = 40
-const BASIC_LAST_ACCESS_TIME = 8
 /** WIN32_FILE_ATTRIBUTE_DATA：DWORD 属性 + 3 个 FILETIME + 2 个 DWORD，共 36 字节 */
 const ATTR_DATA_SIZE = 36
 const ATTR_LAST_WRITE_TIME = 20
@@ -93,7 +88,6 @@ const ATTR_LAST_WRITE_TIME = 20
 export interface Kernel32 {
   koffi: Koffi
   CreateFileW: NativeFn
-  SetFileInformationByHandle: NativeFn
   GetFileInformationByHandleEx: NativeFn
   GetFileAttributesExW: NativeFn
   CloseHandle: NativeFn
@@ -113,9 +107,6 @@ export function loadKernel32(): Kernel32 {
     koffi,
     CreateFileW: lib.func(
       'void * __stdcall CreateFileW(const char16_t *lpFileName, uint32_t dwDesiredAccess, uint32_t dwShareMode, void *lpSecurityAttributes, uint32_t dwCreationDisposition, uint32_t dwFlagsAndAttributes, void *hTemplateFile)'
-    ),
-    SetFileInformationByHandle: lib.func(
-      'bool __stdcall SetFileInformationByHandle(void *hFile, int FileInformationClass, void *lpFileInformation, uint32_t dwBufferSize)'
     ),
     GetFileInformationByHandleEx: lib.func(
       'bool __stdcall GetFileInformationByHandleEx(void *hFile, int FileInformationClass, _Out_ void *lpFileInformation, uint32_t dwBufferSize)'
@@ -173,79 +164,39 @@ function win32Error(code: number, p: string): AppError {
   }
 }
 
-/** 路径不存在（2 / 3）或位置整体不可用：再以只读方式打开也不会成功 */
-const isFinalOpenError = (code: number): boolean =>
-  code === ERROR_FILE_NOT_FOUND || code === ERROR_PATH_NOT_FOUND || UNAVAILABLE_ERRORS.has(code)
-
 /**
  * koffi 调用 Win32 API 的枚举器。
- * 目录以 FILE_WRITE_ATTRIBUTES 打开，并把句柄的 LastAccessTime 设为 -1（MS-FSCC：此句柄上
- * 后续操作不更新访问时间），再在同一句柄上用 GetFileInformationByHandleEx 枚举——
- * 普通枚举会把目录自身的最后访问时间更新为当前时间。以写属性打开失败（不存在与网络 / 设备
- * 不可用除外）时用只读句柄枚举（此时无法保护访问时间），每个共享 / 盘符只记一次日志。
+ * 目录以只读方式打开（FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES，不请求任何写权限），
+ * 再在同一句柄上用 GetFileInformationByHandleEx 枚举。系统会按自身设置更新目录的最后访问时间，
+ * 属于「读取时由系统自动更新的元数据」，应用不干预（变化检测用修改时间，与访问时间无关）。
  * 错误分类：只有确定的网络 / 设备类 Win32 错误码为 FS_UNAVAILABLE（UNAVAILABLE_ERRORS），
  * 其他未知错误码为 UNKNOWN（只影响该目录）。
  */
 export function createWin32Enumerator(
-  log: (msg: string) => void,
   /** 测试用：替换个别原生函数（例如注入会失败的调用） */
   k: Kernel32 = loadKernel32()
 ): Enumerator {
-  const warned = new Set<string>()
-  const warnUnprotected = (uri: string, reason: string): void => {
-    const key = shareKey(uri)
-    if (warned.has(key)) return
-    warned.add(key)
-    log(
-      `[enumerator] cannot protect the last access time of directories on ${key} (${reason}); the system may update it when listing, first seen at ${uri}`
-    )
-  }
-
   const isValid = (h: unknown): h is bigint =>
     typeof h === 'bigint' && h !== 0n && h !== k.invalidHandle
 
   /**
-   * 打开目录句柄。writable = 以 FILE_WRITE_ATTRIBUTES 打开（可以保护访问时间）。
-   * 这里只打开，不做其他调用：句柄一旦得到就由调用方的 try/finally 负责关闭。
+   * 以只读方式打开目录句柄。这里只打开，不做其他调用：句柄一旦得到就由调用方的
+   * try/finally 负责关闭。
    */
-  const openDir = async (uri: string, p: string): Promise<{ h: bigint; writable: boolean }> => {
-    const name = path.win32.toNamespacedPath(p) // \\?\ 前缀：路径超过 260 字符也能打开
-    const open = (access: number): Promise<{ value: unknown; error: number }> =>
-      callAsync(
-        k,
-        k.CreateFileW,
-        name,
-        access,
-        FILE_SHARE_ALL,
-        null,
-        OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS,
-        null
-      )
-    const rw = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES)
-    if (isValid(rw.value)) return { h: rw.value, writable: true }
-    // 只读共享、ACL 不允许写属性、写保护的介质，以及不支持写属性的 NAS 等返回的其他拒绝码：
-    // 退回只读句柄。只有不存在与网络 / 设备不可用时直接报错（只读打开也不会成功）
-    if (isFinalOpenError(rw.error)) throw win32Error(rw.error, p)
-    const ro = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
-    if (!isValid(ro.value)) throw win32Error(ro.error, p)
-    warnUnprotected(uri, `no write-attributes access: win32 error ${rw.error}`)
-    return { h: ro.value, writable: false }
-  }
-
-  /** 把句柄的 LastAccessTime 设为 -1：其他时间为 0、属性为 0（均不修改）；失败只记日志 */
-  const protectAccessTime = async (uri: string, h: bigint): Promise<void> => {
-    const info = Buffer.alloc(BASIC_INFO_SIZE)
-    info.writeBigInt64LE(-1n, BASIC_LAST_ACCESS_TIME)
-    const set = await callAsync(
+  const openDir = async (p: string): Promise<bigint> => {
+    const r = await callAsync(
       k,
-      k.SetFileInformationByHandle,
-      h,
-      FileBasicInfo,
-      info,
-      BASIC_INFO_SIZE
+      k.CreateFileW,
+      path.win32.toNamespacedPath(p), // \?\ 前缀：路径超过 260 字符也能打开
+      FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+      FILE_SHARE_ALL,
+      null,
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS,
+      null
     )
-    if (!set.value) warnUnprotected(uri, `SetFileInformationByHandle: win32 error ${set.error}`)
+    if (!isValid(r.value)) throw win32Error(r.error, p)
+    return r.value
   }
 
   /** 关闭句柄；异步调用本身失败（如 koffi 的异步队列已满）时退回同步调用，保证不残留 */
@@ -340,11 +291,10 @@ export function createWin32Enumerator(
       try {
         throwIfAborted(signal)
         const p = fileUriToLocalPath(uri)
-        const { h, writable } = await openDir(uri, p)
+        const h = await openDir(p)
         let entries: RawEntry[]
         // 从得到句柄到枚举结束的任何失败（含 koffi 层的异常、中止）都关闭句柄
         try {
-          if (writable) await protectAccessTime(uri, h)
           entries = await readAll(h, p, signal, onBatch)
         } finally {
           await closeHandle(h)

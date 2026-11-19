@@ -8,7 +8,7 @@ import type { Enumerator, RawEntry } from './types'
 
 /**
  * koffi 不可用时的回退：readdir + lstat（与 LocalProvider.list 共用 fs-list.ts）。
- * 隐藏按「名称以 . 开头」判断；普通 readdir 会更新目录自身的最后访问时间，无法避免。
+ * 隐藏按「名称以 . 开头」判断；readdir 时系统会按设置更新目录的最后访问时间（属于允许的系统自动更新元数据）。
  */
 export class FsEnumerator implements Enumerator {
   readonly native = false
