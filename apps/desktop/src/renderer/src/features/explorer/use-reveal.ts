@@ -5,7 +5,7 @@ import type { WorkspaceEntry } from '@pch/shared'
 import { confirmDirectory } from '@renderer/data/vfs'
 import { useNavigationStore } from '@renderer/stores/navigation-store'
 import { useExplorerStore } from './explorer-store'
-import { revealNodeIds, revealPath, revealProgress, revealRecheckUri } from './reveal'
+import { revealNodeIds, revealPath, revealProgress, settleReveal } from './reveal'
 import type { TreeNode } from './tree-model'
 
 /** 每一层（一个目录的列表）最多等待的时间；超时则停在已到达的最深一层 */
@@ -55,17 +55,15 @@ export function useRevealRequests({
     if (current === null) return
     const { nodes, reveal, t } = latest.current
     const progress = revealProgress(nodes, current.chain, current.target)
-    const finish = (message: string | null): void => {
+    if (progress.state !== 'waiting') {
       active.current = null
       clearTimeout(timer.current)
-      if (progress.index >= 0) reveal(progress.index)
-      if (message !== null) toast.warning(message)
-    }
-    if (progress.state === 'done') return finish(null)
-    if (progress.state === 'failed') {
-      const recheck = revealRecheckUri(nodes, progress.index)
-      if (recheck !== null) void confirmDirectory(recheck)
-      return finish(t('explorer:revealNotFound'))
+      settleReveal(nodes, progress, {
+        select: reveal,
+        confirm: (uri) => void confirmDirectory(uri),
+        warn: () => toast.warning(t('explorer:revealNotFound'))
+      })
+      return
     }
 
     const now = Date.now()
@@ -73,7 +71,11 @@ export function useRevealRequests({
       current.depth = progress.depth
       current.deadline = now + REVEAL_LAYER_TIMEOUT_MS
     } else if (timedOut && now >= current.deadline) {
-      return finish(t('explorer:revealTimeout'))
+      active.current = null
+      clearTimeout(timer.current)
+      if (progress.index >= 0) reveal(progress.index)
+      toast.warning(t('explorer:revealTimeout'))
+      return
     }
     clearTimeout(timer.current)
     timer.current = setTimeout(() => evaluate.current(true), current.deadline - now)

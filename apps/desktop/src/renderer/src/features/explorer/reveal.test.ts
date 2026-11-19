@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { FileEntry, WorkspaceEntry } from '@pch/shared'
 import type { DirectoryState } from '@renderer/data/vfs'
-import { revealNodeIds, revealPath, revealProgress, revealRecheckUri } from './reveal'
+import { revealNodeIds, revealPath, revealProgress, revealRecheckUri, settleReveal } from './reveal'
 import { buildVisibleNodes, type TreeNode } from './tree-model'
 
 const ROOT = 'file:///C:/work'
@@ -244,5 +244,72 @@ describe('revealRecheckUri', () => {
       )
     ).toBeNull()
     expect(revealRecheckUri(nodes, -1)).toBeNull()
+  })
+})
+
+describe('settleReveal', () => {
+  const proj = entry('proj', 'folder')
+  const projUri = `${ROOT}/proj`
+  const aUri = `${projUri}/a`
+  const path = revealNodeIds([proj], { entryId: 'proj', segments: ['a', 'b.txt'] })
+  const nodesWith = (directories: Map<string, DirectoryState>): TreeNode[] =>
+    buildVisibleNodes({
+      entries: [proj],
+      expanded: new Set(path.chain),
+      directories,
+      showHidden: false
+    })
+  type Spy = ReturnType<typeof vi.fn>
+  const settle = (
+    nodes: TreeNode[]
+  ): { settled: boolean; select: Spy; confirm: Spy; warn: Spy } => {
+    const effects = { select: vi.fn(), confirm: vi.fn(), warn: vi.fn() }
+    const settled = settleReveal(nodes, revealProgress(nodes, path.chain, path.target), effects)
+    return { settled, ...effects }
+  }
+
+  it('定位失败：选中最深的一层、确认出错的那一层目录一次、提示', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([dir(aUri, 'other.txt', 'file')])]
+      ])
+    )
+    const r = settle(nodes)
+    expect(r.settled).toBe(true)
+    expect(r.select).toHaveBeenCalledWith(nodes.findIndex((n) => n.id === 'fs:proj:a'))
+    expect(r.confirm).toHaveBeenCalledTimes(1)
+    expect(r.confirm).toHaveBeenCalledWith(aUri)
+    expect(r.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('定位成功：选中目标，不确认、不提示', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([dir(aUri, 'b.txt', 'file')])]
+      ])
+    )
+    const r = settle(nodes)
+    expect(r.settled).toBe(true)
+    expect(r.select).toHaveBeenCalledWith(nodes.findIndex((n) => n.id === path.target))
+    expect(r.confirm).not.toHaveBeenCalled()
+    expect(r.warn).not.toHaveBeenCalled()
+  })
+
+  it('仍在等待：什么都不做', () => {
+    const r = settle(nodesWith(new Map([[projUri, ready([dir(projUri, 'a')])]])))
+    expect(r.settled).toBe(false)
+    expect(r.select).not.toHaveBeenCalled()
+    expect(r.confirm).not.toHaveBeenCalled()
+    expect(r.warn).not.toHaveBeenCalled()
+  })
+
+  it('连条目都不在树中：只提示（没有可选中、可确认的节点）', () => {
+    const r = settle([])
+    expect(r.settled).toBe(true)
+    expect(r.select).not.toHaveBeenCalled()
+    expect(r.confirm).not.toHaveBeenCalled()
+    expect(r.warn).toHaveBeenCalledTimes(1)
   })
 })

@@ -112,3 +112,32 @@ export function revealRecheckUri(nodes: readonly TreeNode[], index: number): str
   if (node.expandable) return node.uri
   return nodes.find((n) => n.id === node.parentId)?.uri ?? null
 }
+
+/** 定位结束时的副作用（由 hook 注入：选中并滚动、让扫描进程确认目录、提示） */
+export interface RevealEffects {
+  /** 选中并滚动到该行、聚焦树 */
+  select: (index: number) => void
+  /** 顺带确认出错的那一层目录（只读，vfs.refresh） */
+  confirm: (uri: string) => void
+  /** 提示「在资源树中找不到」 */
+  warn: () => void
+}
+
+/**
+ * 按进展结束定位：done 选中目标；failed 选中最深的已出现祖先、确认出错的那一层目录
+ * （revealRecheckUri，设计 8.3）并提示；waiting 不做任何事。返回是否已结束。
+ */
+export function settleReveal(
+  nodes: readonly TreeNode[],
+  progress: { state: 'done' | 'waiting' | 'failed'; index: number },
+  effects: RevealEffects
+): boolean {
+  if (progress.state === 'waiting') return false
+  if (progress.index >= 0) effects.select(progress.index)
+  if (progress.state === 'failed') {
+    const uri = revealRecheckUri(nodes, progress.index)
+    if (uri !== null) effects.confirm(uri)
+    effects.warn()
+  }
+  return true
+}

@@ -95,7 +95,7 @@ test.describe('file name search view', () => {
     }
   })
 
-  test('search: revealing a deleted file corrects the cache', async () => {
+  test('search: a stale search hit disappears after reveal', async () => {
     const { app, page } = await launch(userData)
     try {
       await setup(page)
