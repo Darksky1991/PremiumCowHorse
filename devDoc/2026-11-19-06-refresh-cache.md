@@ -80,10 +80,12 @@ Task 10 的改动：
 见设计 [01](./2026-11-19-01-refresh-cache-design.md) 第 7 节「待需求方确认」的 11 条（需求方睡眠期间由控制者按建议推进）。其中需要需求方明确回答或协助的：
 
 - 第 6 条：拿不到写属性权限时（系统盘根目录、只读共享）回退普通枚举、目录的访问时间会被系统更新——是否可以接受；不能接受时网络位置的「全部」与「建立索引」需要加限制或提示。
+  - **已决定（2026-11-19）**：全部位置去掉访问时间保护，读目录一律只读打开；原则改为新表述。见「去掉访问时间保护」。
 - 第 10 条：拒绝临时文件拖入的实机试验（dragover 能否区分虚拟文件、Chromium 副本目录的规律），需要需求方用真实拖放协助；在此之前拒绝 `%TEMP%` 下的全部系统拖入路径。
 - 第 9 条：全局默认级别与刷新间隔暂无界面（M5）。
 - 其余各条（超时计法、断开单位、视口内外、P0 专用并发、隐藏判定、只调度当前工作区、保留的右键菜单项、搜索界面）按设计实现，请一并过目。
 - **I5（最终审查新增）**：为保护访问时间，目录以 `FILE_WRITE_ATTRIBUTES` 打开（只把句柄的 LastAccessTime 设为 -1，不写入任何属性）。在开启了对象访问审核（SACL）的文件服务器上会留下 WriteAttributes 的审核记录，部分 EDR / NAS 可能视为可疑。候选：网络位置默认用只读句柄（网络上的访问时间不受保护）、或按位置可设置。目前未改变行为（doc 7.1 已知限制）。
+  - **已决定（2026-11-19）**：不再以写属性打开，I5 消除。见「去掉访问时间保护」。
 
 ## 遗留事项
 
@@ -120,3 +122,9 @@ Task 10 的改动：
 | M7 通配符与代理对                                       | `globToRegExp` / `globToGroupedRegExp` 加 `u` 标志（转义的字符全是语法字符，u 模式下合法）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `query.test.ts`：`𠮷` 与 `?`、高亮下标                                                                                                                                                                                                                           |
 
 检查结果与 RED / GREEN 证据见 `.superpowers/sdd/2026-11-19-03-refresh-cache-plan/final-fix-wave-report.md`。
+
+## 去掉访问时间保护（2026-11-19）
+
+- **原因**：需求方决定。以写属性打开目录会在开启访问审核的文件服务器上留下 WriteAttributes 记录，安全软件可能视为可疑；UNC 上访问时间早已被他人不断更新，保护没有意义；变化检测用目录的修改时间（LastWriteTime），与访问时间无关，「没变就跳过」的机制不受影响。原则同时改为：「应用不变动文件和目录的数据：不写入、不新建、不删除、不移动、不改名，不长期持有句柄（不能妨碍用户改名或移动）。读取时由系统自动更新的元数据（如访问时间）不在此列。」
+- **改了什么**：`scanner/enum/win32-enumerator.ts` 只以 `FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES` 打开目录；删除 `FILE_WRITE_ATTRIBUTES`、`createWin32Enumerator` 不再接收 `log` 参数（无日志可记）、`SetFileInformationByHandle` 的声明与调用（`protectAccessTime`）、`warnUnprotected` 与「每个位置只记一次」的状态、写属性打开失败后的只读回退（`isFinalOpenError`、`writable`）。`UNAVAILABLE_ERRORS` 与 87 的处理不变，句柄仍在 `finally` 中关闭。文档：CLAUDE.md、doc v1.12、knowledge、本设计与记录文档同步。
+- **测试**：删除 `does not update the directory's last access time`（只为访问时间保护存在）、`falls back to a read-only handle where attributes cannot be written, logging once`、`falls back to a read-only handle when the write-attributes open fails with another refusal`、`closes the handle when protecting the access time fails in koffi`（保护调用已不存在）。新增 `opens directories without requesting write access`（用注入的 CreateFileW 断言访问掩码不含 `0x0100` 与 FILE_ADD_FILE）、`lists a directory on which the current user is denied write-attributes`（icacls 拒绝 WA 时照常枚举、不记日志）、`closes the handle when the first enumeration call fails in koffi`（出错路径关闭句柄）。其余用例不变。

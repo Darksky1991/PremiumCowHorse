@@ -88,6 +88,7 @@
 - 原因：系统盘根目录的 ACL 不给普通用户写属性权限。
 - 解决：枚举器拒绝访问时去掉 `FILE_WRITE_ATTRIBUTES` 重试（此时无法用 LastAccessTime = -1 保护访问时间，按共享 / 盘符记一次日志）。
 - 预防：需要写权限的「保护性」打开都要有只读回退；测试回退路径时用 `icacls /deny *<SID>:(WA)` 构造，不去碰真实的盘根目录。
+- 2026-11-19 起不再使用：需求方决定读目录只用只读句柄，原因是写属性访问会在服务器上留下审核记录；变化检测不依赖访问时间。
 
 ### Bash 工具：命令中的反斜杠被吞（`'\\server'` 变成 `\server`）
 
@@ -111,7 +112,8 @@
 - 症状：（设计阶段实测，Windows 11 本机 NTFS）`fsutil behavior query disablelastaccess` 为 2（System Managed, ENABLED）时，列一次目录后该目录的 LastAccessTime 变化；子文件的访问时间不变（只有读取内容才变）。NTFS 只在与旧值相差超过约 1 小时时写入，所以短时间内重复测试看不出来。
 - 原因：目录枚举本身就是对目录的「访问」，由文件系统更新元数据，与应用是否写文件无关。这违反「应用不得对文件系统产生任何影响」。
 - 解决：koffi 枚举器（`scanner/enum/win32-enumerator.ts`）以 `FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES` + `FILE_FLAG_BACKUP_SEMANTICS` 打开目录，`SetFileInformationByHandle(FileBasicInfo)` 把 LastAccessTime 设为 -1（文档化的「此句柄后续操作不更新访问时间」），再在同一句柄上 `GetFileInformationByHandleEx(FileFullDirectoryInfo)` 枚举；目录自身的修改时间用 `GetFileAttributesExW` 取得（不打开句柄）。拿不到写属性权限（系统盘根目录、只读共享）时回退为只读句柄（访问时间不受保护，按共享 / 盘符记一次日志，见上文「系统盘根目录不能以 `FILE_WRITE_ATTRIBUTES` 打开」）。单元测试 `does not update the directory's last access time` 用「先把 atime 设到很久以前，再枚举」验证（避开 1 小时的写入阈值）。网络共享上是否生效未验证。
-- 预防：判断「是否影响文件系统」时连元数据（访问时间）一起看；测访问时间先把 atime 调到 1 小时以前，否则 NTFS 的写入阈值会让测试假通过。node:fs 回退枚举器（koffi 不可用时）无法保护访问时间。
+- 2026-11-19 起不再使用：需求方决定读目录只用只读句柄，原因是写属性访问会在服务器上留下审核记录；变化检测不依赖访问时间。原则同时改为「读取时由系统自动更新的元数据（如访问时间）不在此列」。
+- 预防（历史）：判断「是否影响文件系统」时连元数据（访问时间）一起看；测访问时间先把 atime 调到 1 小时以前，否则 NTFS 的写入阈值会让测试假通过。node:fs 回退枚举器（koffi 不可用时）无法保护访问时间。
 
 ### Win32 错误码：不认识的码不能一律当作「位置断开」
 

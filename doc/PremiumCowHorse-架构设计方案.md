@@ -1,6 +1,8 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.11　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.12　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.12 变更（去掉访问时间保护，原则改为新表述，记录 `devDoc/2026-11-19-06-refresh-cache.md`「去掉访问时间保护」）：需求方决定读目录一律以只读方式（`FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES`）打开，不再以 `FILE_WRITE_ATTRIBUTES` 打开、不再用 `SetFileInformationByHandle` 设置 LastAccessTime = -1，因此不会在文件服务器上留下 WriteAttributes 类审核记录，I5 随之消除；目录的访问时间按系统设置被更新，属于新原则允许的范围；变化检测用目录的修改时间，与访问时间无关。项目原则改为：「应用不变动文件和目录的数据：不写入、不新建、不删除、不移动、不改名，不长期持有句柄（不能妨碍用户改名或移动）。读取时由系统自动更新的元数据（如访问时间）不在此列。」。涉及 7.1、7.2、19 节与目录结构说明
+>
 > v1.11 变更（扫描引擎与搜索的最终审查修复，记录 `devDoc/2026-11-19-06-refresh-cache.md`「最终审查修复」）：Win32 错误码只有确定的网络 / 设备不可用类映射为 `FS_UNAVAILABLE`（其余为 `UNKNOWN`，只记该目录 unreachable），以写属性打开失败时除不存在与网络 / 设备不可用外都退回只读句柄，87 只在第一批且确认目标不是目录时才是「不是目录」；扫描进程重启 / 降级时主进程对断开的共享发出 `online`，新增 IPC `vfs.offlineShares`，渲染端启动时以它初始化断开状态；共享恢复在线时该共享下的目录查询失效；`listNow` 在 2 秒内检查过（fresh）时不再排 P0（检测到变化后不再多一次完整枚举）；缓存的子树删除改为走主键索引的范围条件（与搜索共用 `subtreeCondition`）；客户端 60 秒兜底超时改为 `FS_TIMEOUT`、不再回退直接枚举；通配符 `?` 按码点匹配；扫描进程 shutdown 的步骤抛错时仍关闭缓存库并退出。新增已知限制 I5（以写属性打开目录在开启对象访问审核的文件服务器上留下 WriteAttributes 记录）。涉及 5.2、5.3、6.3、6.6、7.1、8.3、8.4、12.1、19 节
 > v1.10 变更（文件名搜索完成，设计 `devDoc/2026-11-19-02-search-design.md`（需求方尚未确认，按其第 6 节的控制者决定实现），记录 `devDoc/2026-11-19-07-search.md`）：扫描进程在 `index.db` 中按名称查询（FTS5 trigram + 短词 / 通配词过滤，只读缓存、不访问文件系统），IPC `search.query`；活动栏新增「搜索」视图与 `Ctrl+Shift+F`：输入防抖 150ms、类型筛选、虚拟滚动的结果列表（匹配片段高亮、「条目标签 › 父目录」）、「基于缓存（N 分钟前更新）」与「部分目录尚未扫描」、无结果 / 截断 / 搜索不可用的状态；Enter / 单击经 `stores/navigation-store.ts` 在资源树中定位（展开祖先、逐层等待列表、选中并滚动）。新增 8.4 节，涉及 5.3、6.3、8.4、12.1、12.2、14.2、18 节
 > v1.9 变更（目录刷新与缓存引擎完成，设计 `devDoc/2026-11-19-01-refresh-cache-design.md`，记录 `devDoc/2026-11-19-06-refresh-cache.md`）：删除 `fs.watch` 目录监听，改为扫描进程（utilityProcess）+ 缓存库 `index.db`：koffi 原生枚举（按隐藏属性判断、不更新目录的访问时间）、4 级刷新级别与「建立索引」、P0 / P1 / P2 调度与按位置分组的并发、按「没有进展的时间」计的超时、共享断开时显示缓存与退避重试；条目级刷新级别 / 建立索引的右键菜单与断开图标；按松手位置插入、拒绝临时目录下的系统拖入；删除「用系统应用打开」与 `system.openPath`（需求方决定：资源树只用于展示，对文件的操作都放在将来的预览窗口中，相关的未来设计段落已标注）；主进程启动时记录 koffi（GetDriveTypeW）是否可用。新增原则回归 e2e（展开 `A\B\C` 时改名 `A`）与打包实测、性能记录。涉及 5.2、6.3、7.1、7.2、7.4、8.2、8.3、9.3、9.4、10.6、13、14.1、17、18、19 节
@@ -114,7 +116,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | ssh2-sftp-client | SFTP 客户端 | 基于 ssh2，API 友好 |
 | （不再使用）Node 内置 `fs.watch` | 目录变更监听（M1-2；2026-11-19 起改为扫描 + 缓存，8.3 节） | 监听句柄阻止上级目录改名 / 移动，已删除。v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
 | electron-log | 日志落盘与轮转 | Electron 场景最常用 |
-| koffi 3.3.8（已引入） | FFI 调用 Windows API：目录枚举（`CreateFileW` + `GetFileInformationByHandleEx`，可保护目录访问时间、取得隐藏属性）、`GetDriveTypeW`（区分映射的网络盘） | Node-API 预编译二进制在可选依赖 `@koromix/koffi-win32-x64` 中，安装脚本只检查二进制能否加载、不联网下载；无需针对 Electron ABI 重新编译；打包时 electron-builder 自动把 `koffi.node` 解包到 `app.asar.unpacked` |
+| koffi 3.3.8（已引入） | FFI 调用 Windows API：目录枚举（`CreateFileW` 只读打开 + `GetFileInformationByHandleEx`，一次取得名称、大小、时间、隐藏属性）、`GetDriveTypeW`（区分映射的网络盘） | Node-API 预编译二进制在可选依赖 `@koromix/koffi-win32-x64` 中，安装脚本只检查二进制能否加载、不联网下载；无需针对 Electron ABI 重新编译；打包时 electron-builder 自动把 `koffi.node` 解包到 `app.asar.unpacked` |
 | iconv-lite + jschardet | 文本编码检测与转换 | 对日项目大量 Shift_JIS / EUC-JP 的 CSV、日志、bat |
 | mime | 由扩展名推断 MIME | 体积小 |
 | i18next | 国际化核心（主进程菜单、对话框也要翻译） | 与渲染端共享资源 |
@@ -288,8 +290,8 @@ apps/desktop/src/
 │   ├── main.ts                       # 进程入口：process.parentPort 收发消息；createScannerHost 组装 Enumerator + Cache + Scheduler
 │   ├── enum/
 │   │   ├── types.ts                  # RawEntry、Enumerator 接口
-│   │   ├── win32-enumerator.ts       # koffi：保护访问时间的目录枚举、GetFileAttributesExW 取目录修改时间、Win32 错误码分类
-│   │   ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头，无法保护访问时间）
+│   │   ├── win32-enumerator.ts       # koffi：只读句柄的目录枚举、GetFileAttributesExW 取目录修改时间、Win32 错误码分类
+│   │   ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头）
 │   │   └── create-enumerator.ts      # koffi 可用则用 win32 版，否则回退并记日志
 │   ├── cache/                        # index.db（node:sqlite，可随时删除重建）
 │   └── schedule/                     # scope（范围计算）、scheduler（优先级、并发、退避）、backoff
@@ -555,7 +557,7 @@ export interface FileEntry {
 
 **目录刷新：扫描 + 缓存（2026-11-19 起取代目录监听，设计见 `devDoc/2026-11-19-01-refresh-cache-design.md`）**：
 
-M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上级目录改名 / 移动（违反「应用不得影响文件系统」），因此删除了全部监听代码（`vfs.watch`、`VfsService.setWatched`、`LocalProvider.watch`、渲染端的 `createWatchScheduler` / `useWatchDirectories` / `watchableUris`、`VFS_WATCH_MAX`、目录列表的 2 秒新鲜期与 focusManager 的聚焦设置、设置 `remote.pollIntervalSec`），改为扫描进程（5.2 节）缓存目录列表并按优先级检查。
+M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上级目录改名 / 移动（违反原则：「应用不变动文件和目录的数据：不写入、不新建、不删除、不移动、不改名，不长期持有句柄（不能妨碍用户改名或移动）。读取时由系统自动更新的元数据（如访问时间）不在此列。」），因此删除了全部监听代码（`vfs.watch`、`VfsService.setWatched`、`LocalProvider.watch`、渲染端的 `createWatchScheduler` / `useWatchDirectories` / `watchableUris`、`VFS_WATCH_MAX`、目录列表的 2 秒新鲜期与 focusManager 的聚焦设置、设置 `remote.pollIntervalSec`），改为扫描进程（5.2 节）缓存目录列表并按优先级检查。
 
 已实现：
 
@@ -571,7 +573,7 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
   - `isUnderUri` 大小写敏感：大小写不同的同一目录被视为不同目录（URI 都来自条目 + `pathToFileURL(path.join(...))`，实际保持一致）。
   - 窗口初始的焦点状态不下发；窗口在后台创建、从未获得焦点时，扫描进程仍按已聚焦调度。
   - Playwright 产生不了真实的焦点切换，e2e 直接触发 BrowserWindow 的 `blur` / `focus` 事件；真实 Alt+Tab 未验证。
-  - **I5（待需求方决定）**：为保护访问时间，目录以 `FILE_WRITE_ATTRIBUTES` 打开（并把句柄的 LastAccessTime 设为 -1，不实际写入任何属性）。在开启了对象访问审核（SACL）的文件服务器上，这种打开会留下 WriteAttributes 的审核记录，部分 EDR / NAS 可能视为可疑。候选：网络位置默认用只读句柄（网络上的访问时间不受保护）、或按位置可设置。目前未改变行为。
+  - **访问时间（I5 已消除）**：读目录以只读方式（`FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES`）打开，不再以写属性打开，因此不会产生 WriteAttributes 类审核记录；目录自身的访问时间会按系统设置被更新（属于新原则允许的「读取时由系统自动更新的元数据」）。变化检测用目录的修改时间，与访问时间无关。网络位置上本来就有大量访问，访问时间早已被他人不断更新。
 
 ### 7.2 各 Provider 要点
 
@@ -694,7 +696,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 | 资源 | 检查方式 |
 |---|---|
-| 本地磁盘 | 目录修改时间 + 枚举（koffi 原生枚举，不更新目录的访问时间）；关注点与视口内的已展开目录每次完整枚举 |
+| 本地磁盘 | 目录修改时间 + 枚举（koffi 原生枚举，只读句柄；目录的访问时间由系统按设置更新）；关注点与视口内的已展开目录每次完整枚举 |
 | 网络路径：UNC、映射的网络盘（M1）、未挂载 SMB（M4，内部转换为 UNC） | 同本地；每台服务器同时 1 个后台检查 + 1 个用户动作；断开时显示缓存、按退避重试 |
 | FTP / SFTP（M4） | 目录修改时间不可靠 → 检查 = 重新列出 |
 
@@ -1297,8 +1299,8 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | 从 zip / Outlook / 浏览器拖入「虚拟文件」时 Chromium 在浏览器进程中把副本写入临时目录（在我们接受放置之后、drop 时写出；未经真机验证） | 副本留在临时目录（应用不写、不删） | 拒绝 `app.getPath('temp')` 之下的系统拖入路径（`ENTRY_TEMPORARY_PATH`）；待实机确认 Chromium 副本目录的规律后可收窄，见 8.2 节 |
 | 扫描期间持有目录句柄（M1-2 的 `fs.watch` 长期持有句柄、阻止上级改名，已于 2026-11-19 删除） | 枚举恰好与改名 / 移动上级目录重叠时，资源管理器中的操作失败 | 句柄只在一次枚举期间持有（本地毫秒级），结束（含出错、取消）立即关闭；以允许读、写、删除的共享方式打开；原则回归 e2e（展开 `A\B\C` 时改名 `A` 10 次）全部成功（8.3 节）。网络上的大目录一次枚举可能更长（未实测） |
 | 后台扫描给共享文件服务器带来负载 | 影响同事与服务器 | 网络位置默认级别为「默认」（不做全树扫描）；每台主机后台同时 1 个枚举、两次 P2 之间停顿 200ms；目录修改时间不变时不枚举；断开的共享只按退避（30 秒起、最长 5 分钟）探测一个目录。「全部」与「建立索引」用于网络上的大树时一轮可能数小时（预期的「慢而不打扰」） |
-| 枚举更新目录自身的最后访问时间（本机实测：系统管理的访问时间更新为启用） | 应用对文件系统产生了元数据变化 | koffi 枚举器以 `FILE_WRITE_ATTRIBUTES` 打开目录并把 LastAccessTime 设为 -1（此句柄不更新访问时间，本地已实测）；以写属性打开失败（系统盘根目录、只读共享、不支持写属性的 NAS 等；不存在与网络 / 设备不可用除外）时回退只读句柄枚举并按共享 / 盘符记一次日志；在开启对象访问审核的服务器上留下 WriteAttributes 记录（I5，7.1 节已知限制，待需求方决定）；网络共享上是否生效未验证。回退时是否可接受待需求方确认（设计第 7 节第 6 条） |
-| koffi 加载失败（二进制缺失、平台不支持、打包遗漏） | 失去原生枚举：隐藏文件退回按 `.` 判断、访问时间不受保护；主进程无法识别映射的网络盘 | 扫描进程回退 `node:fs` 枚举并记警告（`[enumerator] native enumeration unavailable …`），主进程启动时记录 `[vfs] drive type detection` 的结果；打包后实测两个进程都能加载（devDoc 06） |
+| 枚举会让系统更新目录自身的最后访问时间（本机实测：系统管理的访问时间更新为启用） | 属于新原则允许的「读取时由系统自动更新的元数据」；曾经的写属性审核记录风险（I5）也不存在 | koffi 枚举器以只读句柄（`FILE_LIST_DIRECTORY \| FILE_READ_ATTRIBUTES`）打开目录，不请求任何写权限，因此不会产生 WriteAttributes 类审核记录；变化检测用目录修改时间，不依赖访问时间（需求方 2026-11-19 决定，设计第 7 节第 6 条） |
+| koffi 加载失败（二进制缺失、平台不支持、打包遗漏） | 失去原生枚举：隐藏文件退回按 `.` 判断；主进程无法识别映射的网络盘 | 扫描进程回退 `node:fs` 枚举并记警告（`[enumerator] native enumeration unavailable …`），主进程启动时记录 `[vfs] drive type detection` 的结果；打包后实测两个进程都能加载（devDoc 06） |
 | 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时（`FS_TIMEOUT`，不回退直接枚举）；重启 / 降级时断开状态复位（主进程发出 `online`）；意外退出立即重启并重发配置与关注点，5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节）；`index.db` 损坏时删除重建 |
 | `index.db` 随树的规模增大 | 占用用户磁盘 | 只缓存工作区 folder 条目之下的目录，配置变化后清理；可随时删除重建（`vfs.clearCache`，界面随 M5）；1 万目录 / 10 万文件的实测大小见 devDoc 06 |
 

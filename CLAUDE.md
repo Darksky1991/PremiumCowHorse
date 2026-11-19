@@ -66,6 +66,7 @@ pnpm test:e2e       # Playwright Electron（需先 build）
 - `apps/desktop`：electron-vite 目录约定 `src/{main,preload,renderer}`；`packages/{shared,i18n,ui,plugin-sdk}`。
 - **分层由 lint 强制**（`eslint.config.mjs`）：主进程 `ipc → modules → infra/core`，模块之间不互相 import；渲染端 `app → features → providers/data/stores/lib`，feature 之间不互相 import；新目录先在 `eslint.config.mjs` 登记。
 - **IPC**：契约在 `packages/shared/src/ipc/contract.ts`（zod 校验输入），传输只有 `pch:invoke` / `pch:event` 两个通道。新增通道：契约 → 主进程 handler（漏写编译失败）→ 渲染端 `call()`。
+- **文件系统原则**：应用不变动文件和目录的数据：不写入、不新建、不删除、不移动、不改名，不长期持有句柄（不能妨碍用户改名或移动）。读取时由系统自动更新的元数据（如访问时间）不在此列。
 - **安全**：`sandbox: true`、`contextIsolation`；preload 只暴露 `window.pch`，不能用 Node API（如 `Buffer`）；CSP 不允许内联脚本；不向页面暴露 `ipcRenderer`。
 - **设置**：唯一定义在 `packages/shared/src/settings/schema.ts`；数据库只存与默认值不同的键。
 - **数据库**：node:sqlite + Kysely；改表结构 = 新增迁移文件（发布后不得修改）+ 更新 `schema.ts` 类型。
