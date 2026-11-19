@@ -26,7 +26,9 @@ CREATE TABLE dirs (
 );
 CREATE INDEX dirs_parent ON dirs (parent_uri);
 -- 后台缓存队列（Cache.nextUnlisted / oldestChecked）。checked_at 为 NULL = 从未尝试读取；两个部分索引
--- 互不重叠，覆盖整个队列顺序（范围大时按索引顺序扫描 + LIMIT，30 万行下整卷查询不到 1ms）
+-- 互不重叠，覆盖整个队列顺序（范围大时按索引顺序扫描 + LIMIT）。实测（30 万行合成数据 C:/r*/d*/e*，limit 20）：
+-- 整卷、层数不限约 0.2–0.3ms（内存库 / 文件库）；整卷且层数上限很小（maxDepth 1，符合条件的行在 checked_at
+-- 顺序中很稀疏）时 oldestChecked 要扫很多行：内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊
 CREATE INDEX dirs_unlisted ON dirs (depth, uri) WHERE checked_at IS NULL;
 CREATE INDEX dirs_checked ON dirs (checked_at, uri, depth) WHERE checked_at IS NOT NULL;
 

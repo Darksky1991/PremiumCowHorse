@@ -151,3 +151,11 @@
 - 原因：`toggle` 的选中样式是 `aria-pressed:bg-muted`；neutral 主题下 `--muted`（oklch 0.97）与侧栏背景 `--sidebar`（oklch 0.985）几乎相同。组件按约定不手改样式。
 - 解决：改用 shadcn `tabs`（`TabsList` 为 `bg-muted`，选中的 `TabsTrigger` 为 `bg-background` + 阴影，侧栏上对比明显）；只切换结果列表的内容，不使用 `TabsContent`。已删除未使用的 `toggle` / `toggle-group`。e2e 中按 `role="tab"` + `aria-selected` 断言。
 - 预防：在 `bg-sidebar` 上使用以 `bg-muted` 表示状态的组件时，先看整窗截图再决定。
+
+### node:sqlite / SQLite：「按优先级取下一个目录」的查询要靠部分索引 + `INDEXED BY` + 批量候选
+
+- 日期：2026-11-19
+- 症状：后台缓存队列每选一个目录查一次 `index.db`（`Cache.nextUnlisted` / `oldestChecked`：范围 + 层数上限过滤，按 `(depth, uri)` 或 `checked_at` 排序，LIMIT N）。最初的实现在整卷范围上是 O(行数)：文件库 30 万行约 240–430ms，每 0.5 秒一次，相当于持续占用一个核的一大部分。
+- 原因：SQLite 对「主键范围 + 额外过滤 + 另一列排序 + LIMIT」选择按主键范围扫描再 `USE TEMP B-TREE FOR ORDER BY`，要读完整个范围才能排序；层数只能从 URI 算，无法进索引。
+- 解决：`scanner/cache/cache-schema.ts` 加生成列 `depth` 与两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL`、`dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`；先探测范围大小（数到 2000 为止），范围小走主键范围 + 排序，范围大用 `INDEXED BY` 强制按队列索引顺序扫描 + LIMIT（`cache.ts` 的 `queueQuery`）。整卷、层数不限降到约 0.2–0.3ms（30 万行，内存库 / 文件库）。残余：整卷而层数上限很小（`maxDepth` 1）时，符合条件的行在 `checked_at` 顺序中很稀疏，`oldestChecked` 仍要扫很多行（内存库约 15ms，文件库约 25–45ms），所以后台队列（`schedule/background-queue.ts`）一次取一批候选（④ 200 个、其余 50 个）在内存中逐个消费，平摊到每次选择约 0.04–0.2ms（数字与条件见 `devDoc/2026-11-19-09-cache-strategy.md`）。
+- 预防：会被频繁调用的 SQLite 查询，用接近真实的数据形状、**文件库**（不只是内存库）测最坏的范围与过滤条件；用 `EXPLAIN QUERY PLAN` 在单元测试中断言计划（不出现裸 `SCAN` / `TEMP B-TREE`）；高频选择优先「批量取、内存中消费」，而不是每次一条查询。报告性能数字时写明内存库 / 文件库、行数、范围与层数上限。
