@@ -42,7 +42,8 @@ export type ScannerConfig = z.infer<typeof ScannerConfig>
 const InterestSchema = z.strictObject({
   focus: uri.nullable(),
   visible: z.array(uri),
-  offscreen: z.array(uri)
+  offscreen: z.array(uri),
+  tabs: z.array(uri)
 }) satisfies z.ZodType<Interest>
 
 const ReachabilitySchema = z.strictObject({

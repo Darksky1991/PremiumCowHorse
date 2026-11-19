@@ -92,7 +92,7 @@ describe('vfsHandlers 的其他通道', () => {
     const interest = vi.fn()
     const refresh = vi.fn()
     const { handlers } = setup({ available: true, interest, refresh })
-    const i = { focus: uri, visible: [uri], offscreen: [] }
+    const i = { focus: uri, visible: [uri], offscreen: [], tabs: [uri] }
     await handlers['vfs.interest'](i, ctx)
     expect(interest).toHaveBeenCalledWith(7, i)
     await handlers['vfs.refresh']({ uris: [uri] }, ctx)

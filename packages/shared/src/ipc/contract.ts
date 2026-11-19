@@ -18,6 +18,8 @@ import type { Workspace, WorkspaceEntry } from '../workspace/types'
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
 export const VFS_INTEREST_VISIBLE_MAX = 2000
 export const VFS_INTEREST_OFFSCREEN_MAX = 5000
+/** vfs.interest 的 tabs（标签中显示的目录）的上限 */
+export const VFS_INTEREST_TABS_MAX = 8
 export const VFS_REFRESH_MAX = 500
 
 /** route<输出类型>()(输入 schema)：输入由 zod 运行时校验，输出只做类型约束 */
@@ -74,12 +76,16 @@ export const ipcContract = {
     z.strictObject({ uri: z.string().min(1), requestId: z.string().min(1).optional() })
   ),
   'vfs.cancel': route<void>()(z.strictObject({ requestId: z.string().min(1) })),
-  /** 本窗口的关注点与已展开目录（视口内 / 外，整体替换）；缓存内容变化经 vfs.changed 广播 */
+  /**
+   * 本窗口的关注点、已展开目录（视口内 / 外）与标签中显示的目录（整体替换）；
+   * 缓存内容变化经 vfs.changed 广播
+   */
   'vfs.interest': route<void>()(
     z.strictObject({
       focus: z.string().min(1).nullable(),
       visible: z.array(z.string().min(1)).max(VFS_INTEREST_VISIBLE_MAX),
-      offscreen: z.array(z.string().min(1)).max(VFS_INTEREST_OFFSCREEN_MAX)
+      offscreen: z.array(z.string().min(1)).max(VFS_INTEREST_OFFSCREEN_MAX),
+      tabs: z.array(z.string().min(1)).max(VFS_INTEREST_TABS_MAX)
     })
   ),
   /** F5 / 刷新按钮 / 「重试」：立即检查这些目录（断开的共享也立即尝试一次） */

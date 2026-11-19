@@ -1,4 +1,5 @@
-import { VFS_INTEREST_OFFSCREEN_MAX, VFS_INTEREST_VISIBLE_MAX, type Interest } from '@pch/shared'
+import { VFS_INTEREST_OFFSCREEN_MAX, VFS_INTEREST_VISIBLE_MAX } from '@pch/shared'
+import type { TreeInterest } from '@renderer/data/vfs'
 import type { TreeNode } from './tree-model'
 
 /** 虚拟滚动实际渲染的行范围（含 overscan，两端都包含）；没有渲染任何行时为 null */
@@ -45,7 +46,7 @@ function focusOf(
 }
 
 /**
- * 资源树 → 告诉扫描进程的关注点（vfs.interest，设计 4.6）。
+ * 资源树 → 告诉扫描进程的关注点（vfs.interest 中资源树的部分，设计 4.6；标签的部分见 features/tabs）。
  * visible：视口内（range 内的行）所属的已展开目录，以及行本身为已展开目录者；
  * offscreen：其余已展开目录。都按树中自上而下的顺序、去重，超过 IPC 上限时截断。
  */
@@ -53,7 +54,7 @@ export function interestFromTree(
   nodes: readonly TreeNode[],
   range: RowRange | null,
   selectedId: string | null
-): Interest {
+): TreeInterest {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const visible = new Set<string>()
   if (range !== null) {

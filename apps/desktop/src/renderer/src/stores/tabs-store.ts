@@ -58,3 +58,15 @@ export const selectTabs =
   (workspaceId: string | undefined) =>
   (s: Pick<TabsStore, 'byWorkspace'>): TabsState =>
     (workspaceId === undefined ? undefined : s.byWorkspace[workspaceId]) ?? EMPTY
+
+/**
+ * 工作区的激活标签显示目录时为其 URI，否则为 null（文件、没有标签）。
+ * 标签区据此告诉扫描进程「标签中显示的目录」（vfs.interest 的 tabs，按关注点处理）
+ */
+export const selectActiveDirectory =
+  (workspaceId: string | undefined) =>
+  (s: Pick<TabsStore, 'byWorkspace'>): string | null => {
+    const { tabs, activeId } = selectTabs(workspaceId)(s)
+    const active = tabs.find((t) => t.id === activeId)
+    return active?.kind === 'directory' ? active.uri : null
+  }

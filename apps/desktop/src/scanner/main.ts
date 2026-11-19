@@ -162,7 +162,8 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
           scheduler.setInterest(m.ownerId, {
             focus: m.focus,
             visible: m.visible,
-            offscreen: m.offscreen
+            offscreen: m.offscreen,
+            tabs: m.tabs
           })
         )
       case 'windowFocus':

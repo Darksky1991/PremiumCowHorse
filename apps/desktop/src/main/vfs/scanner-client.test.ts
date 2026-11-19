@@ -135,7 +135,7 @@ describe('ScannerClient', () => {
     const { client, fork, port, ports, log } = setup()
     client.configure(config)
     client.windowFocus(5, false)
-    client.interest(5, { focus: 'file:///C:/a', visible: [], offscreen: [] })
+    client.interest(5, { focus: 'file:///C:/a', visible: [], offscreen: [], tabs: [] })
     const pending = client.list('file:///C:/a')
 
     ports[0]!.exit(1)
@@ -148,7 +148,7 @@ describe('ScannerClient', () => {
       { type: 'init', cacheFile: 'C:\\data\\cache\\index.db' },
       { type: 'configure', config },
       { type: 'windowFocus', ownerId: 5, focused: false },
-      { type: 'interest', ownerId: 5, focus: 'file:///C:/a', visible: [], offscreen: [] }
+      { type: 'interest', ownerId: 5, focus: 'file:///C:/a', visible: [], offscreen: [], tabs: [] }
     ])
     expect(client.available).toBe(true)
     // 旧进程迟到的消息不影响新进程的请求
@@ -160,7 +160,7 @@ describe('ScannerClient', () => {
 
   it('does not replay owners that were released', () => {
     const { client, port, ports } = setup()
-    client.interest(5, { focus: null, visible: [], offscreen: [] })
+    client.interest(5, { focus: null, visible: [], offscreen: [], tabs: [] })
     client.releaseOwner(5)
     ports[0]!.exit(1)
     expect(port().sent.map((m) => m.type)).toEqual(['init'])

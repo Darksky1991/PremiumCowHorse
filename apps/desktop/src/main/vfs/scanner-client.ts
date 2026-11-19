@@ -111,7 +111,12 @@ export class ScannerClient {
   }
 
   interest(ownerId: number, i: Interest): void {
-    const interest = { focus: i.focus, visible: [...i.visible], offscreen: [...i.offscreen] }
+    const interest = {
+      focus: i.focus,
+      visible: [...i.visible],
+      offscreen: [...i.offscreen],
+      tabs: [...i.tabs]
+    }
     this.owner(ownerId).interest = interest
     this.send({ type: 'interest', ownerId, ...interest })
   }

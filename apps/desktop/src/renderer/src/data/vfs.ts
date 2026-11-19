@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useQueries, useQuery, type QueryClient, type UseQueryResult } from '@tanstack/react-query'
 import {
   AppError,
+  VFS_INTEREST_TABS_MAX,
   VFS_REFRESH_MAX,
   type DirectoryListing,
   type ErrorCode,
@@ -185,13 +186,14 @@ export async function confirmDirectory(uri: string, invoke: Invoke = call): Prom
 }
 
 const INTEREST_DEBOUNCE_MS = 300
-const EMPTY_INTEREST: Interest = { focus: null, visible: [], offscreen: [] }
+
+/** 资源树给出的部分（关注点与视口内外的已展开目录） */
+export type TreeInterest = Omit<Interest, 'tabs'>
+const EMPTY_TREE: TreeInterest = { focus: null, visible: [], offscreen: [] }
 
 export interface InterestSender {
   /** 设置当前关注点（防抖后发送；与上次发送的内容相同则不发送） */
   set(interest: Interest): void
-  /** 取消待发送的防抖并立即发送空关注点 */
-  dispose(): void
 }
 
 /** vfs.interest 的防抖（滚动停止后发送，设计 4.6）；与 React 无关，便于单元测试 */
@@ -211,34 +213,64 @@ export function createInterestSender(
         lastSent = key
         send(interest)
       }, delayMs)
-    },
-    dispose() {
-      if (timer !== undefined) clearTimeout(timer)
-      timer = undefined
-      lastSent = null
-      send(EMPTY_INTEREST)
     }
   }
 }
 
-/** 把本窗口的关注点同步给主进程（扫描进程据此调度）；卸载时发送空关注点 */
-export function useVfsInterest(interest: Interest): void {
-  const senderRef = useRef<InterestSender | null>(null)
+export interface InterestHub {
+  /** 资源树的部分；资源树卸载时设为空 */
+  setTree(tree: TreeInterest): void
+  /** 标签中显示的目录（去重，超过 IPC 上限截断）；标签区卸载时设为空 */
+  setTabs(tabs: readonly string[]): void
+}
 
-  useEffect(() => {
-    const sender = createInterestSender((i) => {
-      void call('vfs.interest', i).catch(() => undefined)
-    })
-    senderRef.current = sender
-    return () => {
-      sender.dispose()
-      senderRef.current = null
+/**
+ * 本窗口关注点的两个来源——资源树（features/explorer）与标签（features/tabs）——合并为一个
+ * vfs.interest，经同一个防抖发送（主进程按窗口整体替换，两个来源各发一次会互相覆盖）。
+ * 一个来源卸载只清空自己的部分：侧栏切到搜索视图时，标签中的目录仍是关注点。
+ */
+export function createInterestHub(
+  send: (interest: Interest) => void,
+  delayMs: number = INTEREST_DEBOUNCE_MS
+): InterestHub {
+  const sender = createInterestSender(send, delayMs)
+  let tree = EMPTY_TREE
+  let tabs: string[] = []
+  const flush = (): void => sender.set({ ...tree, tabs })
+  return {
+    setTree(next) {
+      tree = next
+      flush()
+    },
+    setTabs(next) {
+      tabs = [...new Set(next)].slice(0, VFS_INTEREST_TABS_MAX)
+      flush()
     }
-  }, [])
+  }
+}
 
+/** 本窗口唯一的合并器（首次使用时创建；发送失败忽略——下一次变化会再发送整体） */
+let windowHub: InterestHub | null = null
+const hub = (): InterestHub =>
+  (windowHub ??= createInterestHub((i) => {
+    void call('vfs.interest', i).catch(() => undefined)
+  }))
+
+/** 资源树的关注点与已展开目录同步给主进程（扫描进程据此调度）；卸载时清空这一部分 */
+export function useVfsInterest(tree: TreeInterest): void {
   // 以内容而非引用判断是否变化
-  const key = JSON.stringify(interest)
+  const key = JSON.stringify(tree)
   useEffect(() => {
-    senderRef.current?.set(JSON.parse(key) as Interest)
+    hub().setTree(JSON.parse(key) as TreeInterest)
   }, [key])
+  useEffect(() => () => hub().setTree(EMPTY_TREE), [])
+}
+
+/** 标签中显示的目录同步给主进程（按关注点处理）；卸载时清空这一部分 */
+export function useVfsTabsInterest(tabs: readonly string[]): void {
+  const key = JSON.stringify(tabs)
+  useEffect(() => {
+    hub().setTabs(JSON.parse(key) as string[])
+  }, [key])
+  useEffect(() => () => hub().setTabs([]), [])
 }

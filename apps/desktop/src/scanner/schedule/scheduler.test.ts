@@ -233,7 +233,7 @@ const root = (
   location: RootConfig['location'] = uri.startsWith('file:///') ? 'local' : 'network'
 ): RootConfig => ({ entryId: `e-${uri}`, workspaceId: 'w', uri, strategy, location })
 
-const none = { focus: null, visible: [], offscreen: [] }
+const none = { focus: null, visible: [], offscreen: [], tabs: [] }
 
 let disposers: (() => void)[] = []
 afterEach(() => {
@@ -320,7 +320,7 @@ describe('Scheduler: periodic checks', () => {
     const U = fs.addDir(G, 'u')
     const V = fs.addDir(R, 'v')
     const O = fs.addDir(R, 'o')
-    s.setInterest(1, { focus: F, visible: [V], offscreen: [O] })
+    s.setInterest(1, { focus: F, visible: [V], offscreen: [O], tabs: [] })
     // 近 / 远层的确认之间至少间隔 PERIODIC_GAP_MS（本地 50ms）：这些目录在 1 秒内依次确认
     await clock.advance(1000)
     const near = [P, S, V]
@@ -345,7 +345,7 @@ describe('Scheduler: periodic checks', () => {
     const A = fs.addDir(R, 'a')
     fs.addDir(A, 'c')
     const V = fs.addDir(R, 'v')
-    s.setInterest(1, { focus: A, visible: [V], offscreen: [R] })
+    s.setInterest(1, { focus: A, visible: [V], offscreen: [R], tabs: [] })
     await clock.advance(200_000)
     expect(new Set(fs.calls.map((c) => c.uri))).toEqual(new Set([A]))
     expect(fs.count('list', A)).toBe(1 + 200_000 / 5000)
@@ -382,6 +382,33 @@ describe('Scheduler: periodic checks', () => {
     expect(fs.calls.length).toBe(n)
   })
 
+  it('directories shown in tabs are checked at once and fully read every focus interval', async () => {
+    const { clock, fs, s } = setup([root(R)])
+    const A = fs.addDir(R, 'a')
+    const T = fs.addDir(R, 't')
+    s.setInterest(1, { ...none, focus: A, tabs: [T] })
+    await clock.advance(0)
+    // 新出现的标签目录以 P0 立即完整读取
+    expect(fs.count('list', T)).toBe(1)
+    await clock.advance(10_000)
+    expect(fs.count('list', T)).toBe(3)
+
+    // 切回窗口时与关注点一起以 P0 检查（失焦 3 秒：超过 P0 去重、不到下一次定期确认）
+    s.setWindowFocus(1, false)
+    await clock.advance(3000)
+    expect(fs.count('list', T)).toBe(3)
+    s.setWindowFocus(1, true)
+    await clock.advance(0)
+    expect(fs.count('list', T)).toBe(4)
+
+    // 关闭标签后不再定期读取
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    const m = fs.count('list', T)
+    await clock.advance(60_000)
+    expect(fs.count('list', T)).toBe(m)
+  })
+
   it('emits changed only when the listing differs', async () => {
     const { clock, fs, s, changed } = setup([root(R)])
     fs.addFile(R, 'a.txt')
@@ -404,7 +431,7 @@ describe('Scheduler: periodic checks', () => {
     const A = fs.addDir(R, 'a')
     const B = fs.addDir(R, 'b')
     const X = fs.addDir(A, 'x')
-    s.setInterest(1, { focus: null, visible: [A], offscreen: [B] })
+    s.setInterest(1, { focus: null, visible: [A], offscreen: [B], tabs: [] })
     await clock.advance(3 * 3_600_000)
     for (const u of [R, A, B, X]) {
       expect(fs.count('list', u), u).toBe(1)
@@ -1299,7 +1326,7 @@ describe('Scheduler: P0, concurrency and errors', () => {
       code: 'FS_UNSUPPORTED_SCHEME'
     })
     s.refresh(['not a uri'])
-    s.setInterest(1, { focus: 'not a uri', visible: ['::'], offscreen: [] })
+    s.setInterest(1, { focus: 'not a uri', visible: ['::'], offscreen: [], tabs: ['::'] })
     expect(s.isOffline('not a uri')).toBe(false)
     await clock.advance(0)
     expect(fs.count('list', R)).toBe(1)
@@ -1361,7 +1388,7 @@ describe('Scheduler: many sibling directories', () => {
       return getDir(uri)
     }
     // 只改变可见范围：重新计算范围，不触发检查
-    s.setInterest(1, { focus: siblings[0]!, visible: [V], offscreen: [] })
+    s.setInterest(1, { focus: siblings[0]!, visible: [V], offscreen: [], tabs: [] })
     await clock.advance(0)
     expect(reads).toBeGreaterThan(0)
     expect(reads).toBeLessThanOrEqual(3 * TIER_LIMIT)

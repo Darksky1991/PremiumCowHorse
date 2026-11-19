@@ -170,14 +170,21 @@ function gateAt(map: Map<string, number>, key: string, now: number, max: number)
   return now + max
 }
 
+const NO_INTEREST: Interest = { focus: null, visible: [], offscreen: [], tabs: [] }
+
+/** 按关注点处理的目录：选中的关注点与标签中显示的目录（去重） */
+const focusUris = (i: Interest): string[] => [
+  ...new Set(i.focus === null ? i.tabs : [i.focus, ...i.tabs])
+]
+
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
 
 /**
  * 调度器（扫描进程，设计 4.3 / 4.7 / 8.2）：按优先级安排目录检查，维护缓存并发出通知。缓存不设过期。
  *
- * - P0：用户动作（listNow、refresh、关注点变化、窗口重新获得焦点、回到视口），立即；同一目录 2 秒内去重。
- * - 定期确认：各窗口的关注点周边按远近分层（computeScope），按层与位置的间隔；关注点每次完整读取，
+ * - P0：用户动作（listNow、refresh、关注点变化、新显示在标签中的目录、窗口重新获得焦点、回到视口），立即；同一目录 2 秒内去重。
+ * - 定期确认：各窗口的关注点周边按远近分层（computeScope），按层与位置的间隔；关注点与标签中显示的目录每次完整读取，
  *   近 / 远先比较目录修改时间。所有窗口都失焦（或没有窗口）时暂停。
  * - 后台队列（BackgroundQueue）：按优先级从缓存逐个选目录，每个位置组同时 1 个，完成后休息
  *   backgroundGapMs（用户正在操作时加倍）；窗口失焦时照常。
@@ -286,20 +293,28 @@ export class Scheduler {
       focused: prev?.focused ?? true,
       focus: interest.focus !== null && isValidUri(interest.focus) ? interest.focus : null,
       visible: interest.visible.filter(isValidUri),
-      offscreen: interest.offscreen.filter(isValidUri)
+      offscreen: interest.offscreen.filter(isValidUri),
+      tabs: interest.tabs.filter(isValidUri)
     }
     this.owners.set(ownerId, o)
-    const before = prev ?? { focus: null, visible: [], offscreen: [] }
+    const before = prev ?? NO_INTEREST
     if (
       o.focus !== before.focus ||
       !sameList(o.visible, before.visible) ||
-      !sameList(o.offscreen, before.offscreen)
+      !sameList(o.offscreen, before.offscreen) ||
+      !sameList(o.tabs, before.tabs)
     ) {
       this.lastInterestChange = this.now()
     }
     if (o.focus !== null && o.focus !== prev?.focus) {
       this.cache.visit(o.focus, this.now())
       this.requestP0(o.focus)
+    }
+    // 新显示在标签中的目录：与关注点一样立即完整读取一次
+    for (const t of o.tabs) {
+      if (t === o.focus || before.tabs.includes(t)) continue
+      this.cache.visit(t, this.now())
+      this.requestP0(t)
     }
     // 滚回视口的已展开目录：立即完整枚举一次
     if (prev) {
@@ -313,14 +328,14 @@ export class Scheduler {
     if (this.disposed) return
     const o = this.owners.get(ownerId)
     if (!o) {
-      this.owners.set(ownerId, { focused, focus: null, visible: [], offscreen: [] })
+      this.owners.set(ownerId, { focused, ...NO_INTEREST })
       this.invalidateScope()
       return
     }
     const refocus = focused && !o.focused
     o.focused = focused
     // 断开的共享不因切回窗口而重连（requestP0 对断开的共享不排队）
-    if (refocus && o.focus !== null) this.requestP0(o.focus)
+    if (refocus) for (const u of focusUris(o)) this.requestP0(u)
     this.requestPump()
   }
 
@@ -521,7 +536,8 @@ export class Scheduler {
       }
       due.sort((a, b) => a[1].next - b[1].next)
       for (const [uri, it] of due) {
-        if (this.running.has(uri) || this.isOffline(uri)) continue
+        // 排队中的 P0 会完整读取并重新排期（关注点与标签目录同时变化时 P0 通道上排队）
+        if (this.running.has(uri) || this.p0.has(uri) || this.isOffline(uri)) continue
         // 近 / 远层：同一位置组的两次确认之间至少间隔 PERIODIC_GAP_MS
         const group = it.tier === 'focus' ? null : this.groupKey(uri)
         const gap = PERIODIC_GAP_MS[this.enumerator.location(uri)]
@@ -565,10 +581,7 @@ export class Scheduler {
   private recompute(): void {
     const hot = this.cache.hot(HOT_K)
     const children = (u: string): string[] => this.cache.childDirs(u)
-    const interests: Interest[] =
-      this.owners.size > 0
-        ? [...this.owners.values()]
-        : [{ focus: null, visible: [], offscreen: [] }]
+    const interests: Interest[] = this.owners.size > 0 ? [...this.owners.values()] : [NO_INTEREST]
     const items = new Map<string, { tier: Tier; full: boolean }>()
     const hotSet = new Set<string>()
     const ranges: Scope[] = []
@@ -579,6 +592,7 @@ export class Scheduler {
         focus: i.focus,
         visible: i.visible,
         offscreen: i.offscreen,
+        tabs: i.tabs,
         hot,
         indexTargets: this.indexTargets,
         activeDepth: this.settings.activeDepth,
@@ -918,7 +932,7 @@ export class Scheduler {
     this.queue.invalidate()
     this.events.reachability(share, 'online', this.now())
     for (const o of this.owners.values()) {
-      if (o.focus !== null && this.enumerator.shareKey(o.focus) === share) this.requestP0(o.focus)
+      for (const u of focusUris(o)) if (this.enumerator.shareKey(u) === share) this.requestP0(u)
     }
     this.requestPump()
   }

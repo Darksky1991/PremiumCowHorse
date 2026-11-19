@@ -34,6 +34,8 @@ export interface Interest {
   visible: string[]
   /** 已展开但滚出视口的目录 */
   offscreen: string[]
+  /** 标签中显示的目录（激活标签显示的目录；按关注点处理：每次完整读取、关注点间隔） */
+  tabs: string[]
 }
 
 /** 共享（`\\host\share`，小写）或卷（`C:`）的可达状态变化；since 为进入该状态的时刻（Unix 毫秒） */

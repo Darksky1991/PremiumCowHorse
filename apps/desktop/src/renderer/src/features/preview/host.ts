@@ -1,5 +1,5 @@
 import type { HostSettings, PreviewHost, ToastType } from '@pch/plugin-sdk'
-import { AppError, type DirectoryListing } from '@pch/shared'
+import { AppError, isUnderUri, type DirectoryListing } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
 import type { TabTarget } from '@renderer/stores/tabs-store'
@@ -31,6 +31,8 @@ export interface PreviewHostDeps {
   language: string
   theme: 'light' | 'dark'
   settings: Partial<HostSettings> | undefined
+  /** 标签所属工作区的 folder 条目的根 URI（fs.rootOf 用） */
+  roots: readonly string[]
 }
 
 /** 插件可读取的设置键（plugin-sdk 的 HostSettings）：其余设置即使传入也读不到 */
@@ -58,9 +60,9 @@ function nameOfUri(uri: string): string {
 export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
   const { invoke, tabId } = deps
   const interacted = (): void => deps.tabs.promote(tabId)
-  const reportError = (e: unknown): void => {
-    deps.notify(deps.t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`), 'error')
-  }
+  const describeError = (e: unknown): string =>
+    deps.t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`)
+  const reportError = (e: unknown): void => deps.notify(describeError(e), 'error')
   /** stat 目标得到标签的类型与标题（stat 跟随链接，链接按目标类型） */
   const target = async (uri: string): Promise<TabTarget> => {
     const stat = await invoke('vfs.stat', { uri })
@@ -75,7 +77,14 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         deps.onVfsChanged((changed) => {
           if (changed === uri) onChange()
         }),
-      toDisplayPath: (uri) => fileUriToWindowsPath(uri) ?? uri
+      toDisplayPath: (uri) => fileUriToWindowsPath(uri) ?? uri,
+      rootOf: (uri) => {
+        let best: string | null = null
+        for (const root of deps.roots) {
+          if (isUnderUri(uri, root) && (best === null || root.length > best.length)) best = root
+        }
+        return best
+      }
     },
     tabs: {
       open: (uri, opts) => {
@@ -121,7 +130,7 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
     ui: {
       toast: (message, type = 'info') => deps.notify(message, type)
     },
-    i18n: { t: deps.pluginT, language: deps.language },
+    i18n: { t: deps.pluginT, language: deps.language, describeError },
     theme: { mode: deps.theme },
     settings: { get: (key) => (HOST_SETTING_KEYS.has(key) ? deps.settings?.[key] : undefined) }
   }

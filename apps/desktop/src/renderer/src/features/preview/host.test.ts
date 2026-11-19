@@ -45,6 +45,10 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     language: 'ja',
     theme: 'dark',
     settings: { 'explorer.showHiddenFiles': true },
+    roots: [
+      'file:///C:/%E6%A1%88%E4%BB%B6',
+      'file:///C:/%E6%A1%88%E4%BB%B6/%E8%A8%AD%E8%A8%88%E6%9B%B8'
+    ],
     ...overrides
   }
   const emit = (uri: string): void => listeners.forEach((l) => l(uri))
@@ -170,6 +174,24 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     await expect(host.fs.list(DIR)).resolves.toEqual({ items: [], state: 'fresh', checkedAt: 1 })
     expect(deps.listDirectory).toHaveBeenCalledWith(DIR)
     await expect(host.fs.stat(TXT)).resolves.toMatchObject({ name: 'memo.txt' })
+  })
+
+  it('rootOf returns the innermost folder entry containing the URI', () => {
+    const { host } = setup()
+    expect(host.fs.rootOf(`${DIR}/v1`)).toBe(DIR)
+    expect(host.fs.rootOf(DIR)).toBe(DIR)
+    expect(host.fs.rootOf(TXT)).toBe('file:///C:/%E6%A1%88%E4%BB%B6')
+    // 前缀相同但不是子目录
+    expect(host.fs.rootOf('file:///C:/%E6%A1%88%E4%BB%B6x')).toBeNull()
+    expect(host.fs.rootOf('file:///D:/x')).toBeNull()
+  })
+
+  it('describes errors with the application messages of their codes', () => {
+    const { host } = setup()
+    expect(host.i18n.describeError(new AppError({ code: 'FS_NOT_FOUND' }))).toBe(
+      'errors:FS_NOT_FOUND'
+    )
+    expect(host.i18n.describeError(new Error('x'))).toBe('errors:UNKNOWN')
   })
 
   it('shows Windows paths and falls back to the URI', () => {

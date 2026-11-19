@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryObserver, focusManager } from '@tanstack/react-query'
-import { AppError, VFS_REFRESH_MAX, type DirectoryListing, type FileEntry } from '@pch/shared'
 import {
+  AppError,
+  VFS_INTEREST_TABS_MAX,
+  VFS_REFRESH_MAX,
+  type DirectoryListing,
+  type FileEntry
+} from '@pch/shared'
+import {
+  createInterestHub,
   createInterestSender,
   directoryQuery,
   directoryState,
@@ -12,8 +19,6 @@ import {
   type Invoke
 } from './vfs'
 
-const EMPTY = { focus: null, visible: [], offscreen: [] }
-
 describe('createInterestSender', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
@@ -21,9 +26,9 @@ describe('createInterestSender', () => {
   it('300ms 防抖：连续变化（滚动中）只在停止后发送最后一次', () => {
     const send = vi.fn()
     const s = createInterestSender(send)
-    s.set({ focus: 'file:///a', visible: ['file:///a'], offscreen: [] })
+    s.set({ focus: 'file:///a', visible: ['file:///a'], offscreen: [], tabs: [] })
     vi.advanceTimersByTime(200)
-    s.set({ focus: 'file:///a', visible: ['file:///b'], offscreen: ['file:///a'] })
+    s.set({ focus: 'file:///a', visible: ['file:///b'], offscreen: ['file:///a'], tabs: [] })
     vi.advanceTimersByTime(299)
     expect(send).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
@@ -31,29 +36,80 @@ describe('createInterestSender', () => {
     expect(send).toHaveBeenCalledWith({
       focus: 'file:///a',
       visible: ['file:///b'],
-      offscreen: ['file:///a']
+      offscreen: ['file:///a'],
+      tabs: []
     })
   })
 
   it('内容相同的关注点不重复发送', () => {
     const send = vi.fn()
     const s = createInterestSender(send)
-    s.set({ focus: 'file:///a', visible: [], offscreen: [] })
+    s.set({ focus: 'file:///a', visible: [], offscreen: [], tabs: [] })
     vi.advanceTimersByTime(300)
-    s.set({ focus: 'file:///a', visible: [], offscreen: [] })
+    s.set({ focus: 'file:///a', visible: [], offscreen: [], tabs: [] })
     vi.advanceTimersByTime(300)
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it('dispose 取消待发送的防抖并立即发送空关注点', () => {
+  it('只发送最后一次设置的内容（多个字段整体比较）', () => {
     const send = vi.fn()
     const s = createInterestSender(send)
-    s.set({ focus: 'file:///a', visible: [], offscreen: [] })
-    s.dispose()
+    s.set({ focus: 'file:///a', visible: [], offscreen: [], tabs: ['file:///t'] })
+    vi.advanceTimersByTime(300)
+    s.set({ focus: 'file:///a', visible: [], offscreen: [], tabs: [] })
+    vi.advanceTimersByTime(300)
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenLastCalledWith({
+      focus: 'file:///a',
+      visible: [],
+      offscreen: [],
+      tabs: []
+    })
+  })
+})
+
+describe('createInterestHub', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  const TREE = { focus: 'file:///a', visible: ['file:///a'], offscreen: [] }
+
+  it('资源树与标签两个来源合并为一个关注点，经同一个防抖发送', () => {
+    const send = vi.fn()
+    const hub = createInterestHub(send)
+    hub.setTree(TREE)
+    hub.setTabs(['file:///t'])
+    vi.advanceTimersByTime(300)
     expect(send).toHaveBeenCalledTimes(1)
-    expect(send).toHaveBeenCalledWith(EMPTY)
-    vi.advanceTimersByTime(1000)
-    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith({ ...TREE, tabs: ['file:///t'] })
+  })
+
+  it('一个来源清空（资源树卸载）时保留另一个来源', () => {
+    const send = vi.fn()
+    const hub = createInterestHub(send)
+    hub.setTree(TREE)
+    hub.setTabs(['file:///t'])
+    vi.advanceTimersByTime(300)
+    hub.setTree({ focus: null, visible: [], offscreen: [] })
+    vi.advanceTimersByTime(300)
+    expect(send).toHaveBeenLastCalledWith({
+      focus: null,
+      visible: [],
+      offscreen: [],
+      tabs: ['file:///t']
+    })
+    hub.setTabs([])
+    vi.advanceTimersByTime(300)
+    expect(send).toHaveBeenLastCalledWith({ focus: null, visible: [], offscreen: [], tabs: [] })
+  })
+
+  it('标签目录去重并按 IPC 上限截断', () => {
+    const send = vi.fn()
+    const hub = createInterestHub(send)
+    const many = Array.from({ length: VFS_INTEREST_TABS_MAX + 3 }, (_, i) => `file:///t${i}`)
+    hub.setTabs(['file:///t0', ...many])
+    vi.advanceTimersByTime(300)
+    expect(send.mock.calls[0]![0].tabs).toEqual(many.slice(0, VFS_INTEREST_TABS_MAX))
   })
 })
 

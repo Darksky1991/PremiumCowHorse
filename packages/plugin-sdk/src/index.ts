@@ -90,6 +90,11 @@ export interface PreviewHost {
     subscribe(uri: string, onChange: () => void): () => void
     /** 显示用的路径（file URI → Windows 路径；无法转换时原样返回 URI） */
     toDisplayPath(uri: string): string
+    /**
+     * uri 所属的工作区条目（folder）的根 URI：包含它的条目中最内层者；不在任何条目之下时为 null。
+     * 例如目录视图的面包屑从这里开始显示
+     */
+    rootOf(uri: string): string | null
   }
   /** 以下动作都视为「在标签内交互」：所在的预览标签转为常驻 */
   tabs: {
@@ -109,8 +114,15 @@ export interface PreviewHost {
   ui: {
     toast(message: string, type?: ToastType): void
   }
-  /** t 查找插件自带的语言资源（PreviewPlugin.i18n）；language 为当前界面语言 */
-  i18n: { t(key: string, vars?: Record<string, unknown>): string; language: string }
+  /**
+   * t 查找插件自带的语言资源（PreviewPlugin.i18n）；language 为当前界面语言；
+   * describeError 把宿主 API 拒绝时的错误（带 code）转为应用的错误文案
+   */
+  i18n: {
+    t(key: string, vars?: Record<string, unknown>): string
+    language: string
+    describeError(error: unknown): string
+  }
   theme: { mode: 'light' | 'dark' }
   settings: { get<K extends keyof HostSettings>(key: K): HostSettings[K] | undefined }
 }

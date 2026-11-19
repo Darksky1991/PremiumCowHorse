@@ -15,6 +15,8 @@ export interface ScopeInput {
   visible: string[]
   /** 已展开但滚出视口的目录 */
   offscreen: string[]
+  /** 标签中显示的目录：与关注点同层（每次完整读取），不扩展周边 */
+  tabs: string[]
   hot: string[]
   indexTargets: string[]
   activeDepth: number
@@ -76,6 +78,8 @@ function sameLocalPath(a: string, b: string): boolean {
  * 计算定期确认的对象与后台队列的范围（纯函数，设计 8.2）。
  * - 一个目录的缓存策略取包含它的根中最高者；不在任何根之下的目录不参与。
  * - 关注点的祖先链止于包含它的根中 URI 最长者。
+ * - 标签中显示的目录（tabs）在任何策略下都是关注点层（每次完整读取），但不像选中的关注点那样
+ *   扩展近 / 远层与「积极」的范围；不在任何根之下的不参与。
  * - 「消极」只有关注点一层；「默认」及以上：近 = 父、子、兄弟与可见的已展开目录，
  *   远 = 祖父以上的祖先、叔伯（父目录的兄弟）、滚出视口的已展开目录与各根目录。同一 URI 取更近的层。
  * - 近层、远层各取 TIER_LIMIT 个：按离关注点的远近（树上的距离；没有关注点时都相同），同等距离时
@@ -160,6 +164,7 @@ export function computeScope(input: ScopeInput): {
     }
   }
 
+  for (const t of input.tabs) if (strategyOf(t) !== null) add(t, 'focus')
   for (const v of input.visible) if (atLeastDefault(v)) add(v, 'near')
   for (const o of input.offscreen) if (atLeastDefault(o)) add(o, 'far')
   for (const r of input.roots) if (atLeastDefault(r.uri)) add(r.uri, 'far')

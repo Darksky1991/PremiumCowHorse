@@ -30,6 +30,7 @@ function input(strategy: CacheStrategy, over: Partial<ScopeInput> = {}): ScopeIn
     focus: u('a/b'),
     visible: [],
     offscreen: [],
+    tabs: [],
     hot: [],
     indexTargets: [],
     activeDepth: 3,
@@ -116,6 +117,32 @@ describe('computeScope', () => {
       input('passive', { focus: null, visible: [u('a')], offscreen: [u('z')] })
     )
     expect(r.periodic).toEqual([])
+  })
+
+  it('directories shown in tabs are focus: fully read, without their surroundings', () => {
+    const r = computeScope(
+      input('default', { focus: null, tabs: [u('a/b2'), u('a/b/c')], visible: [u('a/b2')] })
+    )
+    expect(tiers(r)).toEqual({ [u('a/b2')]: 'focus', [u('a/b/c')]: 'focus', [R]: 'far' })
+    for (const i of r.periodic) expect(i.full).toBe(i.tier === 'focus')
+  })
+
+  it('tabs are focus under a passive root too, but not outside every root', () => {
+    const r = computeScope(
+      input('passive', { focus: u('a'), tabs: [u('a/b'), u('a'), 'file:///D:/x'] })
+    )
+    expect(r.periodic).toEqual([
+      { uri: u('a'), tier: 'focus', full: true },
+      { uri: u('a/b'), tier: 'focus', full: true }
+    ])
+  })
+
+  it('a tab that is also near the selected focus becomes focus', () => {
+    const r = computeScope(input('default', { tabs: [u('a')] }))
+    expect(tiers(r)[u('a')]).toBe('focus')
+    expect(tiers(r)[u('a/b')]).toBe('focus')
+    // 关注点的周边只按选中的关注点计算（标签不扩展近 / 远层）
+    expect(tiers(r)[u('z')]).toBe('far')
   })
 
   it('active adds the range N levels above and below the focus (N=1)', () => {

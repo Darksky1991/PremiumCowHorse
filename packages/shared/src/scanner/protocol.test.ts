@@ -36,8 +36,15 @@ const mainToScanner: Array<[string, unknown, unknown]> = [
   ['list', { type: 'list', id: 1, uri: 'file:///C:/a' }, { type: 'list', id: -1, uri: 'x' }],
   [
     'interest',
-    { type: 'interest', ownerId: 3, focus: null, visible: ['file:///C:/a'], offscreen: [] },
-    { type: 'interest', ownerId: 3, focus: null, visible: ['file:///C:/a'] }
+    {
+      type: 'interest',
+      ownerId: 3,
+      focus: null,
+      visible: ['file:///C:/a'],
+      offscreen: [],
+      tabs: ['file:///C:/t']
+    },
+    { type: 'interest', ownerId: 3, focus: null, visible: ['file:///C:/a'], offscreen: [] }
   ],
   [
     'windowFocus',

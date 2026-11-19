@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { TabsState } from '@pch/shared'
-import { selectTabs, useTabsStore, type TabTarget } from './tabs-store'
+import { selectActiveDirectory, selectTabs, useTabsStore, type TabTarget } from './tabs-store'
 
 const file = (uri: string, preview: boolean): TabTarget & { preview: boolean } => ({
   uri,
@@ -53,5 +53,18 @@ describe('tabs-store', () => {
     useTabsStore.getState().open('w1', file('a', false))
     useTabsStore.getState().close('nope')
     expect(useTabsStore.getState().byWorkspace).toBe(before)
+  })
+
+  it('激活标签显示目录时选出其 URI（扫描进程的关注点），文件或没有标签时为 null', () => {
+    const { open } = useTabsStore.getState()
+    const active = (w: string | undefined): string | null =>
+      selectActiveDirectory(w)(useTabsStore.getState())
+    expect(active('w1')).toBeNull()
+    expect(active(undefined)).toBeNull()
+    open('w1', { uri: 'file:///C:/d', kind: 'directory', title: 'd', preview: false })
+    expect(active('w1')).toBe('file:///C:/d')
+    open('w1', file('file:///C:/d/a.txt', false))
+    expect(active('w1')).toBeNull()
+    expect(active('w2')).toBeNull()
   })
 })

@@ -13,6 +13,7 @@ import {
 import { AppError, type FileStat, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
+import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
 import { fetchDirectory, useResourceStat } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
@@ -124,6 +125,11 @@ function PluginView({
   const theme = useResolvedTheme()
   const { data: settings } = useSettings()
   const { data: workspace } = useActiveWorkspace()
+  const { data: entries } = useEntries(workspace?.id)
+  const roots = useMemo(
+    () => (entries ?? []).flatMap((e) => (e.kind === 'folder' && e.uri !== null ? [e.uri] : [])),
+    [entries]
+  )
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
   const promote = useTabsStore((s) => s.promote)
@@ -152,7 +158,8 @@ function PluginView({
       pluginT: (key, vars) => pluginT(key, vars ?? {}),
       language,
       theme,
-      settings
+      settings,
+      roots
     })
   }, [
     i18n,
@@ -167,7 +174,8 @@ function PluginView({
     t,
     language,
     theme,
-    settings
+    settings,
+    roots
   ])
 
   const settle = (confirmed: boolean): void => {
