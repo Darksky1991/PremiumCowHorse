@@ -35,20 +35,12 @@ export interface PreviewContainerProps {
  * 标签内容（doc 9.3）：stat 资源 → 注册表选择插件 → 懒加载插件组件。
  * 每个标签一层 ErrorBoundary + Suspense：插件抛错或懒加载失败只在该标签显示错误面板，
  * 并提供「以文件信息显示」（fallback 插件）的出口。
- * 在标签内点击、滚动或按键视为交互：预览标签转为常驻（设计第 2 节）。
+ * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
+ * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
  */
 export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
-  const promote = useTabsStore((s) => s.promote)
-  const interacted = (): void => {
-    if (tab.preview) promote(tab.id)
-  }
   return (
-    <div
-      className="h-full min-h-0"
-      onPointerDownCapture={interacted}
-      onWheelCapture={interacted}
-      onKeyDownCapture={interacted}
-    >
+    <div className="h-full min-h-0">
       {/* 同一标签内导航到另一资源时整体重建（「以文件信息显示」等状态不沿用） */}
       <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
     </div>

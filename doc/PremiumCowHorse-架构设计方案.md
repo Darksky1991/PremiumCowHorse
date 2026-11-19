@@ -800,6 +800,7 @@ export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>) => plugin;
 - `FileStat` / `FileEntry` / `DirectoryListing` 在 SDK 中重新声明（模块边界不允许 SDK 依赖 shared），与 `@pch/shared` 的同名类型结构相同，宿主实现把 shared 的值赋给 SDK 类型、不一致时编译失败。
 - 新增 `AnyPreviewPlugin`（注册表的列表元素，各插件 viewState 类型不同）与常量 `FALLBACK_PLUGIN_ID`。
 - 插件调用 `tabs.*` / `system.*` 都视为「在标签内交互」，所在的预览标签转为常驻（11 节）。
+- 依赖（控制者裁定）：内置插件除 `plugin-sdk` 与 `ui` 外，允许依赖 `lucide-react`，仅用于图标。
 
 关键约束：插件**只能**通过 `PreviewHost` 与外界交互，拿不到 `window.pch`。这样主应用可以随时调整内部实现，而且将来把第三方插件放进沙箱 iframe 时，只需用 postMessage 实现同一个 `PreviewHost` 接口，插件代码不用改。
 
@@ -826,7 +827,7 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 **已实现（M1-3）**（`features/preview/`）：
 - 计分 `scoreResource(manifest, resource)`：kinds / schemes（不带冒号）不符、超过 `maxSize`、`when` 为 false → 不匹配；扩展名大小写不敏感、按「名称以 `.扩展名` 结尾」判断（支持 `tar.gz`）；声明了 `extensions` 或 `mimeTypes` 却一项都没命中 → 不匹配，都没声明 → 0 分（只按 kinds 等条件，例如 folder 插件）；命中的分数相加后加 `priority`。`pickPlugin`：得分最高者，同分取先注册的；fallback 插件不参与计分，没有任何匹配时返回它（列表中没有 fallback 时抛错）。`mime` 暂为 null；`preview.associations` 与「用其他方式打开」推迟。
-- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建；先 `vfs.stat`（TanStack Query，错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型），再选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。容器捕获标签内的 pointerdown / wheel / keydown，预览标签转为常驻；可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
+- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建；先 `vfs.stat`（TanStack Query，错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型），再选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。预览标签只在插件调用宿主的动作或双击标签头时转为常驻（控制者裁定：标签内的点击、滚动、按键不算）；可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
 - e2e 的崩溃插件：`features/preview/plugins.ts` 的 `previewPlugins(builtin)` 在 bootstrap 的 `e2eCrashPlugin` 为 true 时追加两个测试插件（`.crash` 渲染时抛错、`.crashload` 懒加载失败）；主进程只在**未打包**且环境变量 `PCH_E2E_CRASH_PLUGIN=1` 时设置该标志（与 `PCH_USER_DATA_DIR` 相同的限制），打包后的应用不会注册它们。
 
 ### 9.4 内置插件
@@ -844,7 +845,7 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
 
-**已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。folder 插件之前目录也由 fallback 显示。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，大小写不敏感，判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。
+**已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。folder 插件之前目录也由 fallback 显示。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，审查时追加 `.pif .scf .msp .jar .appref-ms`；大小写不敏感；NTFS 备用数据流的名称（`run.bat::$DATA`、`run.bat:stream`）按第一个 `:` 之前的文件名判断；判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。
 
 ### 9.5 第三方插件（后续阶段）
 
@@ -1030,7 +1031,7 @@ export function layoutReducer(state: TabsState, action: TabsAction, newId: () =>
 - `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；预览打开且已有预览标签 → 在原位置替换（新 id，viewState 不沿用）；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`：同标签内改 URI 并转常驻（允许与其他标签的 URI 重复）。没有变化时返回同一个状态对象。
 - 资源树（`features/explorer`）：单击 = 选中 + 切换展开 + 预览打开（设置 `explorer.singleClickPreview` 为 false 时不打开）；双击（click 的 `detail` 为 2）= 常驻打开，第二次单击不再切换展开；↑↓ 只移动选中、不打开，Enter = 切换展开 + 常驻打开（错误行为重试）。条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
 - 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
-- 在标签内交互转常驻：标签内容中的点击（含选择文字）、滚轮、按键，以及插件调用宿主的任何动作（`tabs.*` / `system.*`），都把所在的预览标签转为常驻。
+- 预览转常驻：只有两种触发——插件调用宿主的任何动作（`tabs.*` / `system.*`）与双击标签头（以及从资源树双击 / Enter 打开同一资源）；标签内容中的点击、选择文字、滚轮、按键不改变预览状态（控制者裁定）。
 
 ### 11.3 会话快照
 
@@ -1311,7 +1312,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的预览 / 常驻 / 关闭（`e2e/tabs.spec.ts`）、fallback 的文件信息与三个动作、可执行文件的确认、标签内交互转常驻、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的预览 / 常驻 / 关闭（`e2e/tabs.spec.ts`）、fallback 的文件信息与三个动作、可执行文件的确认、只有插件动作转常驻（点击 / 滚轮 / 按键不转）、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |

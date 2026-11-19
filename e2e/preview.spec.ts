@@ -126,23 +126,32 @@ test.describe('preview container and the fallback plugin', () => {
     }
   })
 
-  test('interacting inside a preview tab makes it permanent', async () => {
+  test('only plugin actions make a preview tab permanent; clicks, wheel and keys do not', async () => {
     const { app, page } = await launchFast(userData)
     try {
       await stubShell(app)
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
-      await expect(tab(page, 'memo.txt')).toHaveCSS('font-style', 'italic')
-      // 点击内容（选择文字也是交互）
-      await panel(page).getByRole('heading', { name: 'memo.txt' }).click()
-      await expect(tab(page, 'memo.txt')).toHaveCSS('font-style', 'normal')
+      const memo = tab(page, 'memo.txt')
+      await expect(memo).toHaveCSS('font-style', 'italic')
 
-      // 插件的动作同样转常驻
-      await tree.getByRole('treeitem', { name: 'run.bat' }).click()
-      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'italic')
+      // 点击内容、滚轮、在内容中按键：仍是预览标签
+      const heading = panel(page).getByRole('heading', { name: 'memo.txt' })
+      await heading.click()
+      await heading.hover()
+      await page.mouse.wheel(0, 300)
+      await panel(page).getByRole('button', { name: 'Copy path' }).focus()
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Shift')
+      await expect(memo).toHaveCSS('font-style', 'italic')
+
+      // 插件的动作（宿主调用）转常驻
       await panel(page).getByRole('button', { name: 'Copy path' }).click()
-      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'normal')
+      await expect(memo).toHaveCSS('font-style', 'normal')
+      // 之后的单击另开预览标签
+      await tree.getByRole('treeitem', { name: 'run.bat' }).click()
       await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['memo.txt', 'run.bat'])
+      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'italic')
     } finally {
       await app.close()
     }

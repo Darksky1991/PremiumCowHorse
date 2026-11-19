@@ -20,7 +20,12 @@ describe('isExecutableExtension', () => {
     'x.lnk',
     'x.reg',
     'x.hta',
-    'x.cpl'
+    'x.cpl',
+    'x.pif',
+    'x.scf',
+    'x.msp',
+    'x.jar',
+    'x.appref-ms'
   ])('%s is executable', (name) => {
     expect(isExecutableExtension(name)).toBe(true)
   })
@@ -33,6 +38,12 @@ describe('isExecutableExtension', () => {
   it('ignores trailing dots and spaces (Windows strips them when opening)', () => {
     expect(isExecutableExtension('run.bat.')).toBe(true)
     expect(isExecutableExtension('run.bat .. ')).toBe(true)
+  })
+
+  it('judges the file name before an NTFS alternate data stream', () => {
+    expect(isExecutableExtension('run.bat::$DATA')).toBe(true)
+    expect(isExecutableExtension('run.bat:stream')).toBe(true)
+    expect(isExecutableExtension('memo.txt:x.exe')).toBe(false)
   })
 
   it.each(['memo.txt', 'README.md', 'bat', '.bat.txt', 'a.json', 'a.jsx', 'exe', 'a.batch'])(
