@@ -13,14 +13,20 @@ export function parseQuery(text: string): { terms: SearchTerm[] } {
   return { terms }
 }
 
+/**
+ * 正则的字面转义。glob 以 u 标志编译：? 匹配一个码点（代理对字符如 𠮷 算一个字符，与 SQLite 的
+ * GLOB 按字符匹配一致）。u 模式只允许转义语法字符，这里转义的全部是语法字符（* ? 另行处理）。
+ */
+const escapeRegExp = (ch: string): string => ch.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+
 function globToRegExp(pattern: string): RegExp {
   let src = ''
   for (const ch of pattern) {
     if (ch === '*') src += '.*'
     else if (ch === '?') src += '.'
-    else src += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    else src += escapeRegExp(ch)
   }
-  return new RegExp(`^${src}$`, 'is')
+  return new RegExp(`^${src}$`, 'isu')
 }
 
 /** 名称是否匹配全部词（AND）。没有词时不匹配（空查询没有结果） */
@@ -51,11 +57,11 @@ function globToGroupedRegExp(pattern: string): RegExp {
       flush()
       src += ch === '*' ? '.*' : '.'
     } else {
-      literal += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      literal += escapeRegExp(ch)
     }
   }
   flush()
-  return new RegExp(`^${src}$`, 'isd')
+  return new RegExp(`^${src}$`, 'isdu')
 }
 
 /**

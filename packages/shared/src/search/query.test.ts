@@ -34,6 +34,11 @@ describe('matchesName', () => {
     expect(matchesName('第3章', t('第?章'))).toBe(true)
     expect(matchesName('第10章', t('第?章'))).toBe(false)
   })
+  it('lets ? match one character outside the BMP (a surrogate pair), like SQLite GLOB', () => {
+    expect(matchesName('𠮷.txt', t('?.txt'))).toBe(true)
+    expect(matchesName('𠮷野家.txt', t('?野家.*'))).toBe(true)
+    expect(matchesName('𠮷𠮷.txt', t('?.txt'))).toBe(false)
+  })
   it('treats regex and bracket characters literally', () => {
     expect(matchesName('a[1].txt', t('a[1]*'))).toBe(true)
     expect(matchesName('a1.txt', t('a[1]*'))).toBe(false)
@@ -65,6 +70,9 @@ describe('matchRanges', () => {
       { start: 2, end: 3 }
     ])
     expect(matchRanges('a[1].txt', t('a[1]*'))).toEqual([{ start: 0, end: 4 }])
+  })
+  it('reports UTF-16 ranges around a ? that matched a surrogate pair', () => {
+    expect(matchRanges('𠮷a.txt', t('?a.txt'))).toEqual([{ start: 2, end: 7 }])
   })
   it('returns no ranges when the name does not match', () => {
     expect(matchRanges('abc', t('xyz'))).toEqual([])
