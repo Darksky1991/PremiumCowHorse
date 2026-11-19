@@ -1,4 +1,4 @@
-import { Suspense, use, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { Suspense, use, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -23,7 +23,7 @@ import { parentLocation } from '@renderer/lib/logical-path'
 import { reportError } from '@renderer/lib/report-error'
 import { useResolvedTheme } from '@renderer/providers/theme-context'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
-import { useTabsStore } from '@renderer/stores/tabs-store'
+import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
 import { PluginErrorBoundary } from './plugin-error-boundary'
@@ -82,6 +82,15 @@ function StatResource(props: ViewProps): JSX.Element {
   const { t } = useTranslation()
   const offline = useReachabilityStore((s) => isShareOffline(tab.uri, s.offlineShares))
   const stat = useResourceStat(tab.uri, !offline)
+  // 刷新（地址栏 / F5）：重新 stat（不受新鲜期限制），插件随新的资源描述重新渲染；断开时不发
+  const { refetch } = stat
+  useEffect(
+    () =>
+      onTabRefresh(tab.id, () => {
+        if (!offline) void refetch()
+      }),
+    [tab.id, offline, refetch]
+  )
   if (offline) {
     return (
       <Centered>
@@ -211,6 +220,7 @@ function PluginView({
       // 断开状态变化时宿主重建：插件随之重新列出（folder 插件的状态行切换「已断开」）
       isOffline: (uri) => isShareOffline(uri, offlineShares),
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
+      onRefresh: (listener) => onTabRefresh(tab.id, listener),
       tabs: { open, navigate, promote },
       confirmExecutable: (name) =>
         new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),

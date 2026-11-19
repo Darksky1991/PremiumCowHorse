@@ -201,3 +201,19 @@
 - 原因：扫描进程的 `requestP0`（`scanner/schedule/scheduler.ts`）对没有等待者的 P0 做 2 秒去重（`P0_DEDUPE_MS`），`vfs.refresh` 也走这条路：同一目录的上一次 P0 完成不到 2 秒时刷新被直接丢弃。添加条目 / 打开标签时的列出就是一次 P0。这是产品缺陷（用户 2 秒内按 F5 也不会重新读取），不只是测试问题。
 - 解决（M1-3b Task 1 审查修复，控制者裁定）：`Scheduler.refresh` 以 `force: true` 请求 P0——不被去重丢弃、不与正在执行的 P0 合并；已在排队的仍合并。去重只剩给隐式的 P0（关注点切换、切回窗口、滚回视口等）。单元测试「an explicit refresh right after a P0 reads again」在修复前失败；e2e 的刷新用例去掉了为躲避去重加的 `waitForTimeout(2500)`。临时去掉点击「刷新」时用例失败（有效性）。
 - 预防：显式的用户操作（刷新、重试）不要走为隐式触发设计的去重 / 合并路径；e2e 中遇到「操作后没有效果、等一会儿再操作就好」时先查调度器的去重，而不是加等待。
+
+### Playwright 按不了鼠标侧键（后退 / 前进键）
+
+- 日期：2026-11-20
+- 症状：M1-3b 地址栏要验证鼠标侧键后退 / 前进；Playwright 的 `mouse.down` / `click` 的 `button` 只有 `left` / `right` / `middle`。
+- 原因：Playwright 的鼠标 API 不支持 X 按键（CDP `Input.dispatchMouseEvent` 支持 `back` / `forward`，但 Playwright 未暴露）。
+- 解决：e2e 中用 `locator.dispatchEvent('mouseup', { button: 3 })`（默认 bubbles、cancelable），只验证渲染端的处理（`features/address-bar/use-navigation-shortcuts.ts`）；真实输入另用系统级事件确认：PowerShell `Add-Type` 声明 `user32.dll` 的 `SetCursorPos` / `mouse_event`，`mouse_event(0x0080 /*XDOWN*/, 0, 0, 1 /*XBUTTON1*/, 0)` 再 `0x0100`（XUP），光标先移到窗口内容上（`screen.dipToScreenPoint` 换算物理坐标，并 `SetProcessDPIAware`）。实测（Electron 45，Windows 11）：每按一次只后退 / 前进一步，`page.url()` 不变（Chromium 没有自己做历史导航）。
+- 预防：侧键、标题栏双击等系统输入，DOM 事件只能证明「收到事件后的处理」，真实输入要用系统级事件再确认一次（CLAUDE.md「防止幻觉」）。
+
+### 横向滚动的一行在 Windows 上出现经典滚动条、挤压行高
+
+- 日期：2026-11-20
+- 症状：地址栏的路径段容器 `overflow-x: auto`，窗口变窄后在固定高度（`h-9`）的行里出现约 17px 高的经典滚动条（带箭头），路径段被挤到上半部分。
+- 原因：Windows 上 Chromium 默认使用占位的经典滚动条（不是 macOS 那样的覆盖式），`overflow-x: auto` 溢出时占用容器高度。
+- 解决：容器加 `[scrollbar-width:none]` 隐藏滚动条（仍可滚动），`onWheel` 把纵向滚轮换成横向（标签栏已有同样做法），并在路径 / 宽度变化（`ResizeObserver`）后滚到末尾，让当前位置可见。
+- 预防：在固定高度的行里做横向滚动时，先在 Windows 上把窗口拉窄看一次整窗截图。

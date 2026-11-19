@@ -135,6 +135,13 @@ export default {
     shortcutSettings: 'Open settings',
     comingSoon: 'This feature arrives in a later milestone'
   },
+  addressBar: {
+    label: 'Address bar',
+    back: 'Back',
+    forward: 'Forward',
+    up: 'Up one level',
+    refresh: 'Refresh'
+  },
   tabs: {
     label: 'Open tabs',
     close: 'Close'

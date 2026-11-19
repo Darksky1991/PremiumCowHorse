@@ -16,7 +16,6 @@ import {
   FileXIcon,
   FolderIcon,
   FolderSymlinkIcon,
-  RefreshCwIcon,
   UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -56,11 +55,11 @@ type Listing =
 /**
  * 目录列表：经 host.fs.list 取得（缓存优先），该目录的缓存有变化（host.fs.subscribe）时重新列出。
  * 重新列出期间保留当前内容；出错时显示错误（错误优先于旧内容）。
- * retry 显示读取中后重新列出；refresh（F5 / 刷新按钮）让宿主立即确认该目录（host.fs.refresh），
- * 再重新列出，期间保留当前内容——降级模式（扫描进程不可用、直接枚举）与条目之外的目录
- * （不进缓存）都没有 vfs.changed，列表不会自动更新，由它补上
+ * retry 显示读取中后重新列出；刷新（应用地址栏的刷新按钮 / F5，经 host.tabs.onRefresh）让宿主
+ * 立即确认该目录（host.fs.refresh），再重新列出，期间保留当前内容——降级模式（扫描进程不可用、
+ * 直接枚举）与条目之外的目录（不进缓存）都没有 vfs.changed，列表不会自动更新，由它补上
  */
-function useListing(host: PreviewHost, uri: string): [Listing, () => void, () => void] {
+function useListing(host: PreviewHost, uri: string): [Listing, () => void] {
   const [listing, setListing] = useState<Listing>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -86,14 +85,23 @@ function useListing(host: PreviewHost, uri: string): [Listing, () => void, () =>
       off()
     }
   }, [host, uri, attempt])
+  useEffect(() => {
+    let alive = true
+    const off = host.tabs.onRefresh(() => {
+      void host.fs.refresh(uri).finally(() => {
+        if (alive) setAttempt((n) => n + 1)
+      })
+    })
+    return () => {
+      alive = false
+      off()
+    }
+  }, [host, uri])
   const retry = (): void => {
     setListing({ status: 'loading' })
     setAttempt((n) => n + 1)
   }
-  const refresh = (): void => {
-    void host.fs.refresh(uri).finally(() => setAttempt((n) => n + 1))
-  }
-  return [listing, retry, refresh]
+  return [listing, retry]
 }
 
 function iconOf(e: FileEntry): LucideIcon {
@@ -118,10 +126,10 @@ const hasSize = (e: FileEntry): boolean =>
   e.kind === 'file' || (e.kind === 'symlink' && e.target === 'file')
 
 /**
- * 目录视图（folder 插件）：工具栏（刷新）、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
+ * 目录视图（folder 插件）：详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
  * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航（进入标签的历史），
  * 文件以常驻标签打开；Backspace / Alt+↑ 经 host.tabs.up 到逻辑路径的上一级（条目根之上是工作区总览）；
- * F5（焦点在目录视图内）与工具栏的「刷新」重新确认并列出。
+ * 刷新（重新确认并列出）由应用的地址栏发出（刷新按钮 / 全局 F5），经 host.tabs.onRefresh 收到。
  * 打开与导航都经 host（宿主据此把预览标签转为常驻）；导航时给出类型（目录），宿主不再 stat。
  */
 export default function FolderView({
@@ -134,7 +142,7 @@ export default function FolderView({
   const baseId = useId()
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [listing, retry, refresh] = useListing(host, resource.uri)
+  const [listing, retry] = useListing(host, resource.uri)
   const showHidden = host.settings.get('explorer.showHiddenFiles') ?? false
   const sort = viewState?.sort ?? DEFAULT_SORT
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
@@ -167,12 +175,6 @@ export default function FolderView({
   const open = (entry: FileEntry): void => {
     if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri, 'directory')
     else host.tabs.open(entry.uri, { preview: false })
-  }
-  /** F5：焦点在目录视图内的任何位置（列表、工具栏按钮） */
-  const onRootKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'F5' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
-    e.preventDefault()
-    refresh()
   }
   const sortBy = (key: SortKey): void => {
     const next: Sort =
@@ -261,20 +263,8 @@ export default function FolderView({
   }
 
   return (
-    <div className="flex h-full flex-col text-[13px]" onKeyDown={onRootKeyDown}>
-      {/* 工具栏：路径与「上一级」由应用的地址栏提供（M1-3b）；刷新按钮在 Task 2 移到地址栏 */}
-      <div className="flex h-9 shrink-0 items-center justify-end gap-1 border-b px-2">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={t('refresh')}
-          title={`${t('refresh')} (F5)`}
-          onClick={refresh}
-        >
-          <RefreshCwIcon />
-        </Button>
-      </div>
-
+    // 路径、上一级、后退 / 前进与刷新都由应用的地址栏提供（M1-3b），视图不再有工具栏
+    <div className="flex h-full flex-col text-[13px]">
       <div
         ref={gridRef}
         role="grid"

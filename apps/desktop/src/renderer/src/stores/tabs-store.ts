@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import { layoutReducer, type TabLocation, type TabsAction, type TabsState } from '@pch/shared'
+import {
+  layoutReducer,
+  type TabLocation,
+  type TabState,
+  type TabsAction,
+  type TabsState
+} from '@pch/shared'
 
 /** 标签打开 / 导航的目标：位置（工作区总览、目录、文件） */
 export type TabTarget = TabLocation
@@ -19,6 +25,12 @@ interface TabsStore {
   back: (id: string) => void
   forward: (id: string) => void
   setViewState: (id: string, viewState: unknown) => void
+  /**
+   * 标签 id → 刷新请求的序号（地址栏的刷新按钮 / F5 递增；不在 layoutReducer 中，不是布局状态）。
+   * 标签内容（PreviewContainer）订阅其变化后刷新：目录重新确认并列出、文件重新 stat、总览重新取得条目
+   */
+  refreshSeq: Record<string, number>
+  requestRefresh: (id: string) => void
 }
 
 const EMPTY: TabsState = { tabs: [], activeId: null }
@@ -55,7 +67,12 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
     back: (id) => dispatchById({ type: 'tab/back', id }),
     forward: (id) => dispatchById({ type: 'tab/forward', id }),
-    setViewState: (id, viewState) => dispatchById({ type: 'tab/viewState', id, viewState })
+    setViewState: (id, viewState) => dispatchById({ type: 'tab/viewState', id, viewState }),
+    refreshSeq: {},
+    requestRefresh: (id) => {
+      const { refreshSeq } = get()
+      set({ refreshSeq: { ...refreshSeq, [id]: (refreshSeq[id] ?? 0) + 1 } })
+    }
   }
 })
 
@@ -65,6 +82,14 @@ export const selectTabs =
   (s: Pick<TabsStore, 'byWorkspace'>): TabsState =>
     (workspaceId === undefined ? undefined : s.byWorkspace[workspaceId]) ?? EMPTY
 
+/** 工作区的激活标签；没有工作区或没有标签时为 null（地址栏显示它的位置） */
+export const selectActiveTab =
+  (workspaceId: string | undefined) =>
+  (s: Pick<TabsStore, 'byWorkspace'>): TabState | null => {
+    const { tabs, activeId } = selectTabs(workspaceId)(s)
+    return tabs.find((t) => t.id === activeId) ?? null
+  }
+
 /**
  * 工作区的激活标签显示目录时为其 URI，否则为 null（文件、工作区总览、没有标签）。
  * 标签区据此告诉扫描进程「标签中显示的目录」（vfs.interest 的 tabs，按关注点处理）
@@ -72,7 +97,13 @@ export const selectTabs =
 export const selectActiveDirectory =
   (workspaceId: string | undefined) =>
   (s: Pick<TabsStore, 'byWorkspace'>): string | null => {
-    const { tabs, activeId } = selectTabs(workspaceId)(s)
-    const active = tabs.find((t) => t.id === activeId)
+    const active = selectActiveTab(workspaceId)(s)
     return active?.kind === 'directory' ? active.uri : null
   }
+
+/** 订阅标签的刷新请求（requestRefresh）；返回取消订阅函数。标签内容（预览宿主、总览）用它 */
+export function onTabRefresh(id: string, listener: () => void): () => void {
+  return useTabsStore.subscribe((s, prev) => {
+    if (s.refreshSeq[id] !== prev.refreshSeq[id]) listener()
+  })
+}

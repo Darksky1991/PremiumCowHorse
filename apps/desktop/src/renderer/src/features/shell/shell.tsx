@@ -18,16 +18,23 @@ export interface ShellProps {
   sidebarViews: Record<SidebarView, ReactNode>
   /** 标题栏中的工作区切换器 */
   workspaceSwitcher: ReactNode
+  /** 标题栏正下方、横跨侧栏与内容区的一行：应用的地址栏（features/address-bar） */
+  addressBar: ReactNode
   /** 主区域的标签区（标签栏 + 内容）；当前工作区没有标签时显示欢迎页 */
   tabsArea: ReactNode
 }
 
 /**
  * 主窗口整体布局（架构文档 12.2 节）：
- * 标题栏 / 活动栏 + 可调宽侧栏 + 内容区 / 状态栏。
+ * 标题栏 / 地址栏 / 活动栏 + 可调宽侧栏 + 内容区 / 状态栏。
  * 内容区：当前工作区有标签时显示标签区（features/tabs），没有标签时显示欢迎页。
  */
-export function Shell({ sidebarViews, workspaceSwitcher, tabsArea }: ShellProps): JSX.Element {
+export function Shell({
+  sidebarViews,
+  workspaceSwitcher,
+  addressBar,
+  tabsArea
+}: ShellProps): JSX.Element {
   useShellShortcuts()
   useReachabilityEvents()
   const sidebarRef = usePanelRef()
@@ -48,6 +55,7 @@ export function Shell({ sidebarViews, workspaceSwitcher, tabsArea }: ShellProps)
   return (
     <div className="flex h-full flex-col">
       <TitleBar workspaceSwitcher={workspaceSwitcher} />
+      {addressBar}
       <div className="flex min-h-0 flex-1">
         <ActivityBar />
         <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">

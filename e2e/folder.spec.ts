@@ -91,10 +91,10 @@ test.describe('folder view (the folder plugin)', () => {
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
       await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
-      // 面包屑与「上一级」按钮已移到应用的地址栏（M1-3b）；刷新按钮暂时保留
+      // 面包屑、「上一级」与刷新按钮已移到应用的地址栏（M1-3b）：目录视图内没有
       await expect(panel(page).getByRole('navigation')).toHaveCount(0)
       await expect(panel(page).getByRole('button', { name: 'Up one level' })).toHaveCount(0)
-      await expect(panel(page).getByRole('button', { name: 'Refresh' })).toBeVisible()
+      await expect(panel(page).getByRole('button', { name: 'Refresh' })).toHaveCount(0)
 
       await row(page, '設計書').dblclick()
       await expect(tabs(page)).toHaveText(['設計書'])
@@ -309,7 +309,7 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
-  test('the refresh button and F5 re-list the directory at once (without waiting for the periodic check)', async () => {
+  test('the address bar refresh button and F5 re-list the directory and re-stat a file at once (without waiting for the periodic check)', async () => {
     // 定期确认的间隔设为 1 小时（在添加条目之前）：列表在用例期间不会自己更新，只能靠刷新
     const { app, page } = await launch(userData)
     try {
@@ -322,8 +322,10 @@ test.describe('folder view (the folder plugin)', () => {
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
       await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
 
+      // 刷新按钮在应用的地址栏（M1-3b）
+      const addressBar = page.getByRole('navigation', { name: 'Address bar' })
       writeFileSync(path.join(project, 'added.txt'), 'a')
-      await panel(page).getByRole('button', { name: 'Refresh' }).click()
+      await addressBar.getByRole('button', { name: 'Refresh', exact: true }).click()
       await expect(names(page)).toHaveText([
         '設計書',
         'added.txt',
@@ -332,7 +334,7 @@ test.describe('folder view (the folder plugin)', () => {
         'memo.txt'
       ])
 
-      // F5：焦点在目录视图时
+      // F5（全局）：焦点在目录视图时
       mkdirSync(path.join(project, 'new-folder'))
       await grid(page).focus()
       await page.keyboard.press('F5')
@@ -345,6 +347,14 @@ test.describe('folder view (the folder plugin)', () => {
         'memo.txt'
       ])
       await expect(grid(page)).toBeFocused()
+
+      // 文件标签：F5 重新 stat（不等 5 秒的新鲜期），文件信息随之更新；焦点在地址栏的按钮上也有效
+      await row(page, 'memo.txt').dblclick()
+      await expect(panel(page).getByText('1,536 bytes', { exact: false })).toBeVisible()
+      appendFileSync(path.join(project, 'memo.txt'), 'x'.repeat(2560))
+      await addressBar.getByRole('button', { name: 'Refresh', exact: true }).focus()
+      await page.keyboard.press('F5')
+      await expect(panel(page).getByText('4,096 bytes', { exact: false })).toBeVisible()
     } finally {
       await app.close()
     }

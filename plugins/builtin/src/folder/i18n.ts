@@ -4,7 +4,6 @@
  */
 const ja = {
   name: 'フォルダー',
-  refresh: '最新の情報に更新',
   colName: '名前',
   colModified: '更新日時',
   colType: '種類',
@@ -27,7 +26,6 @@ type Messages = Record<keyof typeof ja, string>
 
 const zhCN: Messages = {
   name: '文件夹',
-  refresh: '刷新',
   colName: '名称',
   colModified: '修改时间',
   colType: '类型',
@@ -48,7 +46,6 @@ const zhCN: Messages = {
 
 const en: Messages = {
   name: 'Folder',
-  refresh: 'Refresh',
   colName: 'Name',
   colModified: 'Modified',
   colType: 'Type',

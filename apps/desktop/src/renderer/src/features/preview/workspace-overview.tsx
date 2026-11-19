@@ -7,7 +7,7 @@ import { Spinner } from '@pch/ui/components/spinner'
 import { useEntries } from '@renderer/data/entries'
 import { useWorkspaces, workspaceDisplayName } from '@renderer/data/workspace'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
-import { useTabsStore } from '@renderer/stores/tabs-store'
+import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { overviewSections, type OverviewSection } from './overview-model'
 
 export interface WorkspaceOverviewProps {
@@ -38,6 +38,9 @@ export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element 
     : tab.title
   const sections = useMemo(() => overviewSections(entries.data ?? []), [entries.data])
   const ready = entries.data !== undefined
+  // 刷新（地址栏 / F5）：重新取得条目（总览不访问文件系统）
+  const { refetch } = entries
+  useEffect(() => onTabRefresh(tab.id, () => void refetch()), [tab.id, refetch])
 
   // 在标签内导航到总览后（旧视图连同焦点一起被移除）：焦点落到刚离开的条目（没有则第一项），键盘可继续
   const cameFrom = tab.history.back.at(-1)?.uri

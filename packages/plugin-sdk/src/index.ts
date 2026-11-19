@@ -90,7 +90,7 @@ export interface PreviewHost {
      */
     list(uri: string): Promise<DirectoryListing>
     /**
-     * 让宿主立即重新确认该目录（F5 / 刷新按钮）：之后的 list 取得确认后的内容。
+     * 让宿主立即重新确认该目录（刷新请求见 tabs.onRefresh）：之后的 list 取得确认后的内容。
      * 不视为「在标签内交互」（预览标签不转常驻）
      */
     refresh(uri: string): Promise<void>
@@ -103,7 +103,7 @@ export interface PreviewHost {
      */
     rootOf(uri: string): string | null
   }
-  /** 以下动作都视为「在标签内交互」：所在的预览标签转为常驻 */
+  /** open / navigate / up 视为「在标签内交互」：所在的预览标签转为常驻（onRefresh 不算） */
   tabs: {
     /** 在新标签中打开（已打开则激活）；preview 为 true 时以预览标签打开 */
     open(uri: string, opts?: { preview?: boolean }): void
@@ -117,6 +117,11 @@ export interface PreviewHost {
      * 不越过条目根走到磁盘上的上级；已在总览时不做任何事
      */
     up(): void
+    /**
+     * 用户请求刷新本标签（应用地址栏的刷新按钮、F5）时回调；返回取消订阅函数。
+     * 刷新入口在应用的地址栏（M1-3b），插件不自带刷新按钮与 F5 处理（避免重复触发）
+     */
+    onRefresh(listener: () => void): () => void
   }
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {

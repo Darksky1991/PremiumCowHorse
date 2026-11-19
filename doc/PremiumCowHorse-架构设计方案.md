@@ -225,7 +225,7 @@ premium-cow-horse/
 │           ├── markdown/
 │           ├── media/
 │           ├── office/           # Office 文件启动面板（调用本机 Office）
-│           ├── folder/           # 目录视图：详细信息列表、刷新（M1-3 已实现；面包屑与「上一级」M1-3b 移到地址栏）
+│           ├── folder/           # 目录视图：详细信息列表（M1-3 已实现；面包屑、「上一级」与刷新按钮 M1-3b 移到应用的地址栏）
 │           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作；M1-3 已实现）
 ├── e2e/                          # Playwright Electron 端到端测试
 ├── doc/                          # 设计文档（本文档）：最新事实依据
@@ -343,6 +343,7 @@ apps/desktop/src/renderer/
     ├── app/                          # 根组件、最外层错误边界（不写业务）
     ├── features/                     # 按功能切片，每个切片通过 index.ts 暴露公开 API
     │   ├── shell/                    # 标题栏、活动栏、状态栏、命令面板、整体布局
+    │   ├── address-bar/              # 应用级地址栏（后退 / 前进 / 上一级 / 刷新 + 逻辑路径，M1-3b）
     │   ├── workspace/                # 工作区切换、创建、编辑
     │   ├── explorer/                 # 资源树（条目 + 真实目录）
     │   ├── tabs/                     # 标签栏、拖拽、弹出
@@ -362,10 +363,11 @@ apps/desktop/src/renderer/
 - 文件名搜索（2026-11-19，8.4 节）：`features/search/`（搜索视图 `search-view.tsx`、结果列表 `search-results.tsx`、按工作区保存输入与类型筛选的 `search-store.ts`、格式化纯函数 `format.ts`）；`data/search.ts`（`search.query` 的查询与取消）；`stores/navigation-store.ts`（跨 feature 的「在树中定位」请求：搜索视图发出、资源树处理）；`features/explorer/reveal.ts`（URI → 所属条目与节点 id、定位进展，纯函数）与 `use-reveal.ts`；`stores/ui-store.ts` 的 `SidebarView` 增加 `search`，并增加 `showView`（显示视图而不折叠）与 `searchFocusRequest`（`Ctrl+Shift+F` 聚焦搜索框）。
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 写入：先订阅 `vfs.reachability`，再以 `vfs.offlineShares` 初始化（查询返回前已收到事件的共享以事件为准），窗口启动 / 重新加载前已断开的共享也能显示——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
 - M1-3 标签与预览（✅ 2026-11-19 完成，11 节「已实现」）；`plugins/builtin`（folder / fallback 插件，9.4 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。`features/preview/`（9.3 节「已实现」）：`registry.ts`（`scoreResource` / `pickPlugin` / `fallbackOf`，纯函数）、`executable.ts`（`isExecutableExtension`）、`host.ts`（`createPreviewHost(deps)`：PreviewHost 的实现，依赖注入便于单元测试）、`preview-container.tsx`、`plugin-error-boundary.tsx`、`confirm-executable-dialog.tsx`、`plugins.ts`（`previewPlugins(builtin)`：e2e 时追加测试插件）；`data/vfs.ts` 增加 `useResourceStat`（预览标签的 stat，`staleTime` 0）与 `fetchDirectory`（与资源树共用目录查询的缓存）；`vfs.interest` 的发送改为本窗口唯一的合并器 `createInterestHub`（资源树的 `useVfsInterest` 与标签区的 `useVfsTabsInterest` 各管一部分，合并后经同一个 300ms 防抖发送；一个来源卸载只清空自己的部分）；`stores/tabs-store.ts` 增加 `selectActiveDirectory`（激活标签显示目录时为其 URI），标签区据此发送 `tabs`；`lib/query-keys.ts` 增加 `stat` / `statRoot`，`vfs.changed` 同时让该目录自身与其直接子项的 stat 失效。
+- M1-3b 导航：`lib/logical-path.ts`（逻辑路径）、`features/preview/workspace-overview.tsx`（工作区总览）；`features/address-bar/`（应用级地址栏 `address-bar.tsx`、全局快捷键 `use-navigation-shortcuts.ts`、按键 / 侧键 → 命令的纯函数 `commands.ts`，12.2 节）；`stores/tabs-store.ts` 增加 `selectActiveTab`、刷新请求 `refreshSeq` / `requestRefresh` 与订阅函数 `onTabRefresh`（地址栏发出，标签内容订阅）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
-外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`TabsArea` 等组合进去；标签内容同样经插槽组合：`TabsArea` 的 `renderContent(tab)` 由 `app/` 传入 `<PreviewContainer tab plugins />`（features/tabs 与 features/preview 互不 import）；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
+外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; addressBar: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`AddressBar`（M1-3b，标题栏正下方的一行）、`TabsArea` 等组合进去；标签内容同样经插槽组合：`TabsArea` 的 `renderContent(tab)` 由 `app/` 传入 `<PreviewContainer tab plugins />`（features/tabs 与 features/preview 互不 import）；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
 
 ### 5.4 命名与编码约定
 
@@ -811,13 +813,13 @@ export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>) => plugin;
 
 **已实现（M1-3 MVP 契约，`packages/plugin-sdk/src/index.ts`）**：上面是目标形态，M1-3 实现其中的子集并有以下差异——
 - `PreviewHost.fs`：`stat(uri)`、`list(uri): Promise<DirectoryListing>`（缓存优先的目录列表，与资源树共用查询缓存；目标形态中的 `FileEntry[]` 改为带 `state` / `checkedAt` 的 `DirectoryListing`，插件可显示「已断开」；所在共享在渲染端 `stores/reachability-store.ts` 中为断开时，宿主把 `state` 报告为 `offline`——断开之前取得、仍在查询缓存中的列表也按断开显示；目录不在了以 `FS_NOT_FOUND` 拒绝）、`subscribe(uri, onChange): () => void`（该目录的 `vfs.changed`）、`toDisplayPath(uri)`（file URI → Windows 路径，用于显示）；`readText` / `readBinary` / `toResourceUrl` 随 M2。
-- `tabs`：`open(uri, { preview? })`（在标签所属工作区新开，已打开则激活）、`navigate(uri, kind?)`（替换当前标签）；宿主经 `vfs.stat` 取得类型与标题，`navigate` 给出插件已知的类型（`'directory' | 'file'`，例如目录列表中的项）时不 stat，标题取 URI 的最后一段（最终审查修复）；`navigate` 进入标签的历史（11.1 节）。`up()`（M1-3b）：当前标签按**逻辑路径**到上一级，由宿主计算（`PreviewContainer` 用 `lib/logical-path.ts` 的 `parentLocation` 算出后注入，不 stat）——条目内逐级向上，条目根（含 file 条目）的上一级是工作区总览，不再越过条目根走到磁盘上的上级；已在总览时不做任何事。`pluginId` / `background` / `newWindow` 随 M3。
+- `tabs`：`open(uri, { preview? })`（在标签所属工作区新开，已打开则激活）、`navigate(uri, kind?)`（替换当前标签）；宿主经 `vfs.stat` 取得类型与标题，`navigate` 给出插件已知的类型（`'directory' | 'file'`，例如目录列表中的项）时不 stat，标题取 URI 的最后一段（最终审查修复）；`navigate` 进入标签的历史（11.1 节）。`up()`（M1-3b）：当前标签按**逻辑路径**到上一级，由宿主计算（`PreviewContainer` 用 `lib/logical-path.ts` 的 `parentLocation` 算出后注入，不 stat）——条目内逐级向上，条目根（含 file 条目）的上一级是工作区总览，不再越过条目根走到磁盘上的上级；已在总览时不做任何事。`onRefresh(listener): () => void`（M1-3b）：用户在应用的地址栏请求刷新本标签（刷新按钮 / 全局 `F5`）时回调，返回取消订阅函数；宿主经 `stores/tabs-store.ts` 的 `onTabRefresh(tabId)` 实现；它只是订阅，不视为「在标签内交互」。`pluginId` / `background` / `newWindow` 随 M3。
 - `system`：`revealInOs(uri)`、`copyPath(uri)`（Windows 路径写剪贴板并提示）、`openWithSystem(uri)`（可执行类扩展名由宿主先弹确认框，9.4 节）；失败时宿主以 toast 提示错误码文案，Promise 不拒绝。`getLaunchCapabilities` / `launch` 随 Office（第 10 节）。
 - `ui` 只有 `toast`（`setTitle` / `setStatus` 推迟）；`i18n.t` 查插件自带的语言资源（以插件 id 为 i18next 命名空间登记，键不含 `.`）；`settings.get` 只能读 SDK 中声明的 `HostSettings`（M1-3：`explorer.showHiddenFiles`），而不是「插件自己的命名空间」。
 - `FileStat` / `FileEntry` / `DirectoryListing` 在 SDK 中重新声明（模块边界不允许 SDK 依赖 shared），与 `@pch/shared` 的同名类型结构相同，宿主实现把 shared 的值赋给 SDK 类型、不一致时编译失败。
 - 新增 `AnyPreviewPlugin`（注册表的列表元素，各插件 viewState 类型不同）与常量 `FALLBACK_PLUGIN_ID`。
-- 插件调用 `tabs.*` / `system.*` 视为宿主动作，所在的预览标签转为常驻；标签内的滚动、点击、按键不算（11 节，控制者裁定）。
-- `fs.refresh(uri): Promise<void>`（最终审查修复追加）：让宿主立即重新确认该目录（`vfs.refresh` 该目录，并让其目录查询失效），之后的 `list` 取得确认后的内容；不视为「在标签内交互」（预览标签不转常驻）。
+- 插件调用 `tabs.open` / `navigate` / `up` 与 `system.*` 视为宿主动作，所在的预览标签转为常驻（`tabs.onRefresh` 不算）；标签内的滚动、点击、按键不算（11 节，控制者裁定）。
+- `fs.refresh(uri): Promise<void>`（最终审查修复追加）：让宿主立即重新确认该目录（`vfs.refresh` 该目录，并让其目录查询失效），之后的 `list` 取得确认后的内容；不视为「在标签内交互」（预览标签不转常驻）。M1-3b 起刷新的入口在应用的地址栏，插件经 `tabs.onRefresh` 收到请求后调用它。
 - `fs.rootOf(uri): string | null`（M1-3 追加）：uri 所属的工作区 folder 条目的根（包含它的条目中 URI 最长者，`isUnderUri`），不在任何条目之下时为 null；`i18n.describeError(error)`（M1-3 追加）：宿主 API 拒绝时的错误（带 code）→ 应用的错误文案（`errors:<code>`），插件不必自带错误码文案。
 - 依赖（控制者裁定）：内置插件除 `plugin-sdk` 与 `ui` 外，允许依赖 `lucide-react`（仅用于图标）与 `@tanstack/react-virtual`（虚拟滚动，版本与渲染端相同）。eslint 的模块边界规则只约束工作区内的包，不限制这两个外部包。
 
@@ -864,7 +866,7 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
 
-**已实现（M1-3）：folder**（`plugins/builtin/src/folder/`，`match.kinds = ['directory']`）：工具栏只有「刷新」按钮（M1-3b 移除了面包屑与「上一级」按钮，由应用的地址栏取代；刷新按钮随后也移到地址栏）。列表（`role="grid"`）：列为名称（图标区分目录 / 文件 / 链接 / 失效链接）、修改时间（`dateStyle`/`timeStyle` short，按界面语言）、类型（文件夹 / 「扩展名大写 + 文件」/ 链接类型）、大小（1024 进位，目录与失效链接不显示）；点击列头排序（同一列再点反转，`aria-sort`），目录与指向目录的链接始终在前，名称按 `Intl.Collator('ja', { numeric: true })`，其他列相等时按名称升序；排序存于标签的 viewState（只在内存中；同一标签内导航时 `layoutReducer` 清除，回到按名称升序）。`@tanstack/react-virtual` 虚拟滚动（行高 28、`measureElement`、overscan 10；1 万项的目录 DOM 中的行数 ≤ 100，e2e 断言）。「显示隐藏文件」从 `host.settings.get` 读取，打开时隐藏项名称变淡。交互：单击只选中（不改变预览状态）；双击 / Enter 打开——目录与指向目录的链接 `host.tabs.navigate`（同一标签内导航），文件 `host.tabs.open(uri, { preview: false })`；Backspace / Alt+↑ 经 `host.tabs.up()` 到逻辑路径的上一级（条目根之上是工作区总览）；↑↓ / PageUp / PageDown / Home / End 移动选中；在标签内导航后焦点回到列表。工具栏右端的「刷新」按钮与 `F5`（焦点在目录视图内时）经 `host.fs.refresh` 让扫描进程立即确认该目录并重新列出，期间保留当前内容（最终审查修复）；刷新（`vfs.refresh` → `scheduler.refresh`）**绕过 P0 的 2 秒去重**（M1-3b 审查修复：此前刚列出后 2 秒内刷新会被静默丢掉），也不与正在执行的 P0 合并，已在排队的仍合并（连按 F5 不重复排队）。**条目之外的目录**（M1-3b 起「上一级」不再越过条目根，界面上已无法到达；保留给旧数据与将来的定位）不进缓存、不在调度范围内，没有 `vfs.changed`，外部变化不会自动显示，要用「刷新」；降级模式（扫描进程不可用、主进程直接枚举）下同样只能刷新。数据：`host.fs.list`（缓存优先）+ `host.fs.subscribe`（该目录的 `vfs.changed` 时重新列出，期间保留当前内容）；出错时显示错误文案（`host.i18n.describeError`）与「重试」，错误优先于旧内容。导航（双击目录）经 `host.tabs.navigate(uri, 'directory')`，宿主不 stat；上一级经 `host.tabs.up()`。**标签中显示的目录被删除**（最终审查修复）：不再依赖 stat——扫描进程在删除某目录的缓存时（读取得到「不存在」、被替换为文件，或父目录的列表中它已消失），除父目录外还对按关注点处理的目录（各窗口的选中目录与标签中的目录）中等于它或在其之下者各发一次 `vfs.changed`（`scheduler.ts` 的 `notifyRemoved`；之后再读取失败不再通知，不会循环），目录视图据此重新列出，`fs.list` 以 `FS_NOT_FOUND` 拒绝，显示「找不到」与「重试」（e2e 断言）。状态行：项目数、「已断开（基于缓存）」（`fs.list` 的 `state` 为 offline：扫描进程判定断开，或渲染端的可达状态为断开；可达状态变化时宿主重建、视图重新列出，显示中的目录随之切换）、读取中；**不显示「基于缓存（N 前）」**（控制者裁定）：检查后内容没有变化时扫描进程不广播 `vfs.changed`，列表的 `checkedAt` 不会更新，「N 前」会越来越旧，而该目录作为关注点实际每 5 秒都确认过，显示出来会误导用户（资源树的悬停提示「上次检查」保持不变）。
+**已实现（M1-3）：folder**（`plugins/builtin/src/folder/`，`match.kinds = ['directory']`）：没有工具栏（M1-3b：面包屑、「上一级」与「刷新」按钮都由应用的地址栏取代，12.2 节）。列表（`role="grid"`）：列为名称（图标区分目录 / 文件 / 链接 / 失效链接）、修改时间（`dateStyle`/`timeStyle` short，按界面语言）、类型（文件夹 / 「扩展名大写 + 文件」/ 链接类型）、大小（1024 进位，目录与失效链接不显示）；点击列头排序（同一列再点反转，`aria-sort`），目录与指向目录的链接始终在前，名称按 `Intl.Collator('ja', { numeric: true })`，其他列相等时按名称升序；排序存于标签的 viewState（只在内存中；同一标签内导航时 `layoutReducer` 清除，回到按名称升序）。`@tanstack/react-virtual` 虚拟滚动（行高 28、`measureElement`、overscan 10；1 万项的目录 DOM 中的行数 ≤ 100，e2e 断言）。「显示隐藏文件」从 `host.settings.get` 读取，打开时隐藏项名称变淡。交互：单击只选中（不改变预览状态）；双击 / Enter 打开——目录与指向目录的链接 `host.tabs.navigate`（同一标签内导航），文件 `host.tabs.open(uri, { preview: false })`；Backspace / Alt+↑ 经 `host.tabs.up()` 到逻辑路径的上一级（条目根之上是工作区总览）；↑↓ / PageUp / PageDown / Home / End 移动选中；在标签内导航后焦点回到列表。刷新：地址栏的刷新按钮与全局 `F5`（M1-3b；此前是视图工具栏的按钮与视图内的 `F5`，已删除以免重复触发）经 `host.tabs.onRefresh` 通知插件，插件经 `host.fs.refresh` 让扫描进程立即确认该目录并重新列出，期间保留当前内容（最终审查修复）；刷新（`vfs.refresh` → `scheduler.refresh`）**绕过 P0 的 2 秒去重**（M1-3b 审查修复：此前刚列出后 2 秒内刷新会被静默丢掉），也不与正在执行的 P0 合并，已在排队的仍合并（连按 F5 不重复排队）。**条目之外的目录**（M1-3b 起「上一级」不再越过条目根，界面上已无法到达；保留给旧数据与将来的定位）不进缓存、不在调度范围内，没有 `vfs.changed`，外部变化不会自动显示，要用「刷新」；降级模式（扫描进程不可用、主进程直接枚举）下同样只能刷新。数据：`host.fs.list`（缓存优先）+ `host.fs.subscribe`（该目录的 `vfs.changed` 时重新列出，期间保留当前内容）；出错时显示错误文案（`host.i18n.describeError`）与「重试」，错误优先于旧内容。导航（双击目录）经 `host.tabs.navigate(uri, 'directory')`，宿主不 stat；上一级经 `host.tabs.up()`。**标签中显示的目录被删除**（最终审查修复）：不再依赖 stat——扫描进程在删除某目录的缓存时（读取得到「不存在」、被替换为文件，或父目录的列表中它已消失），除父目录外还对按关注点处理的目录（各窗口的选中目录与标签中的目录）中等于它或在其之下者各发一次 `vfs.changed`（`scheduler.ts` 的 `notifyRemoved`；之后再读取失败不再通知，不会循环），目录视图据此重新列出，`fs.list` 以 `FS_NOT_FOUND` 拒绝，显示「找不到」与「重试」（e2e 断言）。状态行：项目数、「已断开（基于缓存）」（`fs.list` 的 `state` 为 offline：扫描进程判定断开，或渲染端的可达状态为断开；可达状态变化时宿主重建、视图重新列出，显示中的目录随之切换）、读取中；**不显示「基于缓存（N 前）」**（控制者裁定）：检查后内容没有变化时扫描进程不广播 `vfs.changed`，列表的 `checkedAt` 不会更新，「N 前」会越来越旧，而该目录作为关注点实际每 5 秒都确认过，显示出来会误导用户（资源树的悬停提示「上次检查」保持不变）。
 
 **已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。目录由 folder 插件显示（fallback 只在「以文件信息显示」时显示目录）。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，审查时追加 `.pif .scf .msp .jar .appref-ms`，最终审查追加 `.url .website .application .inf .chm .settingcontent-ms .psm1 .psd1 .ps1xml .ws .wsc .sct .vb .appinstaller .msix .appx .xll .diagcab .library-ms .search-ms .gadget`——只增加确认、不阻止打开，需求方可裁剪；大小写不敏感；NTFS 备用数据流的名称（`run.bat::$DATA`、`run.bat:stream`）按第一个 `:` 之前的文件名判断；判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。
 
@@ -1060,7 +1062,7 @@ export function layoutReducer(state: TabsState, action: TabsAction, newId: () =>
 - 工作区总览（M1-3b，`features/preview/workspace-overview.tsx`，应用内置视图、不是插件）：工作区 id 取自标签的 URI（标签按工作区区分，总览只会是所属工作区的），标题为工作区显示名；分组为分节（`overview-model.ts`：未分组的项在前、无标题，之后是分组；分组内先项后子分组，同层按 sortOrder），folder / file 条目为项（别名、真实路径；悬停提示为真实路径）。单击只获得焦点；双击 / Enter：folder 在当前标签内导航（进入历史），file 以常驻标签打开（总览标签转常驻）。从条目根上来时焦点落在刚离开的条目上。`pch-workspace:` 不是文件 URI：不发给扫描进程、不进 `vfs.interest.tabs`（`selectActiveDirectory` 只取 `kind: 'directory'`），资源树不定位它。
 - 资源树（`features/explorer`）：单击 = 选中 + 切换展开 + 预览打开（设置 `explorer.singleClickPreview` 为 false 时不打开）；双击（click 的 `detail` 为 2）= 常驻打开，第二次单击不再切换展开；↑↓ 只移动选中、不打开，Enter = 切换展开 + 常驻打开（错误行为重试）。条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
 - 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`；工作区总览为标题），图标按位置种类（总览 / 目录 / 文件）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
-- 预览转常驻：只有两种触发——插件调用宿主的任何动作（`tabs.*` / `system.*`）与双击标签头（以及从资源树双击 / Enter 打开同一资源）；标签内容中的点击、选择文字、滚轮、按键不改变预览状态（控制者裁定）。
+- 预览转常驻：只有两种触发——插件调用宿主的动作（`tabs.open` / `navigate` / `up`、`system.*`）与双击标签头（以及从资源树双击 / Enter 打开同一资源）；标签内容中的点击、选择文字、滚轮、按键不改变预览状态（控制者裁定）。
 
 ### 11.3 会话快照
 
@@ -1098,6 +1100,7 @@ export interface SessionSnapshot {
 
 ```
 ┌ 标题栏：工作区切换器 │ 搜索/命令面板（Ctrl+K） │ 主题/语言快捷切换 │ 窗口按钮 ┐
+├ 地址栏：[←][→][↑][⟳]  工作区 ▾ › 条目别名 › 段 … › 文件名 ─────────────────────┤
 ├──┬────────────────┬─────────────────────────────────────────────────────┤
 │活│ 资源树          │ 标签栏（拖拽排序、固定、预览模式、溢出菜单）              │
 │动│ （工作区条目 +  ├─────────────────────────────────────────────────────┤
@@ -1109,6 +1112,12 @@ export interface SessionSnapshot {
 ```
 
 隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 与 fallback 插件已实现（9.3、9.4 节「已实现」），folder 与 fallback 插件均已实现（9.4 节「已实现」）。
+
+**地址栏（M1-3b 已实现，`features/address-bar`，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.2 / 2.8 节）**：标题栏正下方、横跨活动栏 / 侧栏 / 内容区的一行（`Shell` 的 `addressBar` 插槽，`<nav>`，与标题栏同级、不属于任何标签的内容），显示当前工作区**激活标签**的位置；没有标签时只有工作区一段。
+- 按钮：后退 / 前进（按该标签自己的历史，11.1 节）、上一级（`lib/logical-path.ts` 的 `parentLocation`，与目录视图的 Backspace / `Alt+↑` 相同）、刷新（`stores/tabs-store.ts` 的 `requestRefresh(tabId)`：目录视图重新确认并列出、文件标签重新 stat、工作区总览重新取得条目）；不可用时禁用（没有标签时全部禁用）。悬停提示带快捷键。
+- 路径段：每次由 `logicalPath` 用最新的工作区名与条目计算（条目改名后立即更新；标签栏的标题仍是打开时的快照）。单击段 = 在当前标签内导航（进入历史；当前位置本身不变）；中键 / `Ctrl+单击` = 在新标签打开（同 URI 已打开时按 `tab/open` 只激活）；没有激活标签时单击也新建标签。段的悬停提示为真实路径（Windows 路径；工作区段没有）；最后一段 `aria-current="location"`。段过长时截断（最大宽度），段多时横向滚动（滚动条隐藏，纵向滚轮换成横向），路径或宽度变化后滚到末尾，使当前位置可见。
+- 工作区段旁的 ▾：列出工作区（当前项选中），选中即切换（与标题栏的切换器相同，经 `data/workspace` 的 `activate`；新建 / 重命名 / 删除只在标题栏的切换器中）。
+- 快捷键（`use-navigation-shortcuts.ts`，监听 window，按键 → 命令为纯函数 `commands.ts`）：`Alt+←` / `Alt+→` 后退 / 前进（焦点在输入框时也有效，与浏览器相同）；`F5` 刷新激活标签（焦点在 input / textarea / select / contenteditable 时除外；视图内已处理的按键——`defaultPrevented`，例如资源树内的 `F5` 刷新资源树——不再处理）；鼠标侧键为 `mouseup` 的 `button` 3 / 4（后退 / 前进），侧键的 `mousedown` / `mouseup` / `auxclick` 都阻止默认动作（不用主进程的 `app-command`）。系统级侧键（`mouse_event` 的 XBUTTON1 / XBUTTON2）已实测：每按一次后退 / 前进一步，页面不发生历史导航。
 
 ### 12.3 渲染端入口
 

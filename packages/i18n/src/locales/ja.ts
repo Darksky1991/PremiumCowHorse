@@ -134,6 +134,13 @@ export default {
     shortcutSettings: '設定を開く',
     comingSoon: 'この機能は今後のマイルストーンで実装されます'
   },
+  addressBar: {
+    label: 'アドレスバー',
+    back: '戻る',
+    forward: '進む',
+    up: '1 つ上へ',
+    refresh: '最新の情報に更新'
+  },
   tabs: {
     label: '開いているタブ',
     close: '閉じる'

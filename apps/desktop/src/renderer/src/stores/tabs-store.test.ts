@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { TabsState } from '@pch/shared'
-import { selectActiveDirectory, selectTabs, useTabsStore, type TabTarget } from './tabs-store'
+import {
+  selectActiveDirectory,
+  selectActiveTab,
+  selectTabs,
+  useTabsStore,
+  type TabTarget
+} from './tabs-store'
 
 const file = (uri: string, preview: boolean): TabTarget & { preview: boolean } => ({
   uri,
@@ -10,7 +16,7 @@ const file = (uri: string, preview: boolean): TabTarget & { preview: boolean } =
 })
 
 describe('tabs-store', () => {
-  beforeEach(() => useTabsStore.setState({ byWorkspace: {} }))
+  beforeEach(() => useTabsStore.setState({ byWorkspace: {}, refreshSeq: {} }))
 
   it('按工作区区分标签集合：一个工作区的操作不影响另一个', () => {
     const { open } = useTabsStore.getState()
@@ -81,5 +87,30 @@ describe('tabs-store', () => {
     expect(current()).toBe('file:///C:/a')
     useTabsStore.getState().forward(id)
     expect(current()).toBe('file:///C:/a/b')
+  })
+  it('激活标签的选择器：没有工作区 / 没有标签时为 null', () => {
+    const active = (w: string | undefined): string | null =>
+      selectActiveTab(w)(useTabsStore.getState())?.uri ?? null
+    expect(active(undefined)).toBeNull()
+    expect(active('w1')).toBeNull()
+    useTabsStore.getState().open('w1', file('a', false))
+    useTabsStore.getState().open('w1', file('b', false))
+    expect(active('w1')).toBe('b')
+    expect(active('w2')).toBeNull()
+  })
+
+  it('requestRefresh 按标签递增刷新序号（订阅者据此刷新），标签布局不变', () => {
+    useTabsStore.getState().open('w1', file('a', false))
+    const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
+    const before = useTabsStore.getState().byWorkspace
+    const seen: Array<number | undefined> = []
+    const off = useTabsStore.subscribe((s, prev) => {
+      if (s.refreshSeq[id] !== prev.refreshSeq[id]) seen.push(s.refreshSeq[id])
+    })
+    useTabsStore.getState().requestRefresh(id)
+    useTabsStore.getState().requestRefresh(id)
+    off()
+    expect(seen).toEqual([1, 2])
+    expect(useTabsStore.getState().byWorkspace).toBe(before)
   })
 })

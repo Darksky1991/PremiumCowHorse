@@ -129,6 +129,13 @@ export default {
     shortcutSettings: '打开设置',
     comingSoon: '该功能将在后续里程碑中实现'
   },
+  addressBar: {
+    label: '地址栏',
+    back: '后退',
+    forward: '前进',
+    up: '上一级',
+    refresh: '刷新'
+  },
   tabs: {
     label: '已打开的标签',
     close: '关闭'

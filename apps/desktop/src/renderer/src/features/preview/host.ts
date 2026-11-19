@@ -20,6 +20,8 @@ export interface PreviewHostDeps {
   isOffline: (uri: string) => boolean
   /** 订阅 vfs.changed，回调参数为变化的目录 URI；返回取消订阅函数 */
   onVfsChanged: (listener: (uri: string) => void) => () => void
+  /** 订阅本标签的刷新请求（地址栏的刷新按钮 / F5）；返回取消订阅函数 */
+  onRefresh: (listener: () => void) => () => void
   tabs: {
     open: (workspaceId: string, target: TabTarget & { preview: boolean }) => void
     navigate: (id: string, target: TabTarget) => void
@@ -59,7 +61,8 @@ function nameOfUri(uri: string): string {
 
 /**
  * 预览插件的宿主（plugin-sdk 的 PreviewHost）：插件只能经它访问文件系统、标签与系统操作。
- * - 插件调用 tabs.* / system.* 视为在标签内交互：所在的预览标签转为常驻（设计第 2 节）。
+ * - 插件调用 tabs.open / navigate / up 与 system.* 视为在标签内交互：所在的预览标签转为常驻（设计第 2 节）；
+ *   tabs.onRefresh 只是订阅，不算。
  * - system.* 失败时以 toast 提示错误码对应的文案，Promise 不拒绝（插件不必处理错误）。
  * - 「用系统应用打开」对可执行类扩展名先确认（设计 3.3），取消时不调用 system.openPath。
  */
@@ -122,7 +125,9 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         if (parent === null) return
         interacted()
         deps.tabs.navigate(tabId, parent)
-      }
+      },
+      // 订阅不是「在标签内交互」：不转常驻
+      onRefresh: (listener) => deps.onRefresh(listener)
     },
     system: {
       revealInOs: (uri) => {

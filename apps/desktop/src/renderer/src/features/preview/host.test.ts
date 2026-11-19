@@ -12,6 +12,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
   deps: PreviewHostDeps
   calls: Array<[IpcChannel, unknown]>
   emit: (uri: string) => void
+  refresh: () => void
 } {
   const calls: Array<[IpcChannel, unknown]> = []
   const stats: Record<string, FileStat> = {
@@ -28,6 +29,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     return undefined
   }) as unknown as PreviewHostDeps['invoke']
   const listeners = new Set<(uri: string) => void>()
+  const refreshListeners = new Set<() => void>()
   const deps: PreviewHostDeps = {
     tabId: 'tab-1',
     workspaceId: 'ws',
@@ -38,6 +40,10 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     onVfsChanged: (listener) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
+    },
+    onRefresh: (listener) => {
+      refreshListeners.add(listener)
+      return () => refreshListeners.delete(listener)
     },
     tabs: { open: vi.fn(), navigate: vi.fn(), promote: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
@@ -55,7 +61,8 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     ...overrides
   }
   const emit = (uri: string): void => listeners.forEach((l) => l(uri))
-  return { host: createPreviewHost(deps), deps, calls, emit }
+  const refresh = (): void => refreshListeners.forEach((l) => l())
+  return { host: createPreviewHost(deps), deps, calls, emit, refresh }
 }
 
 /** 宿主内部的异步动作（void 调用）完成 */
@@ -186,6 +193,18 @@ describe('createPreviewHost: tabs', () => {
     const { host, deps } = setup({ parent: null })
     host.tabs.up()
     expect(deps.tabs.navigate).not.toHaveBeenCalled()
+    expect(deps.tabs.promote).not.toHaveBeenCalled()
+  })
+
+  it('onRefresh relays the refresh requests of this tab (address bar / F5) and can be cancelled; it is not an interaction', () => {
+    const { host, deps, refresh } = setup()
+    const onRefresh = vi.fn()
+    const off = host.tabs.onRefresh(onRefresh)
+    refresh()
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    off()
+    refresh()
+    expect(onRefresh).toHaveBeenCalledTimes(1)
     expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
