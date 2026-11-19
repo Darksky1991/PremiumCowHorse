@@ -191,3 +191,19 @@
 - 原因：该规则（面向 React Compiler）把「渲染中由函数调用得到、再作为 JSX 类型使用的值」一律视为在渲染中创建的组件，看不出背后有缓存。
 - 解决：不在渲染中取组件，改为缓存 `plugin.load()` 的 Promise，用 React 19 的 `use(promise)` 在 Suspense 中等待模块，再渲染模块的默认导出（`features/preview/preview-container.tsx` 的 `PluginBody`）；加载失败时 `use` 抛出拒绝原因，由外层错误边界接住。
 - 预防：动态选择组件时缓存「数据（模块 Promise）」而不是「组件」；Promise 必须缓存（每次渲染新建 Promise 会无限挂起）。
+
+### `TextDecoder`：默认 `ignoreBOM: false` 会在每次（非 stream）`decode` 的开头去掉 U+FEFF
+
+- 日期：2026-11-20
+- 症状：按行解码时，每行都用同一个 `TextDecoder` 调用 `decode(lineBytes)`；以 U+FEFF 开头的行（以及文件开头的 BOM）被悄悄去掉，「是否跳过 BOM」不受调用方控制。
+- 原因：WHATWG Encoding 规范中 UTF-8 / UTF-16 解码器在每个新流的开头吞掉 BOM；非 stream 的 `decode()` 每次都开始新流。
+- 解决：`packages/text-engine/src/decode.ts` 用 `new TextDecoder(label, { ignoreBOM: true })`，文件开头的 BOM 由调用方按 `detectEncoding` 的 `bomLength` 用 `skipBytesAtStart` 跳过。
+- 预防：分段 / 按行解码时总是显式写 `ignoreBOM`；被截断的行用 `decode(bytes, { stream: true })` 再 `decode()` 丢弃残缺字符（flush 会产生 U+FFFD）。
+
+### 编码判断：「能被 GB18030 fatal 解码」不能用来排除其他编码（UTF-16LE 的假名恰好是合法的四字节序列）
+
+- 日期：2026-11-20
+- 症状：无 BOM 的纯日文 UTF-16LE（如「ファイル」= `D5 30 A1 30 A4 30 EB 30`）被判成「字节编码解释得通」，UTF-16 判断失败。
+- 原因：GB18030 的四字节形式是「81–FE, 30–39, 81–FE, 30–39」，UTF-16LE 的片假名 / 平假名（U+30xx）的字节正好是「任意, 0x30」交替，`TextDecoder('gb18030', { fatal: true })` 能解码成功（得到增补平面的字符）。ASCII 与 Shift_JIS 片假名按 UTF-16LE 读也常落在 CJK 区（`'ex'` = U+7865）。
+- 解决：`packages/text-engine/src/utf16-guess.ts` 的纯中日文路径要求「UTF-8 不合法，且 Shift_JIS / EUC-JP / GB18030 / Big5 都不合法或常用字区打分不为正」；GB18030 的四字节在打分中计 -0.5。
+- 预防：GB18030 几乎接受任意高位字节序列，排除候选时要看打分，不能只看 fatal 解码是否成功。

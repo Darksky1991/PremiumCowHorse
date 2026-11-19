@@ -233,3 +233,11 @@
 - 原因：根下显示为「未分组条目在上、分组在下」，与 sortOrder 不同，落在分组边缘的条目被放到未分组区的末尾；另外 `dragRow` 按 `textContent` 取**第一个**同名行，条目被拖到最前之后，同名的「固定条目」排在了真实子项之前，落点从真实节点变成了条目。
 - 解决：断言区分两种顺序——数据顺序用 `entry.list`，显示顺序用 `[role="treeitem"][aria-level="1"]` 的文本；落点选不与条目重名、或同名时真实子项确定在前的行。
 - 预防：改变排序或拖放语义后，检查 e2e 里按名称找行的地方是否出现了同名行（真实子项与「固定」出来的条目同名）。
+
+### vitest：通过的测试里 `console.log` 不显示（非 TTY 下默认 `silent: 'passed-only'`）
+
+- 日期：2026-11-20
+- 症状：编码判断测试在 `afterAll` 中打印准确率汇总，测试有失败时能看到，全部通过时输出中没有。
+- 原因：vitest 5 的某些报告器在未指定 `silent` 时设为 `'passed-only'`（`cli-api` 中 `if (this.silent == null && !ctx.config.providedOptions.silent) this.silent = "passed-only"`），在 AI 工具等非交互终端中运行时生效。
+- 解决：需要看日志时加 `--silent=false`（如 `npx vitest run packages/text-engine/src/encoding.test.ts --silent=false`）。
+- 预防：测试中打印的汇总不要作为唯一的检查手段——关键数字用断言保证。
