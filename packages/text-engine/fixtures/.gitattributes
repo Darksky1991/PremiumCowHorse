@@ -1,0 +1,3 @@
+# 样本含 CRLF / 非 UTF-8 字节，必须原样保存，禁止换行转换
+samples/* binary
+expected/* binary

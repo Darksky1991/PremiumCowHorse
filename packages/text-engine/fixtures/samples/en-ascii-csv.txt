@@ -1,0 +1,201 @@
+name,department,amount,note
+Zoe Clark,Operations,66000,approved
+Zoe Clark,Sales,23800,ok
+Zoe Clark,Operations,20700,approved
+Zoe Clark,Sales,48700,to confirm
+Jose Alvarez,Finance,600,approved
+Chloe Dubois,Finance,61100,approved
+Anna Mueller,Sales,76900,to confirm
+Jose Alvarez,Sales,84100,to confirm
+Soren Jensen,Finance,72500,to confirm
+Anna Mueller,Finance,41000,to confirm
+Soren Jensen,Sales,79700,to confirm
+Jose Alvarez,Operations,20200,approved
+Zoe Clark,Finance,84100,ok
+Soren Jensen,Finance,34100,approved
+Soren Jensen,Finance,10400,ok
+Jose Alvarez,Operations,28500,approved
+Anna Mueller,Operations,65800,to confirm
+Chloe Dubois,Sales,94700,ok
+Zoe Clark,Operations,94200,approved
+Zoe Clark,Operations,4200,to confirm
+Soren Jensen,Finance,56500,to confirm
+Chloe Dubois,Finance,9400,to confirm
+Chloe Dubois,Finance,10000,to confirm
+Chloe Dubois,Finance,44900,to confirm
+Zoe Clark,Operations,78100,approved
+Jose Alvarez,Sales,38500,to confirm
+Jose Alvarez,Operations,2400,ok
+Jose Alvarez,Finance,69300,approved
+Anna Mueller,Operations,16800,to confirm
+Soren Jensen,Finance,14600,ok
+Zoe Clark,Operations,59800,to confirm
+Anna Mueller,Sales,28400,approved
+Jose Alvarez,Sales,16100,ok
+Soren Jensen,Operations,40100,ok
+Soren Jensen,Sales,48400,ok
+Soren Jensen,Finance,53800,approved
+Chloe Dubois,Operations,46100,to confirm
+Jose Alvarez,Finance,21500,ok
+Jose Alvarez,Sales,86300,to confirm
+Zoe Clark,Sales,30800,approved
+Chloe Dubois,Sales,12700,to confirm
+Jose Alvarez,Operations,9000,to confirm
+Chloe Dubois,Finance,67600,to confirm
+Soren Jensen,Sales,600,approved
+Anna Mueller,Operations,95700,approved
+Zoe Clark,Sales,20200,approved
+Anna Mueller,Operations,16000,ok
+Jose Alvarez,Operations,26700,approved
+Soren Jensen,Operations,73100,to confirm
+Soren Jensen,Finance,6000,approved
+Soren Jensen,Operations,86600,ok
+Anna Mueller,Operations,30300,to confirm
+Jose Alvarez,Sales,55000,to confirm
+Chloe Dubois,Finance,78600,ok
+Chloe Dubois,Finance,70700,approved
+Anna Mueller,Finance,77000,to confirm
+Chloe Dubois,Sales,55600,to confirm
+Anna Mueller,Sales,71200,to confirm
+Soren Jensen,Finance,23000,ok
+Jose Alvarez,Operations,16100,to confirm
+Jose Alvarez,Operations,100,approved
+Soren Jensen,Operations,4100,to confirm
+Jose Alvarez,Operations,69900,to confirm
+Zoe Clark,Operations,97200,to confirm
+Chloe Dubois,Operations,42600,approved
+Anna Mueller,Sales,65100,approved
+Anna Mueller,Operations,72700,to confirm
+Soren Jensen,Operations,35300,approved
+Chloe Dubois,Finance,52600,to confirm
+Jose Alvarez,Sales,32800,ok
+Zoe Clark,Operations,95300,approved
+Jose Alvarez,Sales,83000,to confirm
+Jose Alvarez,Sales,65100,ok
+Zoe Clark,Sales,43300,ok
+Anna Mueller,Operations,12900,approved
+Soren Jensen,Sales,87000,to confirm
+Jose Alvarez,Finance,79700,approved
+Jose Alvarez,Operations,21800,to confirm
+Soren Jensen,Finance,39400,ok
+Chloe Dubois,Sales,59200,ok
+Jose Alvarez,Operations,50700,ok
+Jose Alvarez,Operations,58600,to confirm
+Jose Alvarez,Operations,7300,to confirm
+Zoe Clark,Finance,59200,approved
+Soren Jensen,Operations,70900,ok
+Chloe Dubois,Sales,67800,ok
+Soren Jensen,Finance,97900,ok
+Jose Alvarez,Finance,96700,to confirm
+Soren Jensen,Operations,65900,ok
+Soren Jensen,Finance,49000,ok
+Soren Jensen,Finance,32300,approved
+Soren Jensen,Operations,6300,ok
+Zoe Clark,Finance,58100,ok
+Anna Mueller,Finance,20600,ok
+Chloe Dubois,Finance,75800,to confirm
+Zoe Clark,Operations,64600,ok
+Zoe Clark,Operations,7600,ok
+Zoe Clark,Operations,31800,approved
+Anna Mueller,Finance,62900,approved
+Anna Mueller,Operations,80200,ok
+Chloe Dubois,Sales,59500,approved
+Jose Alvarez,Sales,5900,to confirm
+Zoe Clark,Operations,13600,to confirm
+Anna Mueller,Operations,53200,approved
+Chloe Dubois,Sales,81700,approved
+Soren Jensen,Operations,9600,to confirm
+Jose Alvarez,Finance,62200,to confirm
+Soren Jensen,Operations,35300,ok
+Zoe Clark,Finance,11700,to confirm
+Anna Mueller,Operations,3800,ok
+Chloe Dubois,Operations,7600,approved
+Chloe Dubois,Sales,91300,to confirm
+Zoe Clark,Finance,75900,to confirm
+Jose Alvarez,Sales,90700,to confirm
+Zoe Clark,Finance,32800,approved
+Soren Jensen,Finance,99000,approved
+Zoe Clark,Sales,86900,to confirm
+Anna Mueller,Finance,1200,approved
+Zoe Clark,Finance,97000,to confirm
+Jose Alvarez,Operations,38300,approved
+Soren Jensen,Sales,56300,ok
+Soren Jensen,Finance,25800,to confirm
+Anna Mueller,Sales,75700,approved
+Anna Mueller,Sales,17000,ok
+Anna Mueller,Finance,4800,approved
+Chloe Dubois,Sales,80400,ok
+Zoe Clark,Sales,81700,approved
+Soren Jensen,Finance,78600,ok
+Chloe Dubois,Operations,45300,ok
+Chloe Dubois,Finance,32300,ok
+Soren Jensen,Finance,47900,ok
+Jose Alvarez,Operations,59200,approved
+Chloe Dubois,Sales,73600,to confirm
+Anna Mueller,Operations,60200,to confirm
+Soren Jensen,Operations,2600,to confirm
+Anna Mueller,Sales,2100,ok
+Soren Jensen,Sales,5000,to confirm
+Soren Jensen,Finance,16400,ok
+Soren Jensen,Finance,35200,approved
+Jose Alvarez,Operations,34100,approved
+Zoe Clark,Operations,78900,to confirm
+Jose Alvarez,Operations,92500,ok
+Zoe Clark,Sales,97300,ok
+Jose Alvarez,Finance,96100,ok
+Soren Jensen,Operations,84300,ok
+Soren Jensen,Sales,35100,approved
+Jose Alvarez,Operations,37700,to confirm
+Jose Alvarez,Operations,71800,to confirm
+Chloe Dubois,Sales,59400,approved
+Anna Mueller,Finance,53000,approved
+Zoe Clark,Operations,4900,approved
+Chloe Dubois,Operations,99700,to confirm
+Anna Mueller,Sales,26000,ok
+Chloe Dubois,Finance,59000,ok
+Zoe Clark,Finance,22300,ok
+Soren Jensen,Finance,84500,to confirm
+Anna Mueller,Operations,5200,approved
+Chloe Dubois,Operations,39900,approved
+Jose Alvarez,Operations,77200,to confirm
+Jose Alvarez,Finance,71000,to confirm
+Chloe Dubois,Finance,81900,approved
+Jose Alvarez,Finance,61800,approved
+Soren Jensen,Finance,1600,approved
+Jose Alvarez,Operations,68600,ok
+Chloe Dubois,Operations,5900,ok
+Anna Mueller,Finance,53800,to confirm
+Zoe Clark,Sales,69600,ok
+Jose Alvarez,Sales,34400,approved
+Jose Alvarez,Finance,43600,approved
+Zoe Clark,Finance,75500,ok
+Anna Mueller,Finance,54800,approved
+Jose Alvarez,Operations,36400,ok
+Anna Mueller,Finance,43200,to confirm
+Jose Alvarez,Sales,59300,to confirm
+Anna Mueller,Operations,88300,approved
+Soren Jensen,Finance,69500,approved
+Chloe Dubois,Operations,83800,ok
+Chloe Dubois,Sales,67800,approved
+Chloe Dubois,Sales,12700,approved
+Zoe Clark,Operations,70700,ok
+Soren Jensen,Sales,50800,ok
+Jose Alvarez,Operations,33100,approved
+Soren Jensen,Sales,65800,ok
+Jose Alvarez,Sales,98500,to confirm
+Chloe Dubois,Sales,57200,approved
+Jose Alvarez,Sales,5600,approved
+Anna Mueller,Operations,24500,approved
+Zoe Clark,Sales,48800,to confirm
+Anna Mueller,Sales,82500,approved
+Anna Mueller,Finance,62500,approved
+Chloe Dubois,Operations,96400,ok
+Chloe Dubois,Finance,18500,ok
+Jose Alvarez,Sales,73500,to confirm
+Zoe Clark,Finance,95200,approved
+Jose Alvarez,Sales,72400,approved
+Chloe Dubois,Finance,88800,approved
+Chloe Dubois,Finance,900,ok
+Anna Mueller,Finance,44900,approved
+Soren Jensen,Sales,37800,to confirm
+Chloe Dubois,Operations,99700,approved

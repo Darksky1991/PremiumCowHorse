@@ -12,3 +12,5 @@ packages/ui/src/components
 doc/PremiumCowHorse-*.md
 # 计划执行的临时工作区（git-ignored）
 .superpowers
+# 编码样本集由 gen.py 生成（含刻意的非 UTF-8 字节），不做格式化
+packages/text-engine/fixtures

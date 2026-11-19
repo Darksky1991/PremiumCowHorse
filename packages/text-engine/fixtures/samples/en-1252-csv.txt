@@ -1,0 +1,201 @@
+name,department,amount,note
+Núria Puig,Engineering,£25200,approved
+Björn Eriksson,HR,£77300,ok
+Anna Müller,HR,£23900,on hold
+Ana Lopes,Engineering,£65100,ok
+Anna Müller,Finance,£84600,to confirm
+Søren Jensen,HR,£57400,résubmit
+Renée Martin,Café Services,£46000,résubmit
+Renée Martin,Finance,£80900,to confirm
+José Álvarez,Café Services,£62800,to confirm
+Björn Eriksson,Sales,£43700,on hold
+Renée Martin,Finance,£63500,ok
+Renée Martin,Engineering,£78500,résubmit
+Ana Lopes,Finance,£79300,to confirm
+Renée Martin,Operations,£83700,to confirm
+Núria Puig,HR,£61900,approved
+Anna Müller,Operations,£60500,ok
+Björn Eriksson,Finance,£80800,résubmit
+Anna Müller,Sales,£15800,résubmit
+François Petit,Sales,£51400,résubmit
+Renée Martin,Operations,£38200,résubmit
+Anna Müller,Engineering,£65200,ok
+Núria Puig,Operations,£69400,approved
+François Petit,Engineering,£700,résubmit
+José Álvarez,Sales,£39100,résubmit
+Chloé Dubois,Engineering,£64600,approved
+Ana Lopes,Engineering,£16300,résubmit
+Anna Müller,HR,£6100,ok
+Chloé Dubois,Operations,£26300,on hold
+Zoë Clark,Sales,£22700,ok
+Núria Puig,Sales,£18400,approved
+José Álvarez,HR,£44400,on hold
+Søren Jensen,Sales,£53500,on hold
+Zoë Clark,Café Services,£25000,approved
+Anna Müller,Sales,£84300,on hold
+Zoë Clark,Finance,£59400,résubmit
+Zoë Clark,Café Services,£69800,résubmit
+François Petit,Engineering,£30000,résubmit
+Björn Eriksson,HR,£82400,résubmit
+Søren Jensen,Café Services,£6900,on hold
+Renée Martin,Operations,£77800,on hold
+Chloé Dubois,Engineering,£12000,on hold
+Renée Martin,Engineering,£63900,ok
+José Álvarez,Engineering,£86800,on hold
+José Álvarez,Sales,£98800,to confirm
+José Álvarez,Café Services,£54400,on hold
+Núria Puig,Engineering,£4300,résubmit
+Renée Martin,HR,£53100,on hold
+Björn Eriksson,Café Services,£2200,approved
+François Petit,Café Services,£39200,approved
+Renée Martin,Operations,£99200,approved
+Søren Jensen,Café Services,£1200,approved
+Renée Martin,Finance,£89100,to confirm
+Renée Martin,HR,£55900,ok
+Renée Martin,Operations,£3400,résubmit
+Chloé Dubois,Engineering,£79600,to confirm
+Anna Müller,Sales,£12000,résubmit
+Núria Puig,Operations,£15300,to confirm
+Björn Eriksson,Operations,£33500,résubmit
+Zoë Clark,HR,£38400,on hold
+Björn Eriksson,Operations,£97900,on hold
+José Álvarez,Finance,£78600,résubmit
+Björn Eriksson,Operations,£23100,on hold
+Zoë Clark,Café Services,£16100,on hold
+Anna Müller,HR,£66400,approved
+Søren Jensen,Operations,£75900,to confirm
+Søren Jensen,Café Services,£78200,on hold
+Renée Martin,Finance,£44900,résubmit
+Chloé Dubois,Engineering,£96600,approved
+Renée Martin,Operations,£42800,résubmit
+José Álvarez,Sales,£92800,to confirm
+Zoë Clark,Sales,£19800,to confirm
+Björn Eriksson,Café Services,£71500,résubmit
+Zoë Clark,Café Services,£66600,on hold
+Søren Jensen,Finance,£28100,résubmit
+Zoë Clark,Café Services,£98700,on hold
+François Petit,Café Services,£18800,ok
+Björn Eriksson,Operations,£37200,ok
+Zoë Clark,Finance,£97300,ok
+François Petit,Operations,£33300,on hold
+Chloé Dubois,Operations,£25800,résubmit
+Zoë Clark,Operations,£25700,on hold
+Núria Puig,HR,£69400,résubmit
+Núria Puig,Café Services,£89300,approved
+François Petit,Sales,£65200,résubmit
+Anna Müller,Finance,£70800,approved
+Björn Eriksson,Café Services,£26900,approved
+Søren Jensen,Finance,£78000,résubmit
+Anna Müller,Operations,£87600,ok
+Björn Eriksson,Engineering,£8400,on hold
+Renée Martin,Finance,£55700,ok
+François Petit,Finance,£87900,to confirm
+Björn Eriksson,HR,£27000,on hold
+Renée Martin,Finance,£65100,ok
+Björn Eriksson,HR,£87500,approved
+François Petit,Sales,£56800,résubmit
+Björn Eriksson,Operations,£97700,to confirm
+Anna Müller,Finance,£7500,ok
+Núria Puig,Finance,£26500,résubmit
+Núria Puig,Sales,£48200,on hold
+Chloé Dubois,Operations,£40700,on hold
+José Álvarez,Operations,£34000,on hold
+Björn Eriksson,HR,£13600,résubmit
+Ana Lopes,Operations,£26200,on hold
+Björn Eriksson,HR,£86400,résubmit
+Renée Martin,Engineering,£6800,on hold
+Ana Lopes,Finance,£85000,to confirm
+Renée Martin,Operations,£66200,résubmit
+Anna Müller,HR,£43800,ok
+Zoë Clark,Sales,£56600,ok
+Núria Puig,HR,£42600,approved
+Søren Jensen,Operations,£90100,on hold
+Zoë Clark,Finance,£85400,on hold
+Núria Puig,HR,£18400,résubmit
+Renée Martin,Finance,£90900,approved
+Ana Lopes,Café Services,£62000,to confirm
+Zoë Clark,Operations,£85500,to confirm
+Søren Jensen,Operations,£37600,approved
+Zoë Clark,HR,£22400,ok
+Anna Müller,Engineering,£27600,to confirm
+José Álvarez,Café Services,£95800,ok
+José Álvarez,Engineering,£97300,approved
+Núria Puig,HR,£48400,approved
+José Álvarez,Finance,£82300,to confirm
+Núria Puig,Sales,£76500,résubmit
+Anna Müller,Sales,£78400,ok
+Anna Müller,HR,£2900,on hold
+José Álvarez,Operations,£83500,approved
+Søren Jensen,Operations,£99600,to confirm
+Chloé Dubois,Operations,£33500,on hold
+Björn Eriksson,Operations,£85800,approved
+Ana Lopes,Finance,£94000,résubmit
+José Álvarez,Finance,£80700,approved
+François Petit,Café Services,£81100,on hold
+François Petit,Operations,£54600,approved
+François Petit,HR,£47900,ok
+Ana Lopes,Engineering,£88700,approved
+Björn Eriksson,Café Services,£74900,résubmit
+Ana Lopes,Engineering,£7700,ok
+Chloé Dubois,Sales,£32000,approved
+Ana Lopes,HR,£6700,résubmit
+Chloé Dubois,Café Services,£96800,to confirm
+Núria Puig,Engineering,£3100,to confirm
+Björn Eriksson,HR,£16000,on hold
+Ana Lopes,HR,£90500,résubmit
+Núria Puig,Café Services,£85800,résubmit
+Núria Puig,Finance,£8000,approved
+Renée Martin,Café Services,£82100,on hold
+Ana Lopes,Sales,£28000,ok
+Ana Lopes,HR,£43200,résubmit
+Zoë Clark,Engineering,£14000,approved
+François Petit,Finance,£79800,on hold
+Anna Müller,Sales,£67600,to confirm
+Núria Puig,Café Services,£89100,to confirm
+Chloé Dubois,Engineering,£24100,approved
+Anna Müller,Sales,£80200,to confirm
+Ana Lopes,HR,£27300,approved
+Ana Lopes,Engineering,£17400,ok
+José Álvarez,Operations,£94300,approved
+François Petit,Finance,£4200,ok
+Núria Puig,Engineering,£90700,résubmit
+Renée Martin,HR,£41800,to confirm
+José Álvarez,Finance,£26300,résubmit
+François Petit,Engineering,£87100,ok
+Søren Jensen,Operations,£83200,résubmit
+Björn Eriksson,Sales,£45600,approved
+José Álvarez,Operations,£28700,to confirm
+Ana Lopes,Café Services,£84800,approved
+Ana Lopes,Café Services,£11000,résubmit
+Björn Eriksson,Engineering,£44000,ok
+Zoë Clark,Operations,£34200,résubmit
+José Álvarez,Finance,£37400,résubmit
+Renée Martin,Sales,£84700,to confirm
+Zoë Clark,Café Services,£87700,ok
+José Álvarez,Sales,£19800,to confirm
+Anna Müller,Finance,£90500,ok
+Anna Müller,Finance,£49400,approved
+Björn Eriksson,Finance,£10100,to confirm
+Núria Puig,Operations,£1200,on hold
+Ana Lopes,Engineering,£18000,on hold
+Søren Jensen,Café Services,£56000,approved
+Renée Martin,Engineering,£33300,to confirm
+Anna Müller,Engineering,£32600,on hold
+Núria Puig,Operations,£13700,approved
+Núria Puig,Operations,£2400,on hold
+Søren Jensen,Café Services,£18100,to confirm
+José Álvarez,Engineering,£72500,résubmit
+José Álvarez,Sales,£1100,ok
+Anna Müller,Café Services,£93000,to confirm
+Björn Eriksson,Café Services,£9400,résubmit
+Ana Lopes,HR,£72200,approved
+Renée Martin,Operations,£84600,résubmit
+José Álvarez,Operations,£43900,résubmit
+Chloé Dubois,HR,£74000,résubmit
+Søren Jensen,Finance,£85900,ok
+Ana Lopes,Café Services,£70000,to confirm
+Søren Jensen,HR,£35200,to confirm
+Zoë Clark,HR,£26800,ok
+François Petit,Engineering,£55500,to confirm
+Zoë Clark,Engineering,£49700,to confirm
+Søren Jensen,Sales,£27800,résubmit

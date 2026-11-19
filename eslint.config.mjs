@@ -206,7 +206,8 @@ export default defineConfig(
     // text-engine 是纯逻辑包（Node / 浏览器通用）：boundaries 只管工作区内的元素，
     // 第三方包、Node 内置模块与 electron 在这里禁止——只能 import 包内的相对路径
     files: ['packages/text-engine/src/**/*.ts'],
-    ignores: ['**/*.test.ts'],
+    // *.test-helper.ts 是测试辅助（读取样本文件需要 node:fs），与 *.test.ts 同样豁免
+    ignores: ['**/*.test.ts', '**/*.test-helper.ts'],
     rules: {
       'no-restricted-imports': [
         2,
