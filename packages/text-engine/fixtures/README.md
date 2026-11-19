@@ -125,10 +125,10 @@ PYTHONIOENCODING=utf-8 python gen.py
 | `tw-big5-kanji4.txt` | zh-TW | big5 | kanji-only | big5 | 是 | 4 个汉字：Big5 双字节同时是合法的 GBK / EUC-JP 序列，无法判断 |
 | `tw-big5-kanji4b.txt` | zh-TW | big5 | kanji-only | big5 | 是 | 5 个汉字，同上 |
 | `tw-big5-paragraph.txt` | zh-TW | big5 | paragraph | big5 |  | 约 200 字 |
-| `tw-big5-8kb.txt` | zh-TW | big5 | 8kb | big5 |  | 约 8KB，含二级字 |
+| `tw-big5-8kb.txt` | zh-TW | big5 | 8kb | big5 |  | 约 8KB，含 Big5 二级字（鑫 堙 謾 龕 叡 氘 …） |
 | `tw-big5-log.txt` | zh-TW | big5 | log | big5 |  | 400 行 ASCII 日志夹繁体中文，CRLF |
 | `tw-big5-csv.txt` | zh-TW | big5 | csv | big5 |  | CSV |
-| `tw-big5-level2.txt` | zh-TW | big5 | big5-level2 | big5 |  | Big5 二级字 / 罕用字（鬱 龜 豔 蠶 籲 纜 饕 …） |
+| `tw-big5-level2.txt` | zh-TW | big5 | big5-level2 | big5 |  | Big5 二级字（首字节 0xC9-0xF9：鑫 堙 謾 龕 叡 氘 僳 鄯 糴 貘） |
 | `tw-big5-strict-paragraph.txt` | zh-TW | big5 | paragraph | big5 |  | Python 严格 big5 编码（不含 cp950 扩展） |
 | `tw-big5-strict-8kb.txt` | zh-TW | big5 | 8kb | big5 |  | 严格 big5，约 8KB |
 | `tw-utf8-short.txt` | zh-TW | utf-8 | short | utf-8 |  | 单行短文本 |

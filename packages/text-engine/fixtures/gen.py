@@ -268,16 +268,21 @@ def main():
 
     # ============================================================ 繁體中文
     TW, TWR = C.ZH_TW, C.ZH_TW_RARE
-    TW_ALL = TW + TWR
+    TW_ALL = TW + C.ZH_TW_RARE_LEGACY  # 其他繁体样本沿用旧语料（内容不变）；只有 big5 的 level2 / 8kb 使用真正的二级字 TWR
     add("tw-big5-short", "zh-TW", "cp950", "short", "請確認後再送出。", note="单行短文本")
     add("tw-big5-kanji4", "zh-TW", "cp950", "kanji-only", C.KANJI_ZH_TW[1][:4], ambiguous=True,
         note="4 个汉字：Big5 双字节同时是合法的 GBK / EUC-JP 序列，无法判断")
     add("tw-big5-kanji4b", "zh-TW", "cp950", "kanji-only", C.KANJI_ZH_TW[0][:5], ambiguous=True, note="5 个汉字，同上")
     add("tw-big5-paragraph", "zh-TW", "cp950", "paragraph", paragraph(TW, rng, 220), note="约 200 字")
-    add("tw-big5-8kb", "zh-TW", "cp950", "8kb", body_8kb(TW_ALL, rng, "cp950"), note="约 8KB，含二级字")
+    # 修复：旧版 TWR 里没有真正的 Big5 二级字。为让其他样本的内容保持不变，先在主 rng 上「重放」旧版的随机数消耗（结果丢弃），
+    # 这两个样本改用独立的 rng 与新的二级字语料。
+    body_8kb(TW_ALL, rng, "cp950")
+    rng_l2 = random.Random(20261121)
+    add("tw-big5-8kb", "zh-TW", "cp950", "8kb", body_8kb(TW + TWR, rng_l2, "cp950"), note="约 8KB，含 Big5 二级字（鑫 堙 謾 龕 叡 氘 …）")
     add("tw-big5-log", "zh-TW", "cp950", "log", log_text(rng, C.LOG_ZH_TW, nl="\r\n"), note="400 行 ASCII 日志夹繁体中文，CRLF")
     add("tw-big5-csv", "zh-TW", "cp950", "csv", csv_text(rng, C.CSV_ZH_TW, nl="\r\n"), note="CSV")
-    add("tw-big5-level2", "zh-TW", "cp950", "big5-level2", "\n".join(sentences(TWR, rng, 10)) + "\n", note="Big5 二级字 / 罕用字（鬱 龜 豔 蠶 籲 纜 饕 …）")
+    sentences(C.ZH_TW_RARE_LEGACY, rng, 10)  # 重放旧版 level2 样本的随机数消耗（结果丢弃）
+    add("tw-big5-level2", "zh-TW", "cp950", "big5-level2", "\n".join(sentences(TWR, rng_l2, 10)) + "\n", note="Big5 二级字（首字节 0xC9-0xF9：鑫 堙 謾 龕 叡 氘 僳 鄯 糴 貘）")
     add("tw-big5-strict-paragraph", "zh-TW", "big5", "paragraph", paragraph(TW, rng, 220), note="Python 严格 big5 编码（不含 cp950 扩展）")
     add("tw-big5-strict-8kb", "zh-TW", "big5", "8kb", body_8kb(TW, rng, "big5"), note="严格 big5，约 8KB")
     add("tw-utf8-short", "zh-TW", "utf-8", "short", "請確認後再送出。", note="单行短文本")
