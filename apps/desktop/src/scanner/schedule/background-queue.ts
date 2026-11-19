@@ -27,7 +27,7 @@ interface Item {
   uri: string
   /** unlisted：取出时从未尝试读取；checked：取出时按确认时刻最久的 */
   kind: 'unlisted' | 'checked'
-  /** 范围的起点在缓存中还没有行（父目录从未读过）：第一次由它开始 */
+  /** 范围的起点在缓存中还没有行（父目录从未读过）：由它开始 */
   seed: boolean
 }
 
@@ -41,12 +41,13 @@ interface Group {
   cursor: number
   mode: Item['kind'] | null
   fetchedAt: number
-  /** 一次取出后没有可用的候选：此时刻之前不再查询（有新信息时提前） */
+  /**
+   * 一次取出后没有可用的候选：此时刻之前不再查询（最早一个目录重新符合条件的时刻；
+   * Infinity = 等新的信息：列表变化、范围变化、共享恢复、配置变化）
+   */
   retryAt: number
   /** 有目录的列表变化（可能出现了新的没有信息的目录） */
   dirty: boolean
-  /** 已作为起点尝试过的范围（范围变化时重置）：起点读取失败、缓存中仍没有行时不反复尝试 */
-  seeded: Set<string>
 }
 
 export interface NextOptions {
@@ -82,15 +83,24 @@ function mergeScopes(list: Scope[]): Scope[] {
  * ④ 全部范围内最久没确认的。①② 有候选时只取 ①②（没有信息的目录终会读完，不会饿死 ③④）；
  * ③④ 放在同一批中先 ③ 后 ④（否则热点永远「最久没确认」，④ 永远轮不到）。
  * 读取失败的目录以失败时刻为确认时刻（Cache.setState），自然排到后面，不会被立即重选。
+ * 已确认过的目录在「远」层的间隔（minAgeMs）之内不再确认：范围很小时不会反复读同一个目录，
+ * 没有可选目录时休眠到最早一个目录重新符合条件为止。
  */
 export class BackgroundQueue {
   private readonly groups = new Map<string, Group>()
+  /**
+   * 确认过不存在的范围起点（没有缓存行、读取得到 FS_NOT_FOUND）。按 URI 记住，直到配置变化
+   * （clearMissing()）或该目录被重新确认存在（clearMissing(uri)）：范围变化不会让它被反复读取
+   */
+  private readonly missing = new Set<string>()
 
   constructor(
     private readonly deps: {
       cache: Cache
       groupKey: (uri: string) => string
-      /** 刚确认过（此时长内）的目录不再选 */
+      /** 已确认过的目录在此时长内不再选（调度器取该位置「远」层的间隔） */
+      minAgeMs: (uri: string) => number
+      /** 候选因正在进行等原因暂时不能确认时，多久后再看 */
       freshMs: number
     }
   ) {}
@@ -128,8 +138,7 @@ export class BackgroundQueue {
         mode: null,
         fetchedAt: 0,
         retryAt: 0,
-        dirty: false,
-        seeded: new Set()
+        dirty: false
       })
     }
   }
@@ -147,7 +156,19 @@ export class BackgroundQueue {
     g.retryAt = 0
   }
 
-  /** 丢弃所有候选（共享断开 / 恢复：可用的范围变化） */
+  /** 范围起点读取后确认不存在（且没有缓存行） */
+  markMissing(uri: string): void {
+    this.missing.add(uri)
+  }
+
+  /** 不带参数：配置变化，全部清除；带 uri：该目录被确认存在 */
+  clearMissing(uri?: string): void {
+    if (uri === undefined) this.missing.clear()
+    else if (!this.missing.delete(uri)) return
+    for (const g of this.groups.values()) g.retryAt = 0
+  }
+
+  /** 丢弃所有候选（共享断开 / 恢复、配置变化：可用的范围或间隔变化） */
   invalidate(): void {
     for (const g of this.groups.values()) {
       g.batch = []
@@ -180,22 +201,29 @@ export class BackgroundQueue {
       if (fresh.length > 0) this.load(g, fresh, 'unlisted', opts.now)
     }
     let fetched = false
+    // 本次取出后被跳过的候选：最早重新符合条件的时刻；有暂时不能确认的（正在进行等）
+    let eligibleAt = Infinity
+    let blocked = false
     for (;;) {
       if (g.cursor >= g.batch.length) {
-        // 每次调用最多查询一次：取出的候选全都不可用时等 retryAt
-        if (fetched || opts.now < g.retryAt) return null
-        fetched = true
-        this.fetch(g, opts)
-        if (g.batch.length === 0) {
-          g.retryAt = opts.now + this.deps.freshMs
+        if (fetched) {
+          // 每次调用最多查询一次：取出的候选全都不可用，休眠到最早一个重新符合条件
+          g.retryAt = Math.min(eligibleAt, blocked ? opts.now + this.deps.freshMs : Infinity)
           return null
         }
+        if (opts.now < g.retryAt) return null
+        fetched = true
+        eligibleAt = Infinity
+        blocked = false
+        this.fetch(g, opts)
         continue
       }
       const it = g.batch[g.cursor]!
-      if (this.stale(g, it, opts.now) || opts.skip(it.uri)) {
+      const wait = this.waitUntil(g, it, opts.now)
+      if (wait !== null || opts.skip(it.uri)) {
         g.cursor += 1
-        if (g.cursor >= g.batch.length && fetched) g.retryAt = opts.now + this.deps.freshMs
+        if (wait !== null) eligibleAt = Math.min(eligibleAt, wait)
+        else blocked = true
         continue
       }
       return { uri: it.uri, full: it.kind === 'unlisted' }
@@ -209,12 +237,20 @@ export class BackgroundQueue {
 
   // ---- 内部 ----
 
-  /** 取出后已不适用：没有信息的已有了信息（或已被删除）；最久没确认的在取出后（或刚刚）被确认过 */
-  private stale(g: Group, it: Item, now: number): boolean {
+  /**
+   * 候选现在是否可以确认：可以返回 null；不可以返回它重新符合条件的时刻（Infinity = 不会再符合：
+   * 没有信息的已有了信息或已被删除、起点已确认不存在）。已确认过的目录在 minAgeMs 之内不再确认
+   * （含取出后被其他检查确认过的）。
+   */
+  private waitUntil(g: Group, it: Item, now: number): number | null {
     const d = this.deps.cache.getDir(it.uri)
-    if (it.kind === 'unlisted') return d === undefined ? !it.seed : d.checkedAt !== null
-    if (d === undefined || d.checkedAt === null) return true
-    return d.checkedAt >= g.fetchedAt || now - d.checkedAt < this.deps.freshMs
+    if (it.kind === 'unlisted') {
+      if (d === undefined) return it.seed && !this.missing.has(it.uri) ? null : Infinity
+      return d.checkedAt === null ? null : Infinity
+    }
+    if (d === undefined || d.checkedAt === null) return Infinity
+    const at = d.checkedAt + this.deps.minAgeMs(it.uri)
+    return at > now || d.checkedAt >= g.fetchedAt ? Math.max(at, now) : null
   }
 
   private load(g: Group, items: Item[], mode: Item['kind'], now: number): void {
@@ -251,7 +287,7 @@ export class BackgroundQueue {
     const running = new Set(opts.running)
     const seeds = (list: Scope[]): string[] =>
       list
-        .filter((s) => !g.seeded.has(s.uri) && this.deps.cache.getDir(s.uri) === undefined)
+        .filter((s) => !this.missing.has(s.uri) && this.deps.cache.getDir(s.uri) === undefined)
         .map((s) => s.uri)
     const indexSeeds = seeds(index)
     const first = index.length > 0 ? this.deps.cache.nextUnlisted(index, n, running) : []
@@ -265,7 +301,6 @@ export class BackgroundQueue {
       if (!out.has(uri)) out.set(uri, { uri, kind: 'unlisted', seed: true })
     for (const uri of second)
       if (!out.has(uri)) out.set(uri, { uri, kind: 'unlisted', seed: false })
-    for (const it of out.values()) if (it.seed) g.seeded.add(it.uri)
     return [...out.values()]
   }
 }

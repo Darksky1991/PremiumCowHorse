@@ -42,7 +42,7 @@ export interface SchedulerDeps {
 
 /** 同一目录的 P0 在此时长内去重 */
 export const P0_DEDUPE_MS = 2000
-/** listNow：检查时刻在此时长内视为 fresh；后台队列也不选此时长内确认过的目录 */
+/** listNow：检查时刻在此时长内视为 fresh；后台队列中因正在进行而跳过的候选在此时长后再看 */
 export const FRESH_MS = 2000
 /** 最近此时长内任一窗口的关注点 / 可见范围有变化 =「用户正在操作」：后台的休息时间加倍 */
 export const BUSY_MS = 10_000
@@ -223,6 +223,8 @@ export class Scheduler {
     this.queue = new BackgroundQueue({
       cache: this.cache,
       groupKey: (u) => this.groupKey(u),
+      // 后台队列不重新确认在「远」层间隔之内确认过的目录
+      minAgeMs: (u) => this.settings.interval.far[this.enumerator.location(u)] * 1000,
       freshMs: FRESH_MS
     })
   }
@@ -248,6 +250,9 @@ export class Scheduler {
     if (key !== this.configKey) {
       this.configKey = key
       this.cache.prune()
+      // 根、建立索引目标或间隔可能变化：重新尝试不存在的起点，按新的间隔重新选候选
+      this.queue.clearMissing()
+      this.queue.invalidate()
     }
     this.invalidateScope()
   }
@@ -730,6 +735,7 @@ export class Scheduler {
       const { mtime } = await this.guard(uri, run, (signal) => this.enumerator.statDir(uri, signal))
       if (this.disposed) return { ok: false, error: cancelled() }
       this.markReachable(share)
+      this.queue.clearMissing(uri)
       const t = this.now()
       if (task.prio === 'probe') return { ok: true, entries: null, at: t }
 
@@ -784,7 +790,11 @@ export class Scheduler {
     this.markReachable(share)
     if (error.code === 'FS_NOT_FOUND' || error.code === 'FS_NOT_A_DIRECTORY') {
       const dir = this.cache.getDir(uri)
-      if (!dir) return
+      if (!dir) {
+        // 没有缓存行的目录不存在（例如不存在的建立索引目标）：后台队列不再把它当作起点反复读取
+        this.queue.markMissing(uri)
+        return
+      }
       this.cache.removeSubtree(uri)
       this.scopeDirty = true
       const notify = this.rootUris.has(uri) ? uri : (dir.parentUri ?? parentUri(uri))

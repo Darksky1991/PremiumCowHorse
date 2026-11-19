@@ -474,7 +474,12 @@ describe('Scheduler: background queue', () => {
   })
 
   it('a failing directory is not retried before others', async () => {
-    const { clock, fs } = setup([root(R, 'all')])
+    // 远层间隔取下限 2 秒：后台队列每 2 秒后就可以重新确认同一目录，才能观察到多轮
+    const short = {
+      ...settings,
+      interval: { ...settings.interval, far: { local: 2, network: 10 } }
+    }
+    const { clock, fs } = setup([root(R, 'all')], { settings: short })
     const A = fs.addDir(R, 'a')
     const others = [fs.addDir(R, 'b'), fs.addDir(R, 'c'), fs.addDir(R, 'd')]
     fs.errors.set(A, 'FS_PERMISSION_DENIED')
@@ -487,6 +492,128 @@ describe('Scheduler: background queue', () => {
       const between = new Set(order.slice(at[k - 1]! + 1, at[k]))
       for (const o of others) expect(between.has(o), `${k}: ${o}`).toBe(true)
     }
+  })
+
+  it('background does not re-check a directory within the far interval in a small range', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, cache } = h
+    const hot = ['h1', 'h2', 'h3'].map((n) => fs.addDir(R, n))
+    prelist(h, R, clock.now())
+    for (const u of hot) {
+      prelist(h, u, clock.now())
+      cache.visit(u, clock.now())
+    }
+    const t0 = clock.now()
+    await clock.advance(10 * 60_000) // 没有窗口：只有后台队列
+    for (const u of hot) {
+      const at = fs.calls.filter((c) => c.op === 'stat' && c.uri === u).map((c) => c.at - t0)
+      expect(at.length, u).toBeGreaterThanOrEqual(4)
+      // 远层（本地 120 秒）之内不重复确认
+      for (let i = 1; i < at.length; i++)
+        expect(at[i]! - at[i - 1]!, u).toBeGreaterThanOrEqual(120_000)
+      expect(at[0]!, u).toBeGreaterThanOrEqual(120_000)
+    }
+  })
+
+  it('background sleeps without querying the cache until a directory is due again', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, cache } = h
+    const H = fs.addDir(R, 'h')
+    prelist(h, H, clock.now())
+    cache.visit(H, clock.now())
+    let queries = 0
+    const oldest = cache.oldestChecked.bind(cache)
+    const unlisted = cache.nextUnlisted.bind(cache)
+    cache.oldestChecked = (sc, limit, ex): string[] => {
+      queries += 1
+      return oldest(sc, limit, ex)
+    }
+    cache.nextUnlisted = (sc, limit, ex): string[] => {
+      queries += 1
+      return unlisted(sc, limit, ex)
+    }
+    await clock.advance(0)
+    const n = queries
+    expect(n).toBeGreaterThan(0) // 取过一次：唯一的目录刚确认过，不可选
+    await clock.advance(119_000)
+    expect(queries).toBe(n) // 休眠到 120 秒，期间不查询
+    expect(fs.count('stat', H)).toBe(0)
+    await clock.advance(1000)
+    expect(queries).toBeGreaterThan(n)
+    expect(fs.count('stat', H)).toBe(1)
+  })
+
+  it('a missing index target is read once, not again on every scope change', async () => {
+    const IDX = `${R}/gone`
+    const { clock, fs, s } = setup([root(R, 'active')], { indexTargets: [IDX] })
+    const A = fs.addDir(R, 'a')
+    const B = fs.addDir(R, 'b')
+    // 关注点来回移动：热点与「积极」的范围随之变化
+    for (let i = 0; i < 6; i++) {
+      s.setInterest(1, { ...none, focus: i % 2 === 0 ? A : B })
+      await clock.advance(3000)
+    }
+    expect(fs.count('stat', IDX)).toBe(1)
+
+    // 配置（建立索引目标）变化：重新尝试一次
+    s.configure([root(R, 'active')], [IDX, A], settings, [R])
+    await clock.advance(3000)
+    expect(fs.count('stat', IDX)).toBe(2)
+
+    // 目录被建立后经 F5 确认存在：之后照常进入后台队列
+    fs.addDir(R, 'gone')
+    s.refresh([IDX])
+    await clock.advance(3000)
+    expect(fs.count('list', IDX)).toBe(1)
+  })
+
+  it('candidates that left the scope are not checked', async () => {
+    const h = setup([root(R, 'active')], {
+      settings: { ...settings, activeDepth: 1 }
+    })
+    const { clock, fs, s } = h
+    const A = fs.addDir(R, 'a')
+    const X = fs.addDir(A, 'x')
+    const S = fs.addDir(A, 's')
+    const cousins = Array.from({ length: 20 }, (_, i) => fs.addDir(S, `k${i}`))
+    const B = fs.addDir(R, 'b')
+    const Y = fs.addDir(B, 'y')
+    for (const u of [R, A, S, B]) prelist(h, u, clock.now())
+    // 关注点 a/x、N=1：后台范围为 a 之下 2 层，含 a/s 的子目录（不在定期确认的分层中）
+    s.setInterest(1, { ...none, focus: X })
+    await clock.advance(5000)
+    const checked = (): number => cousins.filter((u) => fs.count('stat', u) > 0).length
+    expect(checked()).toBeGreaterThan(0)
+    expect(checked()).toBeLessThan(cousins.length) // 还有候选留在批次中
+    // 关注点移到 b/y：范围变为 b 之下，旧批次的候选不再确认
+    s.setInterest(1, { ...none, focus: Y })
+    const before = checked()
+    await clock.advance(60_000)
+    expect(checked()).toBe(before)
+  })
+
+  it('a share going offline drops the candidates and coming back resumes the queue', async () => {
+    const { clock, fs, s } = setup([root(N, 'all')])
+    const dirs = Array.from({ length: 10 }, (_, i) => fs.addDir(N, `d${i}`))
+    let hung = false
+    fs.gate = (op, uri, signal) => {
+      // d3 的第一次 statDir 卡住：探测阶段超时 → 共享断开
+      if (op === 'stat' && uri === dirs[3] && !hung) {
+        hung = true
+        return hang(signal)
+      }
+      return undefined
+    }
+    await clock.advance(20_000)
+    expect(s.isOffline(N)).toBe(true)
+    expect(s.queueStats().queued).toBe(0) // 候选已丢弃，断开期间不再取
+    const n = fs.calls.length
+    await clock.advance(25_000)
+    expect(fs.calls.slice(n).every((c) => c.uri === dirs[3])).toBe(true) // 只有探测
+    // 第一次探测（断开后 30 秒）成功 → 恢复，队列重新取候选，剩下的目录照常读完
+    await clock.advance(60_000)
+    expect(s.isOffline(N)).toBe(false)
+    for (const u of dirs) expect(fs.count('list', u), u).toBe(1)
   })
 
   it('background selection does not materialize the whole tree', async () => {
