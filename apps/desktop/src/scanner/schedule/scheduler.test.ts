@@ -543,6 +543,27 @@ describe('Scheduler: background queue', () => {
     expect(fs.count('stat', H)).toBe(1)
   })
 
+  it('a group does not sleep forever when its only directory was being checked by P0', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, cache, s } = h
+    const H = fs.addDir(R, 'h')
+    prelist(h, H, clock.now() - 3_600_000) // 很久以前确认过：后台随时可以确认
+    cache.visit(H, clock.now())
+    let slow = true
+    fs.gate = (op, uri, signal) => {
+      if (op === 'stat' && uri === H && slow) {
+        slow = false
+        return clock.sleep(1000, signal)
+      }
+      return undefined
+    }
+    // P0 正在检查 H 时后台队列取候选：H 被排除，查询结果为空
+    s.refresh([H])
+    await clock.advance(10 * 60_000)
+    // P0 之后（修改时间与列表都没变）后台队列仍按远层间隔（120 秒）继续确认
+    expect(fs.count('stat', H)).toBeGreaterThanOrEqual(5)
+  })
+
   it('a missing index target is read once, not again on every scope change', async () => {
     const IDX = `${R}/gone`
     const { clock, fs, s } = setup([root(R, 'active')], { indexTargets: [IDX] })

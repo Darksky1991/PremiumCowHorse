@@ -207,7 +207,12 @@ export class BackgroundQueue {
     for (;;) {
       if (g.cursor >= g.batch.length) {
         if (fetched) {
-          // 每次调用最多查询一次：取出的候选全都不可用，休眠到最早一个重新符合条件
+          // 每次调用最多查询一次：取出的候选全都不可用，休眠到最早一个重新符合条件。
+          // 查询排除了正在进行的检查（例如 P0）：本组有检查在进行时，它完成后可能重新符合条件，
+          // 而修改时间与列表都没变时不会有 markDirty，所以按「暂时不能确认」稍后再看，不能无限休眠
+          if (!blocked) {
+            blocked = [...opts.running].some((u) => this.deps.groupKey(u) === group)
+          }
           g.retryAt = Math.min(eligibleAt, blocked ? opts.now + this.deps.freshMs : Infinity)
           return null
         }
