@@ -57,6 +57,7 @@ pnpm build          # 类型检查 + electron-vite build
 pnpm test:e2e       # Playwright Electron（需先 build）
 ```
 
+- **测试范围按改动判断**：每次改动只跑受影响的单元测试文件，加上 `typecheck` / `lint` / `prettier --check`；动到构建或界面时再加 `build` 与相关的 e2e 用例。全量 `pnpm test` + `pnpm test:e2e` 在多轮改动之后兜底、发生重大变更时、合并前执行；性能测量只在改动可能影响性能时做。
 - UI 改动：e2e 覆盖行为；外观用截图确认（含系统绘制部分时用 `node scripts/os-screenshot.mjs <out.png> [light|dark] [ja|zh-CN|en]`）。
 - 打包改动：`pnpm dist` 后实际解压运行，用 `--user-data-dir=<临时目录>` 避免污染正式数据。
 - 结束后检查残留进程（`Get-Process electron`、`PremiumCowHorse`）。
