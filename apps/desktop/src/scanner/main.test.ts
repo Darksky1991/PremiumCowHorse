@@ -4,7 +4,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DirectoryListing, ScannerConfig, ScannerToMain } from '@pch/shared'
+import { Cache } from './cache/cache'
 import { createScannerHost, type ScannerHost } from './main'
+import { Scheduler } from './schedule/scheduler'
 
 const url = (p: string): string => pathToFileURL(p).href
 
@@ -28,8 +30,12 @@ describe('scanner host (handleMessage)', () => {
     host = createScannerHost({ post: (m) => posts.push(m), exit })
   })
   afterEach(() => {
-    host.handleMessage({ type: 'shutdown' })
-    rmSync(tmp, { recursive: true, force: true })
+    try {
+      host.handleMessage({ type: 'shutdown' })
+    } finally {
+      // Windows 上句柄刚关闭时删除可能暂时 EBUSY；force 只忽略 ENOENT，需要重试
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    }
   })
 
   const resultOf = async (id: number): Promise<Extract<ScannerToMain, { type: 'result' }>> =>
@@ -130,5 +136,40 @@ describe('scanner host (handleMessage)', () => {
     host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
     host.handleMessage({ type: 'shutdown' })
     expect(exit).toHaveBeenCalledWith(0)
+  })
+
+  it('still closes the cache and exits when disposing the scheduler throws', () => {
+    const dispose = vi.spyOn(Scheduler.prototype, 'dispose').mockImplementation(() => {
+      throw new Error('dispose boom')
+    })
+    const close = vi.spyOn(Cache.prototype, 'close')
+    try {
+      host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
+      host.handleMessage({ type: 'shutdown' })
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(exit).toHaveBeenCalledWith(0)
+      expect(posts.some((m) => m.type === 'log' && m.message.includes('dispose boom'))).toBe(true)
+    } finally {
+      // mockRestore 会清空记录：先取出 this（调度器实例），恢复后真正停止它（计时器）
+      const schedulers = [...dispose.mock.contexts] as Scheduler[]
+      dispose.mockRestore()
+      close.mockRestore()
+      for (const s of schedulers) s.dispose()
+    }
+  })
+
+  it('still exits when closing the cache throws', () => {
+    const close = vi.spyOn(Cache.prototype, 'close').mockImplementation(() => {
+      throw new Error('close boom')
+    })
+    try {
+      host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
+      host.handleMessage({ type: 'shutdown' })
+      expect(exit).toHaveBeenCalledWith(0)
+    } finally {
+      const caches = [...close.mock.contexts] as Cache[]
+      close.mockRestore()
+      for (const c of caches) c.close() // 释放文件句柄，afterEach 才能删除临时目录
+    }
   })
 })

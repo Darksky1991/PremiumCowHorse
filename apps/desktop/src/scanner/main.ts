@@ -122,15 +122,24 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
     if (state.kind === 'ready') fn(state.r)
   }
 
+  /**
+   * 停止调度器、关闭缓存库后退出。任一步抛出都继续后面的步骤并照常 exit(0)（异常由 handleMessage
+   * 记日志）：否则缓存库不关闭、进程不退出，主进程只能等到超时后 kill
+   */
   const shutdown = (): void => {
     if (stopped) return
     stopped = true
-    if (state.kind === 'ready') {
-      state.r.scheduler.dispose()
-      state.r.cache.close()
-    }
+    const r = state.kind === 'ready' ? state.r : null
     state = { kind: 'unavailable', reason: 'scanner is shutting down' }
-    deps.exit(0)
+    try {
+      r?.scheduler.dispose()
+    } finally {
+      try {
+        r?.cache.close()
+      } finally {
+        deps.exit(0)
+      }
+    }
   }
 
   const dispatch = (m: MainToScanner): void => {
