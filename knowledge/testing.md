@@ -168,3 +168,11 @@
 - 原因：Vitest 的 `mockRestore` 包含 `mockReset`，会清空调用记录。
 - 解决：在 `mockRestore()` 之前取出 `mock.calls` / `mock.contexts`（`cache.test.ts` 的 EXPLAIN QUERY PLAN 用例、`main.test.ts` 用 `mock.contexts` 取得被替换方法的 `this`，避免 `no-this-alias`）。
 - 预防：需要事后检查调用记录的 spy，先复制记录再还原。
+
+### 比较 `index.db` 的大小：URI 的长度决定大小，两次测量的树形状（根路径、目录名）要相同
+
+- 日期：2026-11-19
+- 症状：同样 1 万目录 / 10 万文件，第一版测得 `index.db` 36MB，第二版测得 74.9MB，看起来像是碎片或新索引造成的膨胀。
+- 原因：`entries` 每行保存所在目录的完整 URI，主键索引 `(dir_uri, name)` 再存一份；第二版的测量树根在 scratchpad 的长路径下、目录名是日文（URI 中百分号编码，一个汉字 9 字节），平均 `dir_uri` 从 77 变成 204 字符。用同一份 `Cache.applyListing` 写两种形状：37.2MB 对 75.2MB；空闲页 1–7 页，`VACUUM` 只减少约 4%。
+- 解决：用 `dbstat` 按表 / 索引汇总（`SELECT name, sum(pgsize) FROM dbstat GROUP BY name`，node:sqlite 内置的 SQLite 可用），先 `PRAGMA wal_checkpoint(TRUNCATE)` 再看文件大小；结论见 `devDoc/2026-11-19-09-cache-strategy.md`「index.db 的大小」。
+- 预防：性能 / 体积对比时固定合成树的根路径与命名（或同时记录平均 URI 长度）；判断「碎片」之前先看 `freelist_count` 与 `dbstat` 的 `unused`。注意 FTS5 `optimize` 会让文件变大（旧段的页进入空闲列表）。
