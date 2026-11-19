@@ -112,3 +112,11 @@
 - 原因：目录枚举本身就是对目录的「访问」，由文件系统更新元数据，与应用是否写文件无关。这违反「应用不得对文件系统产生任何影响」。
 - 解决：koffi 枚举器（`scanner/enum/win32-enumerator.ts`）以 `FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES` + `FILE_FLAG_BACKUP_SEMANTICS` 打开目录，`SetFileInformationByHandle(FileBasicInfo)` 把 LastAccessTime 设为 -1（文档化的「此句柄后续操作不更新访问时间」），再在同一句柄上 `GetFileInformationByHandleEx(FileFullDirectoryInfo)` 枚举；目录自身的修改时间用 `GetFileAttributesExW` 取得（不打开句柄）。拿不到写属性权限（系统盘根目录、只读共享）时回退为只读句柄（访问时间不受保护，按共享 / 盘符记一次日志，见上文「系统盘根目录不能以 `FILE_WRITE_ATTRIBUTES` 打开」）。单元测试 `does not update the directory's last access time` 用「先把 atime 设到很久以前，再枚举」验证（避开 1 小时的写入阈值）。网络共享上是否生效未验证。
 - 预防：判断「是否影响文件系统」时连元数据（访问时间）一起看；测访问时间先把 atime 调到 1 小时以前，否则 NTFS 的写入阈值会让测试假通过。node:fs 回退枚举器（koffi 不可用时）无法保护访问时间。
+
+### Win32 错误码：不认识的码不能一律当作「位置断开」
+
+- 日期：2026-11-19
+- 症状：（最终审查发现）koffi 枚举器把除 2 / 3 / 5 / 267 以外的所有 Win32 错误码都映射为 `FS_UNAVAILABLE`，调度器据此把整个共享 / 卷判为断开、停止访问其他目录；一个目录上的偶发错误（如 32 共享冲突、1117 I/O 设备错误）就能让整卷「断开」。同时，以写属性打开只对 5 / 19 退回只读，部分 NAS 返回的其他拒绝码（如 50 ERROR_NOT_SUPPORTED）直接失败；87 在任何一批都被当作「不是目录」。
+- 原因：默认分支兜底过宽；87（ERROR_INVALID_PARAMETER）只在「打开的是文件」时实测过，其他原因（不支持该信息类等）也会返回 87。
+- 解决：`scanner/enum/win32-enumerator.ts` 的 `UNAVAILABLE_ERRORS` 白名单（网络路径 / 连接 / 主机不可达、设备未就绪 / 未连接；每个码按 Microsoft Learn「System Error Codes (0-499) / (1000-1299) / (1700-3999)」核对含义），其余为 `UNKNOWN`（只记该目录 unreachable）；写属性打开除 2 / 3 与白名单外都退回只读；87 只在第一批且 `GetFileAttributesExW` 确认不是目录时才是 `FS_NOT_A_DIRECTORY`。测试用替换 `GetLastError` 的假 kernel32 注入任意错误码（`win32-enumerator.test.ts` 的 `forcedErrors`）。
+- 预防：错误分类按「确定知道含义的才归类，其余归通用错误」写；会影响大范围状态（断开、删除子树）的分类尤其要保守。不凭记忆写错误码的含义，查官方列表。

@@ -152,3 +152,19 @@
 - 原因：组件的颜色带 `transition`，`lang` / `class` 变化后颜色还在过渡中。
 - 解决：切换后等待约 800ms 再截图（`e2e/search.spec.ts` 的截图用例）。
 - 预防：截图发现「像禁用一样发灰」时先排除过渡动画，再怀疑样式。
+
+### Windows：测试的临时目录删不掉而泄漏（EBUSY / EPERM；`force` 只忽略 ENOENT）
+
+- 日期：2026-11-19
+- 症状：跑完测试后 `%TEMP%` 中留下 `pch-cache-*`、`pch-scanner-*`、`pch-e2e-*` 等目录；有时 `afterEach` 的 `rmSync` 报 `EBUSY` / `EPERM, Permission denied`。
+- 原因：（1）测试中途断言失败，写在用例末尾的 `db.close()` / `cache.close()` 没有执行，文件句柄留在进程里，Windows 不允许删除被打开的文件；（2）句柄刚关闭（或刚退出的应用进程）时删除可能暂时失败，`rmSync` 的 `force: true` 只忽略 ENOENT，不重试；（3）e2e 的 `afterEach` 连续删两个目录，第一个失败抛出后第二个不再删除。
+- 解决：打开数据库的测试把连接登记后在 `afterEach` / `finally` 中关闭（`cache.test.ts` 的 `track`，`main.test.ts` 的 shutdown 放进 try/finally）；`rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })`；e2e 用 `e2e/support.ts` 的 `removeDirs(...dirs)` 逐个尝试、最后汇总报错。
+- 预防：创建临时目录的测试，清理放在 `afterEach` 且不依赖用例跑完；跑完测试后对比一次 `%TEMP%` 的 `pch-*` 目录。故意验证「失败」的 RED 运行同样会泄漏（实现尚未关闭句柄），事后手动删除。
+
+### vitest：`mockRestore()` 同时清空 `mock.calls` / `mock.contexts`
+
+- 日期：2026-11-19
+- 症状：`vi.spyOn(DatabaseSync.prototype, 'prepare')` 后在 `finally` 中 `mockRestore()`，之后读 `mock.calls` 为空数组，断言「执行了 2 条 DELETE」失败。
+- 原因：Vitest 的 `mockRestore` 包含 `mockReset`，会清空调用记录。
+- 解决：在 `mockRestore()` 之前取出 `mock.calls` / `mock.contexts`（`cache.test.ts` 的 EXPLAIN QUERY PLAN 用例、`main.test.ts` 用 `mock.contexts` 取得被替换方法的 `this`，避免 `no-this-alias`）。
+- 预防：需要事后检查调用记录的 spy，先复制记录再还原。
