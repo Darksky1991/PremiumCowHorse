@@ -42,9 +42,8 @@ export function childUri(dirUri: string, name: string): string {
 
 /**
  * 「等于其中某个 URI 或在其之下」的 SQL 条件（对应 isUnder：等于根，或以「根 + /」开头）。
- * 写成范围比较而不是 LIKE / substr：不需要转义通配符，并且能用主键（dirs.uri、entries 的
- * (dir_uri, name)）的索引。前缀以 / 结尾，字典序上紧随其后的是把 / 换成 0（'/' + 1）。
- * 缓存的子树删除与搜索的范围共用这一份实现。
+ * 写成范围比较而不是 LIKE / substr：不需要转义通配符，并且能用 dirs.uri 的唯一索引。前缀以 / 结尾，字典序上紧随其后的是把 / 换成 0（'/' + 1）。
+ * 缓存的子树删除与搜索的范围共用这一份实现（条件只作用在 dirs.uri 上，entries 经 dir_id 关联）。
  */
 export function subtreeCondition(
   column: string,
@@ -161,11 +160,13 @@ function toDirRow(r: Row): DirRow {
 
 /**
  * 目录列表缓存（userData/cache/index.db，可随时删除重建）。只在扫描进程使用。
- * 条目按目录存放；entries_fts（FTS5 trigram，external content + 触发器）供文件名搜索。
+ * 条目按目录存放（entries.dir_id 引用 dirs.id，删除目录时级联删除）；entries_fts（FTS5 trigram，external content + 触发器）供文件名搜索。
  * 「配置的根」只保存在内存里：扫描进程每次启动由主进程重新设置。
  */
 export class Cache {
   private roots: string[] = []
+  /** upsertDir 新建过目录行（调用方据此在事务末尾认领孤儿） */
+  private created = false
 
   private constructor(private readonly db: DatabaseSync) {}
 
@@ -204,16 +205,28 @@ export class Cache {
   }
 
   getDir(uri: string): DirRow | undefined {
-    const r = this.get('SELECT * FROM dirs WHERE uri = ?', uri)
-    return r ? toDirRow(r) : undefined
+    const r = this.get(
+      `SELECT d.*, p.uri AS parent_uri FROM dirs d LEFT JOIN dirs p ON p.id = d.parent_id WHERE d.uri = ?`,
+      uri
+    )
+    if (!r) return undefined
+    const row = toDirRow(r)
+    // 父目录行还不存在（先访问了深层目录）时 parent_id 为空：回落到字符串方式
+    return { ...row, parentUri: row.parentUri ?? parentOf(uri, this.roots) }
   }
 
   getEntries(uri: string): RawEntry[] {
-    return this.all('SELECT * FROM entries WHERE dir_uri = ? ORDER BY name', uri).map(toEntry)
+    return this.all(
+      'SELECT e.* FROM entries e WHERE e.dir_id = (SELECT id FROM dirs WHERE uri = ?) ORDER BY e.name',
+      uri
+    ).map(toEntry)
   }
 
   childDirs(uri: string): string[] {
-    return this.all('SELECT uri FROM dirs WHERE parent_uri = ?', uri).map((r) => r.uri as string)
+    return this.all(
+      'SELECT uri FROM dirs WHERE parent_id = (SELECT id FROM dirs WHERE uri = ?)',
+      uri
+    ).map((r) => r.uri as string)
   }
 
   /**
@@ -231,25 +244,30 @@ export class Cache {
       const prev = this.get('SELECT state, listed_at FROM dirs WHERE uri = ?', uri)
       let changed = !prev || prev.listed_at === null || prev.state !== 'ok'
 
-      // 目录自身行
-      this.db
-        .prepare(
-          `INSERT INTO dirs (uri, parent_uri, dir_mtime, listed_at, checked_at, state, error_code)
-           VALUES (?, ?, ?, ?, ?, 'ok', NULL)
-           ON CONFLICT(uri) DO UPDATE SET dir_mtime = excluded.dir_mtime, listed_at = excluded.listed_at,
-             checked_at = excluded.checked_at, state = 'ok', error_code = NULL`
-        )
-        .run(uri, parentOf(uri, this.roots), dirMtime, now, now)
+      // 目录自身行。不用 ON CONFLICT 的插入：冲突的插入也会消耗 AUTOINCREMENT 的编号
+      this.created = false
+      const parentId = this.idOf(parentOf(uri, this.roots))
+      const dirId = this.upsertDir(uri, parentId, {
+        dirMtime,
+        listedAt: now,
+        checkedAt: now,
+        state: 'ok'
+      })
 
-      const old = new Map(this.getEntries(uri).map((e) => [e.name, e]))
+      const old = new Map(
+        this.all('SELECT * FROM entries WHERE dir_id = ?', dirId).map((r) => [
+          r.name as string,
+          toEntry(r)
+        ])
+      )
       const seen = new Set<string>()
       const insert = this.db.prepare(
-        'INSERT INTO entries (dir_uri, name, kind, target, size, mtime, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO entries (dir_id, name, kind, target, size, mtime, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
       const update = this.db.prepare(
-        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ? WHERE dir_uri = ? AND name = ?'
+        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ? WHERE dir_id = ? AND name = ?'
       )
-      const remove = this.db.prepare('DELETE FROM entries WHERE dir_uri = ? AND name = ?')
+      const remove = this.db.prepare('DELETE FROM entries WHERE dir_id = ? AND name = ?')
       const childDirUris = new Set<string>()
       for (const e of entries) {
         seen.add(e.name)
@@ -257,25 +275,38 @@ export class Cache {
         const before = old.get(e.name)
         const target = e.kind === 'symlink' ? (e.target ?? null) : null
         if (!before) {
-          insert.run(uri, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0)
+          insert.run(dirId, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0)
           changed = true
         } else if (!sameEntry(before, e)) {
-          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, uri, e.name)
+          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, dirId, e.name)
           changed = true
         }
       }
       for (const name of old.keys()) {
         if (!seen.has(name)) {
-          remove.run(uri, name)
+          remove.run(dirId, name)
           changed = true
         }
       }
 
-      // 子目录行：新增的建立，消失的（含变成文件的）连同子树删除
+      // 子目录行：新增的建立（已存在的行，例如先访问了深层目录时建立的，补上 parent_id），
+      // 消失的（含变成文件的）连同子树删除。逐个子目录查找：不存在则建立，已有的补 parent_id（准备好语句，目录可能有几万个子目录）
+      const find = this.db.prepare('SELECT id, parent_id FROM dirs WHERE uri = ?')
       const insertChild = this.db.prepare(
-        "INSERT OR IGNORE INTO dirs (uri, parent_uri, state) VALUES (?, ?, 'ok')"
+        "INSERT INTO dirs (uri, parent_id, state) VALUES (?, ?, 'ok')"
       )
-      for (const c of childDirUris) insertChild.run(c, uri)
+      const setParent = this.db.prepare('UPDATE dirs SET parent_id = ? WHERE id = ?')
+      let created = this.created
+      for (const c of childDirUris) {
+        const r = find.get(c)
+        if (!r) {
+          insertChild.run(c, dirId)
+          created = true
+        } else if (r.parent_id !== dirId) {
+          setParent.run(dirId, r.id as number)
+        }
+      }
+      if (created) this.adoptOrphans()
       for (const c of this.childDirs(uri)) {
         if (!childDirUris.has(c)) {
           this.removeSubtreeRows(c)
@@ -322,7 +353,10 @@ export class Cache {
    */
   removeMissing(uri: string): { parentChanged: boolean } {
     return this.tx(() => {
-      const row = this.get('SELECT parent_uri FROM dirs WHERE uri = ?', uri)
+      const row = this.get(
+        'SELECT p.uri AS parent_uri FROM dirs d JOIN dirs p ON p.id = d.parent_id WHERE d.uri = ?',
+        uri
+      )
       const parent = (row?.parent_uri as string | null | undefined) ?? parentOf(uri, this.roots)
       this.removeSubtreeRows(uri)
       if (parent === null) return { parentChanged: false }
@@ -330,7 +364,9 @@ export class Cache {
       // 名称经与列表相同的函数还原：不一致（例如 URI 写法不同）时不猜测
       if (name === '' || childUri(parent, name) !== uri) return { parentChanged: false }
       const r = this.db
-        .prepare("DELETE FROM entries WHERE dir_uri = ? AND name = ? AND kind = 'directory'")
+        .prepare(
+          "DELETE FROM entries WHERE dir_id = (SELECT id FROM dirs WHERE uri = ?) AND name = ? AND kind = 'directory'"
+        )
         .run(parent, name)
       return { parentChanged: Number(r.changes) > 0 }
     })
@@ -342,12 +378,9 @@ export class Cache {
       const stale = this.all('SELECT uri FROM dirs')
         .map((r) => r.uri as string)
         .filter((u) => !this.underRoots(u))
-      const delEntries = this.db.prepare('DELETE FROM entries WHERE dir_uri = ?')
+      // 条目随目录级联删除
       const delDir = this.db.prepare('DELETE FROM dirs WHERE uri = ?')
-      for (const u of stale) {
-        delEntries.run(u)
-        delDir.run(u)
-      }
+      for (const u of stale) delDir.run(u)
       return stale.length
     })
   }
@@ -435,16 +468,78 @@ export class Cache {
   }
 
   private ensureDir(uri: string): void {
-    this.run(
-      "INSERT OR IGNORE INTO dirs (uri, parent_uri, state) VALUES (?, ?, 'ok')",
-      uri,
-      parentOf(uri, this.roots)
-    )
+    if (this.idOf(uri) === null) {
+      this.upsertDir(uri, this.idOf(parentOf(uri, this.roots)))
+      this.adoptOrphans()
+    }
   }
 
+  private idOf(uri: string | null): number | null {
+    if (uri === null) return null
+    const r = this.get('SELECT id FROM dirs WHERE uri = ?', uri)
+    return r ? Number(r.id) : null
+  }
+
+  /**
+   * 建立目录行，或更新已有行的 parent_id（与 fields 中给出的列），返回编号。新建的行认领先于它建立的子目录。
+   * 先查再写而不用 INSERT … ON CONFLICT：冲突的插入也会消耗 AUTOINCREMENT 的编号（每次刷新都会烧掉一批）
+   */
+  private upsertDir(
+    uri: string,
+    parentId: number | null,
+    fields?: { dirMtime: number; listedAt: number; checkedAt: number; state: DirState }
+  ): number {
+    const id = this.idOf(uri)
+    if (id === null) {
+      const r = this.get(
+        `INSERT INTO dirs (uri, parent_id, dir_mtime, listed_at, checked_at, state)
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+        uri,
+        parentId,
+        fields?.dirMtime ?? null,
+        fields?.listedAt ?? null,
+        fields?.checkedAt ?? null,
+        fields?.state ?? 'ok'
+      )
+      this.created = true
+      return Number(r!.id)
+    }
+    if (fields) {
+      this.run(
+        'UPDATE dirs SET parent_id = ?, dir_mtime = ?, listed_at = ?, checked_at = ?, state = ?, error_code = NULL WHERE id = ?',
+        parentId,
+        fields.dirMtime,
+        fields.listedAt,
+        fields.checkedAt,
+        fields.state,
+        id
+      )
+    } else {
+      this.run(
+        'UPDATE dirs SET parent_id = ? WHERE id = ? AND parent_id IS NOT ?',
+        parentId,
+        id,
+        parentId
+      )
+    }
+    return id
+  }
+
+  /**
+   * 认领 parent_id 为空的非根目录（先访问了深层目录时，那一行建立时父目录行还不存在）：父目录行现在存在的，
+   * 补上 parent_id。parent_id 为空的行只有根与这类孤儿，经 dirs_parent 索引读取，数量很少；
+   * 每次新建目录行之后调用一次（不是每个新行一次：一个目录有几万个子目录时逐个查询太慢）
+   */
+  private adoptOrphans(): void {
+    for (const r of this.all('SELECT id, uri FROM dirs WHERE parent_id IS NULL')) {
+      const parent = this.idOf(parentOf(r.uri as string, this.roots))
+      if (parent !== null)
+        this.run('UPDATE dirs SET parent_id = ? WHERE id = ?', parent, r.id as number)
+    }
+  }
+
+  /** 按 dirs.uri 的范围删除目录行；条目由外键级联删除（entries_fts 的删除触发器随之触发） */
   private removeSubtreeRows(uri: string): void {
-    const entries = subtreeCondition('dir_uri', [uri])
-    this.run(`DELETE FROM entries WHERE ${entries.sql}`, ...entries.params)
     const dirs = subtreeCondition('uri', [uri])
     this.run(`DELETE FROM dirs WHERE ${dirs.sql}`, ...dirs.params)
   }

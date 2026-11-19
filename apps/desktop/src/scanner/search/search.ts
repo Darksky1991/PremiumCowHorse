@@ -105,7 +105,7 @@ export function search(cache: Cache, q: SearchQuery): SearchResult {
   if (q.terms.length === 0) return { ...empty, indexedAt, incomplete }
 
   const limit = Math.max(1, Math.min(Math.floor(q.limit), SEARCH_LIMIT_MAX))
-  const entryScope = scopeCondition('e.dir_uri', q.scopes)
+  const entryScope = scopeCondition('d.uri', q.scopes)
   const conds = [entryScope.sql]
   const params: SQLInputValue[] = [...entryScope.params]
   if (!q.showHidden) conds.push('e.hidden = 0')
@@ -118,7 +118,7 @@ export function search(cache: Cache, q: SearchQuery): SearchResult {
 
   const total = Number(
     cache.select(
-      `SELECT count(*) AS n FROM (SELECT 1 FROM entries e WHERE ${where} LIMIT ${SEARCH_TOTAL_CAP})`,
+      `SELECT count(*) AS n FROM (SELECT 1 FROM entries e JOIN dirs d ON d.id = e.dir_id WHERE ${where} LIMIT ${SEARCH_TOTAL_CAP})`,
       ...params
     )[0]?.n ?? 0
   )
@@ -130,8 +130,9 @@ export function search(cache: Cache, q: SearchQuery): SearchResult {
   const rankParams: SQLInputValue[] =
     first.kind === 'contains' ? [`${escapeLike(first.value)}%`] : []
   const rows = cache.select(
-    `SELECT e.dir_uri, e.name, e.kind, e.size, e.mtime, e.hidden FROM entries e WHERE ${where}
-     ORDER BY ${rank}e.name, e.dir_uri LIMIT ${limit}`,
+    `SELECT d.uri AS dir_uri, e.name, e.kind, e.size, e.mtime, e.hidden
+     FROM entries e JOIN dirs d ON d.id = e.dir_id WHERE ${where}
+     ORDER BY ${rank}e.name, d.uri LIMIT ${limit}`,
     ...params,
     ...rankParams
   )

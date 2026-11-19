@@ -69,6 +69,19 @@ describe('search', () => {
   })
   afterEach(() => cache.close())
 
+  it('does not return entries of a removed directory that was recreated under the same URI', () => {
+    cache.removeSubtree(`${A}/sub`)
+    expect(names(search(cache, q('設計書_sub')))).toEqual([])
+    cache.applyListing(A, 2, [dir('sub')], 600)
+    cache.applyListing(`${A}/sub`, 2, [file('new_doc.txt')], 600)
+    expect(names(search(cache, q('設計書_sub')))).toEqual([])
+    const r = search(cache, q('new_doc'))
+    expect(r.items.map((i) => [i.name, i.relativePath])).toEqual([
+      ['new_doc.txt', 'sub/new_doc.txt']
+    ])
+    expect(r.items[0]!.uri).toBe('file:///C:/a/sub/new_doc.txt')
+  })
+
   it('ANDs several terms (trigram + short term)', () => {
     expect(names(search(cache, q('設計書 第10章')))).toEqual(['設計書_第10章.xlsx'])
     expect(sorted(names(search(cache, q('設計書 xl'))))).toEqual(

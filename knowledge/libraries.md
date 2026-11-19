@@ -159,3 +159,11 @@
 - 原因：SQLite 对「主键范围 + 额外过滤 + 另一列排序 + LIMIT」选择按主键范围扫描再 `USE TEMP B-TREE FOR ORDER BY`，要读完整个范围才能排序；层数只能从 URI 算，无法进索引。
 - 解决：`scanner/cache/cache-schema.ts` 加生成列 `depth` 与两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL`、`dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`；先探测范围大小（数到 2000 为止），范围小走主键范围 + 排序，范围大用 `INDEXED BY` 强制按队列索引顺序扫描 + LIMIT（`cache.ts` 的 `queueQuery`）。整卷、层数不限降到约 0.2–0.3ms（30 万行，内存库 / 文件库）。残余：整卷而层数上限很小（`maxDepth` 1）时，符合条件的行在 `checked_at` 顺序中很稀疏，`oldestChecked` 仍要扫很多行（内存库约 15ms，文件库约 25–45ms），所以后台队列（`schedule/background-queue.ts`）一次取一批候选（④ 200 个、其余 50 个）在内存中逐个消费，平摊到每次选择约 0.04–0.2ms（数字与条件见 `devDoc/2026-11-19-09-cache-strategy.md`）。
 - 预防：会被频繁调用的 SQLite 查询，用接近真实的数据形状、**文件库**（不只是内存库）测最坏的范围与过滤条件；用 `EXPLAIN QUERY PLAN` 在单元测试中断言计划（不出现裸 `SCAN` / `TEMP B-TREE`）；高频选择优先「批量取、内存中消费」，而不是每次一条查询。报告性能数字时写明内存库 / 文件库、行数、范围与层数上限。
+
+### SQLite：`INTEGER PRIMARY KEY AUTOINCREMENT` 的表上，冲突的 `INSERT … ON CONFLICT` 也会消耗编号
+
+- 日期：2026-11-19
+- 症状：`dirs` 改用整数编号后，对已存在的子目录每次刷新都执行 `INSERT … ON CONFLICT(uri) DO UPDATE`，`sqlite_sequence.seq` 随之增长，编号出现大量空洞（实测：5 次冲突的插入使下一个编号从 2 跳到 7）。
+- 原因：SQLite 在检查 UNIQUE 约束之前就已分配 rowid，AUTOINCREMENT 记录了这次分配；没有 AUTOINCREMENT 时是 `max(rowid)+1`，不留痕迹。
+- 解决：`scanner/cache/cache.ts` 的 `upsertDir` 先按 `uri` 查编号，不存在才 `INSERT … RETURNING id`，存在则 `UPDATE`。保留 AUTOINCREMENT 的原因：不复用编号，目录删除后以同一 URI 重建一定得到新编号，残留的 `parent_id` 不会指向别的目录。
+- 预防：AUTOINCREMENT 表的「存在则更新」用先查后写，不要用冲突式插入；用 `INSERT … SELECT … WHERE NOT EXISTS` 也不会消耗编号（无行产生）。

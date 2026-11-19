@@ -219,7 +219,8 @@ describe('Cache', () => {
       prepare.mockRestore() // 同时清空 mock.calls：先取出
     }
     const deletes = sqls.filter((s) => /^DELETE/.test(s))
-    expect(deletes).toHaveLength(2)
+    // 条目由外键级联删除，只需要删 dirs
+    expect(deletes).toHaveLength(1)
     for (const sql of deletes) {
       const n = (sql.match(/\?/g) ?? []).length
       const plan = cache
@@ -464,6 +465,125 @@ describe('Cache', () => {
       .map((r) => String(r.detail))
       .join('\n')
     expect(plan).toMatch(/USING (COVERING )?INDEX dirs_hot\b/)
+  })
+
+  describe('integer directory ids', () => {
+    const rows = (sql: string): Record<string, unknown>[] => cache.select(sql)
+    const count = (sql: string): number => Number(rows(sql)[0]?.n)
+    /** 每个 entries 行都属于现存目录，且 entries_fts 与 entries 一致（external content 的完整性检查） */
+    const expectConsistent = (): void => {
+      expect(
+        count('SELECT count(*) AS n FROM entries WHERE dir_id NOT IN (SELECT id FROM dirs)')
+      ).toBe(0)
+      expect(count('SELECT count(*) AS n FROM entries_fts')).toBe(
+        count('SELECT count(*) AS n FROM entries')
+      )
+      expect(() =>
+        rows("INSERT INTO entries_fts(entries_fts, rank) VALUES ('integrity-check', 1)")
+      ).not.toThrow()
+    }
+
+    it('references directories by integer id: no TEXT directory reference in entries or dirs', () => {
+      const entryCols = rows('PRAGMA table_info(entries)').map((c) => [c.name, c.type])
+      expect(entryCols).toContainEqual(['dir_id', 'INTEGER'])
+      expect(entryCols.map((c) => c[0])).not.toContain('dir_uri')
+      const dirCols = rows('PRAGMA table_info(dirs)').map((c) => [c.name, c.type])
+      expect(dirCols).toContainEqual(['id', 'INTEGER'])
+      expect(dirCols).toContainEqual(['parent_id', 'INTEGER'])
+      expect(dirCols.map((c) => c[0])).not.toContain('parent_uri')
+      expect(rows('PRAGMA foreign_keys')[0]?.foreign_keys).toBe(1)
+    })
+
+    it('getDir still reports the parent as a URI and childDirs resolves through parent_id', () => {
+      cache.applyListing(A, 1, [dir('b')], 1)
+      cache.applyListing(`${A}/b`, 1, [dir('c')], 1)
+      expect(cache.getDir(`${A}/b`)?.parentUri).toBe(A)
+      expect(cache.getDir(A)?.parentUri).toBeNull()
+      expect(cache.childDirs(A)).toEqual([`${A}/b`])
+      expect(cache.childDirs(`${A}/b`)).toEqual([`${A}/b/c`])
+      expect(cache.childDirs('file:///C:/nowhere')).toEqual([])
+    })
+
+    it('removeSubtree / removeMissing / prune leave no entries or entries_fts rows of the removed directories', () => {
+      const B = 'file:///C:/ab'
+      cache.setRoots([A, B])
+      cache.applyListing(A, 1, [dir('s'), dir('t'), file('keep-root.txt')], 1)
+      cache.applyListing(`${A}/s`, 1, [dir('u'), file('gone-s.txt')], 1)
+      cache.applyListing(`${A}/s/u`, 1, [file('gone-u.txt')], 1)
+      cache.applyListing(`${A}/t`, 1, [dir('v'), file('gone-t.txt')], 1)
+      cache.applyListing(`${A}/t/v`, 1, [file('gone-v.txt')], 1)
+      cache.applyListing(B, 1, [file('gone-b.txt')], 1)
+      expectConsistent()
+      const ftsHits = (q: string): number =>
+        count(`SELECT count(*) AS n FROM entries_fts WHERE entries_fts MATCH '"${q}"'`)
+
+      cache.removeSubtree(`${A}/s`)
+      expect(cache.getEntries(`${A}/s`)).toEqual([])
+      expect(cache.getEntries(`${A}/s/u`)).toEqual([])
+      expect(ftsHits('gone-s')).toBe(0)
+      expect(ftsHits('gone-u')).toBe(0)
+      expect(ftsHits('gone-t')).toBe(1)
+      expectConsistent()
+
+      cache.removeMissing(`${A}/t`)
+      expect(ftsHits('gone-t')).toBe(0)
+      expect(ftsHits('gone-v')).toBe(0)
+      expect(ftsHits('keep-root')).toBe(1)
+      expectConsistent()
+
+      cache.setRoots([A])
+      expect(cache.prune()).toBe(1)
+      expect(ftsHits('gone-b')).toBe(0)
+      expect(ftsHits('keep-root')).toBe(1)
+      expectConsistent()
+      expect(count('SELECT count(*) AS n FROM entries')).toBe(
+        count("SELECT count(*) AS n FROM entries WHERE name IN ('keep-root.txt', 's', 't')")
+      )
+    })
+
+    it('a directory removed and recreated under the same URI gets a new id and none of the old entries', () => {
+      cache.applyListing(A, 1, [dir('p')], 1)
+      cache.applyListing(`${A}/p`, 1, [dir('q'), file('old.txt')], 1)
+      cache.applyListing(`${A}/p/q`, 1, [file('old-q.txt')], 1)
+      const idOf = (uri: string): number =>
+        Number(cache.select('SELECT id FROM dirs WHERE uri = ?', uri)[0]?.id)
+      const oldId = idOf(`${A}/p`)
+      const oldQ = idOf(`${A}/p/q`)
+
+      cache.removeSubtree(`${A}/p`)
+      cache.applyListing(A, 2, [dir('p')], 2)
+      expect(idOf(`${A}/p`)).not.toBe(oldId)
+      cache.applyListing(`${A}/p`, 2, [dir('q'), file('new.txt')], 2)
+      expect(idOf(`${A}/p/q`)).not.toBe(oldQ)
+      expect(cache.getEntries(`${A}/p`).map((e) => e.name)).toEqual(['new.txt', 'q'])
+      expect(cache.getEntries(`${A}/p/q`)).toEqual([])
+      expect(count(`SELECT count(*) AS n FROM entries WHERE dir_id IN (${oldId}, ${oldQ})`)).toBe(0)
+      expectConsistent()
+    })
+
+    it('a deep directory visited before its ancestors is adopted by the ancestors once they exist', () => {
+      cache.visit(`${A}/x/y`, 1)
+      expect(cache.getDir(`${A}/x/y`)?.parentUri).toBe(`${A}/x`) // 父目录行还不存在：回落到字符串方式
+      cache.visit(`${A}/x`, 2)
+      expect(cache.childDirs(`${A}/x`)).toEqual([`${A}/x/y`])
+      cache.applyListing(A, 1, [dir('x')], 3)
+      cache.applyListing(`${A}/x`, 1, [dir('y'), dir('z')], 3)
+      expect(cache.childDirs(`${A}/x`).sort()).toEqual([`${A}/x/y`, `${A}/x/z`])
+      expect(cache.childDirs(A)).toEqual([`${A}/x`])
+      // 不会为已有的行烧掉编号（冲突的插入会消耗 AUTOINCREMENT）
+      const before = Number(cache.select('SELECT seq FROM sqlite_sequence')[0]?.seq)
+      for (let i = 0; i < 3; i++) cache.applyListing(`${A}/x`, 1, [dir('y'), dir('z')], 4 + i)
+      expect(Number(cache.select('SELECT seq FROM sqlite_sequence')[0]?.seq)).toBe(before)
+    })
+
+    it('removing a vanished child directory through applyListing cascades its entries', () => {
+      cache.applyListing(A, 1, [dir('b')], 1)
+      cache.applyListing(`${A}/b`, 1, [file('x.txt')], 1)
+      cache.applyListing(A, 2, [], 2)
+      expect(cache.getDir(`${A}/b`)).toBeUndefined()
+      expect(count('SELECT count(*) AS n FROM entries')).toBe(0)
+      expectConsistent()
+    })
   })
 
   it('sizeBytes reports a positive size and clear empties the cache', () => {
