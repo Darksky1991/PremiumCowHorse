@@ -318,7 +318,7 @@ export class Scheduler {
   }
 
   /**
-   * 有缓存：立即返回缓存并排 P0 检查；没有缓存：P0 枚举后返回。
+   * 有缓存：立即返回缓存，2 秒内检查过（fresh）则不再检查，否则排 P0；没有缓存：P0 枚举后返回。
    * 共享断开时不发起访问：有缓存返回 offline，没有则以 FS_UNAVAILABLE 拒绝。
    */
   listNow(uri: string): Promise<DirectoryListing> {
@@ -333,7 +333,9 @@ export class Scheduler {
     }
     if (cached) {
       const fresh = dir.checkedAt !== null && this.now() - dir.checkedAt <= FRESH_MS
-      this.requestP0(uri)
+      // 刚检查过（任何优先级，含 P1 发现变化后渲染端收到 vfs.changed 的重新列出）：不再排 P0，
+      // 否则每次检测到变化都会多一次完整枚举
+      if (!fresh) this.requestP0(uri)
       return Promise.resolve(this.listing(uri, fresh ? 'fresh' : 'cached', dir.checkedAt))
     }
     return new Promise((resolve, reject) =>

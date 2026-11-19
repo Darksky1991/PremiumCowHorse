@@ -624,10 +624,12 @@ describe('Scheduler', () => {
     const { clock, fs, s } = setup([root(R)])
     s.setInterest(1, none)
     await clock.advance(10_000)
+    await clock.advance(3000) // 上次检查已超过 2 秒：listNow 返回 cached 并排 P0
     const n = fs.count('stat', R)
-    await s.listNow(R)
+    await expect(s.listNow(R)).resolves.toMatchObject({ state: 'cached' })
+    await clock.advance(0)
+    expect(fs.count('stat', R)).toBe(n + 1)
     await clock.advance(1000)
-    await s.listNow(R)
     s.refresh([R])
     await clock.advance(0)
     expect(fs.count('stat', R)).toBe(n + 1)
@@ -635,6 +637,25 @@ describe('Scheduler', () => {
     s.refresh([R])
     await clock.advance(0)
     expect(fs.count('stat', R)).toBe(n + 2)
+  })
+
+  it('a listNow right after a P1 check found a change does not enumerate again', async () => {
+    const { clock, fs, s, changed } = setup([root(R)])
+    s.setInterest(1, none)
+    await clock.advance(0)
+    fs.addFile(R, 'b.txt')
+    changed.length = 0
+    await clock.advance(5000) // P1：修改时间变化 → 枚举 → changed
+    expect(changed).toEqual([R])
+    const lists = fs.count('list', R)
+    const stats = fs.count('stat', R)
+    // 渲染端收到 vfs.changed 后重新列出：刚检查过（fresh），不再排 P0
+    await expect(s.listNow(R)).resolves.toMatchObject({ state: 'fresh' })
+    await clock.advance(1500)
+    await expect(s.listNow(R)).resolves.toMatchObject({ state: 'fresh' })
+    await clock.advance(0)
+    expect(fs.count('list', R)).toBe(lists)
+    expect(fs.count('stat', R)).toBe(stats)
   })
 
   it('not-found removes the subtree and notifies the parent', async () => {
