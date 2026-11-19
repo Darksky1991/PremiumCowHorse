@@ -17,7 +17,6 @@ import {
   FileXIcon,
   FolderIcon,
   FolderSymlinkIcon,
-  HistoryIcon,
   UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -25,7 +24,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { DirectoryListing, FileEntry, PreviewHost, PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
-import { formatAge, formatSize, formatTime } from './format'
+import { formatSize, formatTime } from './format'
 import {
   breadcrumb,
   DEFAULT_SORT,
@@ -50,8 +49,6 @@ const COLUMN_LABEL: Record<SortKey, string> = {
   type: 'colType',
   size: 'colSize'
 }
-/** 「基于缓存（N 前）」的刷新周期 */
-const AGE_TICK_MS = 30_000
 
 type Listing =
   | { status: 'loading' }
@@ -95,16 +92,6 @@ function useListing(host: PreviewHost, uri: string): [Listing, () => void] {
   return [listing, retry]
 }
 
-/** 当前时刻，每 AGE_TICK_MS 更新（「N 分前」的显示） */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), AGE_TICK_MS)
-    return () => clearInterval(id)
-  }, [])
-  return now
-}
-
 function iconOf(e: FileEntry): LucideIcon {
   if (e.kind === 'directory') return FolderIcon
   if (e.kind === 'file') return FileIcon
@@ -127,7 +114,7 @@ const hasSize = (e: FileEntry): boolean =>
   e.kind === 'file' || (e.kind === 'symlink' && e.target === 'file')
 
 /**
- * 目录视图（folder 插件）：面包屑 +「上一级」、详细信息列表（虚拟滚动）、状态行。
+ * 目录视图（folder 插件）：面包屑 +「上一级」、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
  * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航，文件以常驻标签打开；
  * Backspace / Alt+↑ 到上一级。打开与导航都经 host（宿主据此把预览标签转为常驻）。
  */
@@ -142,7 +129,6 @@ export default function FolderView({
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [listing, retry] = useListing(host, resource.uri)
-  const now = useNow()
   const showHidden = host.settings.get('explorer.showHiddenFiles') ?? false
   const sort = viewState?.sort ?? DEFAULT_SORT
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
@@ -413,47 +399,33 @@ export default function FolderView({
         </div>
       </div>
 
-      <StatusLine listing={listing} count={rows.length} now={now} host={host} />
+      <StatusLine listing={listing} count={rows.length} host={host} />
     </div>
   )
 }
 
-/** 状态行：项目数与缓存状态（基于缓存 / 已断开）；加载中显示「读取中」 */
+/**
+ * 状态行：项目数、已断开（offline）、读取中。
+ * 不显示「基于缓存（N 前）」（控制者裁定）：检查后内容没有变化时扫描进程不广播 vfs.changed，
+ * 这里的 checkedAt 不会更新，「N 前」越来越旧，而该目录实际每 5 秒都确认过，显示出来会误导用户
+ */
 function StatusLine({
   listing,
   count,
-  now,
   host
 }: {
   listing: Listing
   count: number
-  now: number
   host: PreviewHost
 }): JSX.Element {
   const { t, language } = host.i18n
-  let state: ReactNode = null
-  if (listing.status === 'ready') {
-    const { state: cacheState, checkedAt } = listing.listing
-    if (cacheState === 'offline') {
-      state = (
-        <span className="flex min-w-0 items-center gap-1">
-          <UnplugIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="truncate">{t('offline')}</span>
-        </span>
-      )
-    } else if (cacheState === 'cached') {
-      state = (
-        <span className="flex min-w-0 items-center gap-1">
-          <HistoryIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="truncate">
-            {checkedAt === null
-              ? t('cachedUnknown')
-              : t('cached', { age: formatAge(checkedAt, now, language) })}
-          </span>
-        </span>
-      )
-    }
-  }
+  const state: ReactNode =
+    listing.status === 'ready' && listing.listing.state === 'offline' ? (
+      <span className="flex min-w-0 items-center gap-1">
+        <UnplugIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="truncate">{t('offline')}</span>
+      </span>
+    ) : null
   return (
     <div
       role="status"

@@ -36,20 +36,3 @@ export function formatTime(ms: number, language: string): string {
   }
   return format.format(ms)
 }
-
-const AGE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-  ['day', 86_400_000],
-  ['hour', 3_600_000],
-  ['minute', 60_000],
-  ['second', 1000]
-]
-
-/** 「N 分前」：取能整除的最大单位（向下取整）；时刻在未来（系统时钟回拨）时视为现在 */
-export function formatAge(at: number, now: number, language: string): string {
-  const elapsed = Math.max(0, now - at)
-  const format = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
-  for (const [unit, ms] of AGE_UNITS) {
-    if (elapsed >= ms) return format.format(-Math.floor(elapsed / ms), unit)
-  }
-  return format.format(0, 'second')
-}

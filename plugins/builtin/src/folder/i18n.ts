@@ -21,8 +21,6 @@ const ja = {
   retry: '再試行',
   items_one: '{{n}} 個の項目',
   items_other: '{{n}} 個の項目',
-  cached: 'キャッシュを表示中（{{age}}に確認）',
-  cachedUnknown: 'キャッシュを表示中',
   offline: '切断中（キャッシュを表示中）'
 }
 
@@ -47,8 +45,6 @@ const zhCN: Messages = {
   retry: '重试',
   items_one: '{{n}} 项',
   items_other: '{{n}} 项',
-  cached: '基于缓存（{{age}}确认）',
-  cachedUnknown: '基于缓存',
   offline: '已断开（基于缓存）'
 }
 
@@ -71,8 +67,6 @@ const en: Messages = {
   retry: 'Retry',
   items_one: '{{n}} item',
   items_other: '{{n}} items',
-  cached: 'Showing cached contents (checked {{age}})',
-  cachedUnknown: 'Showing cached contents',
   offline: 'Disconnected (showing cached contents)'
 }
 
