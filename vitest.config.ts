@@ -7,7 +7,11 @@ export default defineConfig({
     alias: { '@renderer': resolve(__dirname, 'apps/desktop/src/renderer/src') }
   },
   test: {
-    include: ['packages/*/src/**/*.test.ts', 'apps/desktop/src/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'plugins/*/src/**/*.test.ts',
+      'apps/desktop/src/**/*.test.ts'
+    ],
     environment: 'node'
   }
 })

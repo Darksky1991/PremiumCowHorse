@@ -242,6 +242,9 @@ importers:
       '@pch/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@pch/plugin-builtin':
+        specifier: workspace:*
+        version: link:../../plugins/builtin
       '@pch/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -379,6 +382,25 @@ importers:
       tailwindcss:
         specifier: ^4.3.5
         version: 4.3.5
+
+  plugins/builtin:
+    dependencies:
+      '@pch/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@pch/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      lucide-react:
+        specifier: ^1.73.0
+        version: 1.73.0(@types/react@19.3.0)(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
 
 packages:
 

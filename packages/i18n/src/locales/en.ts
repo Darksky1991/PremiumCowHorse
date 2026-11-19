@@ -137,8 +137,20 @@ export default {
   },
   tabs: {
     label: 'Open tabs',
-    close: 'Close',
-    placeholder: 'A view for this resource is coming soon'
+    close: 'Close'
+  },
+  preview: {
+    loading: 'Loading…',
+    errorTitle: "This preview can't be displayed",
+    errorHint: 'The preview ({{plugin}}) ran into an error. Other tabs are not affected.',
+    showInfo: 'Show file info',
+    retry: 'Retry',
+    copiedPath: 'Path copied',
+    confirmTitle: 'Open "{{name}}"?',
+    confirmDescription:
+      'This file runs as a program or script and may change settings on this PC. Open it only if you trust it.',
+    confirmOpen: 'Open',
+    cancel: 'Cancel'
   },
   errors: {
     UNKNOWN: 'An unexpected error occurred',

@@ -10,7 +10,7 @@ import type { Handlers } from './router'
 /** 汇总各模块的 handler */
 export function createHandlers(c: Container): Handlers {
   return {
-    ...systemHandlers(c.logger),
+    ...systemHandlers(c.logger, c.vfs),
     ...settingsHandlers(c.settings),
     ...windowHandlers(),
     ...workspaceHandlers(c.workspaces),

@@ -17,7 +17,8 @@ const elements = [
   { type: 'i18n', pattern: 'packages/i18n' },
   { type: 'ui', pattern: 'packages/ui' },
   { type: 'plugin-sdk', pattern: 'packages/plugin-sdk' },
-  { type: 'plugin', pattern: 'plugins/*', capture: ['name'] },
+  // 内置插件包（doc 5.1）：每个子目录是一个插件；包入口 src/index.ts 见下方 files 的 plugin-entry
+  { type: 'plugin', pattern: 'plugins/builtin/src/*', capture: ['name'] },
   // 主进程（架构文档 5.2 节）
   { type: 'main-bootstrap', pattern: `${MAIN}/bootstrap` },
   { type: 'main-ipc', pattern: `${MAIN}/ipc` },
@@ -48,6 +49,8 @@ const allow = (from, to) => ({
 const files = [
   { pattern: `${MAIN}/index.ts`, category: 'main-entry' },
   { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' },
+  // 内置插件包的入口：汇总各插件子目录，导出插件列表
+  { pattern: 'plugins/builtin/src/index.ts', category: 'plugin-entry' },
   // vfs 中不依赖 electron 的文件：扫描进程只能 import 这些
   {
     pattern: `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list}.ts`,
@@ -63,8 +66,9 @@ const allowFile = (category, to) => ({
 /** 依赖方向：默认禁止，只放行下面列出的方向 */
 const policies = [
   allow('i18n', ['shared']),
-  // 插件只能依赖 SDK 与 UI，与将来的第三方插件走相同接口
+  // 插件只能依赖 SDK 与 UI，与将来的第三方插件走相同接口；插件子目录之间不得互相 import
   allow('plugin', ['plugin-sdk', 'ui']),
+  allowFile('plugin-entry', ['plugin', 'plugin-sdk']),
   // 主进程：ipc → modules → infra / core；模块之间不得互相 import（经构造函数注入）
   allowFile('main-entry', ['main-bootstrap']),
   allow('main-bootstrap', [
@@ -101,6 +105,11 @@ const policies = [
   // 渲染端：app → features → data / lib / stores；feature 之间不得互相 import
   allowFile('r-entry', ['r-app', 'r-provider', 'r-lib', 'r-style']),
   allow('r-app', ['r-feature', 'r-lib', 'ui', 'i18n', 'shared']),
+  // app 把内置插件列表交给预览 feature（feature 不直接依赖插件包）
+  {
+    from: { element: { type: 'r-app' } },
+    allow: { to: { file: { categories: 'plugin-entry' } } }
+  },
   allow('r-feature', [
     'r-provider',
     'r-data',
@@ -164,7 +173,8 @@ export default defineConfig(
           project: [
             'apps/desktop/tsconfig.node.json',
             'apps/desktop/tsconfig.web.json',
-            'packages/*/tsconfig.json'
+            'packages/*/tsconfig.json',
+            'plugins/*/tsconfig.json'
           ]
         }
       },

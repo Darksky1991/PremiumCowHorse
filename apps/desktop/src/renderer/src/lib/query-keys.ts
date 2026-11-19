@@ -15,6 +15,9 @@ export const queryKeys = {
   /** 所有目录列表的前缀（手动刷新时一次性失效） */
   directoryRoot: ['vfs', 'list'] as const,
   directory: (uri: string) => ['vfs', 'list', uri] as const,
+  /** 单个资源的 stat（预览标签的文件信息）；前缀用于按父目录失效 */
+  statRoot: ['vfs', 'stat'] as const,
+  stat: (uri: string) => ['vfs', 'stat', uri] as const,
   /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
     ['search', workspaceId, text, kind] as const

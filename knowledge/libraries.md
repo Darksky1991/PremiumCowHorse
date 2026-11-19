@@ -167,3 +167,11 @@
 - 原因：SQLite 在检查 UNIQUE 约束之前就已分配 rowid，AUTOINCREMENT 记录了这次分配；没有 AUTOINCREMENT 时是 `max(rowid)+1`，不留痕迹。
 - 解决：`scanner/cache/cache.ts` 的 `upsertDir` 先按 `uri` 查编号，不存在才 `INSERT … RETURNING id`，存在则 `UPDATE`。保留 AUTOINCREMENT 的原因：不复用编号，目录删除后以同一 URI 重建一定得到新编号，残留的 `parent_id` 不会指向别的目录。
 - 预防：AUTOINCREMENT 表的「存在则更新」用先查后写，不要用冲突式插入；用 `INSERT … SELECT … WHERE NOT EXISTS` 也不会消耗编号（无行产生）。
+
+### `react-hooks/static-components`：从缓存取出的 `React.lazy` 组件被报 "Cannot create components during render"
+
+- 日期：2026-11-19
+- 症状：预览容器在渲染中按插件取出懒加载组件（`const C = lazyComponentOf(plugin)`，内部用 Map 缓存 `lazy(plugin.load)`），再 `<C />`，eslint-plugin-react-hooks 7 报 `Error: Cannot create components during render`。
+- 原因：该规则（面向 React Compiler）把「渲染中由函数调用得到、再作为 JSX 类型使用的值」一律视为在渲染中创建的组件，看不出背后有缓存。
+- 解决：不在渲染中取组件，改为缓存 `plugin.load()` 的 Promise，用 React 19 的 `use(promise)` 在 Suspense 中等待模块，再渲染模块的默认导出（`features/preview/preview-container.tsx` 的 `PluginBody`）；加载失败时 `use` 抛出拒绝原因，由外层错误边界接住。
+- 预防：动态选择组件时缓存「数据（模块 Promise）」而不是「组件」；Promise 必须缓存（每次渲染新建 Promise 会无限挂起）。

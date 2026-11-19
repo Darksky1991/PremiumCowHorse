@@ -136,8 +136,20 @@ export default {
   },
   tabs: {
     label: '開いているタブ',
-    close: '閉じる',
-    placeholder: 'このリソースの表示は準備中です'
+    close: '閉じる'
+  },
+  preview: {
+    loading: '読み込み中…',
+    errorTitle: 'このプレビューを表示できません',
+    errorHint: 'プレビュー（{{plugin}}）でエラーが発生しました。ほかのタブには影響しません。',
+    showInfo: 'ファイル情報で表示',
+    retry: '再試行',
+    copiedPath: 'パスをコピーしました',
+    confirmTitle: '「{{name}}」を開きますか？',
+    confirmDescription:
+      'このファイルはプログラムやスクリプトとして実行され、PC の設定を変更する可能性があります。信頼できるファイルの場合だけ開いてください。',
+    confirmOpen: '開く',
+    cancel: 'キャンセル'
   },
   errors: {
     UNKNOWN: '予期しないエラーが発生しました',

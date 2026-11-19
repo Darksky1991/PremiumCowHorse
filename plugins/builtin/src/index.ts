@@ -1,0 +1,8 @@
+import type { AnyPreviewPlugin } from '@pch/plugin-sdk'
+import { fallbackPlugin } from './fallback'
+
+/**
+ * 内置预览插件（doc 5.1 / 9.4）：每个插件一个子目录，只依赖 @pch/plugin-sdk 与 @pch/ui，
+ * 子目录之间不互相 import（eslint 的模块边界规则强制）。注册顺序即同分时的优先顺序。
+ */
+export const builtinPlugins: readonly AnyPreviewPlugin[] = [fallbackPlugin]

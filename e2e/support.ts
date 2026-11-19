@@ -4,13 +4,17 @@ import { _electron as electron, type ElectronApplication, type Page } from '@pla
 
 const appDir = path.resolve(__dirname, '../apps/desktop')
 
-/** 启动已构建的应用（经 app:// 加载 out/ 中的生产构建）；userData 必须是临时目录 */
+/**
+ * 启动已构建的应用（经 app:// 加载 out/ 中的生产构建）；userData 必须是临时目录。
+ * env 追加测试用的环境变量（例如 PCH_E2E_CRASH_PLUGIN）
+ */
 export async function launch(
-  userDataDir: string
+  userDataDir: string,
+  env: Record<string, string> = {}
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
     args: [appDir],
-    env: { ...process.env, PCH_USER_DATA_DIR: userDataDir, ELECTRON_RENDERER_URL: '' }
+    env: { ...process.env, PCH_USER_DATA_DIR: userDataDir, ELECTRON_RENDERER_URL: '', ...env }
   })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
@@ -40,9 +44,10 @@ export const data = async <T = Named>(page: Page, channel: string, input?: unkno
  * 在添加任何条目之前设置：调度器已排期的目录不会因设置变化而提前（只影响之后的排期）。
  */
 export async function launchFast(
-  userData: string
+  userData: string,
+  env: Record<string, string> = {}
 ): Promise<{ app: ElectronApplication; page: Page }> {
-  const launched = await launch(userData)
+  const launched = await launch(userData, env)
   await data(launched.page, 'settings.set', {
     'cache.interval.focus.local': 2,
     'cache.interval.near.local': 2,

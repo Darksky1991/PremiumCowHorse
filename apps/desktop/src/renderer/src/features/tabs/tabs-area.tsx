@@ -1,16 +1,20 @@
-import { useEffect, useId, type JSX } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useEffect, useId, type JSX, type ReactNode } from 'react'
+import type { TabState } from '@pch/shared'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { selectTabs, useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
 import { TabBar } from './tab-bar'
 
+export interface TabsAreaProps {
+  /** 激活标签的内容（features/preview 的 PreviewContainer，由 app/ 组合：feature 之间不互相 import） */
+  renderContent: (tab: TabState) => ReactNode
+}
+
 /**
  * 主区域的标签区：标签栏 + 激活标签的内容。外壳只在当前工作区有标签时挂载它（否则显示欢迎页）。
- * 内容区暂为占位（显示 URI），M1-3 Task 2 换成 PreviewContainer。
+ * 只渲染激活标签的内容；切换标签时按标签 id 重建。
  */
-export function TabsArea(): JSX.Element {
-  const { t } = useTranslation('tabs')
+export function TabsArea({ renderContent }: TabsAreaProps): JSX.Element {
   const baseId = useId()
   const { data: workspace } = useActiveWorkspace()
   const state = useTabsStore(selectTabs(workspace?.id))
@@ -37,10 +41,10 @@ export function TabsArea(): JSX.Element {
           id={panelDomId(baseId)}
           role="tabpanel"
           aria-labelledby={tabDomId(baseId, active.id)}
-          className="min-h-0 flex-1 overflow-auto p-6"
+          key={active.id}
+          className="min-h-0 flex-1 overflow-hidden"
         >
-          <p className="text-sm text-muted-foreground">{t('placeholder')}</p>
-          <p className="mt-2 font-mono text-xs break-all select-text">{active.uri}</p>
+          {renderContent(active)}
         </div>
       ) : null}
     </div>

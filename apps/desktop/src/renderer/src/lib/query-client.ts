@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import type { Settings } from '@pch/shared'
+import { normalizeRootUri, type Settings } from '@pch/shared'
 import { shareKeyOfUri } from './file-uri'
 import { subscribe } from './ipc'
 import { queryKeys } from './query-keys'
@@ -38,9 +38,17 @@ export function bridgeMainEvents(client: QueryClient): () => void {
       void client.invalidateQueries({ queryKey: queryKeys.entries(id) })
       void client.invalidateQueries({ queryKey: queryKeys.indexTargets(id) })
     }),
-    // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）
+    // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）；
+    // 该目录自身与其直接子项的 stat（预览标签显示的大小 / 时间）也失效
     subscribe('vfs.changed', ({ uri }) => {
       void client.invalidateQueries({ queryKey: queryKeys.directory(uri) })
+      void client.invalidateQueries({
+        queryKey: queryKeys.statRoot,
+        predicate: (q) => {
+          const target = q.queryKey[2]
+          return typeof target === 'string' && (target === uri || parentUri(target) === uri)
+        }
+      })
     }),
     // 共享 / 卷恢复在线：该位置下的目录查询失效，显示中的重新列出（state 不再是 offline）。
     // 断开时不需要：之后的列出由扫描进程返回 offline
@@ -57,4 +65,13 @@ export function bridgeMainEvents(client: QueryClient): () => void {
     })
   ]
   return () => offs.forEach((off) => off())
+}
+
+/** URI 的上一级（按 normalizeRootUri 的形式：驱动器根带结尾 /）；没有上一级时为 null */
+function parentUri(uri: string): string | null {
+  const trimmed = uri.replace(/\/+$/, '')
+  const slash = trimmed.lastIndexOf('/')
+  // file:///C: 这样只剩 scheme 与空主机的部分没有上一级
+  if (slash < 0 || trimmed.slice(0, slash).endsWith('/')) return null
+  return normalizeRootUri(trimmed.slice(0, slash))
 }

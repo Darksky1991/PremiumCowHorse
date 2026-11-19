@@ -1,12 +1,20 @@
 import { app, BrowserWindow, clipboard, dialog, shell, webContents } from 'electron'
+import { AppError } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 import type { HandlersOf } from '../../ipc/router'
 import { fileUriToLocalPath } from '../../vfs/local-path'
+import type { VfsService } from '../../vfs/vfs.service'
 
 export function systemHandlers(
-  logger: Logger
+  logger: Logger,
+  vfs: VfsService
 ): HandlersOf<
-  'app.getInfo' | 'log.write' | 'system.revealInOs' | 'system.copyText' | 'system.selectPaths'
+  | 'app.getInfo'
+  | 'log.write'
+  | 'system.revealInOs'
+  | 'system.openPath'
+  | 'system.copyText'
+  | 'system.selectPaths'
 > {
   return {
     'app.getInfo': async () => ({
@@ -23,6 +31,13 @@ export function systemHandlers(
     },
     'system.revealInOs': async ({ uri }) => {
       shell.showItemInFolder(fileUriToLocalPath(uri))
+    },
+    'system.openPath': async ({ uri }) => {
+      const localPath = fileUriToLocalPath(uri)
+      // 先经 VfsService 确认存在（带超时、错误码映射）：shell.openPath 失败时只返回描述文字
+      await vfs.stat(uri)
+      const error = await shell.openPath(localPath)
+      if (error) throw new AppError({ code: 'UNKNOWN', detail: `shell.openPath: ${error}` })
     },
     'system.copyText': async ({ text }) => {
       clipboard.writeText(text)

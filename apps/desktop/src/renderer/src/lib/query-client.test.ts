@@ -47,6 +47,23 @@ describe('bridgeMainEvents', () => {
     expect(client.getQueryState(b)?.isInvalidated).toBe(false)
   })
 
+  it('vfs.changed 让该目录自身与其直接子项的 stat 失效（预览标签的文件信息）', () => {
+    const self = queryKeys.stat('file:///C:/a')
+    const child = queryKeys.stat('file:///C:/a/x.txt')
+    const grandchild = queryKeys.stat('file:///C:/a/b/y.txt')
+    const sibling = queryKeys.stat('file:///C:/ab/x.txt')
+    const inRoot = queryKeys.stat('file:///C:/z.txt')
+    for (const key of [self, child, grandchild, sibling, inRoot]) client.setQueryData(key, {})
+    emit('vfs.changed', { uri: 'file:///C:/a' })
+    expect(client.getQueryState(self)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(child)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(grandchild)?.isInvalidated).toBe(false)
+    expect(client.getQueryState(sibling)?.isInvalidated).toBe(false)
+    // 驱动器根的 URI 以 / 结尾（normalizeRootUri）
+    emit('vfs.changed', { uri: 'file:///C:/' })
+    expect(client.getQueryState(inRoot)?.isInvalidated).toBe(true)
+  })
+
   it('workspace.changed 使该工作区的条目与索引目标失效', () => {
     const entries = queryKeys.entries('w1')
     const index = queryKeys.indexTargets('w1')

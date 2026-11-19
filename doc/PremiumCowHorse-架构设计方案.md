@@ -209,7 +209,7 @@ premium-cow-horse/
 │           ├── markdown/
 │           ├── media/
 │           ├── office/           # Office 文件启动面板（调用本机 Office）
-│           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作）
+│           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作；M1-3 已实现）
 ├── e2e/                          # Playwright Electron 端到端测试
 ├── doc/                          # 设计文档（本文档）：最新事实依据
 ├── devDoc/                       # 开发过程记录（按日期）
@@ -221,6 +221,8 @@ premium-cow-horse/
 ```
 
 内置插件放在独立于应用的包中：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。v1.4 起所有内置插件合并为单个 `plugins/builtin` 包（每个插件一个子目录），插件之间、插件与应用之间的隔离由 5.5 节的模块边界规则保证，只需维护一份 package.json / tsconfig。
+
+已实现（M1-3）：`plugins/builtin`（包名 `@pch/plugin-builtin`，与 `plugin-sdk` 相同的形式：`exports` 直接指向源码 `src/index.ts`，不单独构建；依赖 `@pch/plugin-sdk`、`@pch/ui`、`lucide-react`，`react` 为 peer）。`src/index.ts` 导出 `builtinPlugins`（注册顺序即同分时的优先顺序），`src/fallback/` 为 fallback 插件（`index.ts` 定义、`fallback-preview.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`format.ts` 大小 / 时间格式化纯函数）。渲染端由 `app/app.tsx` import 插件列表交给 `features/preview`（feature 不直接依赖插件包）；vitest 的 include 增加 `plugins/*/src/**/*.test.ts`。
 
 5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
@@ -309,7 +311,7 @@ apps/desktop/src/
 
 扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出；任一步抛错时仍执行后面的步骤并 `exit(0)`），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：`vfs.list` 由 `VfsService` 直接枚举、不缓存）。进程退出（将重启）或进入降级模式时，客户端对它记录的每个断开的共享（随 `reachability` 消息维护）发出 `online` 并清空——断开由该进程的探测判定，新进程若仍连不上会重新发出 `offline`，降级模式直接枚举；`ScannerClient.offlineShares()` 返回当前集合（IPC `vfs.offlineShares`）。请求另有兜底超时：60 秒没有结果即以 `FS_TIMEOUT` 拒绝（防扫描进程的事件循环卡住、结果丢失；不用 `INDEX_UNAVAILABLE`，因为扫描进程可能仍在同一共享上枚举，`vfs.list` 回退直接枚举会并发第二次访问）；结果消息校验失败但能读出 `id` 时同样以 `INDEX_UNAVAILABLE` 拒绝对应的请求。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `cache.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；队列查询 `nextUnlisted` / `oldestChecked(scopes: Scope[], limit, exclude?)`：`Scope = {uri, maxDepth}`；「从未尝试读取」= `checked_at IS NULL`（`nextUnlisted`，深度浅的优先、同深度按 uri），尝试过的（含读取失败的：`applyListing` / `markChecked` / `setState` 都写 `checked_at`）进入 `oldestChecked`（按 `checked_at` 升序）；范围走 `subtreeCondition`，层数用生成列 `dirs.depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；多范围合并去重、limit 为合并后总数；范围小（< 2000 个目录）走主键范围 + 排序，范围大用 `INDEXED BY` 按部分索引 `dirs_unlisted (depth, uri)` / `dirs_checked (checked_at, uri, depth)` 的顺序扫描 + LIMIT（30 万行合成数据、整卷且层数不限：内存库 / 文件库约 0.2–0.3ms；层数上限很小（`maxDepth` 1）时 `oldestChecked` 要沿 `checked_at` 顺序扫很多行，内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊，见 8.3 节）；`CACHE_VERSION` = 5；热点 `hot(k)` 走覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`，不扫描整张表（30 万行合成数据、其中 30 个访问过：约 6.8ms → 0.04ms）；`removeMissing(uri)`：目录不存在时删除它与子树，并从父目录的缓存列表中删除该项（同名的是符号链接时保留），删除了该项时把父目录的 `dir_mtime` 置为 NULL（这是推断，父目录下一次确认必须完整读取），一个事务）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`，设计 8.2：输出定期确认的对象 `periodic: {uri, tier: 'focus'|'near'|'far', full}[]`（关注点 / 近 / 远，同一 URI 取更近的层，只有关注点 `full`；近层、远层各至多 `TIER_LIMIT` = 100 个：按目录树上离关注点的距离取，同等距离时热点优先、再按 URI，近层中视口内可见的已展开目录最优先）与后台队列的范围 `background: {indexTargets: Scope[], hot: string[], ranges: Scope[]}`；目录的策略取包含它的根中最高者，「消极」只有关注点一层；`RootConfig` / `CacheStrategy`（`CACHE_STRATEGIES`）在 `shared/scanner/types.ts`）；`scanner/schedule/background-queue.ts`（后台队列的候选 `BackgroundQueue`：按位置组分别从缓存批量取候选、在内存中逐个消费，见 8.3 节）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / 定期确认按层与位置的间隔 / 后台队列每个位置组同时 1 个、完成后休息 `backgroundGapMs`（用户正在操作时加倍），各窗口的范围分别计算后合并、全部失焦时定期确认暂停（后台队列照常）；缓存不设过期（没有「超过 1 小时强制完整读取」）；并发：每个位置组（本地卷 / 网络主机）「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）——`FS_UNAVAILABLE` 只来自确定的网络 / 设备类错误（win32 枚举器的 `UNAVAILABLE_ERRORS`：15、21、51、53、55、59、64、67、121、1167、1201、1222、1225、1231、1232、1236、1256、2250），因此枚举中途（已有批次）收到时同样判为断开；其他错误码为 `UNKNOWN`，只把该目录记为 `unreachable`（出错的目录在定期确认中按远层的间隔重试，在后台队列中以失败时刻为确认时刻排到后面）；`listNow` 在 2 秒内检查过（任何优先级）时直接返回 `fresh`、不再排 P0（确认时刻在「未来」即系统时钟回拨后，不算 fresh；P0 去重同理，差为负不算重复）；读取得到「不是目录」（`FS_NOT_A_DIRECTORY`，目录被同名文件替换）时删除该目录自身的子树缓存、该行保留为 `unreachable` / `FS_NOT_A_DIRECTORY`（带确认时刻），并对父目录排一次确认（P0，不与刚完成 / 正在执行的 P0 合并），由确认更正该项的类型，不从父目录的缓存列表中删除它；该目录已是此状态时再次出错不再强制父目录（父目录仍列为目录的情形，避免循环），按远层间隔重试（「不存在」才连同父目录列表中的该项一起删除）；读取得到「不存在」（`FS_NOT_FOUND`）时 `removeMissing`，并同样对父目录排一次确认（P0，`force`），由真实列表决定父目录的内容（上级目录改名期间读取、随即改回时，父目录的修改时间不变，只靠推断删除会永远缺少该项）；该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻，父目录的确认不再列出它时删除这一行），已是此状态时再次出错（父目录仍列出它）不再强制父目录、不再从父目录列表中删除，按远层间隔重试；父目录的确认再次列出一个 `not-found` 子目录时把它的 `checked_at` 置 NULL（状态保持 `not-found`），使它作为「从未尝试过」尽快被重读（上级目录改走又改回后即可恢复，防循环的判断看的是状态，不受影响）；根没有父目录，只删除缓存并通知根；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`scanner/search/search.ts`（文件名搜索后端，Task 11：只读缓存、绝不访问文件系统；`parseQuery` / `matchesName` 在 `packages/shared/src/search/query.ts`，扫描进程与主进程共用；3 字符以上的包含词走 `entries_fts MATCH`，短词与通配词用 `LIKE ... ESCAPE` / `lower() GLOB`；范围用 URI 前缀的范围比较（`scanner/cache/cache.ts` 的 `subtreeCondition`，缓存的子树删除也用它，都走主键索引）；IPC `search.query` 由 `main/ipc/search.ipc.ts` 组装 scopes 并合并固定的单个文件条目，`ScannerClient.search` 以同一 requestId 的新查询 / `vfs.cancel` 丢弃旧结果；见 `devDoc/2026-11-19-07-search.md`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 已于 2026-11-19 删除）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `cache.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；队列查询 `nextUnlisted` / `oldestChecked(scopes: Scope[], limit, exclude?)`：`Scope = {uri, maxDepth}`；「从未尝试读取」= `checked_at IS NULL`（`nextUnlisted`，深度浅的优先、同深度按 uri），尝试过的（含读取失败的：`applyListing` / `markChecked` / `setState` 都写 `checked_at`）进入 `oldestChecked`（按 `checked_at` 升序）；范围走 `subtreeCondition`，层数用生成列 `dirs.depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；多范围合并去重、limit 为合并后总数；范围小（< 2000 个目录）走主键范围 + 排序，范围大用 `INDEXED BY` 按部分索引 `dirs_unlisted (depth, uri)` / `dirs_checked (checked_at, uri, depth)` 的顺序扫描 + LIMIT（30 万行合成数据、整卷且层数不限：内存库 / 文件库约 0.2–0.3ms；层数上限很小（`maxDepth` 1）时 `oldestChecked` 要沿 `checked_at` 顺序扫很多行，内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊，见 8.3 节）；`CACHE_VERSION` = 5；热点 `hot(k)` 走覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`，不扫描整张表（30 万行合成数据、其中 30 个访问过：约 6.8ms → 0.04ms）；`removeMissing(uri)`：目录不存在时删除它与子树，并从父目录的缓存列表中删除该项（同名的是符号链接时保留），删除了该项时把父目录的 `dir_mtime` 置为 NULL（这是推断，父目录下一次确认必须完整读取），一个事务）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`，设计 8.2：输出定期确认的对象 `periodic: {uri, tier: 'focus'|'near'|'far', full}[]`（关注点 / 近 / 远，同一 URI 取更近的层，只有关注点 `full`；近层、远层各至多 `TIER_LIMIT` = 100 个：按目录树上离关注点的距离取，同等距离时热点优先、再按 URI，近层中视口内可见的已展开目录最优先）与后台队列的范围 `background: {indexTargets: Scope[], hot: string[], ranges: Scope[]}`；目录的策略取包含它的根中最高者，「消极」只有关注点一层；`RootConfig` / `CacheStrategy`（`CACHE_STRATEGIES`）在 `shared/scanner/types.ts`）；`scanner/schedule/background-queue.ts`（后台队列的候选 `BackgroundQueue`：按位置组分别从缓存批量取候选、在内存中逐个消费，见 8.3 节）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / 定期确认按层与位置的间隔 / 后台队列每个位置组同时 1 个、完成后休息 `backgroundGapMs`（用户正在操作时加倍），各窗口的范围分别计算后合并、全部失焦时定期确认暂停（后台队列照常）；缓存不设过期（没有「超过 1 小时强制完整读取」）；并发：每个位置组（本地卷 / 网络主机）「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）——`FS_UNAVAILABLE` 只来自确定的网络 / 设备类错误（win32 枚举器的 `UNAVAILABLE_ERRORS`：15、21、51、53、55、59、64、67、121、1167、1201、1222、1225、1231、1232、1236、1256、2250），因此枚举中途（已有批次）收到时同样判为断开；其他错误码为 `UNKNOWN`，只把该目录记为 `unreachable`（出错的目录在定期确认中按远层的间隔重试，在后台队列中以失败时刻为确认时刻排到后面）；`listNow` 在 2 秒内检查过（任何优先级）时直接返回 `fresh`、不再排 P0（确认时刻在「未来」即系统时钟回拨后，不算 fresh；P0 去重同理，差为负不算重复）；读取得到「不是目录」（`FS_NOT_A_DIRECTORY`，目录被同名文件替换）时删除该目录自身的子树缓存、该行保留为 `unreachable` / `FS_NOT_A_DIRECTORY`（带确认时刻），并对父目录排一次确认（P0，不与刚完成 / 正在执行的 P0 合并），由确认更正该项的类型，不从父目录的缓存列表中删除它；该目录已是此状态时再次出错不再强制父目录（父目录仍列为目录的情形，避免循环），按远层间隔重试（「不存在」才连同父目录列表中的该项一起删除）；读取得到「不存在」（`FS_NOT_FOUND`）时 `removeMissing`，并同样对父目录排一次确认（P0，`force`），由真实列表决定父目录的内容（上级目录改名期间读取、随即改回时，父目录的修改时间不变，只靠推断删除会永远缺少该项）；该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻，父目录的确认不再列出它时删除这一行），已是此状态时再次出错（父目录仍列出它）不再强制父目录、不再从父目录列表中删除，按远层间隔重试；父目录的确认再次列出一个 `not-found` 子目录时把它的 `checked_at` 置 NULL（状态保持 `not-found`），使它作为「从未尝试过」尽快被重读（上级目录改走又改回后即可恢复，防循环的判断看的是状态，不受影响）；根没有父目录，只删除缓存并通知根；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`scanner/search/search.ts`（文件名搜索后端，Task 11：只读缓存、绝不访问文件系统；`parseQuery` / `matchesName` 在 `packages/shared/src/search/query.ts`，扫描进程与主进程共用；3 字符以上的包含词走 `entries_fts MATCH`，短词与通配词用 `LIKE ... ESCAPE` / `lower() GLOB`；范围用 URI 前缀的范围比较（`scanner/cache/cache.ts` 的 `subtreeCondition`，缓存的子树删除也用它，都走主键索引）；IPC `search.query` 由 `main/ipc/search.ipc.ts` 组装 scopes 并合并固定的单个文件条目，`ScannerClient.search` 以同一 requestId 的新查询 / `vfs.cancel` 丢弃旧结果；见 `devDoc/2026-11-19-07-search.md`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主经用户点击调用：先经 `VfsService.stat` 确认存在（带超时与错误码映射），再 `shell.openPath`，失败时以 `UNKNOWN` 拒绝、detail 为系统返回的描述）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
@@ -342,11 +344,11 @@ apps/desktop/src/renderer/
 - M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」；URI 规范化 `normalizeRootUri` 与 `isUnderUri` 在 `packages/shared/src/vfs/normalize-uri.ts`，主进程、扫描进程、渲染端共用）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
 - 文件名搜索（2026-11-19，8.4 节）：`features/search/`（搜索视图 `search-view.tsx`、结果列表 `search-results.tsx`、按工作区保存输入与类型筛选的 `search-store.ts`、格式化纯函数 `format.ts`）；`data/search.ts`（`search.query` 的查询与取消）；`stores/navigation-store.ts`（跨 feature 的「在树中定位」请求：搜索视图发出、资源树处理）；`features/explorer/reveal.ts`（URI → 所属条目与节点 id、定位进展，纯函数）与 `use-reveal.ts`；`stores/ui-store.ts` 的 `SidebarView` 增加 `search`，并增加 `showView`（显示视图而不折叠）与 `searchFocusRequest`（`Ctrl+Shift+F` 聚焦搜索框）。
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 写入：先订阅 `vfs.reachability`，再以 `vfs.offlineShares` 初始化（查询返回前已收到事件的共享以事件为准），窗口启动 / 重新加载前已断开的共享也能显示——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
-- M1-3 标签（进行中，11 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。
+- M1-3 标签（进行中，11 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。`features/preview/`（9.3 节「已实现」）：`registry.ts`（`scoreResource` / `pickPlugin` / `fallbackOf`，纯函数）、`executable.ts`（`isExecutableExtension`）、`host.ts`（`createPreviewHost(deps)`：PreviewHost 的实现，依赖注入便于单元测试）、`preview-container.tsx`、`plugin-error-boundary.tsx`、`confirm-executable-dialog.tsx`、`plugins.ts`（`previewPlugins(builtin)`：e2e 时追加测试插件）；`data/vfs.ts` 增加 `useResourceStat`（预览标签的 stat，`staleTime` 0）与 `fetchDirectory`（与资源树共用目录查询的缓存）；`lib/query-keys.ts` 增加 `stat` / `statRoot`，`vfs.changed` 同时让该目录自身与其直接子项的 stat 失效。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
-外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`TabsArea` 等组合进去；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
+外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`TabsArea` 等组合进去；标签内容同样经插槽组合：`TabsArea` 的 `renderContent(tab)` 由 `app/` 传入 `<PreviewContainer tab plugins />`（features/tabs 与 features/preview 互不 import）；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
 
 ### 5.4 命名与编码约定
 
@@ -354,7 +356,7 @@ apps/desktop/src/renderer/
 
 ### 5.5 模块边界的强制执行
 
-5.2、5.3 节的分层规则由 `eslint-plugin-boundaries` 在 lint 时强制：每一层（以及每个主进程模块、每个渲染端 feature、每个插件）是一个元素，依赖方向默认禁止、按白名单放行；新增文件必须归入已登记的元素。典型约束：主进程模块之间不得互相 import（经构造函数注入）；preload 只能依赖 `@pch/shared`；渲染端 feature 之间不得互相 import；插件只能依赖 `plugin-sdk` 与 `ui`。
+5.2、5.3 节的分层规则由 `eslint-plugin-boundaries` 在 lint 时强制：每一层（以及每个主进程模块、每个渲染端 feature、每个插件）是一个元素，依赖方向默认禁止、按白名单放行；新增文件必须归入已登记的元素。典型约束：主进程模块之间不得互相 import（经构造函数注入）；preload 只能依赖 `@pch/shared`；渲染端 feature 之间不得互相 import；插件只能依赖 `plugin-sdk` 与 `ui`。内置插件包中每个子目录（`plugins/builtin/src/*`）是一个 `plugin` 元素，子目录之间不得互相 import；包入口 `src/index.ts` 归为文件类别 `plugin-entry`（只能依赖各插件与 `plugin-sdk`），只有 `app/` 可以 import 它（M1-3 已用临时文件验证：插件 import `@pch/shared` / 另一插件子目录、feature import 插件包均被拒绝）。
 
 ---
 
@@ -409,9 +411,9 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
-// vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache}、search.query、system.{revealInOs,copyText,selectPaths}、
+// vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache}、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
 // window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged
-// （vfs.watch 与 system.openPath 已于 2026-11-19 删除；launcher.* 等为将来的预览窗口所用，见 10 节）
+// （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
@@ -660,7 +662,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 1. 从系统资源管理器拖入文件或文件夹：preload 的 `getPathForFile` 取得路径，stat 后创建 `file` 或 `folder` 条目（只新增条目，不复制文件）。
 2. 将真实子目录或文件拖到工作区根部或某个分组：「固定」为新条目（按 URI 添加），适合把深层常用目录提到顶层；原文件不移动。
 3. 拖动条目：调整同级顺序，或放进 / 移出分组（只修改条目的父节点与顺序）。
-4. 右键菜单：打开、在新窗口打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 `WNetGetConnectionW`，koffi 已引入、尚未实现）、新建分组、重命名条目、缓存策略、建立索引、移除条目（只移除条目，不删除真实文件，界面上明确说明）。**没有「用系统应用打开」**（2026-11-19 删除：应用本身不对文件系统产生影响；将来的预览窗口另行设计）。「打开」「在新窗口打开」随 M1-3 的标签实现。
+4. 右键菜单：打开、在新窗口打开、在资源管理器中显示、复制路径（路径 / URI 两种格式，方便贴进邮件和工单；映射盘符转换为 UNC 需要 `WNetGetConnectionW`，koffi 已引入、尚未实现）、新建分组、重命名条目、缓存策略、建立索引、移除条目（只移除条目，不删除真实文件，界面上明确说明）。**没有「用系统应用打开」**（2026-11-19 删除：应用本身不对文件系统产生影响；M1-3 起由标签中的 fallback 插件提供，9.4 节）。「打开」「在新窗口打开」随 M1-3 的标签实现。
 
 **已实现（M1-2，`features/explorer`）**：
 
@@ -790,6 +792,15 @@ export interface PreviewHost {
 export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>) => plugin;
 ```
 
+**已实现（M1-3 MVP 契约，`packages/plugin-sdk/src/index.ts`）**：上面是目标形态，M1-3 实现其中的子集并有以下差异——
+- `PreviewHost.fs`：`stat(uri)`、`list(uri): Promise<DirectoryListing>`（缓存优先的目录列表，与资源树共用查询缓存；目标形态中的 `FileEntry[]` 改为带 `state` / `checkedAt` 的 `DirectoryListing`，插件可显示「基于缓存 / 已断开」）、`subscribe(uri, onChange): () => void`（该目录的 `vfs.changed`）、`toDisplayPath(uri)`（file URI → Windows 路径，用于显示）；`readText` / `readBinary` / `toResourceUrl` 随 M2。
+- `tabs`：`open(uri, { preview? })`（在标签所属工作区新开，已打开则激活）、`navigate(uri)`（替换当前标签）；宿主经 `vfs.stat` 取得类型与标题。`pluginId` / `background` / `newWindow` 随 M3。
+- `system`：`revealInOs(uri)`、`copyPath(uri)`（Windows 路径写剪贴板并提示）、`openWithSystem(uri)`（可执行类扩展名由宿主先弹确认框，9.4 节）；失败时宿主以 toast 提示错误码文案，Promise 不拒绝。`getLaunchCapabilities` / `launch` 随 Office（第 10 节）。
+- `ui` 只有 `toast`（`setTitle` / `setStatus` 推迟）；`i18n.t` 查插件自带的语言资源（以插件 id 为 i18next 命名空间登记，键不含 `.`）；`settings.get` 只能读 SDK 中声明的 `HostSettings`（M1-3：`explorer.showHiddenFiles`），而不是「插件自己的命名空间」。
+- `FileStat` / `FileEntry` / `DirectoryListing` 在 SDK 中重新声明（模块边界不允许 SDK 依赖 shared），与 `@pch/shared` 的同名类型结构相同，宿主实现把 shared 的值赋给 SDK 类型、不一致时编译失败。
+- 新增 `AnyPreviewPlugin`（注册表的列表元素，各插件 viewState 类型不同）与常量 `FALLBACK_PLUGIN_ID`。
+- 插件调用 `tabs.*` / `system.*` 都视为「在标签内交互」，所在的预览标签转为常驻（11 节）。
+
 关键约束：插件**只能**通过 `PreviewHost` 与外界交互，拿不到 `window.pch`。这样主应用可以随时调整内部实现，而且将来把第三方插件放进沙箱 iframe 时，只需用 postMessage 实现同一个 `PreviewHost` 接口，插件代码不用改。
 
 ### 9.2 一个插件的样子
@@ -813,6 +824,11 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 `PreviewContainer` 为每个标签包一层 ErrorBoundary + Suspense：插件崩溃只影响自己的标签，并提供「用其他方式打开 / 用系统应用打开」的出口。
 
+**已实现（M1-3）**（`features/preview/`）：
+- 计分 `scoreResource(manifest, resource)`：kinds / schemes（不带冒号）不符、超过 `maxSize`、`when` 为 false → 不匹配；扩展名大小写不敏感、按「名称以 `.扩展名` 结尾」判断（支持 `tar.gz`）；声明了 `extensions` 或 `mimeTypes` 却一项都没命中 → 不匹配，都没声明 → 0 分（只按 kinds 等条件，例如 folder 插件）；命中的分数相加后加 `priority`。`pickPlugin`：得分最高者，同分取先注册的；fallback 插件不参与计分，没有任何匹配时返回它（列表中没有 fallback 时抛错）。`mime` 暂为 null；`preview.associations` 与「用其他方式打开」推迟。
+- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建；先 `vfs.stat`（TanStack Query，错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型），再选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。容器捕获标签内的 pointerdown / wheel / keydown，预览标签转为常驻；可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
+- e2e 的崩溃插件：`features/preview/plugins.ts` 的 `previewPlugins(builtin)` 在 bootstrap 的 `e2eCrashPlugin` 为 true 时追加两个测试插件（`.crash` 渲染时抛错、`.crashload` 懒加载失败）；主进程只在**未打包**且环境变量 `PCH_E2E_CRASH_PLUGIN=1` 时设置该标志（与 `PCH_USER_DATA_DIR` 相同的限制），打包后的应用不会注册它们。
+
 ### 9.4 内置插件
 
 | 插件 | 处理对象 | 说明 |
@@ -826,7 +842,9 @@ export default definePreviewPlugin<{ zoom: number }>({
 | office | Excel / Word / PowerPoint 等（扩展名可在设置中调整） | 不渲染内容，显示启动面板：只读 / 编辑 / 新建打开（按检测结果显示）与远程编辑状态，见第 10 节 |
 | fallback | 其他 | 文件信息 + 用系统默认程序打开 |
 
-需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 已删除，8.2 节）。
+需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
+
+**已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。folder 插件之前目录也由 fallback 显示。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，大小写不敏感，判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。
 
 ### 9.5 第三方插件（后续阶段）
 
@@ -1011,7 +1029,8 @@ export function layoutReducer(state: TabsState, action: TabsAction, newId: () =>
 
 - `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；预览打开且已有预览标签 → 在原位置替换（新 id，viewState 不沿用）；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`：同标签内改 URI 并转常驻（允许与其他标签的 URI 重复）。没有变化时返回同一个状态对象。
 - 资源树（`features/explorer`）：单击 = 选中 + 切换展开 + 预览打开（设置 `explorer.singleClickPreview` 为 false 时不打开）；双击（click 的 `detail` 为 2）= 常驻打开，第二次单击不再切换展开；↑↓ 只移动选中、不打开，Enter = 切换展开 + 常驻打开（错误行为重试）。条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
-- 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区暂为占位（显示 URI），由 PreviewContainer 取代（9 节）。
+- 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
+- 在标签内交互转常驻：标签内容中的点击（含选择文字）、滚轮、按键，以及插件调用宿主的任何动作（`tabs.*` / `system.*`），都把所在的预览标签转为常驻。
 
 ### 11.3 会话快照
 
@@ -1059,7 +1078,7 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 随 M1-3 后续任务实现。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 与 fallback 插件已实现（9.3、9.4 节「已实现」），folder 插件随 M1-3 后续任务实现。
 
 ### 12.3 渲染端入口
 
@@ -1292,7 +1311,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的预览 / 常驻 / 关闭（`e2e/tabs.spec.ts`）、fallback 的文件信息与三个动作、可执行文件的确认、标签内交互转常驻、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |

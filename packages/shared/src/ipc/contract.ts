@@ -108,8 +108,13 @@ export const ipcContract = {
       requestId: z.string().min(1)
     })
   ),
-  /** 系统操作（均不修改文件）：在资源管理器中显示 / 写剪贴板 / 选择路径对话框 */
+  /** 系统操作（均不修改文件）：在资源管理器中显示 / 用系统应用打开 / 写剪贴板 / 选择路径对话框 */
   'system.revealInOs': route<void>()(z.strictObject({ uri: z.string().min(1) })),
+  /**
+   * 用系统关联的应用打开（shell.openPath）。只由预览插件的宿主经用户点击调用，
+   * 可执行类扩展名由渲染端先确认（设计 devDoc/2026-11-19-12 第 3.3 节）
+   */
+  'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
   'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),
   /** 返回所选本地路径；用户取消时为空数组 */
   'system.selectPaths': route<string[]>()(

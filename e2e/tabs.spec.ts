@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { data, launchFast, removeDirs } from './support'
 
@@ -50,7 +49,8 @@ test.describe('tabs opened from the explorer tree', () => {
       await expect(tab(page, '案件')).toHaveAttribute('aria-selected', 'true')
       await expect(tab(page, '案件')).toHaveCSS('font-style', 'italic')
       await expect(welcome).toHaveCount(0)
-      await expect(page.getByRole('tabpanel')).toContainText(pathToFileURL(project).href)
+      // 内容区为该资源的预览（目录插件之前由 fallback 显示路径）
+      await expect(page.getByRole('tabpanel')).toContainText(project)
       // 悬停提示为完整路径
       await expect(tab(page, '案件')).toHaveAttribute('title', project)
 

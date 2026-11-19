@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { useQueries, type QueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, type QueryClient, type UseQueryResult } from '@tanstack/react-query'
 import {
   AppError,
   VFS_REFRESH_MAX,
   type DirectoryListing,
   type ErrorCode,
   type FileEntry,
+  type FileStat,
   type Interest,
   type IpcChannel,
   type IpcInput,
@@ -81,6 +82,23 @@ export function directoryQuery(uri: string, invoke: Invoke = call): DirectoryQue
     refetchOnMount: true,
     refetchOnWindowFocus: false
   }
+}
+
+/**
+ * 单个资源的 stat（预览标签的文件信息）。每次挂载（切换到该标签）都重新取得（staleTime 0，只是一次 stat）；
+ * 所在目录的 vfs.changed 也让它失效（lib/query-client.ts）
+ */
+export function useResourceStat(uri: string): UseQueryResult<FileStat> {
+  return useQuery({
+    queryKey: queryKeys.stat(uri),
+    queryFn: () => call('vfs.stat', { uri }),
+    staleTime: 0
+  })
+}
+
+/** 一次性取得目录列表（与资源树共用同一查询的缓存；已失效时重新列出） */
+export function fetchDirectory(client: QueryClient, uri: string): Promise<DirectoryListing> {
+  return client.fetchQuery(directoryQuery(uri))
 }
 
 /** 列出一组目录（每个目录的选项见 directoryQuery） */

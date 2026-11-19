@@ -131,8 +131,19 @@ export default {
   },
   tabs: {
     label: '已打开的标签',
-    close: '关闭',
-    placeholder: '该资源的显示正在准备中'
+    close: '关闭'
+  },
+  preview: {
+    loading: '正在加载…',
+    errorTitle: '无法显示此预览',
+    errorHint: '预览（{{plugin}}）出错。其他标签不受影响。',
+    showInfo: '以文件信息显示',
+    retry: '重试',
+    copiedPath: '已复制路径',
+    confirmTitle: '要打开“{{name}}”吗？',
+    confirmDescription: '该文件会作为程序或脚本运行，可能更改电脑的设置。请只在信任该文件时打开。',
+    confirmOpen: '打开',
+    cancel: '取消'
   },
   errors: {
     UNKNOWN: '发生了意外错误',

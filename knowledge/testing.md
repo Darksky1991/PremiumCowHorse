@@ -176,3 +176,10 @@
 - 原因：`entries` 每行保存所在目录的完整 URI，主键索引 `(dir_uri, name)` 再存一份；第二版的测量树根在 scratchpad 的长路径下、目录名是日文（URI 中百分号编码，一个汉字 9 字节），平均 `dir_uri` 从 77 变成 204 字符。用同一份 `Cache.applyListing` 写两种形状：37.2MB 对 75.2MB；空闲页 1–7 页，`VACUUM` 只减少约 4%。
 - 解决：用 `dbstat` 按表 / 索引汇总（`SELECT name, sum(pgsize) FROM dbstat GROUP BY name`，node:sqlite 内置的 SQLite 可用），先 `PRAGMA wal_checkpoint(TRUNCATE)` 再看文件大小；结论见 `devDoc/2026-11-19-09-cache-strategy.md`「index.db 的大小」。
 - 预防：性能 / 体积对比时固定合成树的根路径与命名（或同时记录平均 URI 长度）；判断「碎片」之前先看 `freelist_count` 与 `dbstat` 的 `unused`。注意 FTS5 `optimize` 会让文件变大（旧段的页进入空闲列表）。
+
+### e2e：会打开外部程序的系统操作（`shell.openPath` / `shell.showItemInFolder`）在主进程中替换为计数
+
+- 日期：2026-11-19
+- 症状：e2e 要点击「用系统应用打开」「在资源管理器中显示」，真的执行会启动关联程序或打开资源管理器窗口（`.bat` 会被执行），且无法断言调用参数。
+- 解决：在点击之前 `app.evaluate(({ shell }) => Object.assign(shell, { openPath: async (p) => { calls.push(p); return '' }, showItemInFolder: (p) => … }))`，计数放在 `globalThis` 上，用 `expect.poll(() => app.evaluate(() => globalThis.__pchShell))` 读回（`e2e/preview.spec.ts` 的 `stubShell`）。主进程 handler 每次调用时读 `shell.openPath` 属性，所以替换生效（与替换 `dialog.showOpenDialog` 相同）。
+- 预防：替换必须在任何可能触发它的点击之前；「取消后不调用」的断言要先等对话框关闭再读计数。
