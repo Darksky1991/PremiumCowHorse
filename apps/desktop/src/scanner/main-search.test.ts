@@ -19,8 +19,12 @@ describe('scanner host search', () => {
     host = createScannerHost({ post: (m) => posts.push(m), exit: vi.fn() })
   })
   afterEach(() => {
-    host.handleMessage({ type: 'shutdown' })
-    rmSync(tmp, { recursive: true, force: true })
+    try {
+      host.handleMessage({ type: 'shutdown' })
+    } finally {
+      // 句柄刚关闭时删除可能暂时 EBUSY；force 只忽略 ENOENT，需要重试
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    }
   })
 
   const resultOf = async (id: number): Promise<Extract<ScannerToMain, { type: 'result' }>> =>

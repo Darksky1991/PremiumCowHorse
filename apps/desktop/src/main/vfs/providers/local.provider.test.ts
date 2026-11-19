@@ -21,7 +21,7 @@ describe('LocalProvider', () => {
   })
   afterEach(() => {
     vi.restoreAllMocks()
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   it('lists files and folders with kind, size and hidden flags', async () => {

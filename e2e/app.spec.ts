@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
-import { data, invoke, launch, retryLabel, snapshotTree, type Named } from './support'
+import { data, invoke, launch, type Named, removeDirs, retryLabel, snapshotTree } from './support'
 
 test.describe('first screen', () => {
   let userData: string
@@ -11,7 +11,7 @@ test.describe('first screen', () => {
     userData = mkdtempSync(path.join(tmpdir(), 'pch-e2e-'))
   })
   test.afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
+    removeDirs(userData)
   })
 
   test('boots from app:// and renders the shell', async () => {
@@ -178,8 +178,7 @@ test.describe('workspace data layer over IPC', () => {
     writeFileSync(path.join(files, '設計書', '仕様.xlsx'), '')
   })
   test.afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(files, { recursive: true, force: true })
+    removeDirs(userData, files)
   })
 
   test('creates and activates a workspace, adds a folder entry, lists it and persists', async () => {

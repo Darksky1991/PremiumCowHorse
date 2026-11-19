@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { data, launch, snapshotTree, type Named } from './support'
+import { data, launch, type Named, removeDirs, snapshotTree } from './support'
 
 /** 「找不到」错误行的文案（errors:FS_NOT_FOUND，ja | zh-CN | en） */
 const notFoundLabel =
@@ -100,8 +100,7 @@ test.describe('explorer tree on real directories', () => {
     writeFileSync(path.join(project, 'README.md'), '# 案件')
   })
   test.afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(files, { recursive: true, force: true })
+    removeDirs(userData, files)
   })
 
   test('principle: renaming an ancestor of an expanded directory succeeds', async () => {

@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync } from 'node:fs'
+import { lstatSync, readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 
@@ -56,3 +56,19 @@ export function snapshotTree(root: string): string[] {
 
 /** 错误行的可访问名称包含「重试」按钮的文字 */
 export const retryLabel = '再試行|重试|Retry'
+
+/**
+ * 删除测试用的临时目录：每个目录各自尝试（一个失败不影响其余），全部尝试后再报告失败。
+ * 应用刚退出时其文件句柄可能尚未释放（EBUSY / EPERM）；force 只忽略 ENOENT，所以要重试。
+ */
+export function removeDirs(...dirs: string[]): void {
+  const errors: unknown[] = []
+  for (const dir of dirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    } catch (e) {
+      errors.push(e)
+    }
+  }
+  if (errors.length > 0) throw new AggregateError(errors, 'cannot remove test directories')
+}

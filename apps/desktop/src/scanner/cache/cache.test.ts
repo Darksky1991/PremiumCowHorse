@@ -239,18 +239,35 @@ describe('Cache', () => {
 
 describe('Cache on disk', () => {
   let tmp: string
+  /** 本测试打开的连接：断言失败时也在 afterEach 中关闭（否则 Windows 上临时目录删不掉） */
+  let opened: { close(): void }[]
+  const track = <T extends { close(): void }>(x: T): T => {
+    opened.push(x)
+    return x
+  }
   beforeEach(() => {
     tmp = mkdtempSync(path.join(tmpdir(), 'pch-cache-'))
+    opened = []
   })
-  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+  afterEach(() => {
+    for (const x of opened) {
+      try {
+        x.close()
+      } catch {
+        // 测试中已关闭
+      }
+    }
+    // 句柄刚关闭时删除可能暂时 EBUSY；force 只忽略 ENOENT，需要重试
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  })
 
   it('entries_fts finds 第10章 in 設計書_第10章.xlsx after applyListing and forgets it after removal', () => {
     const f = path.join(tmp, 'sub', 'index.db')
-    const cache = Cache.open(f)
+    const cache = track(Cache.open(f))
     const A = 'file:///C:/a'
     cache.setRoots([A])
     cache.applyListing(A, 1, [file('設計書_第10章.xlsx'), file('other.txt')], 1)
-    const probe = new DatabaseSync(f)
+    const probe = track(new DatabaseSync(f))
     const hits = (q: string): unknown[] =>
       probe
         .prepare(
@@ -273,20 +290,20 @@ describe('Cache on disk', () => {
 
   it('open rebuilds the database when user_version differs', () => {
     const f = path.join(tmp, 'index.db')
-    const old = new DatabaseSync(f)
+    const old = track(new DatabaseSync(f))
     old.exec(
       "CREATE TABLE dirs (junk TEXT); INSERT INTO dirs VALUES ('x'); PRAGMA user_version = 999"
     )
     old.close()
-    const cache = Cache.open(f)
+    const cache = track(Cache.open(f))
     cache.setRoots(['file:///C:/a'])
     expect(cache.applyListing('file:///C:/a', 1, [file('x')], 1).changed).toBe(true)
     cache.close()
-    const probe = new DatabaseSync(f)
+    const probe = track(new DatabaseSync(f))
     expect(probe.prepare('PRAGMA user_version').get()?.user_version).not.toBe(999)
     probe.close()
     // 版本一致时数据保留
-    const again = Cache.open(f)
+    const again = track(Cache.open(f))
     again.setRoots(['file:///C:/a'])
     expect(again.getEntries('file:///C:/a')).toHaveLength(1)
     again.close()

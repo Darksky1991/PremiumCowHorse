@@ -41,8 +41,11 @@ describe('WorkspaceService', () => {
     service = new WorkspaceService(db, new VfsService([new LocalProvider()]), bus, at('Temp'))
   })
   afterEach(async () => {
-    await db.destroy()
-    rmSync(root, { recursive: true, force: true })
+    try {
+      await db.destroy()
+    } finally {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    }
   })
 
   const group = (

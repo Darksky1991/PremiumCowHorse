@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
-import { data, launch } from './support'
+import { data, launch, removeDirs } from './support'
 
 const searchView = /^(検索|搜索|Search)$/
 const explorerView = /^(エクスプローラー|资源管理器|Explorer)$/
@@ -35,8 +35,7 @@ test.describe('file name search view', () => {
     writeFileSync(path.join(project, 'README.md'), '# 案件')
   })
   test.afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(files, { recursive: true, force: true })
+    removeDirs(userData, files)
   })
 
   /** 添加 folder 条目并经 vfs.list 列出各目录（搜索只查缓存：列出过的目录才搜得到） */

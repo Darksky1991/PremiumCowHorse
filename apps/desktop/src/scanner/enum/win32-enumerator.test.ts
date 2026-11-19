@@ -104,7 +104,7 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     en = createWin32Enumerator(log)
   })
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
 
   const list = (p: string): Promise<RawEntry[]> =>
