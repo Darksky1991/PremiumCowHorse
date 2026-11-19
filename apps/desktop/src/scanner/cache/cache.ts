@@ -346,6 +346,8 @@ export class Cache {
   /**
    * 目录已不存在（读取得到「不存在」）：删除它与全部子目录，并从父目录的缓存列表中删除该项
    * （一个事务）。父目录列表中同名的是符号链接时保留（链接本身可能仍在，只是目标不在）。
+   * 删除了该项时父目录的 dir_mtime 置为 NULL：这是推断而不是父目录的真实列表（例如上级目录改名期间
+   * 读取、随即改回，父目录的修改时间不变），下一次确认父目录时必须完整读取，不能按修改时间判为未变。
    * parentChanged：父目录的列表有变化
    */
   removeMissing(uri: string): { parentChanged: boolean } {
@@ -365,7 +367,9 @@ export class Cache {
           "DELETE FROM entries WHERE dir_id = (SELECT id FROM dirs WHERE uri = ?) AND name = ? AND kind = 'directory'"
         )
         .run(parent, name)
-      return { parentChanged: Number(r.changes) > 0 }
+      const parentChanged = Number(r.changes) > 0
+      if (parentChanged) this.run('UPDATE dirs SET dir_mtime = NULL WHERE uri = ?', parent)
+      return { parentChanged }
     })
   }
 

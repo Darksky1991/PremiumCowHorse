@@ -864,11 +864,25 @@ export class Scheduler {
         this.queue.markMissing(uri)
         return
       }
-      // 连同父目录缓存列表中的该项一起删除：父目录刚确认过（fresh）时，树与搜索也不再显示它
+      const parent = this.rootUris.has(uri) ? null : (dir.parentUri ?? parentUri(uri))
+      // 已经记为「不存在」后再次出错：该行还在，说明父目录的真实列表仍把它列为目录（否则父目录的确认
+      // 会删除这一行）。不再强制父目录、不再从父目录列表中删除，否则「强制父目录 → 列表仍有它 →
+      // 再读取它」会循环；只更新状态与确认时刻（出错的目录按远层间隔重试）
+      if (parent !== null && dir.state === 'not-found') {
+        this.cache.setState(uri, 'not-found', error.code, this.now())
+        return
+      }
+      // 连同父目录缓存列表中的该项一起删除：父目录刚确认过（fresh）时，树与搜索也不再显示它。
+      // 但这只是推断（例如上级目录改名期间读取，随即改回）：removeMissing 让父目录的修改时间比较失效，
+      // 并对父目录排一次确认（force：不与刚完成的 P0 合并），由真实列表决定父目录的内容
       this.cache.removeMissing(uri)
       this.scopeDirty = true
-      const notify = this.rootUris.has(uri) ? uri : (dir.parentUri ?? parentUri(uri))
-      if (notify !== null) this.events.changed(notify)
+      this.events.changed(parent ?? uri)
+      if (parent !== null) {
+        // 行保留为「不存在」（带确认时刻）：父目录的确认若仍列出它，下次出错不再强制父目录
+        this.cache.setState(uri, 'not-found', error.code, this.now())
+        this.requestP0(parent, { force: true })
+      }
       return
     }
     // 失败的时刻记为确认时刻（checked_at）：后台队列不会立即重选它

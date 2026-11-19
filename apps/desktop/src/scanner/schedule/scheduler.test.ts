@@ -97,6 +97,8 @@ class FakeFs implements Enumerator {
   readonly dirs = new Map<string, FakeDir>()
   readonly calls: { op: 'stat' | 'list'; uri: string; at: number }[] = []
   readonly errors = new Map<string, ErrorCode>()
+  /** 只在下一次调用时返回的错误（例如上级目录改名期间的一次读取） */
+  readonly failOnce = new Map<string, ErrorCode>()
   readonly inFlight = new Map<string, number>()
   readonly maxInFlight = new Map<string, number>()
   maxTotal = 0
@@ -123,10 +125,22 @@ class FakeFs implements Enumerator {
     return u
   }
 
-  /** 删除目录及其子树（父目录的条目保留，模拟父目录尚未重新枚举） */
+  /**
+   * 删除目录及其子树，父目录的条目保留：父目录的真实列表仍把它列为目录，读取它本身却失败
+   * （配合 errors 模拟各种异常）。真实的删除用 remove
+   */
   rmdir(uri: string): void {
     for (const u of [...this.dirs.keys()])
       if (u === uri || u.startsWith(`${uri}/`)) this.dirs.delete(u)
+  }
+
+  /** 真实的删除：删除目录及其子树，并从父目录的列表中删除该项（父目录的修改时间随之变化） */
+  remove(parent: string, name: string): void {
+    this.rmdir(childUri(parent, name))
+    const d = this.dirs.get(parent)
+    if (!d) return
+    d.entries = d.entries.filter((e) => e.name !== name)
+    d.mtime += 1
   }
 
   addFile(parent: string, name: string): void {
@@ -173,6 +187,11 @@ class FakeFs implements Enumerator {
     this.track(host, 1)
     try {
       await this.gate?.(op, uri, signal, onBatch)
+      const once = this.failOnce.get(uri)
+      if (once) {
+        this.failOnce.delete(uri)
+        throw new AppError({ code: once, detail: uri })
+      }
       const code = this.errors.get(uri)
       if (code) throw new AppError({ code, detail: uri })
       const d = this.dirs.get(uri)
@@ -1034,15 +1053,16 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(cache.getDir(AB)).toBeDefined()
 
     changed.length = 0
-    fs.rmdir(A)
+    fs.remove(R, 'a')
     await clock.advance(5000)
     expect(cache.getDir(A)).toBeUndefined()
     expect(cache.getDir(AB)).toBeUndefined()
-    expect(changed).toEqual([R])
+    // 通知父目录（之后父目录的确认删除「不存在」的行，可能再通知一次）
+    expect(new Set(changed)).toEqual(new Set([R]))
 
     // 根目录本身不在了（关注点的父目录：近层 30 秒）：删除缓存并通知根；之后 listNow 以 FS_NOT_FOUND 拒绝
     changed.length = 0
-    fs.rmdir(R)
+    fs.rmdir(R) // 根没有父目录的列表
     await clock.advance(30_000)
     expect(cache.getDir(R)).toBeUndefined()
     expect(changed).toEqual([R])
@@ -1057,11 +1077,16 @@ describe('Scheduler: P0, concurrency and errors', () => {
     const A = fs.addDir(R, 'alpha')
     fs.addFile(A, 'needle.txt')
     prelist(h, A, clock.now())
-    fs.rmdir(A) // 父目录的条目与修改时间不变（尚未重新读取）
-    prelist(h, R, clock.now()) // 父目录刚确认过（fresh），列表中仍有 alpha
+    prelist(h, R, clock.now()) // 父目录刚确认过（fresh），列表中有 alpha
+    fs.remove(R, 'alpha')
+    // 父目录的确认（P0）在此之后才执行：在它完成之前树与搜索也不再显示 alpha
+    let release = (): void => {}
+    const held = new Promise<void>((r) => (release = r))
+    fs.gate = (op, uri) => (op === 'stat' && uri === R ? held : undefined)
     s.refresh([A])
     await clock.advance(0)
-    expect(cache.getDir(A)).toBeUndefined()
+    expect(cache.getDir(A)?.listedAt ?? null).toBeNull()
+    expect(cache.getEntries(A)).toEqual([])
     expect(changed).toContain(R)
     // 树：父目录 fresh，直接返回缓存——已不含 alpha
     const l = await s.listNow(R)
@@ -1078,6 +1103,55 @@ describe('Scheduler: P0, concurrency and errors', () => {
       }).items.map((i) => i.name)
     expect(find('alpha')).toEqual([])
     expect(find('needle')).toEqual([])
+    // 父目录的确认完成：真实列表中也没有 alpha，「不存在」的行随之删除
+    release()
+    await clock.advance(0)
+    expect(fs.count('list', R)).toBe(1)
+    expect(cache.getDir(A)).toBeUndefined()
+    expect(cache.getEntries(R)).toEqual([])
+  })
+
+  it('a child not found while its ancestor was renamed is re-listed in the parent after the rename is undone', async () => {
+    // 上级 a 刚确认过（fresh）；a 被改名期间读取 a 得到「不存在」，随即改回：a 的修改时间不变。
+    // 不能只按推断从 a 的列表中删除 b：修改时间比较之后永远发现不了 b 仍在
+    const h = setup([root(R, 'default')])
+    const { clock, fs, s, cache } = h
+    const A = fs.addDir(R, 'a')
+    const B = fs.addDir(A, 'b')
+    fs.addFile(B, 'c.txt')
+    for (const u of [R, A, B]) prelist(h, u, clock.now())
+    fs.failOnce.set(B, 'FS_NOT_FOUND')
+    s.refresh([B])
+    await clock.advance(0)
+    // 父目录 a 被真实读取一次（即使刚确认过），列表恢复含 b
+    expect(fs.count('list', A)).toBe(1)
+    expect(cache.getEntries(A).map((e) => e.name)).toEqual(['b'])
+    const l = await s.listNow(A)
+    expect(l.items.map((i) => i.name)).toEqual(['b'])
+    // b 自身没有列表：展开时读取，内容照常
+    await expect(s.listNow(B)).resolves.toMatchObject({ items: [{ name: 'c.txt' }] })
+    // 之后的修改时间比较（a 的修改时间没有变）也不会再丢掉 b
+    s.setInterest(1, { ...none, focus: B })
+    await clock.advance(120_000)
+    expect(cache.getEntries(A).map((e) => e.name)).toEqual(['b'])
+  })
+
+  it('a name the parent lists as a directory but reports not-found does not loop on the parent', async () => {
+    // 父目录的真实列表持续含 a，读取 a 本身却返回「不存在」（权限、时序异常等）：不能反复强制父目录
+    const h = setup([root(R, 'all')])
+    const { clock, fs, cache } = h
+    const A = fs.addDir(R, 'a')
+    for (let i = 0; i < 5; i++) {
+      const d = fs.addDir(R, `z${i}`)
+      for (let j = 0; j < 5; j++) fs.addDir(d, `c${j}`)
+    }
+    fs.rmdir(A) // 父目录的条目保留
+    await clock.advance(600_000)
+    expect(fs.count('list', R)).toBeLessThanOrEqual(3)
+    expect(fs.count('stat', A)).toBeLessThanOrEqual(8)
+    // 父目录的真实列表为准：该项保留，目录行记为「不存在」
+    expect(cache.getEntries(R).map((e) => e.name)).toContain('a')
+    expect(cache.getDir(A)).toMatchObject({ state: 'not-found', errorCode: 'FS_NOT_FOUND' })
   })
 
   it('a directory replaced by a file keeps its entry in the parent listing until the parent is confirmed', async () => {
@@ -1158,13 +1232,7 @@ describe('Scheduler: P0, concurrency and errors', () => {
       prelist(h, R, clock.now())
       prelist(h, X, clock.now())
       await clock.advance(60_000) // 缓存已不 fresh；没有窗口：不做定期确认
-      fs.rmdir(X)
-      if (confirmParent) {
-        // 父目录的列表与修改时间随删除而变化
-        const d = fs.dirs.get(R)!
-        d.entries = d.entries.filter((e) => e.name !== 'x')
-        d.mtime += 1
-      }
+      fs.remove(R, 'x') // 父目录的列表与修改时间随删除而变化
       s.refresh([confirmParent ? R : X])
       await clock.advance(0)
       expect(cache.getDir(X), `${confirmParent}`).toBeUndefined()

@@ -222,6 +222,19 @@ describe('Cache', () => {
     expect(cache.getDir(A)).toBeUndefined()
   })
 
+  it('removeMissing invalidates the parent mtime only when it removed the parent entry', () => {
+    // 从父目录列表中删除该项是推断：父目录下一次确认必须完整读取（修改时间可能没有变，例如上级改名后改回）
+    cache.setRoots([A])
+    const link: RawEntry = { ...dir('l'), kind: 'symlink', target: 'directory' }
+    cache.applyListing(A, 7, [dir('b'), link], 1)
+    cache.applyListing(`${A}/b`, 3, [file('x')], 1)
+    cache.applyListing(`${A}/l`, 4, [], 1)
+    cache.removeMissing(`${A}/l`)
+    expect(cache.getDir(A)?.dirMtime).toBe(7)
+    cache.removeMissing(`${A}/b`)
+    expect(cache.getDir(A)).toMatchObject({ dirMtime: null, listedAt: 1, state: 'ok' })
+  })
+
   it('removeSubtree of a drive root removes the whole volume but not other volumes', () => {
     cache.setRoots(['file:///C:/', 'file:///D:/'])
     cache.applyListing('file:///C:/', 1, [dir('a')], 1)
