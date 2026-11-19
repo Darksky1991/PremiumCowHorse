@@ -169,6 +169,7 @@
 - 原因：（1）测试中途断言失败，写在用例末尾的 `db.close()` / `cache.close()` 没有执行，文件句柄留在进程里，Windows 不允许删除被打开的文件；（2）句柄刚关闭（或刚退出的应用进程）时删除可能暂时失败，`rmSync` 的 `force: true` 只忽略 ENOENT，不重试；（3）e2e 的 `afterEach` 连续删两个目录，第一个失败抛出后第二个不再删除。
 - 解决：打开数据库的测试把连接登记后在 `afterEach` / `finally` 中关闭（`cache.test.ts` 的 `track`，`main.test.ts` 的 shutdown 放进 try/finally）；`rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })`；e2e 用 `e2e/support.ts` 的 `removeDirs(...dirs)` 逐个尝试、最后汇总报错。
 - 预防：创建临时目录的测试，清理放在 `afterEach` 且不依赖用例跑完；跑完测试后对比一次 `%TEMP%` 的 `pch-*` 目录。故意验证「失败」的 RED 运行同样会泄漏（实现尚未关闭句柄），事后手动删除。
+- 补充（2026-11-19，M1-3 最终审查）：M1-3 期间 `pch-*` 从 14 增到 34，新增的 20 个全部是 `pch-shot-*` / `pch-shot-files-*`（21:57–21:59 成对创建，userData 中有本应用的 `data/pch.db` 与 `logs/main.log`、还留着 `DevToolsActivePort`），来自页面截图用的一次性脚本（scratchpad，不入库），不是 e2e spec：`e2e/*.spec.ts` 都在 `afterEach` 中用 `removeDirs` 清理，`folder / preview / tabs` 以 `--repeat-each 2` 跑 26 个用例前后 `pch-*` 都是 32 个、名单相同。一次性脚本同样要把 `app.close()` 与删除放进 `finally`（中途失败或被中断也删除），或把临时目录建在 scratchpad 中。
 
 ### vitest：`mockRestore()` 同时清空 `mock.calls` / `mock.contexts`
 
