@@ -100,3 +100,15 @@ export function revealProgress(
   const status = nodes.find((n) => n.id === `${parent.id}#status`)
   return { state: status?.status === 'loading' ? 'waiting' : 'failed', index, depth }
 }
+
+/**
+ * 定位失败（revealProgress 为 failed）时应顺带确认的目录（设计 8.3）：index 为失败时最深的已出现
+ * 祖先。它是目录（列表没有下一段或出错）时确认它自身；中间段已变成文件时确认它所在的目录。
+ * 分组节点、没有节点时为 null。只读确认，结果经 vfs.changed 反映到树与之后的搜索。
+ */
+export function revealRecheckUri(nodes: readonly TreeNode[], index: number): string | null {
+  const node = nodes[index]
+  if (node === undefined) return null
+  if (node.expandable) return node.uri
+  return nodes.find((n) => n.id === node.parentId)?.uri ?? null
+}

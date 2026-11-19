@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { WorkspaceEntry } from '@pch/shared'
+import { confirmDirectory } from '@renderer/data/vfs'
 import { useNavigationStore } from '@renderer/stores/navigation-store'
 import { useExplorerStore } from './explorer-store'
-import { revealNodeIds, revealPath, revealProgress } from './reveal'
+import { revealNodeIds, revealPath, revealProgress, revealRecheckUri } from './reveal'
 import type { TreeNode } from './tree-model'
 
 /** 每一层（一个目录的列表）最多等待的时间；超时则停在已到达的最深一层 */
@@ -22,7 +23,8 @@ interface ActiveReveal {
  * 处理 navigation-store 的「在树中定位」请求（搜索结果的 Enter / 单击 / 右键菜单）：
  * URI → 所属条目（最长前缀）→ 一次展开所有祖先（树按层列出目录，已缓存的多层一次求出）→
  * 目标出现后选中并滚动到该行（reveal(index)）。列表已就绪却没有下一段、或某一层
- * 超过 REVEAL_LAYER_TIMEOUT_MS 仍未就绪时，停在已到达的最深一层并提示。
+ * 超过 REVEAL_LAYER_TIMEOUT_MS 仍未就绪时，停在已到达的最深一层并提示；前者还让扫描进程顺带确认
+ * 出错的那一层目录（设计 8.3，只读；有差异时经 vfs.changed 反映到树与之后的搜索）。
  */
 export function useRevealRequests({
   workspaceId,
@@ -60,7 +62,11 @@ export function useRevealRequests({
       if (message !== null) toast.warning(message)
     }
     if (progress.state === 'done') return finish(null)
-    if (progress.state === 'failed') return finish(t('explorer:revealNotFound'))
+    if (progress.state === 'failed') {
+      const recheck = revealRecheckUri(nodes, progress.index)
+      if (recheck !== null) void confirmDirectory(recheck)
+      return finish(t('explorer:revealNotFound'))
+    }
 
     const now = Date.now()
     if (progress.depth > current.depth) {

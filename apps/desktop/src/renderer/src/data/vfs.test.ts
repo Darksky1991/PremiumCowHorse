@@ -6,6 +6,7 @@ import {
   directoryQuery,
   directoryState,
   listDirectory,
+  confirmDirectory,
   refreshDirectories,
   retryDirectory,
   type Invoke
@@ -273,7 +274,7 @@ describe('directoryQuery（不按时间重新获取，只在失效后重新获�
   })
 })
 
-describe('refreshDirectories / retryDirectory', () => {
+describe('refreshDirectories / retryDirectory / confirmDirectory', () => {
   let client: QueryClient
   beforeEach(() => {
     client = appClient()
@@ -333,6 +334,18 @@ describe('refreshDirectories / retryDirectory', () => {
     await retryDirectory(client, 'file:///C:/a', f.invoke)
     await flush()
     expect(f.calls).toEqual(['vfs.refresh', 'vfs.list dir:file:///C:/a'])
+    expect(f.inputs[0]).toEqual({ uris: ['file:///C:/a'] })
+    off()
+  })
+
+  it('定位失败时的确认：只发送 vfs.refresh，不让查询重新获取（有变化时由 vfs.changed 失效）', async () => {
+    const f = fakeInvoke()
+    const off = await mount(['file:///C:/a'], f)
+    f.calls.length = 0
+    f.inputs.length = 0
+    await confirmDirectory('file:///C:/a', f.invoke)
+    await flush()
+    expect(f.calls).toEqual(['vfs.refresh'])
     expect(f.inputs[0]).toEqual({ uris: ['file:///C:/a'] })
     off()
   })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FileEntry, WorkspaceEntry } from '@pch/shared'
 import type { DirectoryState } from '@renderer/data/vfs'
-import { revealNodeIds, revealPath, revealProgress } from './reveal'
+import { revealNodeIds, revealPath, revealProgress, revealRecheckUri } from './reveal'
 import { buildVisibleNodes, type TreeNode } from './tree-model'
 
 const ROOT = 'file:///C:/work'
@@ -191,5 +191,58 @@ describe('revealProgress', () => {
       index: -1,
       depth: -1
     })
+  })
+})
+
+describe('revealRecheckUri', () => {
+  const group = entry('g', 'group')
+  const proj = entry('proj', 'folder', { parentId: 'g' })
+  const projUri = `${ROOT}/proj`
+  const aUri = `${projUri}/a`
+  const path = revealNodeIds([group, proj], { entryId: 'proj', segments: ['a', 'b.txt'] })
+  const nodesWith = (directories: Map<string, DirectoryState>): TreeNode[] =>
+    buildVisibleNodes({
+      entries: [group, proj],
+      expanded: new Set(path.chain),
+      directories,
+      showHidden: false
+    })
+  const recheck = (nodes: TreeNode[]): string | null =>
+    revealRecheckUri(nodes, revealProgress(nodes, path.chain, path.target).index)
+
+  it('列表已就绪但没有下一段：确认该层目录', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([dir(aUri, 'other.txt', 'file')])]
+      ])
+    )
+    expect(recheck(nodes)).toBe(aUri)
+  })
+
+  it('该层出错（目录已不在等）：确认该层目录', () => {
+    const nodes = nodesWith(
+      new Map<string, DirectoryState>([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, { status: 'error', code: 'FS_NOT_FOUND' }]
+      ])
+    )
+    expect(recheck(nodes)).toBe(aUri)
+  })
+
+  it('中间段已变成文件：确认它所在的目录', () => {
+    const nodes = nodesWith(new Map([[projUri, ready([dir(projUri, 'a', 'file')])]]))
+    expect(recheck(nodes)).toBe(projUri)
+  })
+
+  it('分组节点或没有节点时不确认', () => {
+    const nodes = nodesWith(new Map())
+    expect(
+      revealRecheckUri(
+        nodes,
+        nodes.findIndex((n) => n.id === 'entry:g')
+      )
+    ).toBeNull()
+    expect(revealRecheckUri(nodes, -1)).toBeNull()
   })
 })

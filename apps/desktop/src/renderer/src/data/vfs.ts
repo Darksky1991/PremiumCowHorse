@@ -158,6 +158,14 @@ export async function retryDirectory(
   void client.invalidateQueries({ queryKey: queryKeys.directory(uri) })
 }
 
+/**
+ * 从搜索结果定位时发现目录或文件已不在：让扫描进程立即确认该目录（设计 8.3，只读）。
+ * 不让查询失效：确认发现变化时扫描进程广播 vfs.changed，查询随之重新列出
+ */
+export async function confirmDirectory(uri: string, invoke: Invoke = call): Promise<void> {
+  await sendRefresh([uri], invoke)
+}
+
 const INTEREST_DEBOUNCE_MS = 300
 const EMPTY_INTEREST: Interest = { focus: null, visible: [], offscreen: [] }
 

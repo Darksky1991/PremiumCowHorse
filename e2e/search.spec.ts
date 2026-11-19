@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -9,6 +9,8 @@ const searchView = /^(検索|搜索|Search)$/
 const explorerView = /^(エクスプローラー|资源管理器|Explorer)$/
 const searchBox = /^(ファイル名|文件名|File name)$/
 const noResults = /(見つかりませんでした|没有找到|No results)/
+const notFoundInTree =
+  /(ツリーに見つかりません|在资源树中找不到|Could not find the item in the tree)/
 
 /** folder 条目 + 搜索视图的输入框 */
 async function openSearch(page: Page): Promise<ReturnType<Page['getByRole']>> {
@@ -88,6 +90,68 @@ test.describe('file name search view', () => {
       await page.getByRole('button', { name: searchView }).click()
       await expect(page.getByRole('searchbox', { name: searchBox })).toHaveValue('2026')
       await expect(page.getByRole('option', { name: /20261118\.docx/ })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('search: revealing a deleted file corrects the cache', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      // 由测试进程删除（应用不变动文件）：缓存过时，搜索仍能搜到（允许）
+      rmSync(path.join(project, '議事録', '20261118.docx'))
+      const input = await openSearch(page)
+      await input.fill('2026')
+      const hit = page.getByRole('listbox').getByRole('option', { name: /20261118\.docx/ })
+      await expect(hit).toBeVisible()
+      await hit.click()
+      // 定位时展开的目录经 vfs.list 排队确认、选中的目录成为关注点（立即确认）：缓存被更正，
+      // 再次搜索不再出现该文件（缓存内容可能先显示一瞬，不要求出现失败提示）
+      const tree = page.getByRole('tree')
+      await expect(tree.getByRole('treeitem', { name: '議事録' })).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+      await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toHaveCount(0, {
+        timeout: 15_000
+      })
+      await page.getByRole('button', { name: searchView }).click()
+      const again = page.getByRole('searchbox', { name: searchBox })
+      await again.fill('')
+      await again.fill('2026')
+      await expect(page.getByText(noResults)).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('search: revealing a stale result warns and stops at its folder', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      const input = await openSearch(page)
+      await input.fill('2026')
+      const hit = page.getByRole('listbox').getByRole('option', { name: /20261118\.docx/ })
+      await expect(hit).toBeVisible()
+
+      // 结果显示之后文件被删除、缓存已被更正（搜索结果不随 vfs.changed 刷新，仍显示该行）
+      const minutes = pathToFileURL(path.join(project, '議事録')).href
+      rmSync(path.join(project, '議事録', '20261118.docx'))
+      await data(page, 'vfs.refresh', { uris: [minutes] })
+      await expect
+        .poll(
+          async () => (await data<{ items: unknown[] }>(page, 'vfs.list', { uri: minutes })).items
+        )
+        .toEqual([])
+      await expect(hit).toBeVisible()
+
+      // 定位：该层列表中没有目标 → 提示，停在该目录（同时让扫描进程确认该目录）
+      await hit.click()
+      await expect(page.getByText(notFoundInTree)).toBeVisible()
+      const folder = page.getByRole('tree').getByRole('treeitem', { name: '議事録' })
+      await expect(folder).toHaveAttribute('aria-expanded', 'true')
+      await expect(folder).toHaveAttribute('aria-selected', 'true')
     } finally {
       await app.close()
     }
