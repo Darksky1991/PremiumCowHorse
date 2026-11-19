@@ -393,6 +393,25 @@ describe('Scheduler: periodic checks', () => {
     }
   })
 
+  it('a background mtime check of the focus does not postpone its full read', async () => {
+    // 远层间隔取下限 2 秒：后台队列每 2 秒后就可以重新确认关注点（只比较修改时间）
+    const short = {
+      ...settings,
+      interval: { ...settings.interval, far: { local: 2, network: 10 } }
+    }
+    const { clock, fs, s } = setup([root(R, 'all')], { settings: short })
+    const F = fs.addDir(R, 'f')
+    s.setInterest(1, { ...none, focus: F })
+    const t0 = clock.now()
+    await clock.advance(60_000)
+    const lists = fs.calls.filter((c) => c.op === 'list' && c.uri === F).map((c) => c.at - t0)
+    const stats = fs.calls.filter((c) => c.op === 'stat' && c.uri === F).map((c) => c.at - t0)
+    // 后台队列在两次完整读取之间确认过关注点（只比较修改时间，不读取）
+    expect(stats.length).toBeGreaterThan(lists.length)
+    // 关注点仍每 5 秒完整读取一次：后台的确认不推迟它
+    expect(lists).toEqual(Array.from({ length: 13 }, (_, i) => i * 5000))
+  })
+
   it('permission denied marks the directory and retries at the far interval', async () => {
     const { clock, fs, s, cache } = setup([root(R)])
     const A = fs.addDir(R, 'a')
