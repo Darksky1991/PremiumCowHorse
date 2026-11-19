@@ -129,6 +129,15 @@
 - 解决：`app.evaluate(({ BrowserWindow }, e) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('pch:event', { event: 'vfs.reachability', payload: e })), payload)`（见 `e2e/explorer.spec.ts` 的 `offline:` 用例）。`share` 取临时目录所在盘符（`C:`）。
 - 局限：「缓存内容（cached）显示最后更新时间」依赖列表的 `state` 为 `cached`，而添加条目会让扫描进程立即检查、展开时已是 `fresh`，e2e 中无法稳定复现，该部分只有 `tree-model.test.ts` 的单元测试。
 
+### e2e：让主进程的某个 IPC 调用卡住（模拟无响应的共享上 stat 等到超时）
+
+- 日期：2026-11-19
+- 症状：要证明「目录标签不等 stat」「断开时文件标签不发 stat」，但本地磁盘上的 stat 立即返回，用例在修复前后都通过，证明不了什么；也不该为测试新增产品开关。
+- 原因：IPC 只有 `pch:invoke` 一个通道，主进程的处理函数由 `ipcMain.handle` 登记；页面侧的 `window.pch` 经 contextBridge 冻结，替换不了。
+- 解决：`e2e/support.ts` 的 `hangStat(app)`：在主进程中取出 `ipcMain._invokeHandlers.get('pch:invoke')`（Electron 内部字段；Electron 45 中实测为 `Map`，存的就是传给 `handle` 的函数本身），`removeHandler` 后重新 `handle` 一个包装：`vfs.stat` 返回永不 settle 的 Promise 并计数，其余交给原函数；`restore()` 换回。配合 `sendReachability`（见上一条）只改变渲染端的可达状态——扫描进程仍认为本地盘在线，列表的 `state` 不会是 `offline`，渲染端的「已断开」以 reachability-store 为准（宿主的 `fs.list` 据此报告 `offline`）。
+- 有效性：在修复前的构建上，文件标签一直显示加载中（找不到文件名标题）、目录标签 3 秒内没有任何行，用例失败。
+- 预防：依赖 Electron 内部字段，升级 Electron 后若 `pch:invoke handler not found`，先在主进程中打印 `ipcMain` 的字段确认新的存放位置；只用于 e2e，不进产品代码。
+
 ### `scripts/os-screenshot.mjs`：`CopyFromScreen` 报 `The handle is invalid`
 
 - 日期：2026-11-19

@@ -85,16 +85,33 @@ export function directoryQuery(uri: string, invoke: Invoke = call): DirectoryQue
   }
 }
 
-/**
- * 单个资源的 stat（预览标签的文件信息）。每次挂载（切换到该标签）都重新取得（staleTime 0，只是一次 stat）；
- * 所在目录的 vfs.changed 也让它失效（lib/query-client.ts）
- */
-export function useResourceStat(uri: string): UseQueryResult<FileStat> {
-  return useQuery({
+/** 文件标签的 stat 的新鲜期：在此之内切换回标签不再 stat（主进程的 stat 占用 libuv 线程池，knowledge/electron.md） */
+const STAT_STALE_MS = 5000
+
+/** 单个资源的 stat 的查询选项（见 useResourceStat） */
+export function statQuery(
+  uri: string,
+  invoke: Invoke = call
+): {
+  queryKey: ReturnType<typeof queryKeys.stat>
+  queryFn: () => Promise<FileStat>
+  staleTime: number
+} {
+  return {
     queryKey: queryKeys.stat(uri),
-    queryFn: () => call('vfs.stat', { uri }),
-    staleTime: 0
-  })
+    queryFn: () => invoke('vfs.stat', { uri }),
+    staleTime: STAT_STALE_MS
+  }
+}
+
+/**
+ * 文件标签的 stat（文件信息）。目录标签不 stat（PreviewContainer 用标签的类型与标题，
+ * 状态由目录列表表现）。挂载（切换到该标签）时超过新鲜期（5 秒）才重新取得；
+ * 所在目录的 vfs.changed 也让它失效（lib/query-client.ts）。enabled 为 false 时不发出
+ * （所在共享断开：stat 会等到超时）
+ */
+export function useResourceStat(uri: string, enabled = true): UseQueryResult<FileStat> {
+  return useQuery({ ...statQuery(uri), enabled })
 }
 
 /** 一次性取得目录列表（与资源树共用同一查询的缓存；已失效时重新列出） */

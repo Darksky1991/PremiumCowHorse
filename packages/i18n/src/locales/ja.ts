@@ -145,6 +145,7 @@ export default {
     showInfo: 'ファイル情報で表示',
     retry: '再試行',
     copiedPath: 'パスをコピーしました',
+    offline: 'この場所は切断されています。再接続すると表示されます。',
     confirmTitle: '「{{name}}」を開きますか？',
     confirmDescription:
       'このファイルはプログラムやスクリプトとして実行され、PC の設定を変更する可能性があります。信頼できるファイルの場合だけ開いてください。',

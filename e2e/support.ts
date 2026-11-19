@@ -76,6 +76,74 @@ export function snapshotTree(root: string): string[] {
   return lines.sort()
 }
 
+/**
+ * 主进程测试钩子：以与产品相同的信封向窗口发出 vfs.reachability（不新增产品 IPC）。
+ * 只改变渲染端的可达状态；扫描进程仍认为该位置在线（真实断开无法在 e2e 中制造）
+ */
+export async function sendReachability(
+  app: ElectronApplication,
+  share: string,
+  state: 'offline' | 'online'
+): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, e) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send('pch:event', { event: 'vfs.reachability', payload: e })
+      }
+    },
+    { share, state, since: Date.now() }
+  )
+}
+
+export interface HungStat {
+  /** 钩子安装以来渲染端发出的 vfs.stat 次数 */
+  calls(): Promise<number>
+  /** 恢复原来的处理（之后的 vfs.stat 照常；已卡住的调用不会返回） */
+  restore(): Promise<void>
+}
+
+/**
+ * 让主进程的 vfs.stat 一直不返回（模拟无响应的共享上 stat 卡住，产品中要等到超时）。
+ * 替换 IPC 通道 pch:invoke 的处理：取出 ipcMain 内部登记的处理函数（Electron 的内部字段
+ * _invokeHandlers，Electron 45 中为 Map<通道, 处理函数>，存的就是 handle 传入的函数），
+ * 除 vfs.stat 外都交给它。不新增产品代码
+ */
+export async function hangStat(app: ElectronApplication): Promise<HungStat> {
+  await app.evaluate(({ ipcMain }) => {
+    type Handler = (event: unknown, envelope: unknown) => unknown
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+      ._invokeHandlers
+    const original = handlers.get('pch:invoke')
+    if (!original) throw new Error('pch:invoke handler not found')
+    const hook = { original, calls: 0 }
+    ;(globalThis as { __pchHungStat?: typeof hook }).__pchHungStat = hook
+    ipcMain.removeHandler('pch:invoke')
+    ipcMain.handle('pch:invoke', (event, envelope: unknown) => {
+      if ((envelope as { channel?: unknown } | null)?.channel === 'vfs.stat') {
+        hook.calls += 1
+        return new Promise(() => undefined)
+      }
+      return original(event, envelope)
+    })
+  })
+  return {
+    calls: () =>
+      app.evaluate(
+        () => (globalThis as { __pchHungStat?: { calls: number } }).__pchHungStat!.calls
+      ),
+    restore: () =>
+      app.evaluate(({ ipcMain }) => {
+        const hook = (
+          globalThis as {
+            __pchHungStat?: { original: (event: unknown, envelope: unknown) => unknown }
+          }
+        ).__pchHungStat!
+        ipcMain.removeHandler('pch:invoke')
+        ipcMain.handle('pch:invoke', (event, envelope: unknown) => hook.original(event, envelope))
+      })
+  }
+}
+
 /** 错误行的可访问名称包含「重试」按钮的文字 */
 export const retryLabel = '再試行|重试|Retry'
 

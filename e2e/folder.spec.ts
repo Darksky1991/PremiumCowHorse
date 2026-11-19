@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, launch, launchFast, removeDirs } from './support'
+import { data, hangStat, launch, launchFast, removeDirs, sendReachability } from './support'
 
 test.describe('folder view (the folder plugin)', () => {
   let userData: string
@@ -188,6 +188,49 @@ test.describe('folder view (the folder plugin)', () => {
       await expect(row(page, 'f09999.txt')).toBeVisible()
       await expect(row(page, 'f09999.txt')).toHaveAttribute('aria-selected', 'true')
       expect(await rows(page).count()).toBeLessThanOrEqual(100)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a disconnected share: directory tabs show their listing and "disconnected" at once; file tabs do not stat', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      const status = panel(page).getByRole('status').last()
+      await expect(status).not.toContainText('Disconnected')
+
+      // 无响应的共享：stat 一直不返回；渲染端收到「断开」
+      const stat = await hangStat(app)
+      const share = `${path.parse(project).root[0]!.toUpperCase()}:`
+      await sendReachability(app, share, 'offline')
+      // 显示中的目录视图随之显示「已断开」，列表保留
+      await expect(status).toContainText('Disconnected')
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+
+      // 文件标签：不发 stat，只显示文件名与「已断开」
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
+      await expect(tabs(page)).toHaveText(['memo.txt'])
+      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await expect(panel(page).getByRole('status')).toContainText('disconnected')
+      expect(await stat.calls()).toBe(0)
+
+      // 目录标签：不等 stat，立即显示列表与「已断开」（stat 卡住时此前要等到超时）
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await expect(tabs(page)).toHaveText(['設計書'])
+      await expect(names(page)).toHaveText(['v1.txt'], { timeout: 3000 })
+      await expect(panel(page).getByRole('status').last()).toContainText('Disconnected')
+      expect(await stat.calls()).toBe(0)
+
+      // 恢复在线：「已断开」消失；文件标签照常 stat 后显示文件信息
+      await stat.restore()
+      await sendReachability(app, share, 'online')
+      await expect(panel(page).getByRole('status').last()).not.toContainText('Disconnected')
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
+      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await expect(panel(page).getByText('1.5 kB', { exact: false }).first()).toBeVisible()
     } finally {
       await app.close()
     }

@@ -33,6 +33,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     workspaceId: 'ws',
     invoke,
     listDirectory: vi.fn(async () => ({ items: [], state: 'fresh' as const, checkedAt: 1 })),
+    isOffline: () => false,
     onVfsChanged: (listener) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -127,6 +128,27 @@ describe('createPreviewHost: tabs', () => {
     })
   })
 
+  it('navigate with a kind hint from the plugin skips the stat', async () => {
+    const { host, deps, calls } = setup()
+    host.tabs.navigate(DIR, 'directory')
+    await flush()
+    expect(calls.filter(([c]) => c === 'vfs.stat')).toEqual([])
+    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
+      uri: DIR,
+      kind: 'directory',
+      title: '設計書'
+    })
+    expect(deps.tabs.promote).toHaveBeenCalledWith('tab-1')
+    // 驱动器根：标题为盘符
+    host.tabs.navigate('file:///C:/', 'directory')
+    await flush()
+    expect(deps.tabs.navigate).toHaveBeenLastCalledWith('tab-1', {
+      uri: 'file:///C:/',
+      kind: 'directory',
+      title: 'C:'
+    })
+  })
+
   it('open adds a tab in the workspace (permanent unless preview is asked)', async () => {
     const { host, deps } = setup()
     host.tabs.open(TXT)
@@ -174,6 +196,12 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     await expect(host.fs.list(DIR)).resolves.toEqual({ items: [], state: 'fresh', checkedAt: 1 })
     expect(deps.listDirectory).toHaveBeenCalledWith(DIR)
     await expect(host.fs.stat(TXT)).resolves.toMatchObject({ name: 'memo.txt' })
+  })
+
+  it('list reports offline while the share is disconnected in the reachability store', async () => {
+    const { host } = setup({ isOffline: (uri) => uri === DIR })
+    await expect(host.fs.list(DIR)).resolves.toEqual({ items: [], state: 'offline', checkedAt: 1 })
+    await expect(host.fs.list(`${DIR}x`)).resolves.toMatchObject({ state: 'fresh' })
   })
 
   it('rootOf returns the innermost folder entry containing the URI', () => {

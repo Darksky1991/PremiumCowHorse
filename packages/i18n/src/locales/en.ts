@@ -146,6 +146,7 @@ export default {
     showInfo: 'Show file info',
     retry: 'Retry',
     copiedPath: 'Path copied',
+    offline: 'This location is disconnected. It will be shown when it reconnects.',
     confirmTitle: 'Open "{{name}}"?',
     confirmDescription:
       'This file runs as a program or script and may change settings on this PC. Open it only if you trust it.',

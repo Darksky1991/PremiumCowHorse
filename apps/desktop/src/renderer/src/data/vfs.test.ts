@@ -16,6 +16,7 @@ import {
   confirmDirectory,
   refreshDirectories,
   retryDirectory,
+  statQuery,
   type Invoke
 } from './vfs'
 
@@ -327,6 +328,14 @@ describe('directoryQuery（不按时间重新获取，只在失效后重新获�
     } finally {
       client.clear()
     }
+  })
+})
+
+describe('statQuery', () => {
+  it('有限的新鲜期：切换标签不每次 stat，超过后再次显示时重新取得', () => {
+    const q = statQuery('file:///C:/a.txt')
+    expect(q.queryKey).toEqual(['vfs', 'stat', 'file:///C:/a.txt'])
+    expect(q.staleTime).toBe(5000)
   })
 })
 

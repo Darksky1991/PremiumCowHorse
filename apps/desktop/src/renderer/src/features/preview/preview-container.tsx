@@ -1,6 +1,6 @@
 import { Suspense, use, useMemo, useState, type JSX, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { TriangleAlertIcon } from 'lucide-react'
+import { TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { i18n as I18n } from 'i18next'
@@ -17,9 +17,11 @@ import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
 import { fetchDirectory, useResourceStat } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
+import { isShareOffline } from '@renderer/lib/file-uri'
 import { call, subscribe } from '@renderer/lib/ipc'
 import { reportError } from '@renderer/lib/report-error'
 import { useResolvedTheme } from '@renderer/providers/theme-context'
+import { useReachabilityStore } from '@renderer/stores/reachability-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
@@ -33,7 +35,10 @@ export interface PreviewContainerProps {
 }
 
 /**
- * 标签内容（doc 9.3）：stat 资源 → 注册表选择插件 → 懒加载插件组件。
+ * 标签内容（doc 9.3）：取得资源描述 → 注册表选择插件 → 懒加载插件组件。
+ * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
+ * 共享断开 / 无响应时立即显示缓存与「已断开」，目录不在了显示「找不到」）；文件标签 stat 后显示，
+ * 所在共享在 reachability-store 中为断开时不发 stat（会等到超时），只显示文件名与「已断开」。
  * 每个标签一层 ErrorBoundary + Suspense：插件抛错或懒加载失败只在该标签显示错误面板，
  * 并提供「以文件信息显示」（fallback 插件）的出口。
  * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
@@ -49,8 +54,38 @@ export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.E
 }
 
 function ResourcePreview({ tab, plugins }: PreviewContainerProps): JSX.Element {
+  // 「以文件信息显示」（fallback 插件）：目录也要 stat 才有大小与时间
+  const [showInfo, setShowInfo] = useState(false)
+  const view = { tab, plugins, showInfo, onShowInfo: () => setShowInfo(true) }
+  if (tab.kind === 'directory' && !showInfo) {
+    return <PluginView {...view} resource={directoryResource(tab)} />
+  }
+  return <StatResource {...view} />
+}
+
+/** 目录标签的资源描述：不 stat，名称取标签的标题（大小与时间为 0，folder 插件不使用） */
+function directoryResource(tab: TabState): ResourceInfo {
+  return { uri: tab.uri, name: tab.title, kind: 'directory', size: 0, mtime: 0, mime: null }
+}
+
+type ViewProps = PreviewContainerProps & { showInfo: boolean; onShowInfo: () => void }
+
+function StatResource(props: ViewProps): JSX.Element {
+  const { tab } = props
   const { t } = useTranslation()
-  const stat = useResourceStat(tab.uri)
+  const offline = useReachabilityStore((s) => isShareOffline(tab.uri, s.offlineShares))
+  const stat = useResourceStat(tab.uri, !offline)
+  if (offline) {
+    return (
+      <Centered>
+        <UnplugIcon aria-hidden className="size-8 text-muted-foreground" />
+        <h2 className="text-base font-medium break-all">{tab.title}</h2>
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('preview:offline')}
+        </p>
+      </Centered>
+    )
+  }
   // 错误优先于数据：重新取得失败时 TanStack Query 保留旧 data（knowledge/libraries.md）
   if (stat.isError) {
     const code = stat.error instanceof AppError ? stat.error.code : 'UNKNOWN'
@@ -66,7 +101,7 @@ function ResourcePreview({ tab, plugins }: PreviewContainerProps): JSX.Element {
     )
   }
   if (stat.data === undefined) return <Loading />
-  return <PluginView tab={tab} plugins={plugins} resource={toResourceInfo(stat.data, tab)} />
+  return <PluginView {...props} resource={toResourceInfo(stat.data, tab)} />
 }
 
 /** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */
@@ -118,8 +153,10 @@ interface PendingConfirm {
 function PluginView({
   tab,
   plugins,
+  showInfo,
+  onShowInfo,
   resource
-}: PreviewContainerProps & { resource: ResourceInfo }): JSX.Element {
+}: ViewProps & { resource: ResourceInfo }): JSX.Element {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const theme = useResolvedTheme()
@@ -130,11 +167,11 @@ function PluginView({
     () => (entries ?? []).flatMap((e) => (e.kind === 'folder' && e.uri !== null ? [e.uri] : [])),
     [entries]
   )
+  const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
   const promote = useTabsStore((s) => s.promote)
   const setViewState = useTabsStore((s) => s.setViewState)
-  const [showInfo, setShowInfo] = useState(false)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
 
   const plugin = showInfo ? fallbackOf(plugins) : pickPlugin(plugins, resource)
@@ -149,6 +186,8 @@ function PluginView({
       workspaceId: workspace?.id,
       invoke: call,
       listDirectory: (uri) => fetchDirectory(queryClient, uri),
+      // 断开状态变化时宿主重建：插件随之重新列出（folder 插件的状态行切换「已断开」）
+      isOffline: (uri) => isShareOffline(uri, offlineShares),
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
       tabs: { open, navigate, promote },
       confirmExecutable: (name) =>
@@ -168,6 +207,7 @@ function PluginView({
     tab.id,
     workspace?.id,
     queryClient,
+    offlineShares,
     open,
     navigate,
     promote,
@@ -203,7 +243,7 @@ function PluginView({
               </p>
             </div>
             {pluginId === FALLBACK_PLUGIN_ID ? null : (
-              <Button variant="outline" onClick={() => setShowInfo(true)}>
+              <Button variant="outline" onClick={onShowInfo}>
                 {t('preview:showInfo')}
               </Button>
             )}

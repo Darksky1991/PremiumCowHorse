@@ -116,7 +116,8 @@ const hasSize = (e: FileEntry): boolean =>
 /**
  * 目录视图（folder 插件）：面包屑 +「上一级」、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
  * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航，文件以常驻标签打开；
- * Backspace / Alt+↑ 到上一级。打开与导航都经 host（宿主据此把预览标签转为常驻）。
+ * Backspace / Alt+↑ 到上一级。打开与导航都经 host（宿主据此把预览标签转为常驻）；
+ * 导航时给出类型（目录），宿主不再 stat。
  */
 export default function FolderView({
   resource,
@@ -162,11 +163,11 @@ export default function FolderView({
   const crumbs = breadcrumb(resource.uri, host.fs.rootOf(resource.uri))
 
   const open = (entry: FileEntry): void => {
-    if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri)
+    if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri, 'directory')
     else host.tabs.open(entry.uri, { preview: false })
   }
   const goUp = (): void => {
-    if (parent !== null) host.tabs.navigate(parent)
+    if (parent !== null) host.tabs.navigate(parent, 'directory')
   }
   const sortBy = (key: SortKey): void => {
     const next: Sort =
@@ -289,7 +290,7 @@ export default function FolderView({
                       size="xs"
                       className="min-w-0"
                       title={c.label}
-                      onClick={() => host.tabs.navigate(c.uri)}
+                      onClick={() => host.tabs.navigate(c.uri, 'directory')}
                     >
                       <span className="truncate">{c.label}</span>
                     </Button>

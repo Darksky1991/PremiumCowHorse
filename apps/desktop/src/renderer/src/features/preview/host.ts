@@ -14,6 +14,8 @@ export interface PreviewHostDeps {
   invoke: Invoke
   /** 目录列表（与资源树共用 TanStack Query 的缓存） */
   listDirectory: (uri: string) => Promise<DirectoryListing>
+  /** uri 所在的共享 / 卷在 reachability-store 中为断开 */
+  isOffline: (uri: string) => boolean
   /** 订阅 vfs.changed，回调参数为变化的目录 URI；返回取消订阅函数 */
   onVfsChanged: (listener: (uri: string) => void) => () => void
   tabs: {
@@ -40,7 +42,7 @@ const HOST_SETTING_KEYS: ReadonlySet<string> = new Set<keyof HostSettings>([
   'explorer.showHiddenFiles'
 ])
 
-/** URI 最后一段的显示名（百分号解码失败时保留原样） */
+/** URI 最后一段的显示名（百分号解码失败时保留原样；驱动器根 file:///C:/ 为 C:） */
 function nameOfUri(uri: string): string {
   const path = URL.canParse(uri) ? new URL(uri).pathname : uri
   const last = path.split('/').filter(Boolean).pop() ?? uri
@@ -63,8 +65,12 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
   const describeError = (e: unknown): string =>
     deps.t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`)
   const reportError = (e: unknown): void => deps.notify(describeError(e), 'error')
-  /** stat 目标得到标签的类型与标题（stat 跟随链接，链接按目标类型） */
-  const target = async (uri: string): Promise<TabTarget> => {
+  /**
+   * 标签的类型与标题：插件给出类型时直接用（标题取 URI 的最后一段），
+   * 否则 stat 目标（stat 跟随链接，链接按目标类型）
+   */
+  const target = async (uri: string, kind?: 'file' | 'directory'): Promise<TabTarget> => {
+    if (kind !== undefined) return { uri, kind, title: nameOfUri(uri) }
     const stat = await invoke('vfs.stat', { uri })
     return { uri, kind: stat.kind === 'directory' ? 'directory' : 'file', title: stat.name }
   }
@@ -72,7 +78,12 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
   return {
     fs: {
       stat: (uri) => invoke('vfs.stat', { uri }),
-      list: (uri) => deps.listDirectory(uri),
+      // 断开以 reachability-store 为准：扫描进程断开后的列表本就是 offline；
+      // 已在缓存中的列表（断开之前取得）也按断开显示
+      list: async (uri) => {
+        const listing = await deps.listDirectory(uri)
+        return deps.isOffline(uri) ? { ...listing, state: 'offline' } : listing
+      },
       subscribe: (uri, onChange) =>
         deps.onVfsChanged((changed) => {
           if (changed === uri) onChange()
@@ -95,9 +106,9 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
           .then((t) => deps.tabs.open(workspaceId, { ...t, preview: opts?.preview ?? false }))
           .catch(reportError)
       },
-      navigate: (uri) => {
+      navigate: (uri, kind) => {
         interacted()
-        target(uri)
+        target(uri, kind)
           .then((t) => deps.tabs.navigate(tabId, t))
           .catch(reportError)
       }

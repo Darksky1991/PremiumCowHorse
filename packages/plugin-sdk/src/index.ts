@@ -84,7 +84,10 @@ export interface HostSettings {
 export interface PreviewHost {
   fs: {
     stat(uri: string): Promise<FileStat>
-    /** 目录列表（与资源树共用缓存）；失败时以带 code 的错误拒绝 */
+    /**
+     * 目录列表（与资源树共用缓存）；失败时以带 code 的错误拒绝（目录不在了为 FS_NOT_FOUND）。
+     * 所在共享断开时 state 为 offline（内容为缓存）
+     */
     list(uri: string): Promise<DirectoryListing>
     /** 该目录的缓存内容有变化时回调（之后再 list 取得新内容）；返回取消订阅函数 */
     subscribe(uri: string, onChange: () => void): () => void
@@ -100,8 +103,11 @@ export interface PreviewHost {
   tabs: {
     /** 在新标签中打开（已打开则激活）；preview 为 true 时以预览标签打开 */
     open(uri: string, opts?: { preview?: boolean }): void
-    /** 在当前标签内导航到另一资源（替换当前标签的 URI 与标题） */
-    navigate(uri: string): void
+    /**
+     * 在当前标签内导航到另一资源（替换当前标签的 URI 与标题）。
+     * kind 为插件已知的类型（例如目录列表中的项）：给出时宿主不再 stat，标题取 URI 的最后一段
+     */
+    navigate(uri: string, kind?: 'file' | 'directory'): void
   }
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {

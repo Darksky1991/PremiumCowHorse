@@ -140,6 +140,7 @@ export default {
     showInfo: '以文件信息显示',
     retry: '重试',
     copiedPath: '已复制路径',
+    offline: '该位置已断开，重新连接后显示。',
     confirmTitle: '要打开“{{name}}”吗？',
     confirmDescription: '该文件会作为程序或脚本运行，可能更改电脑的设置。请只在信任该文件时打开。',
     confirmOpen: '打开',
