@@ -47,7 +47,8 @@ function ancestorIds(entries: readonly WorkspaceEntry[], nodeId: string): string
 /**
  * 选中项不在列表中、是因为某个祖先被折叠（抽屉互斥收起的顶层分组、全部折叠）时，最近的可见祖先的位置：
  * 树把该祖先显示为选中，但不改写 store 中的选中——重新展开后原来的选中项恢复（Review Focus 5）。
- * 选中项可见、是状态行、最近的可见祖先是展开的（节点已被删除）或祖先都不在时为 -1（按 resolveSelection）。
+ * 最近的可见祖先已展开、但子项尚未加载（状态行为加载中 / 出错）时同样视为被挡住。
+ * 选中项可见、是状态行、最近的可见祖先已展开且子项已加载（节点已被删除）或祖先都不在时为 -1（按 resolveSelection）。
  */
 export function hiddenSelectionIndex(
   nodes: readonly TreeNode[],
@@ -58,9 +59,14 @@ export function hiddenSelectionIndex(
   const ancestors = ancestorIds(entries, selectedId)
   if (ancestors === null) return -1
   for (let i = ancestors.length - 1; i >= 0; i--) {
-    const index = nodes.findIndex((n) => n.id === ancestors[i])
+    const id = ancestors[i] as string
+    const index = nodes.findIndex((n) => n.id === id)
     if (index === -1) continue
-    return nodes[index]?.expanded ? -1 : index
+    if (!nodes[index]?.expanded) return index
+    // 展开但子项尚未加载（只有「加载中 / 出错」状态行；如抽屉收起期间缓存被回收后重新展开）：
+    // 选中项可能还在，同样视为被挡住，加载完成后恢复
+    const status = nodes.find((n) => n.id === `${id}${STATUS_SUFFIX}`)?.status
+    return status === 'loading' || status === 'error' ? index : -1
   }
   return -1
 }

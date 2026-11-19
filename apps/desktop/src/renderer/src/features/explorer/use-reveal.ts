@@ -5,7 +5,13 @@ import type { WorkspaceEntry } from '@pch/shared'
 import { confirmDirectory } from '@renderer/data/vfs'
 import { useNavigationStore, type RevealMode } from '@renderer/stores/navigation-store'
 import { useExplorerStore } from './explorer-store'
-import { revealNodeIds, revealPath, revealProgress, settleReveal } from './reveal'
+import {
+  revealNodeIds,
+  revealPath,
+  revealProgress,
+  settleReveal,
+  settleRevealTimeout
+} from './reveal'
 import type { TreeNode } from './tree-model'
 
 /** 每一层（一个目录的列表）最多等待的时间；超时则停在已到达的最深一层 */
@@ -26,8 +32,8 @@ interface ActiveReveal {
  * - locate（搜索结果的 Enter / 单击 / 右键菜单）：列表已就绪却没有下一段、或某一层
  *   超过 REVEAL_LAYER_TIMEOUT_MS 仍未就绪时，停在已到达的最深一层并提示；前者还让扫描进程顺带确认
  *   出错的那一层目录（设计 8.3，只读；有差异时经 vfs.changed 反映到树与之后的搜索）。
- * - sync（激活标签的位置变化，设计 2.4）：同样展开祖先并选中，但不提示、不确认；位置不在树中
- *   （工作区总览、条目之外）时什么都不做（选中保持不变）；选中节点的 URI 已是该位置时也不动
+ * - sync（激活标签的位置变化，设计 2.4）：同样展开祖先，只在找到目标时选中；不提示、不确认。位置不在树中
+ *   （工作区总览、条目之外、列表中没有该项、超时）时不改选中（选中保持不变）；选中节点的 URI 已是该位置时也不动
  *   （同一 URI 在树中出现多次时，不把选中从用户点的那一行换到另一行）。
  * onRequest 在每个本工作区的请求到达时调用（资源树据此取消尚未触发的 ↑↓ 防抖打开）。
  * 祖先链经过被收起的顶层分组时展开该分组，并按抽屉互斥收起其余顶层分组（drawers，设计 2.7）。
@@ -69,20 +75,20 @@ export function useRevealRequests({
     const current = active.current
     if (current === null) return
     const { nodes, reveal, t } = latest.current
-    const quiet = current.mode === 'sync'
     const progress = revealProgress(nodes, current.chain, current.target)
     if (progress.state !== 'waiting') {
       active.current = null
       clearTimeout(timer.current)
-      settleReveal(nodes, progress, {
-        select: (index) => reveal(index, current.mode),
-        confirm: (uri) => {
-          if (!quiet) void confirmDirectory(uri)
+      settleReveal(
+        nodes,
+        progress,
+        {
+          select: (index) => reveal(index, current.mode),
+          confirm: (uri) => void confirmDirectory(uri),
+          warn: () => toast.warning(t('explorer:revealNotFound'))
         },
-        warn: () => {
-          if (!quiet) toast.warning(t('explorer:revealNotFound'))
-        }
-      })
+        current.mode
+      )
       return
     }
 
@@ -93,8 +99,10 @@ export function useRevealRequests({
     } else if (timedOut && now >= current.deadline) {
       active.current = null
       clearTimeout(timer.current)
-      if (progress.index >= 0) reveal(progress.index, current.mode)
-      if (!quiet) toast.warning(t('explorer:revealTimeout'))
+      settleRevealTimeout(progress, current.mode, {
+        select: (index) => reveal(index, current.mode),
+        warn: () => toast.warning(t('explorer:revealTimeout'))
+      })
       return
     }
     clearTimeout(timer.current)

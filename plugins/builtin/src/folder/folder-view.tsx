@@ -28,6 +28,8 @@ import {
 
 /** 默认密度下的行高；实际高度由 measureElement 测量（紧凑密度下随 --spacing 变小） */
 const ROW_ESTIMATE = 28
+/** 滚动停止后多久把滚动位置存入 viewState（避免每帧写 store） */
+const SCROLL_SAVE_DELAY = 150
 /** 列：名称、修改时间、类型、大小（表头与各行共用） */
 const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_9rem_9rem_6rem] items-center gap-4 px-3'
 const COLUMN_KEYS: SortKey[] = ['name', 'mtime', 'type', 'size']
@@ -130,7 +132,33 @@ export default function FolderView({
   const [listing, retry] = useListing(host, resource.uri)
   const showHidden = host.settings.get('explorer.showHiddenFiles') ?? false
   const sort = viewState?.sort ?? DEFAULT_SORT
-  const [selectedUri, setSelectedUri] = useState<string | null>(null)
+  // 选中项与滚动位置存入 viewState：后退 / 前进回到本目录时恢复（视图按 URI 重建，初值取自 viewState）
+  const [selectedUri, setSelectedUri] = useState<string | null>(viewState?.selectedUri ?? null)
+  const viewStateRef = useRef(viewState)
+  useEffect(() => {
+    viewStateRef.current = viewState
+  }, [viewState])
+  const saveViewState = (patch: Partial<FolderViewState>): void => {
+    const next: FolderViewState = { sort: DEFAULT_SORT, ...viewStateRef.current, ...patch }
+    viewStateRef.current = next
+    onViewStateChange(next)
+  }
+  const selectUri = (uri: string): void => {
+    setSelectedUri(uri)
+    if (viewStateRef.current?.selectedUri !== uri) saveViewState({ selectedUri: uri })
+  }
+  const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // 卸载（导航离开）时不再保存：此时标签已在新位置，写入会落到新位置的 viewState 上
+  useEffect(() => () => clearTimeout(scrollSaveTimer.current), [])
+  const onScroll = (): void => {
+    clearTimeout(scrollSaveTimer.current)
+    scrollSaveTimer.current = setTimeout(() => {
+      const top = scrollRef.current?.scrollTop
+      if (top !== undefined && top !== viewStateRef.current?.scrollTop) {
+        saveViewState({ scrollTop: top })
+      }
+    }, SCROLL_SAVE_DELAY)
+  }
 
   const items = listing.status === 'ready' ? listing.listing.items : null
   const rows = useMemo(
@@ -151,6 +179,16 @@ export default function FolderView({
   })
   const virtualRows = virtualizer.getVirtualItems()
 
+  // 列表首次就绪时恢复保存的滚动位置（只一次；之后的滚动由用户决定）
+  const scrollRestored = useRef(false)
+  const hasRows = rows.length > 0
+  useEffect(() => {
+    if (!hasRows || scrollRestored.current) return
+    scrollRestored.current = true
+    const top = viewStateRef.current?.scrollTop
+    if (top !== undefined && top > 0) virtualizer.scrollToOffset(top)
+  }, [hasRows, virtualizer])
+
   // 在标签内导航后（旧视图连同焦点一起被移除）焦点回到列表，键盘操作可以继续
   useEffect(() => {
     const active = document.activeElement
@@ -166,12 +204,12 @@ export default function FolderView({
   const sortBy = (key: SortKey): void => {
     const next: Sort =
       sort.key === key ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
-    onViewStateChange({ sort: next })
+    saveViewState({ sort: next })
   }
   const select = (index: number): void => {
     const row = rows[index]
     if (!row) return
-    setSelectedUri(row.uri)
+    selectUri(row.uri)
     virtualizer.scrollToIndex(index, { align: 'auto' })
   }
 
@@ -294,7 +332,12 @@ export default function FolderView({
             })}
           </div>
         </div>
-        <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          role="rowgroup"
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
           {body ?? (
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
               {virtualRows.map((v) => {
@@ -311,7 +354,7 @@ export default function FolderView({
                     aria-selected={selected}
                     data-index={v.index}
                     onClick={(e) => {
-                      setSelectedUri(entry.uri)
+                      selectUri(entry.uri)
                       if (e.detail === 1 && (e.ctrlKey || e.metaKey)) open(entry, true)
                     }}
                     onDoubleClick={(e) => {

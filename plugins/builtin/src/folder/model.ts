@@ -63,7 +63,12 @@ export function visibleEntries(
   return showHidden ? entries : entries.filter((e) => !e.hidden)
 }
 
-/** 标签的 viewState：排序（只在内存中，随标签保存；同一标签内导航时 layoutReducer 清除，回到默认） */
+/**
+ * 标签的 viewState（只在内存中，随标签保存）：排序、选中项、滚动位置。
+ * 同一标签内导航到新位置时 layoutReducer 清除（回到默认）；后退 / 前进回到该目录时恢复
+ */
 export interface FolderViewState {
   sort: Sort
+  selectedUri?: string
+  scrollTop?: number
 }

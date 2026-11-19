@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { FileEntry, WorkspaceEntry } from '@pch/shared'
 import type { DirectoryState } from '@renderer/data/vfs'
-import { revealNodeIds, revealPath, revealProgress, revealRecheckUri, settleReveal } from './reveal'
+import {
+  revealNodeIds,
+  revealPath,
+  revealProgress,
+  revealRecheckUri,
+  settleReveal,
+  settleRevealTimeout
+} from './reveal'
 import { buildVisibleNodes, type TreeNode } from './tree-model'
 
 const ROOT = 'file:///C:/work'
@@ -261,10 +268,12 @@ describe('settleReveal', () => {
     })
   type Spy = ReturnType<typeof vi.fn>
   const settle = (
-    nodes: TreeNode[]
+    nodes: TreeNode[],
+    mode: 'locate' | 'sync' = 'locate'
   ): { settled: boolean; select: Spy; confirm: Spy; warn: Spy } => {
     const effects = { select: vi.fn(), confirm: vi.fn(), warn: vi.fn() }
-    const settled = settleReveal(nodes, revealProgress(nodes, path.chain, path.target), effects)
+    const progress = revealProgress(nodes, path.chain, path.target)
+    const settled = settleReveal(nodes, progress, effects, mode)
     return { settled, ...effects }
   }
 
@@ -305,11 +314,60 @@ describe('settleReveal', () => {
     expect(r.warn).not.toHaveBeenCalled()
   })
 
+  it('同步（sync）找不到目标：什么都不做——树保持原选中（设计 2.4），不确认、不提示', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([dir(aUri, 'other.txt', 'file')])]
+      ])
+    )
+    const r = settle(nodes, 'sync')
+    expect(r.settled).toBe(true)
+    expect(r.select).not.toHaveBeenCalled()
+    expect(r.confirm).not.toHaveBeenCalled()
+    expect(r.warn).not.toHaveBeenCalled()
+  })
+
+  it('同步（sync）找到目标：选中目标', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([dir(aUri, 'b.txt', 'file')])]
+      ])
+    )
+    const r = settle(nodes, 'sync')
+    expect(r.settled).toBe(true)
+    expect(r.select).toHaveBeenCalledWith(nodes.findIndex((n) => n.id === path.target))
+  })
+
   it('连条目都不在树中：只提示（没有可选中、可确认的节点）', () => {
     const r = settle([])
     expect(r.settled).toBe(true)
     expect(r.select).not.toHaveBeenCalled()
     expect(r.confirm).not.toHaveBeenCalled()
     expect(r.warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('settleRevealTimeout', () => {
+  it('定位（locate）超时：选中已到达的最深一层并提示', () => {
+    const effects = { select: vi.fn(), warn: vi.fn() }
+    settleRevealTimeout({ index: 3 }, 'locate', effects)
+    expect(effects.select).toHaveBeenCalledWith(3)
+    expect(effects.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('定位（locate）超时且没有已出现的祖先：只提示', () => {
+    const effects = { select: vi.fn(), warn: vi.fn() }
+    settleRevealTimeout({ index: -1 }, 'locate', effects)
+    expect(effects.select).not.toHaveBeenCalled()
+    expect(effects.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('同步（sync）超时：什么都不做——树保持原选中（设计 2.4）', () => {
+    const effects = { select: vi.fn(), warn: vi.fn() }
+    settleRevealTimeout({ index: 3 }, 'sync', effects)
+    expect(effects.select).not.toHaveBeenCalled()
+    expect(effects.warn).not.toHaveBeenCalled()
   })
 })

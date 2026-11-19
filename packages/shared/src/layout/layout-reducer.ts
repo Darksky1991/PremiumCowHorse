@@ -1,4 +1,11 @@
-import type { TabHistory, TabLocation, TabState, TabsAction, TabsState } from './types'
+import type {
+  TabHistory,
+  TabHistoryEntry,
+  TabLocation,
+  TabState,
+  TabsAction,
+  TabsState
+} from './types'
 
 /** 每个标签的后退栈 / 前进栈各自的上限（超出时丢弃最旧的） */
 export const TAB_HISTORY_LIMIT = 50
@@ -13,8 +20,9 @@ const NO_HISTORY: TabHistory = { back: [], forward: [] }
  *   （没有激活标签时放在末尾）。新标签的历史为空。没有「预览标签」（设计 2.8）。
  * - `tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧，都没有则为 null（历史随标签消失）。
  * - `tab/navigate`（在当前标签打开）：同一标签内改位置并清除 viewState（允许与其他标签的 URI 重复）；
- *   离开的位置压入后退栈、前进栈清空。导航到当前 URI 不入栈（只更新类型与标题）。
- * - `tab/back` / `tab/forward`：浏览器式，当前位置压入另一侧的栈；同样清除 viewState。
+ *   离开的位置连同其 viewState 压入后退栈、前进栈清空。导航到当前 URI 不入栈（只更新类型与标题）。
+ * - `tab/back` / `tab/forward`：浏览器式，当前位置（连同 viewState）压入另一侧的栈；
+ *   恢复目标位置离开时的 viewState（像浏览器后退恢复滚动位置）。
  */
 export function layoutReducer(
   state: TabsState,
@@ -56,7 +64,7 @@ export function layoutReducer(
           tabs: replace(state.tabs, tab.id, { kind: action.kind, title: action.title })
         }
       }
-      const history: TabHistory = { back: push(tab.history.back, locationOf(tab)), forward: [] }
+      const history: TabHistory = { back: push(tab.history.back, entryOf(tab)), forward: [] }
       return moveTo(state, tab, locationOf(action), history)
     }
     case 'tab/back':
@@ -69,7 +77,7 @@ export function layoutReducer(
       const target = from.at(-1)
       if (target === undefined) return state
       const rest = from.slice(0, -1)
-      const pushed = push(to, locationOf(tab))
+      const pushed = push(to, entryOf(tab))
       const history: TabHistory = isBack
         ? { back: rest, forward: pushed }
         : { back: pushed, forward: rest }
@@ -81,14 +89,17 @@ export function layoutReducer(
   }
 }
 
-/** 标签换到另一个位置：清除 viewState（不同位置的视图状态不通用） */
+/**
+ * 标签换到另一个位置：viewState 换成目标的（导航时目标是纯位置 → 清除，不同位置的视图状态不通用；
+ * 后退 / 前进时目标是历史项 → 恢复离开时的）
+ */
 function moveTo(
   state: TabsState,
   tab: TabState,
-  location: TabLocation,
+  target: TabHistoryEntry,
   history: TabHistory
 ): TabsState {
-  const next: TabState = { id: tab.id, ...location, history }
+  const next: TabState = { id: tab.id, ...entryOf(target), history }
   return { ...state, tabs: state.tabs.map((t) => (t.id === tab.id ? next : t)) }
 }
 
@@ -97,9 +108,14 @@ function locationOf(l: TabLocation): TabLocation {
   return { uri: l.uri, kind: l.kind, title: l.title }
 }
 
+/** 历史项：位置与 viewState（没有时不含该键） */
+function entryOf(l: TabHistoryEntry): TabHistoryEntry {
+  return l.viewState === undefined ? locationOf(l) : { ...locationOf(l), viewState: l.viewState }
+}
+
 /** 压栈；超过上限时丢弃最旧的（栈底） */
-function push(stack: readonly TabLocation[], location: TabLocation): TabLocation[] {
-  const next = [...stack, location]
+function push(stack: readonly TabHistoryEntry[], entry: TabHistoryEntry): TabHistoryEntry[] {
+  const next = [...stack, entry]
   return next.length > TAB_HISTORY_LIMIT ? next.slice(next.length - TAB_HISTORY_LIMIT) : next
 }
 

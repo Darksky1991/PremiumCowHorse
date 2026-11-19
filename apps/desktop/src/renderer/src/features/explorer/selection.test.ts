@@ -109,4 +109,25 @@ describe('hiddenSelectionIndex：选中项被折叠的祖先挡住（Review Focu
     // 条目已被移除、祖先都不在：-1
     expect(hiddenSelectionIndex(nodes, entries, 'entry:gone')).toBe(-1)
   })
+
+  it('最近的可见祖先已展开但子项尚未加载（加载中 / 出错）：视为被挡住，返回该祖先', () => {
+    // 抽屉重新展开时，收起期间被回收的目录缓存重新加载：只有状态行，选中项暂时不在列表中
+    const status = (parentId: string, s: 'loading' | 'error' | 'empty'): TreeNode => ({
+      ...node(`${parentId}#status`, parentId),
+      status: s
+    })
+    const loading = [
+      at('entry:r', false),
+      at('entry:A', true),
+      at('entry:f', true),
+      status('entry:f', 'loading')
+    ]
+    expect(hiddenSelectionIndex(loading, entries, 'fs:f:sub/x')).toBe(2)
+    expect(hiddenSelectionIndex(loading, entries, 'fs:f:sub')).toBe(2)
+    const failed = [at('entry:r', true), status('entry:r', 'error')]
+    expect(hiddenSelectionIndex(failed, entries, 'fs:r:y')).toBe(0)
+    // 已加载且为空：选中项确实不在了，按原规则回退
+    const empty = [at('entry:r', true), status('entry:r', 'empty')]
+    expect(hiddenSelectionIndex(empty, entries, 'fs:r:y')).toBe(-1)
+  })
 })

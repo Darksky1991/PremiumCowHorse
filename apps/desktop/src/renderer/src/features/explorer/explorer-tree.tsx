@@ -127,8 +127,8 @@ export function ExplorerTree({
   // 选中的节点消失（状态行被子项取代、节点被删除）时回退，上一次的位置存为 state；
   // 回退后的节点在 effect 中写回 store，之后的键盘操作都以它为起点
   const [lastIndex, setLastIndex] = useState(-1)
-  // 选中项被折叠的祖先挡住（抽屉互斥、全部折叠）时显示为该祖先选中，但不写回 store：
-  // 重新展开后原来的选中项恢复（Review Focus 5）
+  // 选中项被折叠的祖先挡住（抽屉互斥、全部折叠），或祖先已展开但子项尚未加载（缓存被回收后重新展开）时
+  // 显示为该祖先选中，但不写回 store：重新展开 / 加载完成后原来的选中项恢复（Review Focus 5）
   const hiddenIndex = useMemo(
     () => hiddenSelectionIndex(nodes, entries, selectedId),
     [nodes, entries, selectedId]

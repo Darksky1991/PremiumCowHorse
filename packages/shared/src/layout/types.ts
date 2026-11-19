@@ -17,12 +17,20 @@ export interface TabLocation {
   title: string
 }
 
+/**
+ * 历史中的一项：位置与离开它时的 viewState（后退 / 前进回到该位置时恢复，
+ * 如目录视图的排序、滚动位置、选中项；没有时不含该键）
+ */
+export interface TabHistoryEntry extends TabLocation {
+  viewState?: unknown
+}
+
 /** 标签内的导航历史（浏览器式，每个标签独立、只在内存中）：各至多 TAB_HISTORY_LIMIT 项 */
 export interface TabHistory {
   /** 后退栈：末尾为最近离开的位置 */
-  back: TabLocation[]
+  back: TabHistoryEntry[]
   /** 前进栈：末尾为下一次「前进」到达的位置 */
-  forward: TabLocation[]
+  forward: TabHistoryEntry[]
 }
 
 /**

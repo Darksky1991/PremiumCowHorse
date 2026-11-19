@@ -177,4 +177,37 @@ test.describe('the application address bar', () => {
       await app.close()
     }
   })
+
+  test('while a modal dialog is open, Alt+← / Alt+→ and the side buttons do not act on the tab behind it', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const { tree } = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await row(page, '設計書').dblclick()
+      await button(page, 'Back').click()
+      await expect(tabs(page)).toHaveText(['案件'])
+
+      // 右键菜单「重命名」打开对话框（焦点在输入框）
+      await tree.getByRole('treeitem', { name: '案件' }).click({ button: 'right' })
+      await page.getByRole('menuitem', { name: /^Rename/ }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByRole('textbox')).toBeFocused()
+      await page.keyboard.press('Alt+ArrowRight')
+      await dialog.dispatchEvent('mouseup', { button: 3 })
+      await dialog.dispatchEvent('mouseup', { button: 4 })
+      // 命令是同步执行的：稍等后对话框仍打开；关闭后标签仍在原位置
+      // （模态对话框打开时背后的内容对无障碍树隐藏，关闭后再断言标签）
+      await page.waitForTimeout(300)
+      await expect(dialog).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toHaveCount(0)
+      await expect(tabs(page)).toHaveText(['案件'])
+
+      // 关闭对话框后恢复生效
+      await page.keyboard.press('Alt+ArrowRight')
+      await expect(tabs(page)).toHaveText(['設計書'])
+    } finally {
+      await app.close()
+    }
+  })
 })

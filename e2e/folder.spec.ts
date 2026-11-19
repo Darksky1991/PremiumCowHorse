@@ -159,6 +159,47 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
+  test('back from a file restores the listing state: sort order, selection and scroll position', async () => {
+    const many = path.join(project, 'many')
+    mkdirSync(many)
+    for (let i = 0; i < 300; i++) {
+      writeFileSync(path.join(many, `f${String(i).padStart(5, '0')}.txt`), '')
+    }
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await row(page, 'many').dblclick()
+      await expect(tabs(page)).toHaveText(['many'])
+      await expect(names(page).first()).toHaveText('f00000.txt')
+
+      // 名称降序、End 选中末行（f00000.txt）并滚到底部
+      const nameHeader = grid(page).getByRole('columnheader', { name: 'Name' })
+      await nameHeader.getByRole('button').click()
+      await expect(nameHeader).toHaveAttribute('aria-sort', 'descending')
+      await grid(page).focus()
+      await page.keyboard.press('End')
+      await expect(row(page, 'f00000.txt')).toHaveAttribute('aria-selected', 'true')
+      const scroller = grid(page).locator('[role="rowgroup"]').nth(1)
+      await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(1000)
+      // 滚动位置防抖保存（150ms）
+      await page.waitForTimeout(500)
+      const scrollTop = await scroller.evaluate((el) => el.scrollTop)
+
+      // 打开文件后后退：排序、选中、滚动位置都恢复（设计 2.8「后退回到目录列表」）
+      await page.keyboard.press('Enter')
+      await expect(tabs(page)).toHaveText(['f00000.txt'])
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(tabs(page)).toHaveText(['many'])
+      await expect(nameHeader).toHaveAttribute('aria-sort', 'descending')
+      await expect(row(page, 'f00000.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(row(page, 'f00000.txt')).toBeInViewport()
+      await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeCloseTo(scrollTop, -1)
+    } finally {
+      await app.close()
+    }
+  })
+
   test('the workspace overview lists entries with their aliases by group; double click enters a folder or opens a file in the current tab', async () => {
     const { app, page } = await launchFast(userData)
     try {

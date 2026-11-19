@@ -78,7 +78,7 @@ describe('layoutReducer: activate / navigate / viewState', () => {
     expect(layoutReducer(s, { type: 'tab/activate', id: 'nope' }, () => 'x')).toBe(s)
   })
 
-  it('tab/navigate 在同一标签内改 URI / 类型 / 标题，并清除 viewState', () => {
+  it('tab/navigate 在同一标签内改 URI / 类型 / 标题，并清除 viewState（离开时的 viewState 随历史保存）', () => {
     const s = run([
       open('dir', 'directory'),
       { type: 'tab/viewState', id: 't1', viewState: { sort: 'name' } },
@@ -90,7 +90,10 @@ describe('layoutReducer: activate / navigate / viewState', () => {
         uri: 'dir/sub',
         kind: 'directory',
         title: 'sub',
-        history: { back: [{ uri: 'dir', kind: 'directory', title: 'dir' }], forward: [] }
+        history: {
+          back: [{ uri: 'dir', kind: 'directory', title: 'dir', viewState: { sort: 'name' } }],
+          forward: []
+        }
       }
     ])
     expect(s.activeId).toBe('t1')
@@ -159,13 +162,53 @@ describe('layoutReducer: 标签历史（后退 / 前进）', () => {
     expect(layoutReducer(s, { type: 'tab/back', id: 'nope' }, () => 'x')).toBe(s)
   })
 
-  it('后退 / 前进清除 viewState（与导航相同）', () => {
+  it('后退 / 前进恢复离开该位置时的 viewState（排序、滚动、选中…），并保存当前位置的 viewState', () => {
+    const setVs = (viewState: unknown): TabsAction => ({
+      type: 'tab/viewState',
+      id: 't1',
+      viewState
+    })
+    const s = run([
+      open('a', 'directory'),
+      setVs({ sort: 'size', scrollTop: 120 }),
+      nav('f.txt', 'file'),
+      setVs({ page: 3 }),
+      back
+    ])
+    expect(tab1(s)).toMatchObject({ uri: 'a', viewState: { sort: 'size', scrollTop: 120 } })
+    expect(tab1(s).history.forward).toEqual([
+      { uri: 'f.txt', kind: 'file', title: 'f.txt', viewState: { page: 3 } }
+    ])
+    const f = run([forward], s)
+    expect(tab1(f)).toMatchObject({ uri: 'f.txt', viewState: { page: 3 } })
+    expect(tab1(f).history.back.at(-1)).toEqual({
+      uri: 'a',
+      kind: 'directory',
+      title: 'a',
+      viewState: { sort: 'size', scrollTop: 120 }
+    })
+  })
+
+  it('没有 viewState 的历史位置：后退后 viewState 为 undefined（不沿用当前位置的）', () => {
     const s = run([
       open('a', 'directory'),
       nav('b'),
       { type: 'tab/viewState', id: 't1', viewState: { sort: 'size' } },
       back
     ])
+    expect(tab1(s).uri).toBe('a')
+    expect(tab1(s).viewState).toBeUndefined()
+    expect('viewState' in tab1(s)).toBe(false)
+  })
+
+  it('导航到新位置：viewState 清空（即使新位置曾在历史中有 viewState）', () => {
+    const s = run([
+      open('a', 'directory'),
+      { type: 'tab/viewState', id: 't1', viewState: { sort: 'size' } },
+      nav('b'),
+      nav('a')
+    ])
+    expect(tab1(s).uri).toBe('a')
     expect(tab1(s).viewState).toBeUndefined()
   })
 

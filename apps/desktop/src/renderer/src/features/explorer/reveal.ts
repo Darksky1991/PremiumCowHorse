@@ -1,4 +1,5 @@
 import { isUnderUri, prefixOf, type WorkspaceEntry } from '@pch/shared'
+import type { RevealMode } from '@renderer/stores/navigation-store'
 import type { TreeNode } from './tree-model'
 
 /** URI 在树中的位置：所属条目 + 相对条目根的路径段（已解码，与目录列表中的名称一致） */
@@ -124,20 +125,38 @@ export interface RevealEffects {
 }
 
 /**
- * 按进展结束定位：done 选中目标；failed 选中最深的已出现祖先、确认出错的那一层目录
- * （revealRecheckUri，设计 8.3）并提示；waiting 不做任何事。返回是否已结束。
+ * 按进展结束定位：done 选中目标；failed 时 locate 选中最深的已出现祖先、确认出错的那一层目录
+ * （revealRecheckUri，设计 8.3）并提示，sync 什么都不做（位置不在树中时树保持原选中，设计 2.4）；
+ * waiting 不做任何事。返回是否已结束。
  */
 export function settleReveal(
   nodes: readonly TreeNode[],
   progress: { state: 'done' | 'waiting' | 'failed'; index: number },
-  effects: RevealEffects
+  effects: RevealEffects,
+  mode: RevealMode
 ): boolean {
   if (progress.state === 'waiting') return false
-  if (progress.index >= 0) effects.select(progress.index)
-  if (progress.state === 'failed') {
+  if (progress.state === 'done' || mode === 'locate') {
+    if (progress.index >= 0) effects.select(progress.index)
+  }
+  if (progress.state === 'failed' && mode === 'locate') {
     const uri = revealRecheckUri(nodes, progress.index)
     if (uri !== null) effects.confirm(uri)
     effects.warn()
   }
   return true
+}
+
+/**
+ * 某一层超过 REVEAL_LAYER_TIMEOUT_MS 仍未就绪时结束定位：locate 选中已到达的最深一层并提示；
+ * sync 什么都不做（树保持原选中，设计 2.4）
+ */
+export function settleRevealTimeout(
+  progress: { index: number },
+  mode: RevealMode,
+  effects: Pick<RevealEffects, 'select' | 'warn'>
+): void {
+  if (mode === 'sync') return
+  if (progress.index >= 0) effects.select(progress.index)
+  effects.warn()
 }
