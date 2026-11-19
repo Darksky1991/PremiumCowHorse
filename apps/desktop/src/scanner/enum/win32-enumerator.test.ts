@@ -65,6 +65,34 @@ function spyKernel32(override: Partial<Kernel32>): {
   return { k, opened, closed }
 }
 
+/**
+ * 可注入 Win32 错误码的 kernel32：fail(cb, code, value) 以 value 作为返回值调用回调，
+ * 回调中读取的 GetLastError 为 code（其余时候读真实值）
+ */
+function forcedErrors(): {
+  real: Kernel32
+  GetLastError: NativeFn
+  fail: (cb: Callback, code: number, value: unknown) => void
+} {
+  const real = loadKernel32()
+  let forced: number | null = null
+  const GetLastError = fakeFn(
+    () => {
+      throw new Error('unexpected async GetLastError')
+    },
+    () => forced ?? real.GetLastError()
+  )
+  const fail = (cb: Callback, code: number, value: unknown): void => {
+    forced = code
+    try {
+      cb(null, value)
+    } finally {
+      forced = null
+    }
+  }
+  return { real, GetLastError, fail }
+}
+
 describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
   let root: string
   let log: ReturnType<typeof vi.fn<(msg: string) => void>>
@@ -293,6 +321,93 @@ describe.runIf(process.platform === 'win32')('Win32Enumerator', () => {
     )
     expect(opened).toHaveLength(1)
     expect(syncClosed).toEqual(opened)
+  })
+
+  it('maps only network / device errors to FS_UNAVAILABLE; other codes stay per-directory', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const { real, GetLastError, fail } = forcedErrors()
+    const codeFor = async (code: number): Promise<{ code: unknown; opens: number }> => {
+      let opens = 0
+      const k: Kernel32 = {
+        ...real,
+        GetLastError,
+        CreateFileW: fakeFn((...args) => {
+          opens += 1
+          fail(args.pop() as Callback, code, real.invalidHandle)
+        })
+      }
+      const e = await createWin32Enumerator(log, k)
+        .list(url(root), { signal: signal(), onBatch: noop })
+        .then(
+          () => null,
+          (err: unknown) => err
+        )
+      return { code: (e as { code?: unknown } | null)?.code, opens }
+    }
+    // 53 BAD_NETPATH、64 NETNAME_DELETED、67 BAD_NET_NAME、121 SEM_TIMEOUT、1231 NETWORK_UNREACHABLE、
+    // 21 NOT_READY：位置整体不可用，不再尝试只读打开
+    for (const code of [21, 53, 64, 67, 121, 1231, 1232, 2250]) {
+      expect(await codeFor(code), String(code)).toEqual({ code: 'FS_UNAVAILABLE', opens: 1 })
+    }
+    // 31 GEN_FAILURE、32 SHARING_VIOLATION、1117 IO_DEVICE：只是该目录的错误
+    for (const code of [31, 32, 1117]) {
+      expect((await codeFor(code)).code, String(code)).toBe('UNKNOWN')
+    }
+  })
+
+  it('falls back to a read-only handle when the write-attributes open fails with another refusal', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const { real, GetLastError, fail } = forcedErrors()
+    const access: number[] = []
+    const k: Kernel32 = {
+      ...real,
+      GetLastError,
+      CreateFileW: fakeFn((...args) => {
+        const cb = args.pop() as Callback
+        access.push(args[1] as number)
+        // 第一次（带 FILE_WRITE_ATTRIBUTES）以 50 ERROR_NOT_SUPPORTED 拒绝（部分 NAS）
+        if (access.length === 1) fail(cb, 50, real.invalidHandle)
+        else real.CreateFileW.async(...args, cb)
+      }),
+      CloseHandle: fakeFn((h, cb) => real.CloseHandle.async(h, cb))
+    }
+    const entries = await createWin32Enumerator(log, k).list(url(root), {
+      signal: signal(),
+      onBatch: noop
+    })
+    expect(byName(entries)['a.txt']).toMatchObject({ kind: 'file', size: 3 })
+    expect(access).toHaveLength(2)
+    expect(access[1]! & 0x0100).toBe(0) // 第二次不带写属性
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0]![0]).toContain('win32 error 50')
+  })
+
+  it('maps ERROR_INVALID_PARAMETER to not-a-directory only on the first batch of a non-directory', async () => {
+    writeFileSync(path.join(root, 'a.txt'), 'abc')
+    const { real, GetLastError, fail } = forcedErrors()
+    const listWith = (failOnCall: number): Promise<unknown> => {
+      let calls = 0
+      const k: Kernel32 = {
+        ...real,
+        GetLastError,
+        GetFileInformationByHandleEx: fakeFn((...args) => {
+          const cb = args.pop() as Callback
+          calls += 1
+          if (calls === failOnCall) fail(cb, 87, false)
+          else real.GetFileInformationByHandleEx.async(...args, cb)
+        })
+      }
+      return createWin32Enumerator(log, k)
+        .list(url(root), { signal: signal(), onBatch: noop })
+        .then(
+          () => null,
+          (e: unknown) => (e as { code?: unknown }).code
+        )
+    }
+    // 第二批才返回 87：不是「不是目录」
+    expect(await listWith(2)).toBe('UNKNOWN')
+    // 第一批返回 87，但目标确实是目录
+    expect(await listWith(1)).toBe('UNKNOWN')
   })
 
   it('delegates location keys to the shared locator', () => {

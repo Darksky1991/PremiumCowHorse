@@ -32,14 +32,39 @@ const FILE_ATTRIBUTE_REPARSE_POINT = 0x400
  * 是普通文件 / 目录，按 DIRECTORY 属性判断。
  */
 const LINK_TAGS = new Set([0xa000000c, 0xa0000003, 0x8000001b])
-// Win32 错误码
+// Win32 错误码（含义见 Microsoft Learn「System Error Codes」）
 const ERROR_FILE_NOT_FOUND = 2
 const ERROR_PATH_NOT_FOUND = 3
 const ERROR_ACCESS_DENIED = 5
-const ERROR_WRITE_PROTECT = 19
 const ERROR_NO_MORE_FILES = 18
 const ERROR_INVALID_PARAMETER = 87
 const ERROR_DIRECTORY = 267
+
+/**
+ * 确定表示「位置整体不可用」的错误码：网络路径 / 连接 / 主机不可达，或设备未就绪 / 未连接。
+ * 只有这些映射为 FS_UNAVAILABLE（调度器据此判定整个共享 / 卷断开）；其他未知错误码只是
+ * 该目录的错误（UNKNOWN，目录状态记为 unreachable，按 P2 间隔重试），不影响同一位置的其他目录。
+ */
+const UNAVAILABLE_ERRORS = new Set([
+  15, // ERROR_INVALID_DRIVE：The system cannot find the drive specified.
+  21, // ERROR_NOT_READY：The device is not ready.
+  51, // ERROR_REM_NOT_LIST：Windows cannot find the network path.
+  53, // ERROR_BAD_NETPATH：The network path was not found.
+  55, // ERROR_DEV_NOT_EXIST：The specified network resource or device is no longer available.
+  59, // ERROR_UNEXP_NET_ERR：An unexpected network error occurred.
+  64, // ERROR_NETNAME_DELETED：The specified network name is no longer available.
+  67, // ERROR_BAD_NET_NAME：The network name cannot be found.
+  121, // ERROR_SEM_TIMEOUT：The semaphore timeout period has expired.（SMB 的网络超时）
+  1167, // ERROR_DEVICE_NOT_CONNECTED：The device is not connected.
+  1201, // ERROR_CONNECTION_UNAVAIL：The device is not currently connected but it is a remembered connection.
+  1222, // ERROR_NO_NETWORK：The network is not present or not started.
+  1225, // ERROR_CONNECTION_REFUSED：The remote computer refused the network connection.
+  1231, // ERROR_NETWORK_UNREACHABLE：The network location cannot be reached.
+  1232, // ERROR_HOST_UNREACHABLE：The network location cannot be reached.
+  1236, // ERROR_CONNECTION_ABORTED：The network connection was aborted by the local system.
+  1256, // ERROR_HOST_DOWN：The remote system is not available.
+  2250 // ERROR_NOT_CONNECTED：This network connection does not exist.
+])
 
 /** GetFileInformationByHandleEx 的输出缓冲：一次系统调用（网络上一次往返）取回的量 */
 const BUFFER_SIZE = 64 * 1024
@@ -140,18 +165,26 @@ function win32Error(code: number, p: string): AppError {
     case ERROR_DIRECTORY:
       return new AppError({ code: 'FS_NOT_A_DIRECTORY', detail })
     default:
-      // 网络类（53 ERROR_BAD_NETPATH、64 ERROR_NETNAME_DELETED、67 ERROR_BAD_NET_NAME、
-      // 1231 ERROR_NETWORK_UNREACHABLE 等）与其他未知错误：位置暂时不可用
-      return new AppError({ code: 'FS_UNAVAILABLE', detail })
+      // 确定的网络 / 设备类错误：位置暂时不可用；其余（含不认识的码）只算该目录的错误
+      return new AppError({
+        code: UNAVAILABLE_ERRORS.has(code) ? 'FS_UNAVAILABLE' : 'UNKNOWN',
+        detail
+      })
   }
 }
+
+/** 路径不存在（2 / 3）或位置整体不可用：再以只读方式打开也不会成功 */
+const isFinalOpenError = (code: number): boolean =>
+  code === ERROR_FILE_NOT_FOUND || code === ERROR_PATH_NOT_FOUND || UNAVAILABLE_ERRORS.has(code)
 
 /**
  * koffi 调用 Win32 API 的枚举器。
  * 目录以 FILE_WRITE_ATTRIBUTES 打开，并把句柄的 LastAccessTime 设为 -1（MS-FSCC：此句柄上
  * 后续操作不更新访问时间），再在同一句柄上用 GetFileInformationByHandleEx 枚举——
- * 普通枚举会把目录自身的最后访问时间更新为当前时间。拿不到写属性权限时用只读句柄枚举
- * （此时无法保护访问时间），每个共享 / 盘符只记一次日志。
+ * 普通枚举会把目录自身的最后访问时间更新为当前时间。以写属性打开失败（不存在与网络 / 设备
+ * 不可用除外）时用只读句柄枚举（此时无法保护访问时间），每个共享 / 盘符只记一次日志。
+ * 错误分类：只有确定的网络 / 设备类 Win32 错误码为 FS_UNAVAILABLE（UNAVAILABLE_ERRORS），
+ * 其他未知错误码为 UNKNOWN（只影响该目录）。
  */
 export function createWin32Enumerator(
   log: (msg: string) => void,
@@ -191,10 +224,9 @@ export function createWin32Enumerator(
       )
     const rw = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES)
     if (isValid(rw.value)) return { h: rw.value, writable: true }
-    // 只读共享、ACL 不允许写属性、写保护的介质：退回只读句柄
-    if (rw.error !== ERROR_ACCESS_DENIED && rw.error !== ERROR_WRITE_PROTECT) {
-      throw win32Error(rw.error, p)
-    }
+    // 只读共享、ACL 不允许写属性、写保护的介质，以及不支持写属性的 NAS 等返回的其他拒绝码：
+    // 退回只读句柄。只有不存在与网络 / 设备不可用时直接报错（只读打开也不会成功）
+    if (isFinalOpenError(rw.error)) throw win32Error(rw.error, p)
     const ro = await open(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
     if (!isValid(ro.value)) throw win32Error(ro.error, p)
     warnUnprotected(uri, `no write-attributes access: win32 error ${rw.error}`)
@@ -229,6 +261,28 @@ export function createWin32Enumerator(
     }
   }
 
+  /** GetFileAttributesExW（不跟随链接，不打开句柄，不更新访问时间） */
+  const queryAttributes = async (
+    p: string
+  ): Promise<{ ok: true; attrs: number; data: Buffer } | { ok: false; error: number }> => {
+    const data = Buffer.alloc(ATTR_DATA_SIZE)
+    const r = await callAsync(
+      k,
+      k.GetFileAttributesExW,
+      path.win32.toNamespacedPath(p),
+      0, // GetFileExInfoStandard
+      data
+    )
+    if (!r.value) return { ok: false, error: r.error }
+    return { ok: true, attrs: data.readUInt32LE(0), data }
+  }
+
+  /** 确认 p 存在且不是目录；查询失败（无法确认）时为 false */
+  const isNotDirectory = async (p: string): Promise<boolean> => {
+    const a = await queryAttributes(p)
+    return a.ok && !(a.attrs & FILE_ATTRIBUTE_DIRECTORY)
+  }
+
   const readAll = async (
     h: bigint,
     p: string,
@@ -245,8 +299,11 @@ export function createWin32Enumerator(
         if (r.error === ERROR_NO_MORE_FILES) break
         // 没有任何项（连 . 与 .. 都没有，如空的卷根目录）时首次查询返回 FILE_NOT_FOUND（未实测）
         if (first && r.error === ERROR_FILE_NOT_FOUND) break
-        // 打开的是文件而不是目录（已实测）
-        if (r.error === ERROR_INVALID_PARAMETER) throw win32Error(ERROR_DIRECTORY, p)
+        // 打开的是文件而不是目录时第一次查询返回 87（已实测）。87 也可能有其他原因（例如部分
+        // 文件系统不支持该信息类）：只在第一批、且确认目标不是目录时才当作「不是目录」
+        if (r.error === ERROR_INVALID_PARAMETER && first && (await isNotDirectory(p))) {
+          throw win32Error(ERROR_DIRECTORY, p)
+        }
         throw win32Error(r.error, p)
       }
       parseBatch(buf, entries)
@@ -262,17 +319,10 @@ export function createWin32Enumerator(
       try {
         throwIfAborted(signal)
         const p = fileUriToLocalPath(uri)
-        const data = Buffer.alloc(ATTR_DATA_SIZE)
-        const r = await callAsync(
-          k,
-          k.GetFileAttributesExW,
-          path.win32.toNamespacedPath(p),
-          0, // GetFileExInfoStandard
-          data
-        )
+        const r = await queryAttributes(p)
         throwIfAborted(signal)
-        if (!r.value) throw win32Error(r.error, p)
-        const attrs = data.readUInt32LE(0)
+        if (!r.ok) throw win32Error(r.error, p)
+        const { attrs, data } = r
         if (!(attrs & FILE_ATTRIBUTE_DIRECTORY)) throw win32Error(ERROR_DIRECTORY, p)
         // GetFileAttributesExW 不跟随链接：目录联接 / 符号链接取目标目录的修改时间
         if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {

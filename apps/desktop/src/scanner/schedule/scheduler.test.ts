@@ -677,6 +677,21 @@ describe('Scheduler', () => {
     expect(fs.count('stat', A)).toBe(n + 1)
   })
 
+  it('an unknown error marks only that directory unreachable, not the whole share', async () => {
+    const { clock, fs, s, cache, reach } = setup([root(N)])
+    const A = fs.addDir(N, 'a')
+    const B = fs.addDir(N, 'b')
+    s.setInterest(1, none)
+    await clock.advance(0)
+    fs.errors.set(A, 'UNKNOWN')
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(cache.getDir(A)).toMatchObject({ state: 'unreachable', errorCode: 'UNKNOWN' })
+    expect(s.isOffline(N)).toBe(false)
+    expect(reach).toEqual([])
+    await expect(s.listNow(B)).resolves.toMatchObject({ state: 'fresh' })
+  })
+
   it('rejects invalid URIs without disturbing the schedule', async () => {
     const { clock, fs, s } = setup([root(R)])
     await expect(s.listNow('not a uri')).rejects.toMatchObject({ code: 'FS_INVALID_URI' })

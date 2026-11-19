@@ -850,8 +850,10 @@ export class Scheduler {
   private handleError(task: Task, error: AppError, probe: boolean): void {
     const { uri } = task
     const share = this.enumerator.shareKey(uri)
-    // 有意的选择：FS_UNAVAILABLE（网络类错误）无论出现在探测还是枚举中途都判为断开——
-    // 它是系统报告的连接错误，不是「慢」；只有超时区分阶段（中途超时只算该目录的错误）
+    // 有意的选择：FS_UNAVAILABLE 无论出现在探测还是枚举中途（已有批次）都判为断开——枚举器只把
+    // 确定的网络 / 设备类错误码映射为它（win32-enumerator 的 UNAVAILABLE_ERRORS；其他未知错误码为
+    // UNKNOWN，只记该目录 unreachable），它是系统报告的连接中断，不是「慢」；只有超时区分阶段
+    // （中途超时只算该目录的错误）
     if (error.code === 'FS_UNAVAILABLE' || (error.code === 'FS_TIMEOUT' && probe)) {
       this.goOffline(share, uri, task.prio === 'probe')
       return
