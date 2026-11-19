@@ -21,14 +21,13 @@ export interface TabBarProps {
 }
 
 /**
- * 标签栏：单击激活、双击转常驻、× / 中键关闭；预览标签标题斜体；溢出时横向滚动（滚轮也可）。
+ * 标签栏：单击激活、× / 中键关闭；溢出时横向滚动（滚轮也可）。所有标签都是普通标签（M1-3b 起没有预览标签）。
  * 键盘：标签栏只有一个 Tab 停靠点（激活标签），←→ / Home / End 切换激活标签。
  */
 export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
   const { t } = useTranslation('tabs')
   const listRef = useRef<HTMLDivElement>(null)
   const activate = useTabsStore((s) => s.activate)
-  const promote = useTabsStore((s) => s.promote)
   const close = useTabsStore((s) => s.close)
   const { tabs, activeId } = state
 
@@ -99,7 +98,6 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
               tab.kind === 'workspace' ? tab.title : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
             }
             onClick={() => activate(tab.id)}
-            onDoubleClick={() => promote(tab.id)}
             // 中键：按下时阻止自动滚动，auxclick 时关闭
             onMouseDown={(e) => {
               if (e.button === 1) e.preventDefault()
@@ -113,8 +111,7 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
               'group/tab flex max-w-60 min-w-0 shrink-0 cursor-default items-center gap-1.5 border-r pr-1 pl-3 text-[13px] outline-none select-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring',
               active
                 ? 'bg-background text-foreground shadow-[inset_0_2px_0_0_var(--primary)]'
-                : 'text-muted-foreground hover:bg-sidebar-accent/50',
-              tab.preview && 'italic'
+                : 'text-muted-foreground hover:bg-sidebar-accent/50'
             )}
           >
             <Icon aria-hidden className="size-4 shrink-0" />
@@ -134,7 +131,6 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
                 e.stopPropagation()
                 closeTab(tab.id)
               }}
-              onDoubleClick={(e) => e.stopPropagation()}
             >
               <XIcon />
             </Button>

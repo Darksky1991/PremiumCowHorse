@@ -57,7 +57,7 @@ export function AddressBar(): JSX.Element {
   const { data: workspace } = useActiveWorkspace()
   const { data: entries } = useEntries(workspace?.id)
   const active = useTabsStore(selectActiveTab(workspace?.id))
-  const open = useTabsStore((s) => s.open)
+  const openHere = useTabsStore((s) => s.openHere)
   const navigate = useTabsStore((s) => s.navigate)
   const back = useTabsStore((s) => s.back)
   const forward = useTabsStore((s) => s.forward)
@@ -91,8 +91,8 @@ export function AddressBar(): JSX.Element {
   /** 打开段的位置：新标签（或没有激活标签）时 open，否则在激活标签内导航；当前位置不变 */
   const goTo = (target: TabLocation, newTab: boolean): void => {
     if (workspace === undefined) return
-    if (newTab || active === null) open(workspace.id, { ...target, preview: false })
-    else if (target.uri !== active.uri) navigate(active.id, target)
+    if (!newTab && target.uri === active?.uri) return
+    openHere(workspace.id, target, { newTab })
   }
   const segmentHandlers = (target: TabLocation): Record<SegmentEvent, (e: MouseEvent) => void> => ({
     onClick: (e) => goTo(target, e.ctrlKey || e.metaKey),

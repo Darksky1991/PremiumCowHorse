@@ -8,38 +8,31 @@ import {
   type TabTarget
 } from './tabs-store'
 
-const file = (uri: string, preview: boolean): TabTarget & { preview: boolean } => ({
-  uri,
-  kind: 'file',
-  title: uri,
-  preview
-})
+const file = (uri: string): TabTarget => ({ uri, kind: 'file', title: uri })
 
 describe('tabs-store', () => {
   beforeEach(() => useTabsStore.setState({ byWorkspace: {}, refreshSeq: {} }))
 
   it('按工作区区分标签集合：一个工作区的操作不影响另一个', () => {
     const { open } = useTabsStore.getState()
-    open('w1', file('a', true))
-    open('w2', file('b', false))
-    open('w1', file('c', true))
+    open('w1', file('a'))
+    open('w2', file('b'))
+    open('w1', file('c'))
     const w1 = selectTabs('w1')(useTabsStore.getState())
     const w2 = selectTabs('w2')(useTabsStore.getState())
-    expect(w1.tabs.map((t) => t.uri)).toEqual(['c'])
+    expect(w1.tabs.map((t) => t.uri)).toEqual(['a', 'c'])
     expect(w2.tabs.map((t) => t.uri)).toEqual(['b'])
   })
 
-  it('close / activate / promote / navigate 只凭标签 id 找到所属工作区', () => {
+  it('close / activate / navigate 只凭标签 id 找到所属工作区', () => {
     const { open } = useTabsStore.getState()
-    open('w1', file('a', false))
-    open('w2', file('b', true))
-    open('w2', file('c', false))
+    open('w1', file('a'))
+    open('w2', file('b'))
+    open('w2', file('c'))
     const get = (w: string): TabsState => selectTabs(w)(useTabsStore.getState())
     const [b, c] = get('w2').tabs
     useTabsStore.getState().activate(b!.id)
     expect(get('w2').activeId).toBe(b!.id)
-    useTabsStore.getState().promote(b!.id)
-    expect(get('w2').tabs[0]!.preview).toBe(false)
     useTabsStore.getState().navigate(c!.id, { uri: 'd', kind: 'directory', title: 'd' })
     expect(get('w2').tabs[1]).toMatchObject({ id: c!.id, uri: 'd', kind: 'directory' })
     useTabsStore.getState().close(b!.id)
@@ -54,9 +47,9 @@ describe('tabs-store', () => {
   })
 
   it('操作没有变化时不更新 store（订阅者不会被通知）', () => {
-    useTabsStore.getState().open('w1', file('a', false))
+    useTabsStore.getState().open('w1', file('a'))
     const before = useTabsStore.getState().byWorkspace
-    useTabsStore.getState().open('w1', file('a', false))
+    useTabsStore.getState().open('w1', file('a'))
     useTabsStore.getState().close('nope')
     expect(useTabsStore.getState().byWorkspace).toBe(before)
   })
@@ -67,19 +60,19 @@ describe('tabs-store', () => {
       selectActiveDirectory(w)(useTabsStore.getState())
     expect(active('w1')).toBeNull()
     expect(active(undefined)).toBeNull()
-    open('w1', { uri: 'file:///C:/d', kind: 'directory', title: 'd', preview: false })
+    open('w1', { uri: 'file:///C:/d', kind: 'directory', title: 'd' })
     expect(active('w1')).toBe('file:///C:/d')
-    open('w1', file('file:///C:/d/a.txt', false))
+    open('w1', file('file:///C:/d/a.txt'))
     expect(active('w1')).toBeNull()
     expect(active('w2')).toBeNull()
     // 工作区总览不是文件系统：不作为关注点发给扫描进程
-    open('w1', { uri: 'pch-workspace:w1', kind: 'workspace', title: 'w', preview: false })
+    open('w1', { uri: 'pch-workspace:w1', kind: 'workspace', title: 'w' })
     expect(active('w1')).toBeNull()
   })
 
   it('back / forward 凭标签 id 在其历史中后退 / 前进', () => {
     const { open } = useTabsStore.getState()
-    open('w1', { uri: 'file:///C:/a', kind: 'directory', title: 'a', preview: false })
+    open('w1', { uri: 'file:///C:/a', kind: 'directory', title: 'a' })
     const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
     const current = (): string => selectTabs('w1')(useTabsStore.getState()).tabs[0]!.uri
     useTabsStore.getState().navigate(id, { uri: 'file:///C:/a/b', kind: 'directory', title: 'b' })
@@ -93,14 +86,14 @@ describe('tabs-store', () => {
       selectActiveTab(w)(useTabsStore.getState())?.uri ?? null
     expect(active(undefined)).toBeNull()
     expect(active('w1')).toBeNull()
-    useTabsStore.getState().open('w1', file('a', false))
-    useTabsStore.getState().open('w1', file('b', false))
+    useTabsStore.getState().open('w1', file('a'))
+    useTabsStore.getState().open('w1', file('b'))
     expect(active('w1')).toBe('b')
     expect(active('w2')).toBeNull()
   })
 
   it('requestRefresh 按标签递增刷新序号（订阅者据此刷新），标签布局不变', () => {
-    useTabsStore.getState().open('w1', file('a', false))
+    useTabsStore.getState().open('w1', file('a'))
     const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
     const before = useTabsStore.getState().byWorkspace
     const seen: Array<number | undefined> = []
@@ -112,5 +105,25 @@ describe('tabs-store', () => {
     off()
     expect(seen).toEqual([1, 2])
     expect(useTabsStore.getState().byWorkspace).toBe(before)
+  })
+
+  it('openHere：有激活标签时在其中导航（进入历史），没有时新建；newTab 时总是 open', () => {
+    const { openHere } = useTabsStore.getState()
+    const get = (): TabsState => selectTabs('w1')(useTabsStore.getState())
+    openHere('w1', file('a'))
+    expect(get().tabs.map((t) => t.uri)).toEqual(['a'])
+    const id = get().tabs[0]!.id
+    openHere('w1', file('b'))
+    expect(get().tabs).toMatchObject([{ id, uri: 'b' }])
+    expect(get().tabs[0]!.history.back.map((l) => l.uri)).toEqual(['a'])
+    // 当前位置：不变（不入栈）
+    const before = useTabsStore.getState().byWorkspace
+    openHere('w1', file('b'))
+    expect(useTabsStore.getState().byWorkspace).toBe(before)
+    // 新标签：插在右侧并激活；同 URI 已打开则只激活
+    openHere('w1', file('c'), { newTab: true })
+    expect(get().tabs.map((t) => t.uri)).toEqual(['b', 'c'])
+    openHere('w1', file('b'), { newTab: true })
+    expect(get().activeId).toBe(id)
   })
 })

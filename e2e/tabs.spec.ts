@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, launchFast, removeDirs } from './support'
+import { data, launchFast, removeDirs, toggleRow } from './support'
 
 const closeLabel = /^(閉じる|关闭|Close)$/
 
@@ -16,6 +16,7 @@ test.describe('tabs opened from the explorer tree', () => {
     files = mkdtempSync(path.join(tmpdir(), 'pch-e2e-files-'))
     project = path.join(files, '案件')
     mkdirSync(path.join(project, '設計書'), { recursive: true })
+    writeFileSync(path.join(project, '設計書', 'v1.txt'), 'v1')
     writeFileSync(path.join(project, 'README.md'), '# 案件')
     writeFileSync(path.join(project, 'メモ.txt'), 'memo')
   })
@@ -23,8 +24,10 @@ test.describe('tabs opened from the explorer tree', () => {
     removeDirs(userData, files)
   })
 
-  /** 添加条目「案件」并展开它，返回树 */
+  /** 界面语言设为 en（断言固定文案），添加条目「案件」，返回树 */
   async function setup(page: Page): Promise<Locator> {
+    await data(page, 'settings.set', { 'general.language': 'en' })
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     const { id: workspaceId } = await data(page, 'workspace.active')
     await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
     const tree = page.getByRole('tree')
@@ -35,66 +38,104 @@ test.describe('tabs opened from the explorer tree', () => {
   const tabs = (page: Page): Locator => page.getByRole('tablist').getByRole('tab')
   const tab = (page: Page, name: string): Locator =>
     page.getByRole('tablist').getByRole('tab', { name, exact: true })
+  const backButton = (page: Page): Locator =>
+    page
+      .getByRole('navigation', { name: 'Address bar' })
+      .getByRole('button', { name: 'Back', exact: true })
 
-  test('single click previews in one reused tab; double click and Enter open permanent tabs', async () => {
+  test('single click opens in the current tab without expanding; double click and the arrow expand; middle / Ctrl+click and the menu open new tabs', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
       const welcome = page.getByRole('heading', { level: 1 })
       await expect(welcome).toBeVisible()
+      const root = tree.getByRole('treeitem', { name: '案件' })
 
-      // 单击条目根：以预览标签打开（斜体），同时展开
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await expect(tabs(page)).toHaveCount(1)
+      // 单击目录：没有标签时新建一个；只选中、不展开（需求 7）；标签不是斜体（没有预览标签）
+      await root.click()
+      await expect(tabs(page)).toHaveText(['案件'])
       await expect(tab(page, '案件')).toHaveAttribute('aria-selected', 'true')
-      await expect(tab(page, '案件')).toHaveCSS('font-style', 'italic')
-      await expect(welcome).toHaveCount(0)
-      // 内容区为该资源的预览（目录视图的列表）
-      await expect(page.getByRole('tabpanel').getByRole('grid', { name: '案件' })).toBeVisible()
-      // 悬停提示为完整路径
+      await expect(tab(page, '案件')).toHaveCSS('font-style', 'normal')
       await expect(tab(page, '案件')).toHaveAttribute('title', project)
+      await expect(welcome).toHaveCount(0)
+      await expect(page.getByRole('tabpanel').getByRole('grid', { name: '案件' })).toBeVisible()
+      await expect(root).toHaveAttribute('aria-expanded', 'false')
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toHaveCount(0)
 
-      // 单击另一个：替换预览标签
+      // 双击目录：展开 / 折叠（第一次单击在当前标签打开的是同一位置，不另开标签）
+      await root.dblclick()
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
+      await root.dblclick()
+      await expect(root).toHaveAttribute('aria-expanded', 'false')
+      // 箭头：只展开 / 折叠，不打开、不改变选中
+      await toggleRow(root)
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+      await expect(tabs(page)).toHaveText(['案件'])
+      await expect(backButton(page)).toBeDisabled()
+
+      // 单击文件：在当前标签打开（进入历史，后退回到目录）
       await tree.getByRole('treeitem', { name: 'README.md' }).click()
-      await expect(tabs(page)).toHaveCount(1)
-      await expect(tab(page, 'README.md')).toHaveCSS('font-style', 'italic')
+      await expect(tabs(page)).toHaveText(['README.md'])
+      await backButton(page).click()
+      await expect(tabs(page)).toHaveText(['案件'])
+      // 文件的双击与单击相同：不另开标签
+      await tree.getByRole('treeitem', { name: 'メモ.txt' }).dblclick()
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
 
-      // 双击：转为常驻；之后的单击另开一个预览标签
-      await tree.getByRole('treeitem', { name: 'README.md' }).dblclick()
-      await expect(tabs(page)).toHaveCount(1)
-      await expect(tab(page, 'README.md')).toHaveCSS('font-style', 'normal')
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
-      await expect(tabs(page)).toHaveText(['README.md', '設計書'])
-      await expect(tab(page, '設計書')).toHaveCSS('font-style', 'italic')
+      // 中键 / Ctrl+单击：在新标签打开（插在激活标签右侧）
+      await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['メモ.txt', '設計書'])
+      await expect(tab(page, '設計書')).toHaveAttribute('aria-selected', 'true')
+      await tree.getByRole('treeitem', { name: 'README.md' }).click({ modifiers: ['Control'] })
+      await expect(tabs(page)).toHaveText(['メモ.txt', '設計書', 'README.md'])
+      // 同 URI 已打开：只激活
+      await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'middle' })
+      await expect(tabs(page)).toHaveCount(3)
+      await expect(tab(page, '設計書')).toHaveAttribute('aria-selected', 'true')
 
-      // 已打开的 URI：单击只激活
-      await tree.getByRole('treeitem', { name: 'README.md' }).click()
-      await expect(tabs(page)).toHaveCount(2)
+      // 右键菜单「在新标签页中打开」
+      await root.click({ button: 'right' })
+      await page.getByRole('menuitem', { name: 'Open in New Tab' }).click()
+      await expect(tabs(page)).toHaveText(['メモ.txt', '設計書', '案件', 'README.md'])
+      await expect(tab(page, '案件')).toHaveAttribute('aria-selected', 'true')
+
+      // 双击标签头不再有特别的作用（没有「转常驻」）：只激活
+      await tab(page, 'README.md').dblclick()
+      await expect(tabs(page)).toHaveCount(4)
       await expect(tab(page, 'README.md')).toHaveAttribute('aria-selected', 'true')
 
-      // 双击标签头：预览转常驻
-      await tab(page, '設計書').dblclick()
-      await expect(tab(page, '設計書')).toHaveCSS('font-style', 'normal')
-
-      // 键盘：↑↓ 只移动选中、不打开；Enter 以常驻标签打开
+      // 键盘：Enter 在当前标签打开（不等防抖），Ctrl+Enter 在新标签打开（同 URI 已打开则只激活）
+      const design = tree.getByRole('treeitem', { name: '設計書' })
+      await toggleRow(design)
+      await tab(page, 'README.md').click()
+      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
       await tree.focus()
-      const memo = tree.getByRole('treeitem', { name: 'メモ.txt' })
-      while ((await memo.getAttribute('aria-selected')) !== 'true') {
-        await page.keyboard.press('ArrowDown')
-      }
-      await expect(tabs(page)).toHaveCount(2)
+      await page.keyboard.press('ArrowUp')
+      await expect(tree.getByRole('treeitem', { name: 'v1.txt' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
       await page.keyboard.press('Enter')
-      await expect(tabs(page)).toHaveText(['README.md', '設計書', 'メモ.txt'])
-      await expect(tab(page, 'メモ.txt')).toHaveAttribute('aria-selected', 'true')
-      await expect(tab(page, 'メモ.txt')).toHaveCSS('font-style', 'normal')
+      await expect(tabs(page)).toHaveText(['メモ.txt', '設計書', '案件', 'v1.txt'])
+      await expect(tab(page, 'v1.txt')).toHaveAttribute('aria-selected', 'true')
+      await page.keyboard.press('ArrowUp')
+      await page.keyboard.press('Control+Enter')
+      await expect(tab(page, '設計書')).toHaveAttribute('aria-selected', 'true')
+      // Ctrl+Enter 取消了 ↑ 的防抖打开：v1.txt 的标签没有被换成「設計書」
+      await page.waitForTimeout(800)
+      await expect(tabs(page)).toHaveText(['メモ.txt', '設計書', '案件', 'v1.txt'])
 
       // 标签栏的键盘：←→ 切换激活标签，焦点随之移动
-      await tab(page, 'メモ.txt').focus()
+      await tab(page, '設計書').focus()
       await page.keyboard.press('ArrowLeft')
-      await expect(tab(page, '設計書')).toHaveAttribute('aria-selected', 'true')
-      await expect(tab(page, '設計書')).toBeFocused()
-      await page.keyboard.press('End')
+      await expect(tab(page, 'メモ.txt')).toHaveAttribute('aria-selected', 'true')
       await expect(tab(page, 'メモ.txt')).toBeFocused()
+      await page.keyboard.press('End')
+      await expect(tab(page, 'v1.txt')).toBeFocused()
     } finally {
       await app.close()
     }
@@ -106,7 +147,7 @@ test.describe('tabs opened from the explorer tree', () => {
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
       for (const name of ['設計書', 'README.md', 'メモ.txt']) {
-        await tree.getByRole('treeitem', { name }).dblclick()
+        await tree.getByRole('treeitem', { name }).click({ button: 'middle' })
       }
       await expect(tabs(page)).toHaveText(['案件', '設計書', 'README.md', 'メモ.txt'])
 
@@ -133,7 +174,7 @@ test.describe('tabs opened from the explorer tree', () => {
     }
   })
 
-  test('with explorer.singleClickPreview off a single click only selects', async () => {
+  test('with explorer.singleClickPreview off a single click and the arrow keys only select; Enter and a file double click open', async () => {
     const { app, page } = await launchFast(userData)
     try {
       await data(page, 'settings.set', { 'explorer.singleClickPreview': false })
@@ -141,20 +182,27 @@ test.describe('tabs opened from the explorer tree', () => {
       const root = tree.getByRole('treeitem', { name: '案件' })
       await root.click()
       await expect(root).toHaveAttribute('aria-selected', 'true')
-      // 单击仍然展开（与设置无关）
-      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
-      await tree.getByRole('treeitem', { name: 'README.md' }).click()
-      await expect(tree.getByRole('treeitem', { name: 'README.md' })).toHaveAttribute(
-        'aria-selected',
-        'true'
-      )
+      await expect(root).toHaveAttribute('aria-expanded', 'false')
+      // 双击目录：只展开（不打开）
+      await root.dblclick()
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
+      const readme = tree.getByRole('treeitem', { name: 'README.md' })
+      const memo = tree.getByRole('treeitem', { name: 'メモ.txt' })
+      await memo.click()
+      await expect(memo).toHaveAttribute('aria-selected', 'true')
+      // ↑↓ 只移动选中：停留超过防抖时间也不打开
+      await page.keyboard.press('ArrowUp')
+      await expect(memo).toHaveAttribute('aria-selected', 'false')
+      await page.waitForTimeout(800)
       await expect(page.getByRole('tablist')).toHaveCount(0)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
-      // 双击照常以常驻标签打开
-      await tree.getByRole('treeitem', { name: 'README.md' }).dblclick()
+      // Enter 打开（没有标签时新建）；文件的双击在当前标签打开
+      await memo.click()
+      await page.keyboard.press('Enter')
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await readme.dblclick()
       await expect(tabs(page)).toHaveText(['README.md'])
-      await expect(tab(page, 'README.md')).toHaveCSS('font-style', 'normal')
     } finally {
       await app.close()
     }

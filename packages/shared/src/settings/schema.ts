@@ -17,6 +17,10 @@ export const settingsSchema = z.object({
   'appearance.accent': z.enum(ACCENTS).default('neutral'),
   'appearance.density': z.enum(['comfortable', 'compact']).default('comfortable'),
   'explorer.showHiddenFiles': z.boolean().default(false),
+  /**
+   * 资源树：单击 / 键盘移动选中（400ms 防抖）即在当前标签打开（M1-3b 设计 2.8；键名沿用 M1-3 以免迁移）。
+   * false 时单击与 ↑↓ 只选中，Enter / 文件双击打开
+   */
   'explorer.singleClickPreview': z.boolean().default(true),
   'preview.associations': z.record(z.string(), z.string()).default({}),
   'preview.maxTextSizeMB': z.number().int().min(1).max(500).default(50),

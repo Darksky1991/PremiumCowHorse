@@ -2,7 +2,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
-import { data, invoke, launch, type Named, removeDirs, retryLabel, snapshotTree } from './support'
+import {
+  data,
+  invoke,
+  launch,
+  type Named,
+  removeDirs,
+  retryLabel,
+  snapshotTree,
+  toggleRow
+} from './support'
 
 test.describe('first screen', () => {
   let userData: string
@@ -245,10 +254,12 @@ test.describe('workspace data layer over IPC', () => {
       await expect(root).toHaveAttribute('aria-expanded', 'false')
       await expect(root).toHaveAttribute('aria-level', '1')
 
-      // 点击可展开的行：选中并展开，真实子项懒加载
+      // 单击可展开的行：只选中、不展开（M1-3b 需求 7）；双击展开，真实子项懒加载
       await root.click()
-      await expect(root).toHaveAttribute('aria-expanded', 'true')
       await expect(root).toHaveAttribute('aria-selected', 'true')
+      await expect(root).toHaveAttribute('aria-expanded', 'false')
+      await root.dblclick()
+      await expect(root).toHaveAttribute('aria-expanded', 'true')
       const dir = tree.getByRole('treeitem', { name: '設計書' })
       await expect(dir).toHaveAttribute('aria-level', '2')
 
@@ -275,9 +286,10 @@ test.describe('workspace data layer over IPC', () => {
       const root = page.getByRole('tree').getByRole('treeitem', { name: '設計書' })
       await expect(root).toBeVisible()
 
-      // 添加后目录被移走：展开时列目录失败
+      // 添加后目录被移走：双击（选中 = 关注点、在标签中打开并展开）后列目录失败；
+      // 只点箭头时不是关注点，先显示添加时列出的缓存，要等定期确认才出错
       rmSync(folder, { recursive: true, force: true })
-      await root.click()
+      await root.dblclick()
       const retry = page
         .getByTestId('sidebar')
         .getByRole('button', { name: /^(再試行|重试|Retry)$/ })
@@ -305,7 +317,8 @@ test.describe('workspace data layer over IPC', () => {
       await expect(root).toBeVisible()
 
       rmSync(folder, { recursive: true, force: true })
-      await root.click()
+      // 双击：选中并展开（第一次单击同时在标签中打开该目录，标签区的错误与重试不在侧栏内）
+      await root.dblclick()
       const retry = page
         .getByTestId('sidebar')
         .getByRole('button', { name: /^(再試行|重试|Retry)$/ })
@@ -449,7 +462,7 @@ test.describe('workspace data layer over IPC', () => {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: files })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: path.basename(files) }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: path.basename(files) }))
       await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'right' })
       await page.getByRole('menuitem', { name: copyPathLabel }).click()
       await expect
@@ -473,7 +486,7 @@ test.describe('workspace data layer over IPC', () => {
       const tree = page.getByRole('tree')
 
       // 状态行（空目录的「項目はありません」）没有右键菜单
-      await tree.getByRole('treeitem', { name: '空' }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: '空' }))
       const status = tree.getByRole('treeitem', { name: /^(項目はありません|没有项目|No items)$/ })
       await expect(status).toBeVisible()
       await status.click({ button: 'right' })

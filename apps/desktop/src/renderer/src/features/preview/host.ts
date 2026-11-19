@@ -23,9 +23,8 @@ export interface PreviewHostDeps {
   /** 订阅本标签的刷新请求（地址栏的刷新按钮 / F5）；返回取消订阅函数 */
   onRefresh: (listener: () => void) => () => void
   tabs: {
-    open: (workspaceId: string, target: TabTarget & { preview: boolean }) => void
+    open: (workspaceId: string, target: TabTarget) => void
     navigate: (id: string, target: TabTarget) => void
-    promote: (id: string) => void
   }
   /** 可执行类文件的确认框；用户确认时为 true */
   confirmExecutable: (name: string) => Promise<boolean>
@@ -61,14 +60,12 @@ function nameOfUri(uri: string): string {
 
 /**
  * 预览插件的宿主（plugin-sdk 的 PreviewHost）：插件只能经它访问文件系统、标签与系统操作。
- * - 插件调用 tabs.open / navigate / up 与 system.* 视为在标签内交互：所在的预览标签转为常驻（设计第 2 节）；
- *   tabs.onRefresh 只是订阅，不算。
+ * - tabs.navigate / up 在本标签内导航（进入历史），tabs.open 开新标签（M1-3b 起没有预览标签，设计 2.8）。
  * - system.* 失败时以 toast 提示错误码对应的文案，Promise 不拒绝（插件不必处理错误）。
  * - 「用系统应用打开」对可执行类扩展名先确认（设计 3.3），取消时不调用 system.openPath。
  */
 export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
   const { invoke, tabId } = deps
-  const interacted = (): void => deps.tabs.promote(tabId)
   const describeError = (e: unknown): string =>
     deps.t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`)
   const reportError = (e: unknown): void => deps.notify(describeError(e), 'error')
@@ -106,16 +103,14 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
       }
     },
     tabs: {
-      open: (uri, opts) => {
-        interacted()
+      open: (uri) => {
         const workspaceId = deps.workspaceId
         if (workspaceId === undefined) return
         target(uri)
-          .then((t) => deps.tabs.open(workspaceId, { ...t, preview: opts?.preview ?? false }))
+          .then((t) => deps.tabs.open(workspaceId, t))
           .catch(reportError)
       },
       navigate: (uri, kind) => {
-        interacted()
         target(uri, kind)
           .then((t) => deps.tabs.navigate(tabId, t))
           .catch(reportError)
@@ -123,19 +118,15 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
       up: () => {
         const parent = deps.parent
         if (parent === null) return
-        interacted()
         deps.tabs.navigate(tabId, parent)
       },
-      // 订阅不是「在标签内交互」：不转常驻
       onRefresh: (listener) => deps.onRefresh(listener)
     },
     system: {
       revealInOs: (uri) => {
-        interacted()
         invoke('system.revealInOs', { uri }).catch(reportError)
       },
       copyPath: async (uri) => {
-        interacted()
         try {
           await invoke('system.copyText', { text: fileUriToWindowsPath(uri) ?? uri })
           deps.notify(deps.t('preview:copiedPath'), 'success')
@@ -144,7 +135,6 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         }
       },
       openWithSystem: async (uri) => {
-        interacted()
         try {
           const name = nameOfUri(uri)
           if (isExecutableExtension(name) && !(await deps.confirmExecutable(name))) return

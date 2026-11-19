@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, launchFast, type Named, removeDirs } from './support'
+import { data, launchFast, type Named, removeDirs, toggleRow } from './support'
 
 type Hit = { entryId: string; relativePath: string; name: string }
 type SearchResult = { items: Hit[]; total: number }
@@ -30,10 +30,10 @@ const row = (page: Page, level: number, name: string): Locator =>
 const anyRow = (page: Page, name: string): Locator =>
   page.getByRole('tree').getByRole('treeitem', { name, exact: true })
 
-/** 行未展开时点击展开（点击会切换展开状态，不能盲点） */
+/** 行未展开时点击箭头展开（箭头会切换展开状态，不能盲点；只展开，不选中、不打开标签） */
 async function expand(r: Locator): Promise<void> {
   await expect(r).toBeVisible()
-  if ((await r.getAttribute('aria-expanded')) === 'false') await r.click()
+  if ((await r.getAttribute('aria-expanded')) === 'false') await toggleRow(r)
   await expect(r).toHaveAttribute('aria-expanded', 'true')
 }
 
@@ -156,9 +156,9 @@ test.describe('nested entries and ancestor rename', () => {
       await expand(row(page, 3, 'B'))
       await expand(row(page, 4, 'C'))
       await expect(row(page, 5, 'c.txt')).toBeVisible()
-      // 选中 C（关注点）：点击会折叠，再点一次展开并保持选中
+      // 选中 C（关注点）：单击只选中（并在标签中打开），不折叠
       await row(page, 4, 'C').click()
-      await row(page, 4, 'C').click()
+      await expect(row(page, 4, 'C')).toHaveAttribute('aria-selected', 'true')
       await expect(row(page, 5, 'c.txt')).toBeVisible()
       await expect.poll(async () => (await search(page, workspaceId, 'c.txt')).items.length).toBe(1)
 

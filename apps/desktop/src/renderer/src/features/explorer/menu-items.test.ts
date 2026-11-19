@@ -31,6 +31,8 @@ describe('menuItemsFor', () => {
 
   it('folder 条目：缓存策略与建立索引；file 条目只有显示与复制', () => {
     expect(menuItemsFor(node({ kind: 'folder' }))).toEqual([
+      'openInNewTab',
+      'separator',
       'reveal',
       'copyPath',
       'copyUri',
@@ -42,6 +44,8 @@ describe('menuItemsFor', () => {
       'remove'
     ])
     expect(menuItemsFor(node({ kind: 'file' }))).toEqual([
+      'openInNewTab',
+      'separator',
       'reveal',
       'copyPath',
       'copyUri',
@@ -49,6 +53,17 @@ describe('menuItemsFor', () => {
       'rename',
       'remove'
     ])
+  })
+
+  it('可打开的节点（条目根、真实目录 / 文件、有效链接）以「在新标签页中打开」开头；分组没有', () => {
+    const fs = { source: 'fs' as const, id: 'fs:e1:a' }
+    for (const kind of ['folder', 'file'] as const) {
+      expect(menuItemsFor(node({ kind }))[0]).toBe('openInNewTab')
+    }
+    for (const kind of ['directory', 'file', 'link-file', 'link-directory'] as const) {
+      expect(menuItemsFor(node({ ...fs, kind })).slice(0, 2)).toEqual(['openInNewTab', 'separator'])
+    }
+    expect(menuItemsFor(node({ kind: 'group', uri: null }))).not.toContain('openInNewTab')
   })
 
   it('任何节点都没有「用系统应用打开」', () => {
@@ -70,6 +85,8 @@ describe('menuItemsFor', () => {
   it('真实子目录：可建立索引与固定到根部；文件只可固定；都不能重命名或移除', () => {
     const fs = { source: 'fs' as const, id: 'fs:e1:a' }
     expect(menuItemsFor(node({ ...fs, kind: 'directory' }))).toEqual([
+      'openInNewTab',
+      'separator',
       'reveal',
       'copyPath',
       'copyUri',
@@ -80,6 +97,8 @@ describe('menuItemsFor', () => {
     ])
     for (const kind of ['file', 'link-file'] as const) {
       expect(menuItemsFor(node({ ...fs, kind }))).toEqual([
+        'openInNewTab',
+        'separator',
         'reveal',
         'copyPath',
         'copyUri',
@@ -91,7 +110,7 @@ describe('menuItemsFor', () => {
     expect(menuItemsFor(node({ ...fs, kind: 'link-directory' }))).not.toContain('buildIndex')
   })
 
-  it('失效链接：只有显示与复制，没有「打开」和「固定」', () => {
+  it('失效链接：只有显示与复制，没有「在新标签页中打开」和「固定」', () => {
     expect(menuItemsFor(node({ source: 'fs', id: 'fs:e1:a', kind: 'link-broken' }))).toEqual([
       'reveal',
       'copyPath',

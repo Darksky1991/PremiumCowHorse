@@ -25,10 +25,12 @@ export interface TabHistory {
   forward: TabLocation[]
 }
 
+/**
+ * 标签（M1-3b 设计 2.8 起没有「预览标签」：所有标签都是普通标签，
+ * 单击在当前标签打开、中键 / Ctrl+单击在新标签打开）
+ */
 export interface TabState extends TabLocation {
   id: string
-  /** 预览标签：单击打开，再次预览打开其他资源时被替换（标题斜体） */
-  preview: boolean
   /** 由插件定义：滚动位置、排序…（M1-3 不持久化） */
   viewState?: unknown
   history: TabHistory
@@ -40,10 +42,9 @@ export interface TabsState {
 }
 
 export type TabsAction =
-  | ({ type: 'tab/open'; preview: boolean } & TabLocation)
+  | ({ type: 'tab/open' } & TabLocation)
   | { type: 'tab/close'; id: string }
   | { type: 'tab/activate'; id: string }
-  | { type: 'tab/promote'; id: string }
   | ({ type: 'tab/navigate'; id: string } & TabLocation)
   | { type: 'tab/back'; id: string }
   | { type: 'tab/forward'; id: string }

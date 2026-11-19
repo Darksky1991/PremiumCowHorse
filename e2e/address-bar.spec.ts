@@ -123,8 +123,9 @@ test.describe('the application address bar', () => {
       await expect(tabs(page)).toHaveText(['Default'])
       await panel(page).getByRole('button', { name: '案件' }).dblclick()
       await row(page, '設計書').dblclick()
+      // 目录视图双击文件：在当前标签打开（M1-3b 设计 2.8）
       await row(page, 'v1.txt').dblclick()
-      await expect(tabs(page)).toHaveText(['設計書', 'v1.txt'])
+      await expect(tabs(page)).toHaveText(['v1.txt'])
       await expect(segments(page)).toHaveText(['Default', '案件', '設計書', 'v1.txt'])
       await expect(segment(page, 'v1.txt')).toHaveAttribute(
         'title',
@@ -133,11 +134,11 @@ test.describe('the application address bar', () => {
 
       // 中键 / Ctrl+单击：在新标签打开（当前标签不变）
       await segment(page, '案件').click({ button: 'middle' })
-      await expect(tabs(page)).toHaveText(['設計書', 'v1.txt', '案件'])
+      await expect(tabs(page)).toHaveText(['v1.txt', '案件'])
       await expect(segments(page)).toHaveText(['Default', '案件'])
       await page.getByRole('tablist').getByRole('tab', { name: 'v1.txt' }).click()
       await segment(page, 'Default').click({ modifiers: ['Control'] })
-      await expect(tabs(page)).toHaveText(['設計書', 'v1.txt', 'Default', '案件'])
+      await expect(tabs(page)).toHaveText(['v1.txt', 'Default', '案件'])
       await expect(segments(page)).toHaveText(['Default'])
     } finally {
       await app.close()

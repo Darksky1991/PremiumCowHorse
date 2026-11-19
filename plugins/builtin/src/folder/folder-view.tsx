@@ -127,10 +127,11 @@ const hasSize = (e: FileEntry): boolean =>
 
 /**
  * 目录视图（folder 插件）：详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
- * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航（进入标签的历史），
- * 文件以常驻标签打开；Backspace / Alt+↑ 经 host.tabs.up 到逻辑路径的上一级（条目根之上是工作区总览）；
+ * 单击只选中；双击 / Enter 在当前标签打开（host.tabs.navigate：目录与文件都进入标签的历史，「后退」回到列表）；
+ * 中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开（host.tabs.open）（设计 2.8）；
+ * Backspace / Alt+↑ 经 host.tabs.up 到逻辑路径的上一级（条目根之上是工作区总览）；
  * 刷新（重新确认并列出）由应用的地址栏发出（刷新按钮 / 全局 F5），经 host.tabs.onRefresh 收到。
- * 打开与导航都经 host（宿主据此把预览标签转为常驻）；导航时给出类型（目录），宿主不再 stat。
+ * 导航时给出已知的类型（目录 / 普通文件），宿主不再 stat；链接（指向文件或失效）由宿主 stat。
  */
 export default function FolderView({
   resource,
@@ -172,9 +173,11 @@ export default function FolderView({
     if (active === null || active === document.body) gridRef.current?.focus()
   }, [])
 
-  const open = (entry: FileEntry): void => {
-    if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri, 'directory')
-    else host.tabs.open(entry.uri, { preview: false })
+  /** 在当前标签打开；newTab 时在新标签打开 */
+  const open = (entry: FileEntry, newTab = false): void => {
+    if (newTab) host.tabs.open(entry.uri)
+    else if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri, 'directory')
+    else host.tabs.navigate(entry.uri, entry.kind === 'file' ? 'file' : undefined)
   }
   const sortBy = (key: SortKey): void => {
     const next: Sort =
@@ -194,6 +197,12 @@ export default function FolderView({
     if ((e.key === 'ArrowUp' && e.altKey) || (e.key === 'Backspace' && !e.altKey)) {
       e.preventDefault()
       host.tabs.up()
+      return
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      const row = rows[selectedIndex]
+      if (row) open(row, true)
       return
     }
     if (e.altKey || e.ctrlKey || e.metaKey) return
@@ -318,8 +327,22 @@ export default function FolderView({
                     aria-rowindex={v.index + 2}
                     aria-selected={selected}
                     data-index={v.index}
-                    onClick={() => setSelectedUri(entry.uri)}
-                    onDoubleClick={() => open(entry)}
+                    onClick={(e) => {
+                      setSelectedUri(entry.uri)
+                      if (e.detail === 1 && (e.ctrlKey || e.metaKey)) open(entry, true)
+                    }}
+                    onDoubleClick={(e) => {
+                      if (!e.ctrlKey && !e.metaKey) open(entry)
+                    }}
+                    // 中键：按下时阻止自动滚动，auxclick 时在新标签打开
+                    onMouseDown={(e) => {
+                      if (e.button === 1) e.preventDefault()
+                    }}
+                    onAuxClick={(e) => {
+                      if (e.button !== 1) return
+                      e.preventDefault()
+                      open(entry, true)
+                    }}
                     style={{ transform: `translateY(${v.start}px)` }}
                     className={`${COLUMNS} absolute top-0 left-0 h-7 w-full cursor-default select-none ${
                       selected

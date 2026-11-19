@@ -1,6 +1,11 @@
 import { lstatSync, readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  type ElectronApplication,
+  type Locator,
+  type Page
+} from '@playwright/test'
 
 const appDir = path.resolve(__dirname, '../apps/desktop')
 
@@ -142,6 +147,14 @@ export async function hangStat(app: ElectronApplication): Promise<HungStat> {
         ipcMain.handle('pch:invoke', (event, envelope: unknown) => hook.original(event, envelope))
       })
   }
+}
+
+/**
+ * 单击资源树一行的展开箭头：只展开 / 折叠，不选中、不打开标签（M1-3b 起单击行在当前标签打开、
+ * 目录单击不展开）。用于只需要展开、不关心打开的用例
+ */
+export async function toggleRow(row: Locator): Promise<void> {
+  await row.locator('[data-tree-toggle]').click()
 }
 
 /** 错误行的可访问名称包含「重试」按钮的文字 */

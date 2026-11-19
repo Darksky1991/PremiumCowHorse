@@ -34,5 +34,9 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
       return { expanded: { ...s.expanded, [workspaceId]: [...current, ...added] } }
     }),
   select: (workspaceId, nodeId) =>
-    set((s) => ({ selected: { ...s.selected, [workspaceId]: nodeId } }))
+    set((s) =>
+      s.selected[workspaceId] === nodeId
+        ? s
+        : { selected: { ...s.selected, [workspaceId]: nodeId } }
+    )
 }))

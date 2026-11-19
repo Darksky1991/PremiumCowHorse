@@ -2,7 +2,15 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, hangStat, launch, launchFast, removeDirs, sendReachability } from './support'
+import {
+  data,
+  hangStat,
+  launch,
+  launchFast,
+  removeDirs,
+  sendReachability,
+  toggleRow
+} from './support'
 
 test.describe('folder view (the folder plugin)', () => {
   let userData: string
@@ -85,7 +93,7 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
-  test('double click navigates in the same tab; Backspace / Alt+Up go up to the entry root and then the workspace overview; files open in a new tab', async () => {
+  test('double click navigates in the same tab; Backspace / Alt+Up go up to the entry root and then the workspace overview; files open in the current tab, middle / Ctrl+click in a new one', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
@@ -124,20 +132,34 @@ test.describe('folder view (the folder plugin)', () => {
       await panel(page).getByRole('button', { name: '案件' }).dblclick()
       await expect(tabs(page)).toHaveText(['案件'])
 
-      // 双击文件：在新的常驻标签中以 fallback 打开
+      // 双击文件：在当前标签中以 fallback 打开（进入历史，后退回到列表；设计 2.8）
       await row(page, 'memo.txt').dblclick()
-      await expect(tabs(page)).toHaveText(['案件', 'memo.txt'])
+      await expect(tabs(page)).toHaveText(['memo.txt'])
       await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
-      await expect(page.getByRole('tablist').getByRole('tab', { name: 'memo.txt' })).toHaveCSS(
-        'font-style',
-        'normal'
-      )
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(tabs(page)).toHaveText(['案件'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+
+      // 中键 / Ctrl+单击 / Ctrl+Enter：在新标签打开（同 URI 已打开则只激活）
+      const tab = (name: string): Locator =>
+        page.getByRole('tablist').getByRole('tab', { name, exact: true })
+      await row(page, 'memo.txt').click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['案件', 'memo.txt'])
+      await tab('案件').click()
+      await row(page, '設計書').click({ modifiers: ['Control'] })
+      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.txt'])
+      await tab('案件').click()
+      await grid(page).focus()
+      await page.keyboard.press('End')
+      await page.keyboard.press('Control+Enter')
+      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.txt'])
+      await expect(tab('memo.txt')).toHaveAttribute('aria-selected', 'true')
     } finally {
       await app.close()
     }
   })
 
-  test('the workspace overview lists entries with their aliases by group; double click enters a folder or opens a file', async () => {
+  test('the workspace overview lists entries with their aliases by group; double click enters a folder or opens a file in the current tab', async () => {
     const { app, page } = await launchFast(userData)
     try {
       await data(page, 'settings.set', { 'general.language': 'en' })
@@ -188,10 +210,14 @@ test.describe('folder view (the folder plugin)', () => {
         path.join(project, 'memo.txt')
       )
 
-      // 双击 file 条目：以常驻标签打开（总览标签不变）
+      // 双击 file 条目：在当前标签打开（后退回到总览）；中键在新标签打开（总览标签不变）
       await docs.getByRole('button', { name: 'メモ' }).dblclick()
-      await expect(tabs(page)).toHaveText(['Default', 'メモ'])
+      await expect(tabs(page)).toHaveText(['メモ'])
       await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(tabs(page)).toHaveText(['Default'])
+      await docs.getByRole('button', { name: 'メモ' }).click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['Default', 'メモ'])
 
       // 双击 folder 条目：在当前标签内进入（Enter 相同）
       await page.getByRole('tablist').getByRole('tab', { name: 'Default' }).click()
@@ -213,12 +239,18 @@ test.describe('folder view (the folder plugin)', () => {
     // 只把关注点的间隔设为下限 2 秒；近 / 远层保持默认（30 秒 / 2 分钟，先比较目录修改时间）
     const { app, page } = await launch(userData)
     try {
-      await data(page, 'settings.set', { 'cache.interval.focus.local': 2 })
+      // 单击只选中（不打开）：这样标签显示的目录才能与树的选中不同（标签变化时树会跟随选中）
+      await data(page, 'settings.set', {
+        'cache.interval.focus.local': 2,
+        'explorer.singleClickPreview': false
+      })
       const tree = await setup(page)
-      // 树中选中的是「案件」（关注点）；标签内导航到子目录「設計書」（只是关注点的子目录 = 近层）
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await row(page, '設計書').dblclick()
+      // 标签显示子目录「設計書」，树中选中的是「案件」（关注点）：「設計書」只是关注点的子目录 = 近层
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await page.keyboard.press('Enter')
       await expect(names(page)).toHaveText(['v1.txt'])
+      await tree.getByRole('treeitem', { name: '案件' }).click()
       await expect(tree.getByRole('treeitem', { name: '案件' })).toHaveAttribute(
         'aria-selected',
         'true'
@@ -245,8 +277,8 @@ test.describe('folder view (the folder plugin)', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: 'big' }).dblclick()
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await tree.getByRole('treeitem', { name: 'big' }).click()
       await expect(panel(page).getByRole('status').last()).toContainText('10,000 items', {
         timeout: 20_000
       })
@@ -270,7 +302,8 @@ test.describe('folder view (the folder plugin)', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: '案件' }).click()
+      // 双击：在标签中打开并展开
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
       await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
       const status = panel(page).getByRole('status').last()
       await expect(status).not.toContainText('Disconnected')

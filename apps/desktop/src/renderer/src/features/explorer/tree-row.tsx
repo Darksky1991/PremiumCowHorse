@@ -45,8 +45,13 @@ export interface TreeRowProps {
   dropPosition: DropPosition | null
   onDragStart: (e: DragEvent<HTMLDivElement>) => void
   onDragEnd: () => void
-  /** 单击与双击（e.detail 区分）都经由 click 事件 */
+  /** 单击（双击时的第二次单击 e.detail 为 2） */
   onClick: (e: MouseEvent<HTMLDivElement>) => void
+  onDoubleClick: () => void
+  /** 中键单击（auxclick）：在新标签打开 */
+  onMiddleClick: () => void
+  /** 展开箭头的单击：只展开 / 折叠（不选中、不打开） */
+  onToggle: () => void
   onRetry: () => void
 }
 
@@ -70,6 +75,9 @@ export function TreeRow({
   onDragStart,
   onDragEnd,
   onClick,
+  onDoubleClick,
+  onMiddleClick,
+  onToggle,
   onRetry
 }: TreeRowProps): JSX.Element {
   const { t, i18n } = useTranslation()
@@ -88,6 +96,16 @@ export function TreeRow({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      // 中键：按下时阻止自动滚动，auxclick 时在新标签打开
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        onMiddleClick()
+      }}
       style={{
         ...style,
         // 每级缩进 4 个间距单位（默认 16px），紧凑密度下随 --spacing 缩小
@@ -107,6 +125,13 @@ export function TreeRow({
         <>
           <ChevronRightIcon
             aria-hidden
+            data-tree-toggle=""
+            // 箭头只展开 / 折叠：不冒泡到行（不选中、不打开）；快速连点时第二次单击与双击都不再切换
+            onClick={(e) => {
+              e.stopPropagation()
+              if (node.expandable && e.detail < 2) onToggle()
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
             className={cn(
               'size-4 shrink-0 text-muted-foreground transition-transform',
               !node.expandable && 'invisible',

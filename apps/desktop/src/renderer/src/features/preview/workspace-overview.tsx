@@ -19,7 +19,7 @@ export interface WorkspaceOverviewProps {
  * 工作区总览（设计 devDoc/2026-11-19-15 第 2.3 节）：应用内置视图，不是插件（要用工作区数据）。
  * 工作区 id 取自标签的 URI（标签按工作区区分，总览只会是所属工作区的）。
  * 分组为分节（只读，分组不可打开）；folder / file 条目为项（别名、真实路径的悬停提示）：
- * 双击 / Enter 打开——folder 在当前标签内导航（进入历史），file 以常驻标签打开。
+ * 双击 / Enter 在当前标签打开（folder 与 file 都进入历史）；中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开（设计 2.8）。
  * 不访问文件系统：不发给扫描进程，也不进 vfs.interest。
  */
 export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element {
@@ -29,7 +29,6 @@ export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element 
   const entries = useEntries(workspaceId)
   const navigate = useTabsStore((s) => s.navigate)
   const open = useTabsStore((s) => s.open)
-  const promote = useTabsStore((s) => s.promote)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const workspace = workspaces?.find((w) => w.id === workspaceId)
@@ -53,13 +52,15 @@ export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element 
     target?.focus()
   }, [ready, cameFrom])
 
-  const activate = (entry: WorkspaceEntry & { uri: string }): void => {
-    if (entry.kind === 'folder') {
-      navigate(tab.id, { uri: entry.uri, kind: 'directory', title: entry.label })
-    } else if (workspaceId !== undefined) {
-      promote(tab.id)
-      open(workspaceId, { uri: entry.uri, kind: 'file', title: entry.label, preview: false })
+  /** 在当前标签打开（newTab 时在新标签打开）：folder 为目录、file 为文件，标题为别名 */
+  const activate = (entry: WorkspaceEntry & { uri: string }, newTab: boolean): void => {
+    const target = {
+      uri: entry.uri,
+      kind: entry.kind === 'folder' ? ('directory' as const) : ('file' as const),
+      title: entry.label
     }
+    if (!newTab) navigate(tab.id, target)
+    else if (workspaceId !== undefined) open(workspaceId, target)
   }
 
   let body: JSX.Element
@@ -106,7 +107,7 @@ function Section({
   onActivate
 }: {
   section: OverviewSection
-  onActivate: (entry: WorkspaceEntry & { uri: string }) => void
+  onActivate: (entry: WorkspaceEntry & { uri: string }, newTab: boolean) => void
 }): JSX.Element {
   const headingId = useId()
   const { group, items, children, depth } = section
@@ -149,21 +150,35 @@ function EntryItem({
   onActivate
 }: {
   entry: WorkspaceEntry & { uri: string }
-  onActivate: (entry: WorkspaceEntry & { uri: string }) => void
+  onActivate: (entry: WorkspaceEntry & { uri: string }, newTab: boolean) => void
 }): JSX.Element {
   const Icon = entry.kind === 'folder' ? FolderRootIcon : FileIcon
   const path = fileUriToWindowsPath(entry.uri) ?? entry.uri
   return (
-    // 单击只获得焦点（选中）；双击 / Enter 打开（Enter 的默认 click 被阻止，避免与单击语义混淆）
+    // 单击只获得焦点（选中）；双击 / Enter 在当前标签打开（Enter 的默认 click 被阻止，避免与单击语义混淆）；
+    // 中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开
     <button
       type="button"
       data-entry-uri={entry.uri}
       title={path}
-      onDoubleClick={() => onActivate(entry)}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      onClick={(e) => {
+        if (e.detail === 1 && (e.ctrlKey || e.metaKey)) onActivate(entry, true)
+      }}
+      onDoubleClick={(e) => {
+        if (!e.ctrlKey && !e.metaKey) onActivate(entry, false)
+      }}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
         e.preventDefault()
-        onActivate(entry)
+        onActivate(entry, true)
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || e.altKey || e.shiftKey) return
+        e.preventDefault()
+        onActivate(entry, e.ctrlKey || e.metaKey)
       }}
       className="flex w-full min-w-0 cursor-default items-center gap-3 rounded-md px-3 py-2 text-left outline-none select-none hover:bg-accent/50 focus-visible:outline-1 focus-visible:outline-ring focus:bg-accent focus:text-accent-foreground"
     >

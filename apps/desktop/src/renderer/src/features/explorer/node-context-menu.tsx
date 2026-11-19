@@ -9,6 +9,7 @@ import {
   PencilIcon,
   PinIcon,
   RefreshCwIcon,
+  SquareArrowOutUpRightIcon,
   SquareMinusIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -51,6 +52,8 @@ export interface NodeContextMenuProps {
   node: TreeNode | null
   /** 菜单关闭后焦点回到的元素（资源树） */
   finalFocus: RefObject<HTMLElement | null>
+  /** 「在新标签页中打开」（设计 2.8） */
+  onOpenInNewTab: () => void
   onNewGroup: () => void
   onAddPaths: (kind: 'folder' | 'file') => void
   onRename: () => void
@@ -59,6 +62,7 @@ export interface NodeContextMenuProps {
 }
 
 const ICONS: Partial<Record<MenuItemId, LucideIcon>> = {
+  openInNewTab: SquareArrowOutUpRightIcon,
   newGroup: FolderPlusIcon,
   addFolder: FolderPlusIcon,
   addFile: FilePlusIcon,
@@ -74,12 +78,13 @@ const ICONS: Partial<Record<MenuItemId, LucideIcon>> = {
 
 /**
  * 资源树的右键菜单内容：随节点类型显示不同的菜单项（见 menuItemsFor）。
- * 全部是条目管理或只读操作（显示 / 打开 / 复制），不会修改磁盘上的文件。
+ * 全部是条目管理或只读操作（在新标签页中打开 / 显示 / 复制），不会修改磁盘上的文件。
  */
 export function NodeContextMenu({
   workspaceId,
   node,
   finalFocus,
+  onOpenInNewTab,
   onNewGroup,
   onAddPaths,
   onRename,
@@ -136,6 +141,7 @@ export function NodeContextMenu({
   }
 
   const handlers: Partial<Record<MenuItemId, () => void>> = {
+    openInNewTab: onOpenInNewTab,
     newGroup: onNewGroup,
     addFolder: () => onAddPaths('folder'),
     addFile: () => onAddPaths('file'),
@@ -152,6 +158,7 @@ export function NodeContextMenu({
     remove: onRemove
   }
   const labels: Partial<Record<MenuItemId, string>> = {
+    openInNewTab: t('explorer:openInNewTab'),
     newGroup: t('explorer:newGroup'),
     addFolder: t('explorer:menuAddFolder'),
     addFile: t('explorer:menuAddFile'),

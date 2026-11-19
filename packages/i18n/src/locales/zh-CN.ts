@@ -48,6 +48,7 @@ export default {
     removeTitle: '从工作区移除「{{name}}」？',
     removeDescription: '只会移除工作区中的条目，不会删除磁盘上的文件或文件夹。',
     removeGroupDescription: '将移除该分组及其下的所有条目，不会删除磁盘上的文件或文件夹。',
+    openInNewTab: '在新标签页中打开',
     reveal: '在资源管理器中显示',
     cacheStrategy: '缓存策略',
     cacheStrategyFollowGlobal: '跟随全局（{{strategy}}）',

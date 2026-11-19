@@ -45,7 +45,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
       refreshListeners.add(listener)
       return () => refreshListeners.delete(listener)
     },
-    tabs: { open: vi.fn(), navigate: vi.fn(), promote: vi.fn() },
+    tabs: { open: vi.fn(), navigate: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
     notify: vi.fn(),
     t: (key, vars) => (vars ? `${key}${JSON.stringify(vars)}` : key),
@@ -111,18 +111,6 @@ describe('createPreviewHost: system', () => {
     await flush()
     expect(calls).toEqual([['system.revealInOs', { uri: TXT }]])
   })
-
-  it('treats every action as an interaction that promotes the preview tab', async () => {
-    const { host, deps } = setup()
-    host.system.revealInOs(TXT)
-    await host.system.copyPath(TXT)
-    await host.system.openWithSystem(TXT)
-    host.tabs.navigate(DIR)
-    host.tabs.open(TXT)
-    await flush()
-    expect(deps.tabs.promote).toHaveBeenCalledTimes(5)
-    expect(deps.tabs.promote).toHaveBeenCalledWith('tab-1')
-  })
 })
 
 describe('createPreviewHost: tabs', () => {
@@ -147,7 +135,6 @@ describe('createPreviewHost: tabs', () => {
       kind: 'directory',
       title: '設計書'
     })
-    expect(deps.tabs.promote).toHaveBeenCalledWith('tab-1')
     // 驱动器根：标题为盘符
     host.tabs.navigate('file:///C:/', 'directory')
     await flush()
@@ -158,22 +145,28 @@ describe('createPreviewHost: tabs', () => {
     })
   })
 
-  it('open adds a tab in the workspace (permanent unless preview is asked)', async () => {
+  it('open adds a new tab in the workspace (there are no preview tabs)', async () => {
     const { host, deps } = setup()
     host.tabs.open(TXT)
-    host.tabs.open(DIR, { preview: true })
+    host.tabs.open(DIR)
     await flush()
-    expect(deps.tabs.open).toHaveBeenCalledWith('ws', {
-      uri: TXT,
-      kind: 'file',
-      title: 'memo.txt',
-      preview: false
-    })
+    expect(deps.tabs.open).toHaveBeenCalledWith('ws', { uri: TXT, kind: 'file', title: 'memo.txt' })
     expect(deps.tabs.open).toHaveBeenCalledWith('ws', {
       uri: DIR,
       kind: 'directory',
-      title: '設計書',
-      preview: true
+      title: '設計書'
+    })
+  })
+
+  it('navigate with a file kind opens the file in the current tab without a stat', async () => {
+    const { host, deps, calls } = setup()
+    host.tabs.navigate(TXT, 'file')
+    await flush()
+    expect(calls.filter(([c]) => c === 'vfs.stat')).toEqual([])
+    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
+      uri: TXT,
+      kind: 'file',
+      title: 'memo.txt'
     })
   })
 
@@ -185,7 +178,6 @@ describe('createPreviewHost: tabs', () => {
       kind: 'directory',
       title: '案件'
     })
-    expect(deps.tabs.promote).toHaveBeenCalledWith('tab-1')
     expect(calls).toEqual([])
   })
 
@@ -193,11 +185,10 @@ describe('createPreviewHost: tabs', () => {
     const { host, deps } = setup({ parent: null })
     host.tabs.up()
     expect(deps.tabs.navigate).not.toHaveBeenCalled()
-    expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
-  it('onRefresh relays the refresh requests of this tab (address bar / F5) and can be cancelled; it is not an interaction', () => {
-    const { host, deps, refresh } = setup()
+  it('onRefresh relays the refresh requests of this tab (address bar / F5) and can be cancelled', () => {
+    const { host, refresh } = setup()
     const onRefresh = vi.fn()
     const off = host.tabs.onRefresh(onRefresh)
     refresh()
@@ -205,7 +196,6 @@ describe('createPreviewHost: tabs', () => {
     off()
     refresh()
     expect(onRefresh).toHaveBeenCalledTimes(1)
-    expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
   it('reports a target that cannot be read and opens nothing', async () => {
@@ -244,11 +234,10 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     await expect(host.fs.list(`${DIR}x`)).resolves.toMatchObject({ state: 'fresh' })
   })
 
-  it('refresh asks the data layer to re-check the directory and is not an interaction', async () => {
+  it('refresh asks the data layer to re-check the directory', async () => {
     const { host, deps } = setup()
     await host.fs.refresh(DIR)
     expect(deps.refreshDirectory).toHaveBeenCalledWith(DIR)
-    expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
   it('rootOf returns the innermost folder entry containing the URI', () => {

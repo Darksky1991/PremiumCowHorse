@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { data, launchFast, removeDirs } from './support'
+import { data, launchFast, removeDirs, toggleRow } from './support'
 
 /** 主进程中记录的系统操作（替换 shell 的方法，测试中不真的打开应用或资源管理器） */
 type ShellCalls = { openPath: string[]; showItemInFolder: string[] }
@@ -44,17 +44,15 @@ test.describe('preview container and the fallback plugin', () => {
     removeDirs(userData, files)
   })
 
-  /** 界面语言设为 en（断言固定文案），添加并展开条目「案件」，返回树 */
+  /** 界面语言设为 en（断言固定文案），添加并展开条目「案件」（箭头：不打开标签），返回树 */
   async function setup(page: Page): Promise<Locator> {
     await data(page, 'settings.set', { 'general.language': 'en' })
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     const { id: workspaceId } = await data(page, 'workspace.active')
     await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
     const tree = page.getByRole('tree')
-    // 单击展开（同时以预览标签打开目录）；关闭该标签，用例从没有标签开始
-    await tree.getByRole('treeitem', { name: '案件' }).click()
+    await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
     await expect(tree.getByRole('treeitem', { name: 'memo.txt' })).toBeVisible()
-    await page.keyboard.press('Control+w')
     await expect(page.getByRole('tablist')).toHaveCount(0)
     return tree
   }
@@ -126,32 +124,29 @@ test.describe('preview container and the fallback plugin', () => {
     }
   })
 
-  test('only plugin actions make a preview tab permanent; clicks, wheel and keys do not', async () => {
+  test('there are no preview tabs: clicks, keys and plugin actions keep the tab; the next single click opens in the same tab', async () => {
     const { app, page } = await launchFast(userData)
     try {
       await stubShell(app)
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
       const memo = tab(page, 'memo.txt')
-      await expect(memo).toHaveCSS('font-style', 'italic')
+      await expect(memo).toHaveCSS('font-style', 'normal')
 
-      // 点击内容、滚轮、在内容中按键：仍是预览标签
+      // 点击内容、滚轮、在内容中按键、插件的动作（宿主调用）：标签不变（没有「预览 / 常驻」之分）
       const heading = panel(page).getByRole('heading', { name: 'memo.txt' })
       await heading.click()
       await heading.hover()
       await page.mouse.wheel(0, 300)
       await panel(page).getByRole('button', { name: 'Copy path' }).focus()
       await page.keyboard.press('ArrowDown')
-      await page.keyboard.press('Shift')
-      await expect(memo).toHaveCSS('font-style', 'italic')
-
-      // 插件的动作（宿主调用）转常驻
       await panel(page).getByRole('button', { name: 'Copy path' }).click()
+      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['memo.txt'])
       await expect(memo).toHaveCSS('font-style', 'normal')
-      // 之后的单击另开预览标签
+      // 之后的单击在当前标签打开（设计 2.8）
       await tree.getByRole('treeitem', { name: 'run.bat' }).click()
-      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['memo.txt', 'run.bat'])
-      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'italic')
+      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['run.bat'])
+      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'normal')
     } finally {
       await app.close()
     }
@@ -169,8 +164,8 @@ test.describe('preview container and the fallback plugin', () => {
       await expect(panel(page).getByRole('alert')).toContainText(errorTitle)
       await expect(panel(page).getByRole('alert')).toContainText('E2E crash')
 
-      // 其他标签照常显示；外壳（树、标签栏）不受影响
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).dblclick()
+      // 其他标签（中键：新标签）照常显示；外壳（树、标签栏）不受影响
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).click({ button: 'middle' })
       await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
       await expect(panel(page).getByRole('alert')).toHaveCount(0)
       await expect(tree).toBeVisible()
@@ -183,7 +178,7 @@ test.describe('preview container and the fallback plugin', () => {
       await expect(panel(page).getByRole('button', { name: 'Open with default app' })).toBeVisible()
 
       // 懒加载失败
-      await tree.getByRole('treeitem', { name: 'bad.crashload' }).dblclick()
+      await tree.getByRole('treeitem', { name: 'bad.crashload' }).click({ button: 'middle' })
       await expect(panel(page).getByRole('alert')).toContainText(errorTitle)
       await expect(page.getByRole('tablist').getByRole('tab')).toHaveText([
         'boom.crash',

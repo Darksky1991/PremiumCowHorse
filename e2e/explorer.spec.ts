@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
-import { data, launchFast, type Named, removeDirs, snapshotTree } from './support'
+import { data, launchFast, type Named, removeDirs, snapshotTree, toggleRow } from './support'
 
 /** 「找不到」错误行的文案（errors:FS_NOT_FOUND，ja | zh-CN | en） */
 const notFoundLabel =
@@ -105,8 +105,9 @@ test.describe('explorer tree on real directories', () => {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
+      // 双击：展开并在标签中打开（最后标签与选中都在 C：C 为关注点）
       for (const name of ['案件', 'A', 'B', 'C']) {
-        await tree.getByRole('treeitem', { name, exact: true }).click()
+        await tree.getByRole('treeitem', { name, exact: true }).dblclick()
       }
       await expect(tree.getByRole('treeitem', { name: 'c.txt' })).toBeVisible()
       // 应用确实在扫描 A\B\C：经过至少 2 个刷新间隔（launchFast 设为 2 秒）
@@ -165,8 +166,8 @@ test.describe('explorer tree on real directories', () => {
 
       // 那次列出同时安排了检查：树中展开后显示新文件（无需手动刷新）
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await tree.getByRole('treeitem', { name: '設計書' }).dblclick()
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
       await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
 
@@ -197,7 +198,7 @@ test.describe('explorer tree on real directories', () => {
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: minutes })
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '議事録' }).first().click()
+      await tree.getByRole('treeitem', { name: '議事録' }).first().dblclick()
       await expect(tree.getByRole('treeitem', { name: '20261118.docx' })).toBeVisible()
 
       // 条目指向的目录在展开状态下被删除：下一次检查后显示「找不到」与「重试」，其他节点不受影响
@@ -224,8 +225,8 @@ test.describe('explorer tree on real directories', () => {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await tree.getByRole('treeitem', { name: '設計書' }).dblclick()
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
 
       // 从这里开始记录树中是否出现过「加载中」行
@@ -271,19 +272,22 @@ test.describe('explorer tree on real directories', () => {
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+      // 单击只选中（不在标签中打开）：本用例验证的是资源树自己的查询，标签中的目录视图会另外重新列出
+      await data(page, 'settings.set', { 'explorer.singleClickPreview': false })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
       const design = tree.getByRole('treeitem', { name: '設計書' })
       await design.click()
+      await toggleRow(design)
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
 
       // 折叠：查询变为非活动（渲染端的缓存保留）；该目录仍是关注点（选中），扫描进程照常检查
-      await design.click()
+      await toggleRow(design)
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toHaveCount(0)
       writeFileSync(path.join(project, '設計書', '追加.txt'), '')
       // 等下一次检查发现变化（vfs.changed 让非活动查询失效）后再展开：重新列出，而不是显示折叠前的列表
       await page.waitForTimeout(3000)
-      await design.click()
+      await toggleRow(design)
       await expect(tree.getByRole('treeitem', { name: '追加.txt' })).toBeVisible({ timeout: 5000 })
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
     } finally {
@@ -297,7 +301,7 @@ test.describe('explorer tree on real directories', () => {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
       await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
 
       // 切到另一个（空的）工作区：资源树卸载（发送空关注点），旧工作区的根不再调度（缓存保留）
@@ -339,8 +343,8 @@ test.describe('explorer tree on real directories', () => {
       })
       const entries = (): Promise<Entry[]> => data<Entry[]>(page, 'entry.list', { workspaceId })
       const tree = page.getByRole('tree')
-      await tree.getByRole('treeitem', { name: '案件' }).click()
-      await tree.getByRole('treeitem', { name: '設計書' }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: '設計書' }))
       await expect(tree.getByRole('treeitem', { name: '仕様.xlsx' })).toBeVisible()
 
       // 递归快照（路径 + 类型 + 大小 + mtime）在所有拖放之前取一次，最后比较
@@ -452,7 +456,7 @@ test.describe('explorer tree on real directories', () => {
       await page.keyboard.press('Escape')
 
       // 真实子目录也可以建立索引；没有「用默认应用打开」
-      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
       await tree.getByRole('treeitem', { name: '設計書' }).click({ button: 'right' })
       await expect(
         page.getByRole('menuitem', {
@@ -477,7 +481,7 @@ test.describe('explorer tree on real directories', () => {
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
       const root = tree.getByRole('treeitem', { name: '案件' })
-      await root.click()
+      await toggleRow(root)
       await expect(tree.getByRole('treeitem', { name: 'README.md' })).toBeVisible()
       const icon = root.getByRole('img', { name: /^(切断|已断开|Disconnected)$/ })
       await expect(icon).toHaveCount(0)

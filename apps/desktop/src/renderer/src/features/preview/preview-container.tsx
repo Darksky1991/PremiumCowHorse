@@ -200,7 +200,6 @@ function PluginView({
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
-  const promote = useTabsStore((s) => s.promote)
   const setViewState = useTabsStore((s) => s.setViewState)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
 
@@ -221,7 +220,7 @@ function PluginView({
       isOffline: (uri) => isShareOffline(uri, offlineShares),
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
       onRefresh: (listener) => onTabRefresh(tab.id, listener),
-      tabs: { open, navigate, promote },
+      tabs: { open, navigate },
       confirmExecutable: (name) =>
         new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
       notify: (message, type) => toast[type](message),
@@ -243,7 +242,6 @@ function PluginView({
     offlineShares,
     open,
     navigate,
-    promote,
     t,
     language,
     theme,

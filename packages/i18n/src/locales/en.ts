@@ -51,6 +51,7 @@ export default {
       'Only the workspace entry is removed. This does not delete any files or folders on disk.',
     removeGroupDescription:
       'This group and everything inside it are removed from the workspace. This does not delete any files or folders on disk.',
+    openInNewTab: 'Open in New Tab',
     reveal: 'Reveal in File Explorer',
     cacheStrategy: 'Cache strategy',
     cacheStrategyFollowGlobal: 'Use global setting ({{strategy}})',

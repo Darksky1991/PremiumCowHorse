@@ -13,12 +13,15 @@ export type TabTarget = TabLocation
 interface TabsStore {
   /** 工作区 id → 该工作区的标签集合（只在内存中，不持久化） */
   byWorkspace: Record<string, TabsState>
-  /** 在工作区中打开资源（preview：单击的预览打开） */
-  open: (workspaceId: string, target: TabTarget & { preview: boolean }) => void
+  /** 在工作区中以新标签打开（同 URI 已打开则只激活） */
+  open: (workspaceId: string, target: TabTarget) => void
+  /**
+   * 浏览器式的打开（设计 2.8）：在当前（激活）标签内导航，进入其历史；工作区没有激活标签时新建一个。
+   * newTab（中键 / Ctrl+单击 / 「在新标签页中打开」）时与 open 相同
+   */
+  openHere: (workspaceId: string, target: TabTarget, opts?: { newTab?: boolean }) => void
   close: (id: string) => void
   activate: (id: string) => void
-  /** 预览标签转常驻 */
-  promote: (id: string) => void
   /** 在同一标签内导航到另一位置（离开的位置进入该标签的后退栈） */
   navigate: (id: string, target: TabTarget) => void
   /** 该标签的历史中后退 / 前进（没有可去的位置时不变） */
@@ -61,9 +64,16 @@ export const useTabsStore = create<TabsStore>((set, get) => {
   return {
     byWorkspace: {},
     open: (workspaceId, target) => dispatch(workspaceId, { type: 'tab/open', ...target }),
+    openHere: (workspaceId, target, opts) => {
+      const { activeId } = get().byWorkspace[workspaceId] ?? EMPTY
+      if (opts?.newTab === true || activeId === null) {
+        dispatch(workspaceId, { type: 'tab/open', ...target })
+      } else {
+        dispatch(workspaceId, { type: 'tab/navigate', id: activeId, ...target })
+      }
+    },
     close: (id) => dispatchById({ type: 'tab/close', id }),
     activate: (id) => dispatchById({ type: 'tab/activate', id }),
-    promote: (id) => dispatchById({ type: 'tab/promote', id }),
     navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
     back: (id) => dispatchById({ type: 'tab/back', id }),
     forward: (id) => dispatchById({ type: 'tab/forward', id }),

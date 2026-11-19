@@ -90,8 +90,7 @@ export interface PreviewHost {
      */
     list(uri: string): Promise<DirectoryListing>
     /**
-     * 让宿主立即重新确认该目录（刷新请求见 tabs.onRefresh）：之后的 list 取得确认后的内容。
-     * 不视为「在标签内交互」（预览标签不转常驻）
+     * 让宿主立即重新确认该目录（刷新请求见 tabs.onRefresh）：之后的 list 取得确认后的内容
      */
     refresh(uri: string): Promise<void>
     /** 该目录的缓存内容有变化时回调（之后再 list 取得新内容）；返回取消订阅函数 */
@@ -103,12 +102,15 @@ export interface PreviewHost {
      */
     rootOf(uri: string): string | null
   }
-  /** open / navigate / up 视为「在标签内交互」：所在的预览标签转为常驻（onRefresh 不算） */
+  /**
+   * 浏览器式（M1-3b 设计 2.8，没有「预览标签」）：navigate / up 在当前标签内打开并进入该标签的历史，
+   * open 在新标签打开
+   */
   tabs: {
-    /** 在新标签中打开（已打开则激活）；preview 为 true 时以预览标签打开 */
-    open(uri: string, opts?: { preview?: boolean }): void
+    /** 在新标签中打开（同 URI 已打开则激活）：中键 / Ctrl+单击等 */
+    open(uri: string): void
     /**
-     * 在当前标签内导航到另一资源（替换当前标签的 URI 与标题）。
+     * 在当前标签内导航到另一资源（目录或文件；替换当前标签的位置，离开的位置进入后退历史）。
      * kind 为插件已知的类型（例如目录列表中的项）：给出时宿主不再 stat，标题取 URI 的最后一段
      */
     navigate(uri: string, kind?: 'file' | 'directory'): void

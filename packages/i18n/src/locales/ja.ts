@@ -50,6 +50,7 @@ export default {
       'ワークスペースの項目だけを外します。ディスク上のファイルやフォルダーは削除されません。',
     removeGroupDescription:
       'このグループとその中の項目をすべてワークスペースから外します。ディスク上のファイルやフォルダーは削除されません。',
+    openInNewTab: '新しいタブで開く',
     reveal: 'エクスプローラーで表示',
     cacheStrategy: 'キャッシュ方針',
     cacheStrategyFollowGlobal: '全体設定に従う（{{strategy}}）',
