@@ -447,6 +447,25 @@ describe('Cache', () => {
     expect(cache.hot(0)).toEqual([])
   })
 
+  it('hot reads only the visited directories through a partial index (no full table scan)', () => {
+    cache.applyListing(A, 1, [dir('x'), dir('y')], 0)
+    cache.visit(`${A}/x`, 0)
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare')
+    let sqls: string[]
+    try {
+      expect(cache.hot(5)).toEqual([`${A}/x`])
+      sqls = prepare.mock.calls.map(([sql]) => sql)
+    } finally {
+      prepare.mockRestore()
+    }
+    expect(sqls).toHaveLength(1)
+    const plan = cache
+      .select(`EXPLAIN QUERY PLAN ${sqls[0]!}`)
+      .map((r) => String(r.detail))
+      .join('\n')
+    expect(plan).toMatch(/USING (COVERING )?INDEX dirs_hot\b/)
+  })
+
   it('sizeBytes reports a positive size and clear empties the cache', () => {
     cache.applyListing(A, 1, [file('x')], 1)
     expect(cache.sizeBytes()).toBeGreaterThan(0)

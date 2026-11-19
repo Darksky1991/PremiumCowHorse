@@ -2,7 +2,7 @@
  * 缓存库 index.db 的表结构。这是可随时删除重建的缓存：不做迁移，
  * 结构变化时递增 CACHE_VERSION，打开时发现 user_version 不符就删表重建。
  */
-export const CACHE_VERSION = 3
+export const CACHE_VERSION = 4
 
 export const DROP_SQL = `
 DROP TABLE IF EXISTS entries_fts;
@@ -31,6 +31,8 @@ CREATE INDEX dirs_parent ON dirs (parent_uri);
 -- 顺序中很稀疏）时 oldestChecked 要扫很多行：内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊
 CREATE INDEX dirs_unlisted ON dirs (depth, uri) WHERE checked_at IS NULL;
 CREATE INDEX dirs_checked ON dirs (checked_at, uri, depth) WHERE checked_at IS NOT NULL;
+-- 热点目录（Cache.hot）：只有访问过的目录（visit_score > 0），覆盖查询所需的列，不扫描整张表
+CREATE INDEX dirs_hot ON dirs (visit_score, visited_at, uri) WHERE visit_score > 0;
 
 -- 需要整数 rowid 供 FTS5 external content 使用，所以不用 WITHOUT ROWID
 CREATE TABLE entries (
