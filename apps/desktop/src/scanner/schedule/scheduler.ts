@@ -109,6 +109,8 @@ interface PeriodicEntry {
   tier: Tier
   full: boolean
   next: number
+  /** 排期所用的间隔：next 比现在晚超过它 = 系统时钟被回拨，按现在重新排期 */
+  span: number
 }
 
 interface Offline {
@@ -155,6 +157,18 @@ function uriError(uri: string): AppError | null {
 }
 
 const isValidUri = (uri: string): boolean => uriError(uri) === null
+
+/**
+ * 位置组记下的「下一次可以开始的时刻」。系统时钟回拨后它可能比现在晚得多：比现在晚超过 max 时
+ * 改为 now + max 并写回（之后按它等待，不会每次都再往后推）。没有记录时为 -Infinity
+ */
+function gateAt(map: Map<string, number>, key: string, now: number, max: number): number {
+  const at = map.get(key)
+  if (at === undefined) return -Infinity
+  if (at - now <= max) return at
+  map.set(key, now + max)
+  return now + max
+}
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
@@ -492,6 +506,8 @@ export class Scheduler {
     if ([...this.owners.values()].some((o) => o.focused)) {
       const due: [string, PeriodicEntry][] = []
       for (const e of this.periodic) {
+        // 系统时钟回拨：到期时刻不会比一个间隔更远
+        if (e[1].next - now > e[1].span) e[1].next = now + e[1].span
         if (e[1].next <= now) due.push(e)
         else wakeAt = Math.min(wakeAt, e[1].next)
       }
@@ -500,7 +516,8 @@ export class Scheduler {
         if (this.running.has(uri) || this.isOffline(uri)) continue
         // 近 / 远层：同一位置组的两次确认之间至少间隔 PERIODIC_GAP_MS
         const group = it.tier === 'focus' ? null : this.groupKey(uri)
-        const gate = group === null ? -Infinity : (this.periodicNextAt.get(group) ?? -Infinity)
+        const gap = PERIODIC_GAP_MS[this.enumerator.location(uri)]
+        const gate = group === null ? -Infinity : gateAt(this.periodicNextAt, group, now, gap)
         if (gate > now) {
           wakeAt = Math.min(wakeAt, gate)
           continue
@@ -508,7 +525,7 @@ export class Scheduler {
         if (!this.canStart(uri, 'bg')) continue
         this.start({ uri, prio: 'periodic', full: it.full, waiters: [], bypass: false }, 'bg')
         if (group !== null) {
-          this.periodicNextAt.set(group, now + PERIODIC_GAP_MS[this.enumerator.location(uri)])
+          this.periodicNextAt.set(group, now + gap)
         }
       }
     }
@@ -576,9 +593,11 @@ export class Scheduler {
       const prev = this.periodic.get(uri)
       const dir = this.cache.getDir(uri)
       const checkedAt = dir?.checkedAt ?? null
-      // 新进入范围：按上次检查的时刻排期（刚检查过的不立即重复）；变近的目录不等原来更长的间隔
-      const due = checkedAt === null ? now : checkedAt + this.intervalFor(uri, it.tier, dir)
-      next.set(uri, { ...it, next: prev ? Math.min(prev.next, due) : due })
+      const span = this.intervalFor(uri, it.tier, dir)
+      // 新进入范围：按上次检查的时刻排期（刚检查过的不立即重复）；变近的目录不等原来更长的间隔。
+      // 确认时刻晚于现在（系统时钟回拨）时按现在计算
+      const due = checkedAt === null ? now : Math.min(checkedAt, now) + span
+      next.set(uri, { ...it, next: prev ? Math.min(prev.next, due) : due, span })
     }
     this.periodic = next
     this.queue.setScopes({
@@ -601,7 +620,9 @@ export class Scheduler {
   private pumpBackground(now: number): number {
     let wakeAt = Infinity
     for (const { group, sample } of this.queue.groupList()) {
-      const gate = this.backgroundNextAt.get(group) ?? 0
+      // 最长的休息：用户操作中加倍
+      const longest = 2 * this.settings.backgroundGapMs[this.enumerator.location(sample)]
+      const gate = gateAt(this.backgroundNextAt, group, now, longest)
       if (gate > now) {
         wakeAt = Math.min(wakeAt, gate)
         continue
@@ -731,7 +752,8 @@ export class Scheduler {
     // 刚确认过：重新排期。只比较修改时间的确认不代替关注点的完整读取
     const item = this.periodic.get(uri)
     if (item && task.prio !== 'probe' && (task.full || !item.full)) {
-      item.next = now + this.intervalFor(uri, item.tier)
+      item.span = this.intervalFor(uri, item.tier)
+      item.next = now + item.span
     }
 
     if (task.waiters.length === 0) return

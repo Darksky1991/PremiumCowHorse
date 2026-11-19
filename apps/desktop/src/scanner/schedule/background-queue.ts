@@ -46,7 +46,7 @@ interface Group {
   fetchedAt: number
   /**
    * 一次取出后没有可用的候选：此时刻之前不再查询（最早一个目录重新符合条件的时刻；
-   * Infinity = 等新的信息：列表变化、范围变化、共享恢复、配置变化）
+   * Infinity = 等新的信息：列表变化、范围变化、共享恢复、配置变化；-Infinity = 随时）
    */
   retryAt: number
   /** 有目录的列表变化（可能出现了新的没有信息的目录） */
@@ -140,7 +140,7 @@ export class BackgroundQueue {
         cursor: 0,
         mode: null,
         fetchedAt: 0,
-        retryAt: 0,
+        retryAt: -Infinity,
         dirty: false
       })
     }
@@ -156,7 +156,7 @@ export class BackgroundQueue {
     const g = this.groups.get(group)
     if (!g) return
     g.dirty = true
-    g.retryAt = 0
+    g.retryAt = -Infinity
   }
 
   /** 范围起点读取后确认不存在（且没有缓存行） */
@@ -168,7 +168,7 @@ export class BackgroundQueue {
   clearMissing(uri?: string): void {
     if (uri === undefined) this.missing.clear()
     else if (!this.missing.delete(uri)) return
-    for (const g of this.groups.values()) g.retryAt = 0
+    for (const g of this.groups.values()) g.retryAt = -Infinity
   }
 
   /** 丢弃所有候选（共享断开 / 恢复、配置变化：可用的范围或间隔变化） */
@@ -177,13 +177,13 @@ export class BackgroundQueue {
       g.batch = []
       g.cursor = 0
       g.mode = null
-      g.retryAt = 0
+      g.retryAt = -Infinity
     }
   }
 
-  /** 没有可用候选时下一次查询的时刻（0 = 随时） */
+  /** 没有可用候选时下一次查询的时刻（-Infinity = 随时） */
   retryAt(group: string): number {
-    return this.groups.get(group)?.retryAt ?? 0
+    return this.groups.get(group)?.retryAt ?? -Infinity
   }
 
   /** 内存中的候选数（所有组） */
@@ -197,6 +197,9 @@ export class BackgroundQueue {
   peek(group: string, opts: NextOptions): Candidate | null {
     const g = this.groups.get(group)
     if (!g) return null
+    // 系统时钟回拨：休眠不会比最长的等待更远，超过时重新取一次
+    const longest = Math.max(this.deps.minAgeMs(g.all[0]!.uri), this.deps.freshMs)
+    if (Number.isFinite(g.retryAt) && g.retryAt - opts.now > longest) g.retryAt = -Infinity
     if (g.dirty && g.mode === 'checked') {
       // 正在确认已知目录时出现了新目录：没有信息的优先，换成新的一批
       const fresh = this.fetchUnlisted(g, opts)
@@ -248,7 +251,8 @@ export class BackgroundQueue {
   /**
    * 候选现在是否可以确认：可以返回 null；不可以返回它重新符合条件的时刻（Infinity = 不会再符合：
    * 没有信息的已有了信息或已被删除、起点已确认不存在）。已确认过的目录在 minAgeMs 之内不再确认
-   * （含取出后被其他检查确认过的）。
+   * （含取出后被其他检查确认过的）。确认时刻晚于现在（系统时钟回拨）的目录现在就可以确认：
+   * 按现在计算的可选时刻每次都会往后推、永远等不到；确认之后确认时刻回到现在。
    */
   private waitUntil(g: Group, it: Item, now: number): number | null {
     const d = this.deps.cache.getDir(it.uri)
@@ -257,6 +261,7 @@ export class BackgroundQueue {
       return d.checkedAt === null ? null : Infinity
     }
     if (d === undefined || d.checkedAt === null) return Infinity
+    if (d.checkedAt > now) return null
     const at = d.checkedAt + this.deps.minAgeMs(it.uri)
     return at > now || d.checkedAt >= g.fetchedAt ? Math.max(at, now) : null
   }

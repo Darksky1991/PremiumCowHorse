@@ -46,6 +46,12 @@ class FakeClock {
     })
   }
 
+  /** 系统时钟回拨：now() 变小，已设置的计时器仍按剩余时长触发（与真实的 setTimeout 一样） */
+  rollback(ms: number): void {
+    this.t -= ms
+    for (const e of this.timers.values()) e.at -= ms
+  }
+
   async advance(ms: number): Promise<void> {
     const end = this.t + ms
     await flush()
@@ -1178,5 +1184,64 @@ describe('Scheduler: many sibling directories', () => {
     await clock.advance(0)
     expect(reads).toBeGreaterThan(0)
     expect(reads).toBeLessThanOrEqual(3 * TIER_LIMIT)
+  })
+})
+
+describe('Scheduler: system clock set back', () => {
+  const HOUR = 3_600_000
+
+  it('periodic checks keep their intervals after the clock is set back', async () => {
+    const { clock, fs, s } = setup([root(R, 'default')])
+    const A = fs.addDir(R, 'a')
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(1000)
+    const focus = fs.count('list', A)
+    const near = fs.count('stat', R)
+    clock.rollback(HOUR)
+    await clock.advance(40_000)
+    // 关注点 5 秒、近层（父目录）30 秒：不等回拨的 1 小时
+    expect(fs.count('list', A)).toBeGreaterThanOrEqual(focus + 7)
+    expect(fs.count('stat', R)).toBeGreaterThan(near)
+  })
+
+  it('a directory confirmed "in the future" enters the periodic checks at the interval from now', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, s } = h
+    const A = fs.addDir(R, 'a')
+    // 回拨之前写入的确认时刻：比现在晚 1 天
+    prelist(h, R, clock.now() + 24 * HOUR)
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(1000)
+    const n = fs.count('stat', R)
+    await clock.advance(40_000)
+    expect(fs.count('stat', R)).toBeGreaterThan(n)
+  })
+
+  it('the background queue does not wait for the time lost to the clock', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, cache } = h
+    // 热点目录：一个确认时刻在「未来」，一个刚确认过（队列休眠到它重新符合条件）
+    const F = fs.addDir(R, 'future')
+    const H = fs.addDir(R, 'h')
+    prelist(h, F, clock.now() + 24 * HOUR)
+    prelist(h, H, clock.now())
+    cache.visit(F, clock.now())
+    cache.visit(H, clock.now())
+    await clock.advance(1000)
+    clock.rollback(HOUR)
+    // 远层间隔（本地 120 秒）后两个目录都照常确认
+    await clock.advance(200_000)
+    expect(fs.count('stat', F)).toBeGreaterThanOrEqual(1)
+    expect(fs.count('stat', H)).toBeGreaterThanOrEqual(1)
+  })
+
+  it('the background rest does not stretch when the clock is set back', async () => {
+    const { clock, fs } = setup([root(R, 'all')])
+    for (let i = 0; i < 40; i++) fs.addDir(R, `d${String(i).padStart(2, '0')}`)
+    await clock.advance(5000) // 没有窗口：只有后台队列（休息 0.5 秒）
+    const n = fs.checked().length
+    clock.rollback(HOUR)
+    await clock.advance(5000)
+    expect(fs.checked().length).toBeGreaterThanOrEqual(n + 5)
   })
 })
