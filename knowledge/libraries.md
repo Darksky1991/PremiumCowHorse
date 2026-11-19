@@ -152,6 +152,14 @@
 - 解决：`eslint.config.mjs` 中写确切的相对写法 `source: '../../scanner/main?modulePath'`（`?` 作为通配符恰好匹配字面的 `?`）；不带查询参数的普通 import 仍被拒绝（已用临时文件验证）。
 - 预防：`source` 选择器先用确切写法；需要通配时注意 `..` 段。
 
+### eslint-plugin-boundaries 7：默认不拦第三方包与 Node 内置模块
+
+- 日期：2026-11-20
+- 症状：新增纯逻辑包 `packages/text-engine`（要求不依赖任何包），在其中写 `import { readFileSync } from 'node:fs'`，`boundaries/dependencies`（`default: 'disallow'`）不报错；`import '@pch/shared'` 才报错。
+- 原因：boundaries 的策略只作用于被分类为元素的工作区文件；`node:fs`、`zod` 这类外部依赖不属于任何元素，`default: 'disallow'` 管不到。
+- 解决：`eslint.config.mjs` 对 `packages/text-engine/src/**`（测试除外）另加 `no-restricted-imports`（`patterns: [{ regex: '^(?!\\.{1,2}/)' }]`，只允许相对路径）与 `no-restricted-globals`（`process`、`Buffer`、`require`、`window`、`document` 等）；用临时文件验证 `node:fs` / `zod` / `process` / `document` 均被拒绝。
+- 预防：要求「不依赖任何包」的目录不能只靠 boundaries；另加 import / 全局变量限制并用临时文件验证。
+
 ### shadcn ToggleGroup：选中项在侧栏上几乎看不出来（改用 Tabs）
 
 - 日期：2026-11-19

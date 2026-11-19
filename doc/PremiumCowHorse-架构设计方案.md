@@ -163,7 +163,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | CodeMirror 6（@codemirror/* 及 @uiw/react-codemirror） | 文本/代码/日志预览，含语法高亮与大文件支持 | 比 Monaco 轻得多 |
 | react-markdown + remark-gfm | Markdown 预览 | — |
 | pdfjs-dist | PDF 预览 | Mozilla 官方 |
-图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 `reg.exe` 与 PowerShell，不新增依赖。
+文本 / 日志预览（设计 `devDoc/2026-11-20-18-text-preview-design.md`）的行索引、按行读取与编码判断由工作区包 `@pch/text-engine` 自写，不引入第三方依赖（检测库的取舍见该设计第 4 节）。图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 `reg.exe` 与 PowerShell，不新增依赖。
 
 ### 3.5 质量保障
 
@@ -216,7 +216,8 @@ premium-cow-horse/
 │   ├── shared/                   # 三端共用：IPC 契约、领域类型、zod schema、URI 工具、布局 reducer
 │   ├── i18n/                     # 语言资源（ja / zh-CN / en）与 i18next 初始化工厂
 │   ├── ui/                       # shadcn/ui（Base UI）组件与主题 CSS（供渲染端与插件共用）
-│   └── plugin-sdk/               # 预览插件的类型定义与 definePreviewPlugin 辅助函数
+│   ├── plugin-sdk/               # 预览插件的类型定义与 definePreviewPlugin 辅助函数
+│   └── text-engine/              # 文本预览的纯逻辑（行索引、按行读取、编码判断等）：不依赖任何包，主进程与插件共用
 ├── plugins/
 │   └── builtin/                  # 内置预览插件（单个 workspace 包，M1 创建），每个插件一个子目录
 │       └── src/
@@ -239,11 +240,13 @@ premium-cow-horse/
 └── tsconfig.base.json            # packages/* 共用；apps/desktop 使用 @electron-toolkit/tsconfig
 ```
 
-内置插件放在独立于应用的包中：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。v1.4 起所有内置插件合并为单个 `plugins/builtin` 包（每个插件一个子目录），插件之间、插件与应用之间的隔离由 5.5 节的模块边界规则保证，只需维护一份 package.json / tsconfig。
+内置插件放在独立于应用的包中：插件只能依赖 `plugin-sdk`、`ui` 与纯逻辑包 `text-engine`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。v1.4 起所有内置插件合并为单个 `plugins/builtin` 包（每个插件一个子目录），插件之间、插件与应用之间的隔离由 5.5 节的模块边界规则保证，只需维护一份 package.json / tsconfig。
 
 已实现（M1-3）：`plugins/builtin`（包名 `@pch/plugin-builtin`，与 `plugin-sdk` 相同的形式：`exports` 直接指向源码 `src/index.ts`，不单独构建；依赖 `@pch/plugin-sdk`、`@pch/ui`、`lucide-react`、`@tanstack/react-virtual`（与渲染端同版本），`react` 为 peer）。`src/index.ts` 导出 `builtinPlugins`（注册顺序即同分时的优先顺序：folder、fallback），`src/folder/` 为 folder 插件（`index.ts` 定义、`folder-view.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`model.ts` 排序 / 隐藏项的纯函数（面包屑 M1-3b 移除，逻辑路径在渲染端 `lib/logical-path.ts`）、`format.ts` 大小 / 时间格式化纯函数；「N 前」的格式化随状态行的「基于缓存（N 前）」一起删除），`src/fallback/` 为 fallback 插件（`index.ts` 定义、`fallback-preview.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`format.ts` 大小 / 时间格式化纯函数）。渲染端由 `app/app.tsx` import 插件列表交给 `features/preview`（feature 不直接依赖插件包）；vitest 的 include 增加 `plugins/*/src/**/*.test.ts`。
 
 已实现（M1-3b Task 4）：按类型的图标在 `@pch/ui`（`exports` 增加 `./file-icon`）：`src/lib/file-icon-map.ts` 的纯函数 `iconFor(name, kind, target?)` 按扩展名（小写，取最后一个）返回图标类别（文件夹 / 文件夹链接 / 文件链接 / 失效链接 / 文本 / 日志 / 代码 / JSON / 表格 / 文档 / 演示 / PDF / 图片 / 音频 / 视频 / 压缩包 / 可执行 / 配置 / 兜底），`src/file-icon.tsx` 的 `FileIcon({ name, kind, target, open, className })` 把类别映射到 lucide 图标（失效链接红色）。资源树行、folder 插件目录视图、工作区总览的文件条目使用；分组与条目根保留固定图标。可执行扩展名在 ui 内另列一份（不依赖渲染端）。
+
+已实现（文本预览 Task 1）：`packages/text-engine`（包名 `@pch/text-engine`，与 `shared` 相同的形式：`exports` 直接指向 `src/index.ts`，不单独构建；**不依赖任何包**，不使用 Node / DOM / Electron 专有 API，Node 与浏览器通用、无 I/O）。`src/types.ts` 为公共类型（`EncodingLabel` / `ENCODING_LABELS`（与 `@pch/shared` 各有一份，两包互不依赖）、`NewlineUnit`、`ReadAt`、`LineBlock`），`src/newline.ts` 为换行识别（`unitOf`：UTF-16LE / BE 按 2 字节单元、其余编码按字节找 `0x0A`），`src/line-index.ts` 为增量稀疏行索引 `LineIndex`（对一个字节窗口按顺序 `feed`；行号为 1000 的倍数或行首距上一个检查点超过 1MB 时记录「行号 → 行首偏移」；`finish` 后末尾无换行的部分计为一行，`reopen` 后追加使末行延长），`src/line-reader.ts` 为按行读取 `readLines(index, readAt, start, count, limits)`（从最近的检查点读起；单行保留前 64KB 并列入 `truncated`，截断行之后若有检查点直接跳过去；一次 ≤ 4MB；`readAt` 由调用方注入），`src/chunk-source.ts` 为其内部的按块读取（64KB 起倍增到 1MB）。基准测试 `src/benchmark.test.ts` 只在 `PCH_BENCH=1` 时运行。依赖方：主进程 `vfs`（`apps/desktop` 的 devDependencies，随主进程打包）与 `plugins/builtin`。
 
 5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
@@ -379,7 +382,7 @@ apps/desktop/src/renderer/
 
 ### 5.5 模块边界的强制执行
 
-5.2、5.3 节的分层规则由 `eslint-plugin-boundaries` 在 lint 时强制：每一层（以及每个主进程模块、每个渲染端 feature、每个插件）是一个元素，依赖方向默认禁止、按白名单放行；新增文件必须归入已登记的元素。典型约束：主进程模块之间不得互相 import（经构造函数注入）；preload 只能依赖 `@pch/shared`；渲染端 feature 之间不得互相 import；插件只能依赖 `plugin-sdk` 与 `ui`。内置插件包中每个子目录（`plugins/builtin/src/*`）是一个 `plugin` 元素，子目录之间不得互相 import；包入口 `src/index.ts` 归为文件类别 `plugin-entry`（只能依赖各插件与 `plugin-sdk`），只有 `app/` 可以 import 它（M1-3 已用临时文件验证：插件 import `@pch/shared` / 另一插件子目录、feature import 插件包均被拒绝）。
+5.2、5.3 节的分层规则由 `eslint-plugin-boundaries` 在 lint 时强制：每一层（以及每个主进程模块、每个渲染端 feature、每个插件）是一个元素，依赖方向默认禁止、按白名单放行；新增文件必须归入已登记的元素。典型约束：主进程模块之间不得互相 import（经构造函数注入）；preload 只能依赖 `@pch/shared`；渲染端 feature 之间不得互相 import；插件只能依赖 `plugin-sdk`、`ui` 与纯逻辑包 `text-engine`；`text-engine` 只被主进程 `vfs` 与插件引用，自身不依赖任何包——boundaries 管不到第三方包与 Node 内置模块，因此对 `packages/text-engine/src`（测试除外）另以 `no-restricted-imports`（只允许相对路径）与 `no-restricted-globals`（`process`、`Buffer`、`window`、`document` 等）限制。内置插件包中每个子目录（`plugins/builtin/src/*`）是一个 `plugin` 元素，子目录之间不得互相 import；包入口 `src/index.ts` 归为文件类别 `plugin-entry`（只能依赖各插件与 `plugin-sdk`），只有 `app/` 可以 import 它（M1-3 已用临时文件验证：插件 import `@pch/shared` / 另一插件子目录、feature import 插件包均被拒绝）。
 
 ---
 

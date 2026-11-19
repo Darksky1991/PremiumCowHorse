@@ -17,6 +17,8 @@ const elements = [
   { type: 'i18n', pattern: 'packages/i18n' },
   { type: 'ui', pattern: 'packages/ui' },
   { type: 'plugin-sdk', pattern: 'packages/plugin-sdk' },
+  // 文本预览的纯逻辑（行索引、按行读取、编码判断）：不依赖任何包，主进程 vfs 与插件共用
+  { type: 'text-engine', pattern: 'packages/text-engine' },
   // 内置插件包（doc 5.1）：每个子目录是一个插件；包入口 src/index.ts 见下方 files 的 plugin-entry
   { type: 'plugin', pattern: 'plugins/builtin/src/*', capture: ['name'] },
   // 主进程（架构文档 5.2 节）
@@ -66,8 +68,8 @@ const allowFile = (category, to) => ({
 /** 依赖方向：默认禁止，只放行下面列出的方向 */
 const policies = [
   allow('i18n', ['shared']),
-  // 插件只能依赖 SDK 与 UI，与将来的第三方插件走相同接口；插件子目录之间不得互相 import
-  allow('plugin', ['plugin-sdk', 'ui']),
+  // 插件只能依赖 SDK、UI 与纯逻辑包 text-engine，与将来的第三方插件走相同接口；插件子目录之间不得互相 import
+  allow('plugin', ['plugin-sdk', 'ui', 'text-engine']),
   allowFile('plugin-entry', ['plugin', 'plugin-sdk']),
   // 主进程：ipc → modules → infra / core；模块之间不得互相 import（经构造函数注入）
   allowFile('main-entry', ['main-bootstrap']),
@@ -84,7 +86,7 @@ const policies = [
   allow('main-ipc', ['main-bootstrap', 'main-module', 'main-vfs', 'main-infra', 'shared']),
   allow('main-module', ['main-ipc', 'main-vfs', 'main-infra', 'main-core', 'shared']),
   // vfs：按 scheme 路由到 provider；vfs.ipc 使用路由的类型
-  allow('main-vfs', ['main-ipc', 'main-core', 'main-infra', 'shared']),
+  allow('main-vfs', ['main-ipc', 'main-core', 'main-infra', 'shared', 'text-engine']),
   // main-vfs 只能以 ?modulePath 引用扫描进程入口（得到打包后的文件路径，不在主进程加载其代码）
   {
     from: { element: { type: 'main-vfs' } },
@@ -197,6 +199,28 @@ export default defineConfig(
       'no-restricted-imports': [
         2,
         { paths: [{ name: 'electron', message: '扫描进程（utilityProcess）中不能使用 electron' }] }
+      ]
+    }
+  },
+  {
+    // text-engine 是纯逻辑包（Node / 浏览器通用）：boundaries 只管工作区内的元素，
+    // 第三方包、Node 内置模块与 electron 在这里禁止——只能 import 包内的相对路径
+    files: ['packages/text-engine/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        2,
+        {
+          patterns: [
+            { regex: '^(?!\\.{1,2}/)', message: 'text-engine 不依赖任何包，只能引用包内的相对路径' }
+          ]
+        }
+      ],
+      'no-restricted-globals': [
+        2,
+        ...['process', 'Buffer', 'require', '__dirname', '__filename', 'window', 'document'].map(
+          (name) => ({ name, message: 'text-engine 不使用 Node / DOM 专有 API' })
+        )
       ]
     }
   },

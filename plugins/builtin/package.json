@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@pch/plugin-sdk": "workspace:*",
+    "@pch/text-engine": "workspace:*",
     "@pch/ui": "workspace:*",
     "@tanstack/react-virtual": "^3.14.26",
     "lucide-react": "^1.73.0"

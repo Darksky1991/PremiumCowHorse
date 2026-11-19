@@ -31,6 +31,8 @@
 日志位于 `<userData>\logs\main.log`（含渲染端未捕获的错误），用户反馈问题时请附上此文件。
 目录缓存位于 `<userData>\cache\index.db`（扫描进程使用，可在应用退出后随时删除，下次启动重建）。
 
+文本引擎的基准测试（生成 200MB 数据，默认跳过）：`PCH_BENCH=1 pnpm vitest run packages/text-engine`（PowerShell：`$env:PCH_BENCH=1; pnpm vitest run packages/text-engine`）
+
 系统级截屏（含窗口按钮、边框等系统绘制部分，需先 `pnpm build`）：
 `node scripts/os-screenshot.mjs <输出.png> [light|dark] [ja|zh-CN|en]`
 
@@ -46,13 +48,14 @@ packages/shared         IPC 契约、设置 schema、错误模型（三端共用
 packages/i18n           ja / zh-CN / en 语言资源与 i18next 工厂
 packages/ui             shadcn/ui（Base UI）组件与主题 CSS
 packages/plugin-sdk     预览插件契约
+packages/text-engine    文本预览的纯逻辑（行索引、按行读取等；不依赖任何包）
 e2e                     Playwright Electron 测试
 scripts                 开发辅助脚本（系统级截屏）
 doc / devDoc / knowledge  设计文档 / 开发记录 / 踩坑与知识
 ```
 
 分层规则由 `eslint.config.mjs` 中的 `eslint-plugin-boundaries` 强制执行：例如主进程模块之间、渲染端 feature 之间不得互相 import，
-插件只能依赖 `plugin-sdk` 与 `ui`。新增目录需先在该文件中登记所属的层。
+插件只能依赖 `plugin-sdk`、`ui` 与 `text-engine`。新增目录需先在该文件中登记所属的层。
 
 ## 数据库迁移
 
