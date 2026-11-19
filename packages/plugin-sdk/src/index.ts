@@ -89,6 +89,11 @@ export interface PreviewHost {
      * 所在共享断开时 state 为 offline（内容为缓存）
      */
     list(uri: string): Promise<DirectoryListing>
+    /**
+     * 让宿主立即重新确认该目录（F5 / 刷新按钮）：之后的 list 取得确认后的内容。
+     * 不视为「在标签内交互」（预览标签不转常驻）
+     */
+    refresh(uri: string): Promise<void>
     /** 该目录的缓存内容有变化时回调（之后再 list 取得新内容）；返回取消订阅函数 */
     subscribe(uri: string, onChange: () => void): () => void
     /** 显示用的路径（file URI → Windows 路径；无法转换时原样返回 URI） */

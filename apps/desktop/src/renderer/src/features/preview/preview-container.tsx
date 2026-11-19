@@ -15,7 +15,7 @@ import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
-import { fetchDirectory, useResourceStat } from '@renderer/data/vfs'
+import { fetchDirectory, retryDirectory, useResourceStat } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { isShareOffline } from '@renderer/lib/file-uri'
 import { call, subscribe } from '@renderer/lib/ipc'
@@ -186,6 +186,7 @@ function PluginView({
       workspaceId: workspace?.id,
       invoke: call,
       listDirectory: (uri) => fetchDirectory(queryClient, uri),
+      refreshDirectory: (uri) => retryDirectory(queryClient, uri),
       // 断开状态变化时宿主重建：插件随之重新列出（folder 插件的状态行切换「已断开」）
       isOffline: (uri) => isShareOffline(uri, offlineShares),
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),

@@ -17,6 +17,7 @@ import {
   FileXIcon,
   FolderIcon,
   FolderSymlinkIcon,
+  RefreshCwIcon,
   UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -57,9 +58,12 @@ type Listing =
 
 /**
  * 目录列表：经 host.fs.list 取得（缓存优先），该目录的缓存有变化（host.fs.subscribe）时重新列出。
- * 重新列出期间保留当前内容；出错时显示错误（错误优先于旧内容）。retry 重新列出。
+ * 重新列出期间保留当前内容；出错时显示错误（错误优先于旧内容）。
+ * retry 显示读取中后重新列出；refresh（F5 / 刷新按钮）让宿主立即确认该目录（host.fs.refresh），
+ * 再重新列出，期间保留当前内容——降级模式（扫描进程不可用、直接枚举）与越过条目根的目录
+ * （不进缓存）都没有 vfs.changed，列表不会自动更新，由它补上
  */
-function useListing(host: PreviewHost, uri: string): [Listing, () => void] {
+function useListing(host: PreviewHost, uri: string): [Listing, () => void, () => void] {
   const [listing, setListing] = useState<Listing>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -89,7 +93,10 @@ function useListing(host: PreviewHost, uri: string): [Listing, () => void] {
     setListing({ status: 'loading' })
     setAttempt((n) => n + 1)
   }
-  return [listing, retry]
+  const refresh = (): void => {
+    void host.fs.refresh(uri).finally(() => setAttempt((n) => n + 1))
+  }
+  return [listing, retry, refresh]
 }
 
 function iconOf(e: FileEntry): LucideIcon {
@@ -116,8 +123,8 @@ const hasSize = (e: FileEntry): boolean =>
 /**
  * 目录视图（folder 插件）：面包屑 +「上一级」、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
  * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航，文件以常驻标签打开；
- * Backspace / Alt+↑ 到上一级。打开与导航都经 host（宿主据此把预览标签转为常驻）；
- * 导航时给出类型（目录），宿主不再 stat。
+ * Backspace / Alt+↑ 到上一级；F5（焦点在目录视图内）与工具栏的「刷新」重新确认并列出。
+ * 打开与导航都经 host（宿主据此把预览标签转为常驻）；导航时给出类型（目录），宿主不再 stat。
  */
 export default function FolderView({
   resource,
@@ -129,7 +136,7 @@ export default function FolderView({
   const baseId = useId()
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [listing, retry] = useListing(host, resource.uri)
+  const [listing, retry, refresh] = useListing(host, resource.uri)
   const showHidden = host.settings.get('explorer.showHiddenFiles') ?? false
   const sort = viewState?.sort ?? DEFAULT_SORT
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
@@ -168,6 +175,12 @@ export default function FolderView({
   }
   const goUp = (): void => {
     if (parent !== null) host.tabs.navigate(parent, 'directory')
+  }
+  /** F5：焦点在目录视图内的任何位置（列表、工具栏按钮） */
+  const onRootKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'F5' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+    e.preventDefault()
+    refresh()
   }
   const sortBy = (key: SortKey): void => {
     const next: Sort =
@@ -256,7 +269,7 @@ export default function FolderView({
   }
 
   return (
-    <div className="flex h-full flex-col text-[13px]">
+    <div className="flex h-full flex-col text-[13px]" onKeyDown={onRootKeyDown}>
       <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
         <Button
           variant="ghost"
@@ -300,6 +313,15 @@ export default function FolderView({
             })}
           </ol>
         </nav>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t('refresh')}
+          title={`${t('refresh')} (F5)`}
+          onClick={refresh}
+        >
+          <RefreshCwIcon />
+        </Button>
       </div>
 
       <div

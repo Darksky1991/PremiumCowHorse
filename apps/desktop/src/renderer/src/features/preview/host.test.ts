@@ -33,6 +33,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     workspaceId: 'ws',
     invoke,
     listDirectory: vi.fn(async () => ({ items: [], state: 'fresh' as const, checkedAt: 1 })),
+    refreshDirectory: vi.fn(async () => undefined),
     isOffline: () => false,
     onVfsChanged: (listener) => {
       listeners.add(listener)
@@ -202,6 +203,13 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     const { host } = setup({ isOffline: (uri) => uri === DIR })
     await expect(host.fs.list(DIR)).resolves.toEqual({ items: [], state: 'offline', checkedAt: 1 })
     await expect(host.fs.list(`${DIR}x`)).resolves.toMatchObject({ state: 'fresh' })
+  })
+
+  it('refresh asks the data layer to re-check the directory and is not an interaction', async () => {
+    const { host, deps } = setup()
+    await host.fs.refresh(DIR)
+    expect(deps.refreshDirectory).toHaveBeenCalledWith(DIR)
+    expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
   it('rootOf returns the innermost folder entry containing the URI', () => {

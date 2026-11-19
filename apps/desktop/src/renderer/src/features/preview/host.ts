@@ -14,6 +14,8 @@ export interface PreviewHostDeps {
   invoke: Invoke
   /** 目录列表（与资源树共用 TanStack Query 的缓存） */
   listDirectory: (uri: string) => Promise<DirectoryListing>
+  /** 让扫描进程立即确认该目录，并让其目录查询失效（之后的 listDirectory 重新取得） */
+  refreshDirectory: (uri: string) => Promise<void>
   /** uri 所在的共享 / 卷在 reachability-store 中为断开 */
   isOffline: (uri: string) => boolean
   /** 订阅 vfs.changed，回调参数为变化的目录 URI；返回取消订阅函数 */
@@ -84,6 +86,7 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         const listing = await deps.listDirectory(uri)
         return deps.isOffline(uri) ? { ...listing, state: 'offline' } : listing
       },
+      refresh: (uri) => deps.refreshDirectory(uri),
       subscribe: (uri, onChange) =>
         deps.onVfsChanged((changed) => {
           if (changed === uri) onChange()

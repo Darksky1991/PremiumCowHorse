@@ -236,6 +236,30 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
+  test('the refresh button and F5 re-list the directory (a directory above the entry root is not updated by itself)', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await panel(page).getByRole('button', { name: 'Up one level' }).click()
+      await expect(tabs(page)).toHaveText([path.basename(files)])
+      await expect(names(page)).toHaveText(['案件'])
+
+      writeFileSync(path.join(files, 'added.txt'), 'a')
+      await panel(page).getByRole('button', { name: 'Refresh' }).click()
+      await expect(names(page)).toHaveText(['案件', 'added.txt'])
+
+      // F5：焦点在目录视图时
+      mkdirSync(path.join(files, 'new-folder'))
+      await grid(page).focus()
+      await page.keyboard.press('F5')
+      await expect(names(page)).toHaveText(['new-folder', '案件', 'added.txt'])
+      await expect(grid(page)).toBeFocused()
+    } finally {
+      await app.close()
+    }
+  })
+
   test('deleting the directory shown in a tab shows an error instead of crashing', async () => {
     const { app, page } = await launchFast(userData)
     try {
