@@ -66,7 +66,7 @@ export function parentLocation(loc: TabLocation, ctx: …): TabLocation | null  
 
 ### Task 3: 树 ↔ 地址栏 ↔ 预览区同步
 
-**Files:** `features/explorer`（单击只选中 + 预览、不展开；双击 / 箭头 / → ← / Enter 展开折叠；↑↓ 200ms 防抖预览；文件双击 / Enter 常驻）、`stores/`（激活位置 → 树选中的请求，复用 `navigation-store` 的定位机制）、`features/explorer/use-reveal.ts`（激活标签或标签内导航后在树中选中并滚动，位置不在树中则不变）、e2e
+**Files:** `features/explorer`（单击只选中 + 预览、不展开；双击 / 箭头 / → ← / Enter 展开折叠；↑↓ 400ms 防抖在当前标签打开（设计 §2.8）；文件双击 / Enter 常驻）、`stores/`（激活位置 → 树选中的请求，复用 `navigation-store` 的定位机制）、`features/explorer/use-reveal.ts`（激活标签或标签内导航后在树中选中并滚动，位置不在树中则不变）、e2e
 
 - [ ] **Step 1: 写失败的测试**：e2e：单击目录不展开；箭头与双击展开；目录视图进入子目录后树选中该子目录（祖先自动展开）；后退后树跟随；切换标签后树跟随；↑↓ 快速连按只预览最后停留的节点（Review Focus 4）；同步不循环（Review Focus 3：选中后打开次数与渲染稳定，可用计数断言）。
 - [ ] **Step 2–4:** 失败 → 实现 → 通过。
