@@ -52,6 +52,11 @@ export const HOT_K = 20
 export const LOCAL_LIMIT = 4
 /** pump 出错后重试的间隔 */
 export const PUMP_RETRY_MS = 1000
+/**
+ * 每个位置组的非关注点定期确认（近 / 远层）之间的最小间隔：网络不超过 5 次 / 秒，本地 20 次 / 秒。
+ * 关注点的确认不受此限。层的间隔因此是下限：到期的目录多时依次推后
+ */
+export const PERIODIC_GAP_MS: Record<'local' | 'network', number> = { local: 50, network: 200 }
 
 /** 设计 8.2 / 4.9 的默认值：configure 之前（例如启动时的 listNow）使用 */
 const DEFAULT_SETTINGS: ScanSettings = {
@@ -188,6 +193,8 @@ export class Scheduler {
   private readonly queue: BackgroundQueue
   /** 位置组 → 后台队列下一次可以开始的时刻（上一个完成后的休息） */
   private readonly backgroundNextAt = new Map<string, number>()
+  /** 位置组 → 下一个非关注点的定期确认可以开始的时刻（PERIODIC_GAP_MS） */
+  private readonly periodicNextAt = new Map<string, number>()
   /** 最近一次任一窗口的关注点 / 可见范围变化的时刻 */
   private lastInterestChange = -Infinity
   private scopeDirty = false
@@ -490,8 +497,19 @@ export class Scheduler {
       }
       due.sort((a, b) => a[1].next - b[1].next)
       for (const [uri, it] of due) {
-        if (this.running.has(uri) || this.isOffline(uri) || !this.canStart(uri, 'bg')) continue
+        if (this.running.has(uri) || this.isOffline(uri)) continue
+        // 近 / 远层：同一位置组的两次确认之间至少间隔 PERIODIC_GAP_MS
+        const group = it.tier === 'focus' ? null : this.groupKey(uri)
+        const gate = group === null ? -Infinity : (this.periodicNextAt.get(group) ?? -Infinity)
+        if (gate > now) {
+          wakeAt = Math.min(wakeAt, gate)
+          continue
+        }
+        if (!this.canStart(uri, 'bg')) continue
         this.start({ uri, prio: 'periodic', full: it.full, waiters: [], bypass: false }, 'bg')
+        if (group !== null) {
+          this.periodicNextAt.set(group, now + PERIODIC_GAP_MS[this.enumerator.location(uri)])
+        }
       }
     }
 
@@ -556,9 +574,10 @@ export class Scheduler {
     const next = new Map<string, PeriodicEntry>()
     for (const [uri, it] of items) {
       const prev = this.periodic.get(uri)
-      const checkedAt = this.cache.getDir(uri)?.checkedAt ?? null
+      const dir = this.cache.getDir(uri)
+      const checkedAt = dir?.checkedAt ?? null
       // 新进入范围：按上次检查的时刻排期（刚检查过的不立即重复）；变近的目录不等原来更长的间隔
-      const due = checkedAt === null ? now : checkedAt + this.intervalFor(uri, it.tier)
+      const due = checkedAt === null ? now : checkedAt + this.intervalFor(uri, it.tier, dir)
       next.set(uri, { ...it, next: prev ? Math.min(prev.next, due) : due })
     }
     this.periodic = next
@@ -571,8 +590,7 @@ export class Scheduler {
   }
 
   /** 定期确认的间隔：按层与位置；出错的目录（权限、超时）按远层的间隔重试 */
-  private intervalFor(uri: string, tier: Tier): number {
-    const dir = this.cache.getDir(uri)
+  private intervalFor(uri: string, tier: Tier, dir = this.cache.getDir(uri)): number {
     const t = dir !== undefined && dir.state !== 'ok' ? 'far' : tier
     return this.settings.interval[t][this.enumerator.location(uri)] * 1000
   }

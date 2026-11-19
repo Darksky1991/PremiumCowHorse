@@ -41,6 +41,12 @@ export interface BackgroundScope {
 /** 层的远近：数值小的更近 */
 export const TIER_RANK: Record<Tier, number> = { focus: 0, near: 1, far: 2 }
 
+/**
+ * 近层、远层各自的目录数上限（每个窗口）。超出的目录不做定期确认（留给后台队列 ④）：
+ * 关注点有上万个兄弟目录时，定期确认的负载与范围计算的成本都不随目录总数增长
+ */
+export const TIER_LIMIT = 100
+
 const RANK: Record<CacheStrategy, number> = { passive: 0, default: 1, active: 2, all: 3 }
 
 /** 父目录 URI：用与子目录生成相同的路径函数，不手工截字符串；已到文件系统根则返回 null（调度器也用它） */
@@ -49,6 +55,17 @@ export function parentUri(uri: string): string | null {
   const parent = path.dirname(p)
   return parent === p ? null : pathToFileURL(parent).href
 }
+
+/** 两个 URI 在目录树上的距离（经最近的共同祖先的层数；按 URI 的路径段计算） */
+function treeDistance(a: string, b: string): number {
+  const sa = a.replace(/\/+$/, '').split('/')
+  const sb = b.replace(/\/+$/, '').split('/')
+  let k = 0
+  while (k < sa.length && k < sb.length && sa[k] === sb[k]) k += 1
+  return sa.length - k + (sb.length - k)
+}
+
+const byUri = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
 function sameLocalPath(a: string, b: string): boolean {
   const norm = (u: string): string => fileUriToLocalPath(u).replace(/[\\/]+$/, '')
@@ -61,6 +78,8 @@ function sameLocalPath(a: string, b: string): boolean {
  * - 关注点的祖先链止于包含它的根中 URI 最长者。
  * - 「消极」只有关注点一层；「默认」及以上：近 = 父、子、兄弟与可见的已展开目录，
  *   远 = 祖父以上的祖先、叔伯（父目录的兄弟）、滚出视口的已展开目录与各根目录。同一 URI 取更近的层。
+ * - 近层、远层各取 TIER_LIMIT 个：按离关注点的远近（树上的距离；没有关注点时都相同），同等距离时
+ *   热点目录优先、再按 URI；近层中视口内可见的已展开目录最优先。超出的目录不做定期确认。
  * - 后台：「建立索引」与策略无关；热点需在「默认」及以上的根之下；「积极」加关注点上下 activeDepth 层；
  *   「全部」加整个根。
  */
@@ -98,12 +117,14 @@ export function computeScope(input: ScopeInput): {
 
   // 关注点
   const { focus } = input
+  let center: string | null = null
   if (focus !== null) {
     const containing = input.roots.filter((r) => isUnder(focus, r.uri))
     if (containing.length > 0) {
       const rootUri = containing.reduce((a, b) => (b.uri.length > a.uri.length ? b : a)).uri
       const strategy = strategyOf(focus) ?? 'passive'
       add(focus, 'focus')
+      center = focus
 
       if (RANK[strategy] >= RANK.default) {
         // 祖先链（至根）：ancestors[0] 为父目录
@@ -146,8 +167,39 @@ export function computeScope(input: ScopeInput): {
   // 「全部」策略的根：与关注点无关，整棵进入后台范围
   for (const r of input.roots) if (r.strategy === 'all') addRange(r.uri, null)
 
+  // 近层、远层的上限
+  const hotSet = new Set(input.hot)
+  const visibleSet = new Set(input.visible)
+  const distance = new Map<string, number>()
+  const dist = (uri: string): number => {
+    let d = distance.get(uri)
+    if (d === undefined) {
+      d = center === null ? 0 : treeDistance(center, uri)
+      distance.set(uri, d)
+    }
+    return d
+  }
+  const keep = (tier: Tier): string[] => {
+    const list = [...items].filter(([, t]) => t === tier).map(([uri]) => uri)
+    if (list.length <= TIER_LIMIT) return list
+    const first = (uri: string): number => (tier === 'near' && visibleSet.has(uri) ? 0 : 1)
+    const hotFirst = (uri: string): number => (hotSet.has(uri) ? 0 : 1)
+    return list
+      .sort(
+        (a, b) =>
+          first(a) - first(b) || dist(a) - dist(b) || hotFirst(a) - hotFirst(b) || byUri(a, b)
+      )
+      .slice(0, TIER_LIMIT)
+  }
+  const periodic: PeriodicItem[] = [...items]
+    .filter(([, t]) => t === 'focus')
+    .map(([uri]) => ({ uri, tier: 'focus' as const, full: true }))
+  for (const tier of ['near', 'far'] as const) {
+    for (const uri of keep(tier)) periodic.push({ uri, tier, full: false })
+  }
+
   return {
-    periodic: [...items].map(([uri, tier]) => ({ uri, tier, full: tier === 'focus' })),
+    periodic,
     background: {
       indexTargets: [...new Set(input.indexTargets)].map((uri) => ({ uri, maxDepth: null })),
       hot: input.hot.filter(atLeastDefault),

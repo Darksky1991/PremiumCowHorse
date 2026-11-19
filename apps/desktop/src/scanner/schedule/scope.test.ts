@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CacheStrategy, RootConfig } from '@pch/shared'
-import { computeScope } from './scope'
+import { computeScope, TIER_LIMIT } from './scope'
 import type { ScopeInput, Tier } from './scope'
 
 const R = 'file:///C:/r'
@@ -213,5 +213,61 @@ describe('computeScope', () => {
       'file://server/share/x': 'near',
       [share]: 'far'
     })
+  })
+})
+
+describe('computeScope: tier limits', () => {
+  const P = u('p')
+  const F = u('p/f')
+  const pad = (i: number): string => String(i).padStart(3, '0')
+  /** p 下有 300 个兄弟目录与关注点 f；f 下 50 个子目录；r 下有 300 个叔伯目录 */
+  const big: Record<string, string[]> = {
+    [R]: [P, ...Array.from({ length: 300 }, (_, i) => u(`q${pad(i)}`))],
+    [P]: [F, ...Array.from({ length: 300 }, (_, i) => u(`p/s${pad(i)}`))],
+    [F]: Array.from({ length: 50 }, (_, i) => u(`p/f/c${pad(i)}`))
+  }
+  const bigChildren = (uri: string): string[] => big[uri] ?? []
+  const byTier = (r: Result, tier: Tier): string[] =>
+    r.periodic.filter((i) => i.tier === tier).map((i) => i.uri)
+
+  it('near keeps visible directories first, then the nearest, hot first at equal distance', () => {
+    const visible = [u('z/v1'), u('z/v2')]
+    const hot = [u('p/s299'), u('p/s250')]
+    const r = computeScope(input('default', { focus: F, visible, hot, children: bigChildren }))
+    const near = byTier(r, 'near')
+    expect(near).toHaveLength(TIER_LIMIT)
+    // 可见的已展开目录、父目录与 50 个子目录（距离 1）都保留
+    for (const v of visible) expect(near).toContain(v)
+    expect(near).toContain(P)
+    for (const c of bigChildren(F)) expect(near).toContain(c)
+    // 剩下的名额给兄弟目录（距离 2）：热点优先，再按 URI
+    const siblings = near.filter((x) => x.startsWith(`${u('p/s')}`))
+    expect(siblings).toHaveLength(TIER_LIMIT - visible.length - 1 - 50)
+    expect(siblings.slice(0, 2).sort()).toEqual([...hot].sort())
+    expect(siblings.slice(2)).toEqual(
+      Array.from({ length: siblings.length - 2 }, (_, i) => u(`p/s${pad(i)}`))
+    )
+    expect(byTier(r, 'focus')).toEqual([F])
+  })
+
+  it('far keeps the nearest, hot first at equal distance, then by URI', () => {
+    const offscreen = [u('p/f/c000/a/b/c')]
+    const r = computeScope(
+      input('default', { focus: F, offscreen, hot: [u('q200')], children: bigChildren })
+    )
+    const far = byTier(r, 'far')
+    expect(far).toHaveLength(TIER_LIMIT)
+    // 祖父（根，距离 2）最先；叔伯（距离 3）中热点优先，再按 URI；更远的滚出视口目录（距离 4）不保留
+    expect(far[0]).toBe(R)
+    expect(far[1]).toBe(u('q200'))
+    expect(far.slice(2)).toEqual(Array.from({ length: TIER_LIMIT - 2 }, (_, i) => u(`q${pad(i)}`)))
+    expect(far).not.toContain(offscreen[0])
+  })
+
+  it('without a focus the tiers are limited by hot directories, then by URI', () => {
+    const visible = Array.from({ length: 150 }, (_, i) => u(`v${pad(i)}`))
+    const r = computeScope(input('default', { focus: null, visible, hot: [u('v149')] }))
+    const near = byTier(r, 'near')
+    expect(near).toEqual([u('v149'), ...visible.slice(0, TIER_LIMIT - 1)])
   })
 })

@@ -5,6 +5,7 @@ import { Cache, childUri, type Scope } from '../cache/cache'
 import type { Enumerator, RawEntry } from '../enum/types'
 import { BATCH_SIZE, OLDEST_BATCH_SIZE } from './background-queue'
 import { Scheduler } from './scheduler'
+import { TIER_LIMIT } from './scope'
 
 /** 注入的时钟与计时器：advance 依次触发到期的计时器，每次之后让微任务跑完（不做真实等待） */
 class FakeClock {
@@ -288,7 +289,8 @@ describe('Scheduler: periodic checks', () => {
     const V = fs.addDir(R, 'v')
     const O = fs.addDir(R, 'o')
     s.setInterest(1, { focus: F, visible: [V], offscreen: [O] })
-    await clock.advance(0)
+    // 近 / 远层的确认之间至少间隔 PERIODIC_GAP_MS（本地 50ms）：这些目录在 1 秒内依次确认
+    await clock.advance(1000)
     const near = [P, S, V]
     const far = [G, U, R, O]
     const stats = (list: string[]): number[] => list.map((u) => fs.count('stat', u))
@@ -1043,5 +1045,67 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(s.isOffline('not a uri')).toBe(false)
     await clock.advance(0)
     expect(fs.count('list', R)).toBe(1)
+  })
+})
+
+describe('Scheduler: many sibling directories', () => {
+  const pad = (i: number): string => String(i).padStart(4, '0')
+
+  it('a focus with 5,000 siblings on a network host stays within 5 checks per second and the background keeps its pace', async () => {
+    const h = setup([root(N, 'all')])
+    const { clock, fs, s } = h
+    const P = fs.addDir(N, 'p')
+    const siblings = Array.from({ length: 5000 }, (_, i) => fs.addDir(P, `s${pad(i)}`))
+    const F = siblings[0]!
+    const BG = fs.addDir(N, 'bg')
+    const X = fs.addDir(BG, 'x')
+    const ks = Array.from({ length: 50 }, (_, i) => fs.addDir(X, `k${pad(i)}`))
+    const t0 = clock.now()
+    // 缓存：除 k* 外都刚读过；k* 没有信息，由后台队列 ② 读取
+    for (const u of [N, P, BG, X, ...siblings]) prelist(h, u, t0)
+    // 每次调用 100ms（网络）
+    fs.gate = (_op, _uri, signal) => clock.sleep(100, signal)
+    s.setInterest(1, { ...none, focus: F })
+    await clock.advance(600_000)
+
+    const stats = fs.calls.filter((c) => c.op === 'stat').map((c) => c.at - t0)
+    // 稳态（近层在 60 秒时到期之后）：平均不超过 5 次 / 秒
+    const steady = stats.filter((t) => t >= 60_000 && t < 600_000)
+    expect(steady.length / 540).toBeLessThanOrEqual(5)
+    // 任意 1 秒内：非关注点的定期确认最多 5 次，另有关注点与后台各至多 1 次
+    for (let i = 0; i < stats.length; i++) {
+      const n = stats.filter((t) => t >= stats[i]! && t < stats[i]! + 1000).length
+      expect(n, `at ${stats[i]}`).toBeLessThanOrEqual(7)
+    }
+    // 后台队列照常推进：50 个没有信息的目录在 3 分钟内读完（休息 2 秒 / 个）
+    const listedBy = (u: string): number | undefined =>
+      fs.calls.find((c) => c.op === 'list' && c.uri === u)?.at
+    for (const k of ks) {
+      const at = listedBy(k)
+      expect(at, k).toBeDefined()
+      expect(at! - t0, k).toBeLessThan(180_000)
+    }
+  })
+
+  it('recomputing the scope reads a bounded number of directory rows', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, cache, s } = h
+    const P = fs.addDir(R, 'p')
+    const siblings = Array.from({ length: 5000 }, (_, i) => fs.addDir(P, `s${pad(i)}`))
+    const V = fs.addDir(R, 'v')
+    for (const u of [R, P, ...siblings]) prelist(h, u, clock.now())
+    s.setInterest(1, { ...none, focus: siblings[0]! })
+    await clock.advance(1000)
+    let reads = 0
+    const getDir = cache.getDir.bind(cache)
+    cache.getDir = (uri: string) => {
+      reads += 1
+      return getDir(uri)
+    }
+    // 只改变可见范围：重新计算范围，不触发检查
+    s.setInterest(1, { focus: siblings[0]!, visible: [V], offscreen: [] })
+    await clock.advance(0)
+    expect(reads).toBeGreaterThan(0)
+    expect(reads).toBeLessThanOrEqual(3 * TIER_LIMIT)
   })
 })
