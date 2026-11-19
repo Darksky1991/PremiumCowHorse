@@ -1,6 +1,7 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.9　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.10　｜　日期：2026-11-19　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.10 变更（文件名搜索完成，设计 `devDoc/2026-11-19-02-search-design.md`（需求方尚未确认，按其第 6 节的控制者决定实现），记录 `devDoc/2026-11-19-07-search.md`）：扫描进程在 `index.db` 中按名称查询（FTS5 trigram + 短词 / 通配词过滤，只读缓存、不访问文件系统），IPC `search.query`；活动栏新增「搜索」视图与 `Ctrl+Shift+F`：输入防抖 150ms、类型筛选、虚拟滚动的结果列表（匹配片段高亮、「条目标签 › 父目录」）、「基于缓存（N 分钟前更新）」与「部分目录尚未扫描」、无结果 / 截断 / 搜索不可用的状态；Enter / 单击经 `stores/navigation-store.ts` 在资源树中定位（展开祖先、逐层等待列表、选中并滚动）。新增 8.4 节，涉及 5.3、6.3、8.4、12.1、12.2、14.2、18 节
 > v1.9 变更（目录刷新与缓存引擎完成，设计 `devDoc/2026-11-19-01-refresh-cache-design.md`，记录 `devDoc/2026-11-19-06-refresh-cache.md`）：删除 `fs.watch` 目录监听，改为扫描进程（utilityProcess）+ 缓存库 `index.db`：koffi 原生枚举（按隐藏属性判断、不更新目录的访问时间）、4 级刷新级别与「建立索引」、P0 / P1 / P2 调度与按位置分组的并发、按「没有进展的时间」计的超时、共享断开时显示缓存与退避重试；条目级刷新级别 / 建立索引的右键菜单与断开图标；按松手位置插入、拒绝临时目录下的系统拖入；删除「用系统应用打开」与 `system.openPath`（需求方决定：资源树只用于展示，对文件的操作都放在将来的预览窗口中，相关的未来设计段落已标注）；主进程启动时记录 koffi（GetDriveTypeW）是否可用。新增原则回归 e2e（展开 `A\B\C` 时改名 `A`）与打包实测、性能记录。涉及 5.2、6.3、7.1、7.2、7.4、8.2、8.3、9.3、9.4、10.6、13、14.1、17、18、19 节
 > v1.8 变更（M1-2 最终审查修复）：窗口聚焦刷新改为实际生效（focusManager 同时监听 `focus` 与 `visibilitychange`；目录列表单独设 2 秒新鲜期并在重新挂载 / 聚焦时重新列出，此前写的 `'always'` 在 Electron 中常见情况下不触发、且折叠后再展开会显示旧缓存）；监听出错但目录仍在时不再循环重建（provider 只报告失效、`VfsService` 对失效的 URI 退避 60 秒）；不再需要的目录列表请求会取消；`vfs.watch` 超过 500 个时截断并警告。新增已知限制 / 待需求方决定：监听句柄阻止上级目录改名或移动（三个候选方案）、虚拟文件拖入的描述按 Chromium 的实际行为改写（三个选项）；拖放导航的主防线改为 `navigateOnDragDrop` 默认值。涉及 7.1、8.2、8.3、12.1、19 节
 > v1.7 变更（M1-2 资源树完成）：工作区切换器、虚拟化资源树（懒加载、状态行、键盘）、只管理条目的拖放、右键菜单、目录监听（`vfs.watch` / `vfs.changed`）与系统操作 IPC 已实现；按代码修正 `vfs.changed` 的负载、Provider 的 `watch` 签名与错误码列表；新增已知限制（虚拟文件拖入可能固定 %TEMP% 副本；条目目录删除后重建需「重试」/ F5 / 聚焦才恢复，恢复后监听自动重建）。涉及 3.3、5.2、5.3、6.3、6.6、7.1、7.2、8.1–8.3、12.1、12.2、14.2、17、18、19 节
@@ -332,6 +333,7 @@ apps/desktop/src/renderer/
 已实现：
 - M0：`app/`、`features/shell/`、`data/`（settings、window）、`lib/`、`providers/`、`stores/`、`styles/`。
 - M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」；URI 规范化 `normalizeRootUri` 与 `isUnderUri` 在 `packages/shared/src/vfs/normalize-uri.ts`，主进程、扫描进程、渲染端共用）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
+- 文件名搜索（2026-11-19，8.4 节）：`features/search/`（搜索视图 `search-view.tsx`、结果列表 `search-results.tsx`、按工作区保存输入与类型筛选的 `search-store.ts`、格式化纯函数 `format.ts`）；`data/search.ts`（`search.query` 的查询与取消）；`stores/navigation-store.ts`（跨 feature 的「在树中定位」请求：搜索视图发出、资源树处理）；`features/explorer/reveal.ts`（URI → 所属条目与节点 id、定位进展，纯函数）与 `use-reveal.ts`；`stores/ui-store.ts` 的 `SidebarView` 增加 `search`，并增加 `showView`（显示视图而不折叠）与 `searchFocusRequest`（`Ctrl+Shift+F` 聚焦搜索框）。
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 订阅 `vfs.reachability` 写入——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
@@ -399,7 +401,7 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setRefreshLevel}、index.{setTarget,list}、
-// vfs.{stat,list,cancel,interest,refresh,cacheInfo,clearCache}、system.{revealInOs,copyText,selectPaths}、
+// vfs.{stat,list,cancel,interest,refresh,cacheInfo,clearCache}、search.query、system.{revealInOs,copyText,selectPaths}、
 // window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged
 // （vfs.watch 与 system.openPath 已于 2026-11-19 删除；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
@@ -420,6 +422,7 @@ export const ipcContract = {
   'vfs.refresh':         route<void>()(z.object({ uris: z.array(z.string()).max(500) })),  // F5 / 重试：P0
   'vfs.cacheInfo':       route<{ bytes: number }>()(z.object({})),
   'vfs.clearCache':      route<void>()(z.object({})),
+  'search.query':        route<SearchResult>()(z.object({ workspaceId: z.string(), text: z.string().max(500), kind: z.enum(['all', 'file', 'directory']), limit: z.number().int().max(1000).optional(), requestId: z.string() })),  // 只查缓存；{ items, total（≤ 10000）, truncated, indexedAt, incomplete }；取消用 vfs.cancel；扫描进程不可用时 INDEX_UNAVAILABLE（8.4 节）
   'layout.dispatch':     route<void>()(LayoutAction),        // 打开/关闭/移动/弹出标签
   'layout.getWindow':    route<WindowView>()(z.object({ windowId: z.string() })),
   'connection.save':     route<ConnectionDto>()(ConnectionSaveInput),
@@ -697,6 +700,20 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 实现取值（设计第 6 节留给实现者，常量在 `scanner/schedule/scheduler.ts` 与 `scanner/cache/cache.ts`）：兜底完整枚举 `LIST_MAX_AGE_MS` = 1 小时（`listed_at` 超过即不比较修改时间、直接枚举）；同一目录的 P0 去重 2 秒（`P0_DEDUPE_MS`），`vfs.list` 在 2 秒内确认过即为 `fresh`（`FRESH_MS`）；同一网络主机两次 P2 之间停顿 200ms（`P2_GAP_MS`，本地不停顿）；热点目录取前 `HOT_K` = 20 个，计分 = 每次访问 +1、按 3 天半衰期衰减（`HALF_LIFE_MS`）；本地合计同时最多 4 个检查（`LOCAL_LIMIT`）；扫描进程的 libuv 线程池 16（`SCANNER_THREADPOOL_SIZE`）。
 
 **已实现（2026-11-19，扫描引擎 Task 1–10；记录见 `devDoc/2026-11-19-06-refresh-cache.md`）**：扫描进程、缓存、范围、调度见 5.2 节；渲染端接口见 7.1 节。渲染端目录查询（`data/vfs.ts` 的 `directoryQuery`）为 `staleTime: Infinity`、`refetchOnWindowFocus: false`、没有轮询；`refetchOnMount` 保持默认（`staleTime` 为 Infinity 时只对已失效的查询生效：折叠期间收到 `vfs.changed` 的目录再次展开时重新列出）。`DirectoryState` 的 ready 状态带 `state`（fresh / cached / offline）与 `checkedAt`（断开图标、浅色显示与「最后更新」提示见 8.2 节）。手动刷新（工具栏按钮 / F5）与「重试」见 7.1 节的 `vfs.refresh`。条目级的刷新级别与「建立索引」的右键菜单、断开图标已实现（8.2 节，Task 8）。e2e：`cache: an expanded directory shows the cached listing first and the change after the next check`（`vfs.list` 先返回不含新文件的缓存、`state: 'cached'`，检查后树中出现新文件；展开中的目录按刷新间隔感知新建 / 删除）、`cache: a deleted entry directory shows not-found and recovers on retry after it is re-created`、`focus: refocusing the window does not show loading for a cached directory`、`collapse: …`、`workspace switch: …`、`menu: refresh level and build index`、`offline: a root on an unreachable share shows the disconnected icon and its cached rows`（经主进程 `webContents.send('pch:event', …)` 注入 `vfs.reachability`，不新增产品 IPC）（e2e 启动后经 `settings.set` 把 `refresh.intervalSec.local` 设为下限 2 秒）；**原则回归** `principle: renaming an ancestor of an expanded directory succeeds`（展开 `案件\A\B\C` 并经过至少 2 个刷新间隔后，由测试进程把 `A` 改名为 `A2` 再改回，重复 10 次、间隔 300ms，全部成功；单次失败允许重试一次并记录。M1-2 的 `fs.watch` 下同样的操作会失败，见 19 节与 `knowledge/windows-and-tooling.md`）。性能记录（本机实测，两次）：本地 1 万目录 / 10 万文件的树在「全部」级别下首轮扫描约 58 秒（按卷串行，约 5.8ms / 目录），扫描进程工作集从约 86MB 升到峰值约 150MB，`index.db` 约 36MB（含 FTS5 索引）；网络位置未测（没有可用的共享）。命令与打包实测见 `devDoc/2026-11-19-06-refresh-cache.md`。
+
+### 8.4 文件名搜索
+
+设计见 `devDoc/2026-11-19-02-search-design.md`（需求方尚未确认，按其第 6 节的控制者决定实现）。只在当前工作区的缓存（`index.db`）中按名称搜索，搜索时**不访问文件系统**、不触发扫描；能搜到的范围由各条目的刷新级别与「建立索引」决定（8.3 节）。
+
+- 匹配：只匹配名称、不区分大小写（不做全角半角归一化）；空白分隔的多个词 = 全部包含（AND）；含 `*` / `?` 的词按通配匹配整个名称。解析与匹配规则只有一份：`packages/shared/src/search/query.ts`（`parseQuery` / `matchesName`，界面高亮用同一文件的 `matchRanges`）。
+- 执行：扫描进程中查询（`scanner/search/search.ts`），主进程 `search.query` 组装范围并合并固定的单个文件条目（5.2、6.3 节）；结果上限 1000、`total` 计数到 10000；`indexedAt` 为范围内目录 `checked_at` 的最小值，`incomplete` 为范围内存在从未列出的目录。
+- 界面（活动栏「搜索」视图，位于资源管理器之下；`Ctrl+Shift+F` 打开并聚焦搜索框，`Ctrl+F` 留给将来的预览窗口）：搜索框（防抖 150ms，Esc 清空）、类型筛选（全部 / 文件 / 文件夹）、摘要行「N 件 · 基于缓存（N 分钟前更新）」（`Intl.RelativeTimeFormat`，按界面语言，30 秒刷新一次）与「部分目录尚未扫描」、虚拟滚动的结果列表（两行：名称中匹配的片段 `<mark>` 高亮；「条目标签 › 父目录…」，行宽不够时省略中间部分、保留最后一级目录；悬停显示完整路径）。空输入时显示范围说明，无结果时显示「没有找到」与范围说明，截断时在底部显示「只显示前 1000 项」，扫描进程不可用（`INDEX_UNAVAILABLE`）时显示「搜索不可用」及原因。固定的单个文件条目的命中项没有缓存的大小 / 修改时间，界面不显示大小与时间。
+- 键盘：搜索框 ↓ 进入结果列表；列表 ↑↓ / Home / End 移动，Enter 定位，Esc 回到搜索框。列表为 `listbox` + `aria-activedescendant`（一个 Tab 停靠点）。
+- 结果操作（全部只读）：单击 / Enter = 在资源树中定位；右键菜单：在树中定位、在资源管理器中显示、复制路径、复制 URI。
+- 在树中定位：搜索视图调用 `navigation-store` 的 `requestReveal(workspaceId, uri)` 并切到资源管理器视图（资源树在其他视图显示期间不挂载）；资源树挂载后取出请求（`consume()`；不是当前工作区的请求丢弃）：URI → 所属条目（固定的单个文件条目按 URI 完全一致优先，其余取 URI 前缀最长的 folder 条目，`isUnderUri`）→ 一次展开所有祖先（分组、条目、中间目录；树按层列出目录，已缓存的多层一次求出）→ 目标行出现后选中、`scrollToIndex`（居中）并聚焦树。某一层的列表已就绪却没有下一段（缓存过期、目录被删除）、或该层出错，停在已到达的最深一层并提示；某一层超过 10 秒（`REVEAL_LAYER_TIMEOUT_MS`）仍未就绪同样停下并提示；不在任何条目之下时提示「该项目不在当前工作区的条目中」。
+- 状态保存：搜索框内容与类型筛选按工作区保存在 `features/search/search-store.ts`（只在内存中），切换侧栏视图后保留；切换工作区时搜索面板重建，不显示其他工作区的结果。
+
+**已实现（2026-11-19，Task 11 后端 + Task 12 界面；记录见 `devDoc/2026-11-19-07-search.md`）**：以上全部。渲染端查询 key `['search', workspaceId, text, kind]`，`staleTime: 0`（切回搜索视图时重新查询），不随 `vfs.changed` 失效；每次查询用新的 requestId，TanStack Query 取消查询时以该 id 发送 `vfs.cancel`（12.1 节）。e2e：`search: typing shows matches from the cache and Enter reveals the row in the tree`、`search: kind filter`、`search: no results`、`search: Ctrl+Shift+F focuses the input`、`search: right-click a result to copy its path` 与整窗截图用例。未验证：`INDEX_UNAVAILABLE` 的界面（e2e 中无法让扫描进程不可用）、定位的 10 秒超时（只有单元测试覆盖进展判断）、系统级截图。
 
 ---
 
@@ -991,7 +1008,7 @@ export interface SessionSnapshot {
 
 主进程事件到缓存失效的桥接集中在 `lib/query-client.ts`：例如收到 `vfs.changed` 就让 `['vfs','list',uri]` 失效，收到 `settings.changed` 就更新 `['settings']` 的缓存。业务组件不直接订阅 IPC 事件。
 
-已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），目录列表同样不按时间或聚焦重新获取（新鲜度由扫描进程负责，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。例外：`vfs.reachability` 由外壳（`features/shell`）订阅并写入 `stores/reachability-store.ts`（分层规则：store 只能由 feature 写入）。
+已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]`、`['search',workspaceId,text,kind]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），目录列表同样不按时间或聚焦重新获取（新鲜度由扫描进程负责，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。文件名搜索（`data/search.ts`）`staleTime: 0`、不随 `vfs.changed` 失效（扫描中变化频繁，结果行会不停跳动；界面标注「基于缓存」与更新时刻），每次查询用新的 requestId（`search:<页面随机前缀>:<序号>`），取消时以该 id 发送 `vfs.cancel`——各次查询若共用一个 id，旧查询的取消可能落到紧随其后的新查询上；输入变化时保留同一工作区的上一次结果直到新结果到达（8.4 节）。例外：`vfs.reachability` 由外壳（`features/shell`）订阅并写入 `stores/reachability-store.ts`（分层规则：store 只能由 feature 写入）。
 
 ### 12.2 界面布局
 
@@ -1007,7 +1024,7 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、远程连接、（后续）搜索与最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；欢迎页标题显示当前工作区名称；标签栏与 PreviewContainer 随 M1-3 实现。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；标签栏与 PreviewContainer 随 M1-3 实现。
 
 ### 12.3 渲染端入口
 
@@ -1163,7 +1180,7 @@ export type Settings = z.infer<typeof settingsSchema>;
 
 ### 14.2 国际化
 
-`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；M1-2 增加 workspace；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
+`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；M1-2 增加 workspace；2026-11-19 增加 search；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
 
 ### 14.3 主题
 
@@ -1247,7 +1264,7 @@ export default defineConfig({
 | 阶段 | 目标 | 主要交付 |
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
-| M1 工作区与本地文件 | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索界面**（随后，复用 `index.db` 的 FTS5 trigram 索引，设计 `devDoc/2026-11-19-02-search-design.md`）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
+| M1 工作区与本地文件 | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索**（复用 `index.db` 的 FTS5 trigram 索引：活动栏的搜索视图、`Ctrl+Shift+F`、在资源树中定位；✅ 2026-11-19 完成，设计 `devDoc/2026-11-19-02-search-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-07-search.md`）；M1-3 标签与目录视图（单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder 插件） |
 | M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text/markdown/image/pdf/media/fallback 插件、编码检测；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |

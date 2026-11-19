@@ -144,3 +144,11 @@
 - 原因：Fuses 只限制 Node 的调试参数，不限制 Chromium 的 `--remote-debugging-port`。（`_electron.launch` 驱动打包版是否可行未实测。）
 - 解决：`PremiumCowHorse.exe --user-data-dir=<临时目录> --remote-debugging-port=9333`，脚本中 `chromium.connectOverCDP('http://127.0.0.1:9333')`，取 URL 以 `app://` 开头的页面，经 `window.pch.invoke` 调用 IPC、用 locator 操作树、`page.screenshot`；结束时 `window.pch.invoke('window.close')` 让应用正常退出（扫描进程随之关闭）。性能记录：主进程中 `app.getAppMetrics()` 里 `serviceName === 'pch-scanner'` 的项给出扫描进程的 `workingSetSize` / `peakWorkingSetSize` / `privateBytes`（KB）；扫描进度用 node:sqlite 以 `readOnly: true` 打开 `<userData>/cache/index.db`（WAL，应用运行中也可读）数 `dirs.listed_at IS NOT NULL`。命令与结果见 `devDoc/2026-11-19-06-refresh-cache.md`。
 - 预防：`--remote-debugging-port` 只用于本地实测，不写进产品启动参数；脚本放在 scratchpad，不入库。
+
+### 主题切换后立即截图，截到的是过渡动画的中间帧
+
+- 日期：2026-11-19
+- 症状：e2e 中 `settings.set` 切换主题 / 语言并等到 `html[lang]` 生效后马上 `page.screenshot`，深色截图中多处文字与按钮半透明（像禁用状态）。
+- 原因：组件的颜色带 `transition`，`lang` / `class` 变化后颜色还在过渡中。
+- 解决：切换后等待约 800ms 再截图（`e2e/search.spec.ts` 的截图用例）。
+- 预防：截图发现「像禁用一样发灰」时先排除过渡动画，再怀疑样式。

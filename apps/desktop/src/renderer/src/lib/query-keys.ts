@@ -1,3 +1,5 @@
+import type { SearchKindFilter } from '@pch/shared'
+
 /** 集中管理 query key，主进程事件到缓存失效的桥接也依赖这里 */
 export const queryKeys = {
   appInfo: ['app', 'info'] as const,
@@ -12,5 +14,8 @@ export const queryKeys = {
   indexTargets: (workspaceId: string) => ['entry', 'index', workspaceId] as const,
   /** 所有目录列表的前缀（手动刷新时一次性失效） */
   directoryRoot: ['vfs', 'list'] as const,
-  directory: (uri: string) => ['vfs', 'list', uri] as const
+  directory: (uri: string) => ['vfs', 'list', uri] as const,
+  /** 文件名搜索（只查缓存）；kind 为类型筛选 */
+  search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
+    ['search', workspaceId, text, kind] as const
 }

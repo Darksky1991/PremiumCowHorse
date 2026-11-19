@@ -6,6 +6,8 @@ interface ExplorerState {
   /** 工作区 id → 选中的节点 id */
   selected: Record<string, string | null>
   toggle: (workspaceId: string, nodeId: string) => void
+  /** 展开这些节点（已展开的不变）：在树中定位时一次展开所有祖先 */
+  expand: (workspaceId: string, nodeIds: readonly string[]) => void
   select: (workspaceId: string, nodeId: string | null) => void
 }
 
@@ -23,6 +25,13 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
         ? current.filter((id) => id !== nodeId)
         : [...current, nodeId]
       return { expanded: { ...s.expanded, [workspaceId]: next } }
+    }),
+  expand: (workspaceId, nodeIds) =>
+    set((s) => {
+      const current = s.expanded[workspaceId] ?? []
+      const added = nodeIds.filter((id, i) => !current.includes(id) && nodeIds.indexOf(id) === i)
+      if (added.length === 0) return s
+      return { expanded: { ...s.expanded, [workspaceId]: [...current, ...added] } }
     }),
   select: (workspaceId, nodeId) =>
     set((s) => ({ selected: { ...s.selected, [workspaceId]: nodeId } }))

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesName, parseQuery } from './query'
+import { matchRanges, matchesName, parseQuery } from './query'
 
 describe('parseQuery', () => {
   it('splits on whitespace into AND terms', () => {
@@ -41,5 +41,38 @@ describe('matchesName', () => {
   })
   it('matches nothing without terms', () => {
     expect(matchesName('x', [])).toBe(false)
+  })
+})
+
+describe('matchRanges', () => {
+  const t = (s: string): ReturnType<typeof parseQuery>['terms'] => parseQuery(s).terms
+  it('marks every case-insensitive occurrence of contains terms, merged and sorted', () => {
+    expect(matchRanges('Design_design.XLSX', t('design xlsx'))).toEqual([
+      { start: 0, end: 6 },
+      { start: 7, end: 13 },
+      { start: 14, end: 18 }
+    ])
+    // 重叠的词合并成一段
+    expect(matchRanges('設計書_第10章', t('設計 計書'))).toEqual([{ start: 0, end: 3 }])
+  })
+  it('marks the literal parts of a glob, not the wildcards', () => {
+    expect(matchRanges('仕様書.xlsx', t('仕様*.XLSX'))).toEqual([
+      { start: 0, end: 2 },
+      { start: 3, end: 8 }
+    ])
+    expect(matchRanges('第3章', t('第?章'))).toEqual([
+      { start: 0, end: 1 },
+      { start: 2, end: 3 }
+    ])
+    expect(matchRanges('a[1].txt', t('a[1]*'))).toEqual([{ start: 0, end: 4 }])
+  })
+  it('returns no ranges when the name does not match', () => {
+    expect(matchRanges('abc', t('xyz'))).toEqual([])
+    expect(matchRanges('a.xlsx.bak', t('*.xlsx'))).toEqual([])
+    expect(matchRanges('abc', [])).toEqual([])
+  })
+  it('skips contains highlighting when lower-casing changes the length', () => {
+    // 'İ'.toLowerCase() 为 2 个 UTF-16 单元，下标无法对应回原名称
+    expect(matchRanges('İstanbul', t('stan'))).toEqual([])
   })
 })

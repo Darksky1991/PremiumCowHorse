@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import { ExplorerView } from '@renderer/features/explorer'
+import { SearchView } from '@renderer/features/search'
 import { Shell, SidebarEmptyState } from '@renderer/features/shell'
 import { WorkspaceSwitcher } from '@renderer/features/workspace'
 
@@ -13,6 +14,7 @@ export function App(): JSX.Element {
     <Shell
       sidebarViews={{
         explorer: <ExplorerView />,
+        search: <SearchView />,
         connections: <SidebarEmptyState view="connections" />
       }}
       workspaceSwitcher={<WorkspaceSwitcher />}

@@ -65,7 +65,31 @@ export default {
     menuAddFile: '添加文件…',
     copiedPath: '已复制路径',
     copiedUri: '已复制 URI',
-    cancel: '取消'
+    cancel: '取消',
+    revealNotInWorkspace: '该项目不在当前工作区的条目中',
+    revealNotFound: '在资源树中找不到该项目，目录内容可能已变化（按 F5 刷新）',
+    revealTimeout: '目录加载时间过长，已展开到能到达的最深一层'
+  },
+  search: {
+    title: '搜索',
+    placeholder: '搜索文件名',
+    inputLabel: '文件名',
+    clear: '清除',
+    kindLabel: '类型',
+    kindAll: '全部',
+    kindFile: '文件',
+    kindDirectory: '文件夹',
+    resultsLabel: '搜索结果',
+    scopeHint: '在当前工作区的缓存中按文件名搜索。范围取决于各条目的刷新级别与「建立索引」。',
+    wildcardHint: '空格分隔表示同时包含，* 和 ? 为通配符',
+    noResults: '没有找到',
+    count: '{{total}} 项',
+    basedOnCache: '基于缓存（{{time}}更新）',
+    justNow: '刚刚',
+    incomplete: '部分目录尚未扫描',
+    truncated: '只显示前 {{limit}} 项，请输入更多关键词',
+    unavailableTitle: '搜索不可用',
+    revealInTree: '在树中定位'
   },
   workspace: {
     switcherLabel: '切换工作区',

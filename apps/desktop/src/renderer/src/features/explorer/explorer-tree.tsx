@@ -41,6 +41,7 @@ import { resolveSelection } from './selection'
 import { useDropExecutor } from './use-drop-executor'
 import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
 import { TreeRow } from './tree-row'
+import { useRevealRequests } from './use-reveal'
 
 const NO_IDS: string[] = []
 
@@ -134,6 +135,20 @@ export function ExplorerTree({
     overscan: 10
   })
   const items = virtualizer.getVirtualItems()
+
+  // 搜索结果的「在树中定位」：展开祖先、选中并滚动到该行，焦点移到树上
+  useRevealRequests({
+    workspaceId,
+    entries,
+    nodes,
+    reveal: (index) => {
+      const node = nodes[index]
+      if (!node) return
+      select(workspaceId, node.id)
+      virtualizer.scrollToIndex(index, { align: 'center' })
+      scrollRef.current?.focus()
+    }
+  })
 
   // 告诉扫描进程本窗口的关注点（选中节点所在的目录）与视口内外的已展开目录（300ms 防抖）
   const rangeStart = items[0]?.index ?? -1

@@ -37,7 +37,7 @@
 - 日期：2026-11-18
 - 症状：`shadcn add` / `init` 在「Updating files」阶段失败，路径在用户名的 `.` 处被截断。
 - 原因：CLI 解析路径时把第一个 `.` 之后的部分当成扩展名去掉（用户目录为 `yongjun.fu`）。
-- 解决：临时映射无点号的盘符：`subst P: <仓库路径>` → 在 `P:\packages\ui` 执行 `npx shadcn@latest add <组件>` → `subst P: /D`。
+- 解决：临时映射无点号的盘符：`subst P: <仓库路径>` → 在 `P:\packages\ui` 执行 `npx shadcn@latest add <组件>` → `subst P: /D`。2026-11-19 补充：在 `P:` 下用 `pnpm exec shadcn add` **仍然失败**（同一报错；pnpm 从 `node_modules` 的符号链接解析到真实路径 `C:\Users\yongjun.fu\...`），必须用 `npx`；为与 `packages/ui` 依赖中的版本一致，写成 `npx --yes shadcn@<版本> add <组件> --yes`（当时为 4.23.0）。
 - 预防：添加组件后检查：①`sonner.tsx` 又引入了 `next-themes`（本项目不用，主题由调用方传入）；②`@base-ui/react` 是否已写入 `packages/ui` 的依赖（曾漏写）；③删除 CLI 生成的 `package-lock.json`（本项目用 pnpm）。
 
 ### Base UI 菜单的单选 / 复选项点击后不关闭
@@ -143,3 +143,11 @@
 - 原因：`source` 是 import 的原始写法，用 picomatch 匹配（`@boundaries/elements` 的 `isMatch`，未开 `dot`）；`**` 不匹配 `..` 这样的点开头路径段。TypeScript 解析器能把带 `?modulePath` 的路径解析到目标文件，所以目标元素确实是 `scanner`。
 - 解决：`eslint.config.mjs` 中写确切的相对写法 `source: '../../scanner/main?modulePath'`（`?` 作为通配符恰好匹配字面的 `?`）；不带查询参数的普通 import 仍被拒绝（已用临时文件验证）。
 - 预防：`source` 选择器先用确切写法；需要通配时注意 `..` 段。
+
+### shadcn ToggleGroup：选中项在侧栏上几乎看不出来（改用 Tabs）
+
+- 日期：2026-11-19
+- 症状：搜索视图的类型筛选（全部 / 文件 / 文件夹）用 `toggle-group`（`variant="outline"`、`spacing={0}`）实现后，整窗截图中看不出哪一项被选中，浅色、深色都如此。
+- 原因：`toggle` 的选中样式是 `aria-pressed:bg-muted`；neutral 主题下 `--muted`（oklch 0.97）与侧栏背景 `--sidebar`（oklch 0.985）几乎相同。组件按约定不手改样式。
+- 解决：改用 shadcn `tabs`（`TabsList` 为 `bg-muted`，选中的 `TabsTrigger` 为 `bg-background` + 阴影，侧栏上对比明显）；只切换结果列表的内容，不使用 `TabsContent`。已删除未使用的 `toggle` / `toggle-group`。e2e 中按 `role="tab"` + `aria-selected` 断言。
+- 预防：在 `bg-sidebar` 上使用以 `bg-muted` 表示状态的组件时，先看整窗截图再决定。

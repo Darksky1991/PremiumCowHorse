@@ -67,7 +67,33 @@ export default {
     menuAddFile: 'ファイルを追加…',
     copiedPath: 'パスをコピーしました',
     copiedUri: 'URI をコピーしました',
-    cancel: 'キャンセル'
+    cancel: 'キャンセル',
+    revealNotInWorkspace: 'この項目は現在のワークスペースのどの項目にも含まれていません',
+    revealNotFound:
+      'ツリーに見つかりません。フォルダーの内容が変わった可能性があります（F5 で最新の情報に更新）',
+    revealTimeout: 'フォルダーの読み込みに時間がかかっているため、途中まで展開しました'
+  },
+  search: {
+    title: '検索',
+    placeholder: 'ファイル名を検索',
+    inputLabel: 'ファイル名',
+    clear: 'クリア',
+    kindLabel: '種類',
+    kindAll: 'すべて',
+    kindFile: 'ファイル',
+    kindDirectory: 'フォルダー',
+    resultsLabel: '検索結果',
+    scopeHint:
+      '現在のワークスペースのキャッシュをファイル名で検索します。検索できる範囲は、各項目の更新レベルと「インデックスを作成」によって決まります。',
+    wildcardHint: 'スペース区切りで AND 検索、* と ? でワイルドカード',
+    noResults: '見つかりませんでした',
+    count: '{{total}} 件',
+    basedOnCache: 'キャッシュから検索（最終更新：{{time}}）',
+    justNow: 'たった今',
+    incomplete: 'まだスキャンされていないフォルダーがあります',
+    truncated: '先頭の {{limit}} 件だけを表示しています。キーワードを追加して絞り込んでください',
+    unavailableTitle: '検索を利用できません',
+    revealInTree: 'ツリーで表示'
   },
   workspace: {
     switcherLabel: 'ワークスペースの切り替え',

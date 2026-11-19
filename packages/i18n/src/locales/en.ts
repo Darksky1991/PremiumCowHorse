@@ -68,7 +68,33 @@ export default {
     menuAddFile: 'Add file…',
     copiedPath: 'Path copied',
     copiedUri: 'URI copied',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    revealNotInWorkspace: 'This item is not under any entry of the current workspace',
+    revealNotFound:
+      'Could not find the item in the tree. The folder may have changed (press F5 to refresh).',
+    revealTimeout: 'Loading the folders took too long; expanded as far as possible'
+  },
+  search: {
+    title: 'Search',
+    placeholder: 'Search file names',
+    inputLabel: 'File name',
+    clear: 'Clear',
+    kindLabel: 'Kind',
+    kindAll: 'All',
+    kindFile: 'Files',
+    kindDirectory: 'Folders',
+    resultsLabel: 'Search results',
+    scopeHint:
+      'Searches file names in the cache of the current workspace. What can be found depends on each entry’s refresh level and “Build index”.',
+    wildcardHint: 'Separate words with spaces to match all of them; use * and ? as wildcards',
+    noResults: 'No results',
+    count: '{{total}} found',
+    basedOnCache: 'From cache (updated {{time}})',
+    justNow: 'just now',
+    incomplete: 'Some folders have not been scanned yet',
+    truncated: 'Showing the first {{limit}} results. Type more keywords to narrow down.',
+    unavailableTitle: 'Search is unavailable',
+    revealInTree: 'Reveal in tree'
   },
   workspace: {
     switcherLabel: 'Switch workspace',

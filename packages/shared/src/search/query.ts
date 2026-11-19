@@ -31,3 +31,64 @@ export function matchesName(name: string, terms: SearchTerm[]): boolean {
     t.kind === 'contains' ? lower.includes(t.value.toLowerCase()) : globToRegExp(t.value).test(name)
   )
 }
+
+/** 名称中的一段 [start, end)（UTF-16 下标），供界面高亮 */
+export interface MatchRange {
+  start: number
+  end: number
+}
+
+/** glob 的字面部分各成一个捕获组（通配符不高亮）；匹配的名称集合与 globToRegExp 相同 */
+function globToGroupedRegExp(pattern: string): RegExp {
+  let src = ''
+  let literal = ''
+  const flush = (): void => {
+    if (literal !== '') src += `(${literal})`
+    literal = ''
+  }
+  for (const ch of pattern) {
+    if (ch === '*' || ch === '?') {
+      flush()
+      src += ch === '*' ? '.*' : '.'
+    } else {
+      literal += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    }
+  }
+  flush()
+  return new RegExp(`^${src}$`, 'isd')
+}
+
+/**
+ * 名称中与搜索词匹配的片段（已排序、重叠与相邻的合并）。规则与 matchesName 相同：
+ * 名称不匹配全部词时返回空数组；包含词标出所有出现位置，通配词标出字面部分。
+ * toLowerCase 改变长度的名称（如 'İ'）无法把下标对应回原名称，此时不标包含词。
+ */
+export function matchRanges(name: string, terms: SearchTerm[]): MatchRange[] {
+  if (!matchesName(name, terms)) return []
+  const ranges: MatchRange[] = []
+  const lower = name.toLowerCase()
+  const sameLength = lower.length === name.length
+  for (const t of terms) {
+    if (t.kind === 'contains') {
+      if (!sameLength) continue
+      const needle = t.value.toLowerCase()
+      for (let i = lower.indexOf(needle); i !== -1; i = lower.indexOf(needle, i + 1)) {
+        ranges.push({ start: i, end: i + needle.length })
+      }
+    } else {
+      const indices = globToGroupedRegExp(t.value).exec(name)?.indices ?? []
+      for (let g = 1; g < indices.length; g++) {
+        const pair = indices[g]
+        if (pair) ranges.push({ start: pair[0], end: pair[1] })
+      }
+    }
+  }
+  ranges.sort((a, b) => a.start - b.start)
+  const merged: MatchRange[] = []
+  for (const r of ranges) {
+    const last = merged.at(-1)
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end)
+    else merged.push({ ...r })
+  }
+  return merged
+}
