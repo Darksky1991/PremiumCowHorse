@@ -54,8 +54,12 @@ describe('scanner host search', () => {
         allRootUris: [url(root)],
         indexTargets: [],
         settings: {
-          intervalSec: { local: 5, network: 30 },
-          backgroundIntervalMin: 10,
+          interval: {
+            focus: { local: 5, network: 10 },
+            near: { local: 30, network: 60 },
+            far: { local: 120, network: 300 }
+          },
+          backgroundGapMs: { local: 500, network: 2000 },
           timeoutSec: { local: 5, network: 10 },
           activeDepth: 3
         }

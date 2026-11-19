@@ -52,15 +52,18 @@ export function buildScannerConfig(input: {
   }
 }
 
-/** 设置键 → 调度器使用的设置（设计 4.9） */
+/** 设置键 → 调度器使用的设置（设计 8.2 / 4.9） */
 export function toScanSettings(s: Settings): ScanSettings {
   return {
-    intervalSec: {
-      local: s['cache.interval.near.local'],
-      network: s['cache.interval.near.network']
+    interval: {
+      focus: { local: s['cache.interval.focus.local'], network: s['cache.interval.focus.network'] },
+      near: { local: s['cache.interval.near.local'], network: s['cache.interval.near.network'] },
+      far: { local: s['cache.interval.far.local'], network: s['cache.interval.far.network'] }
     },
-    // Task 3 起改用 cache.backgroundGapMs.*；此前保持原来的常量
-    backgroundIntervalMin: 10,
+    backgroundGapMs: {
+      local: s['cache.backgroundGapMs.local'],
+      network: s['cache.backgroundGapMs.network']
+    },
     timeoutSec: { local: s['vfs.timeoutSec.local'], network: s['vfs.timeoutSec.network'] },
     activeDepth: s['cache.activeDepth']
   }

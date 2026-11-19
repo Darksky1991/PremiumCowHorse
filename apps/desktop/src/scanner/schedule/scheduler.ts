@@ -8,10 +8,11 @@ import {
 } from '@pch/shared'
 import { toAppError } from '../../main/vfs/errors'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
-import { childUri, isUnder, type Cache } from '../cache/cache'
+import { childUri, type Cache, type Scope } from '../cache/cache'
 import type { Enumerator, RawEntry } from '../enum/types'
+import { BackgroundQueue, HOT_DEPTH } from './background-queue'
 import { backoffMs } from './backoff'
-import { computeScope, parentUri, type FrontierItem, type Tier } from './scope'
+import { computeScope, parentUri, TIER_RANK, type Tier } from './scope'
 
 export interface SchedulerEvents {
   /** 目录的缓存内容（列表或状态）有变化 */
@@ -39,14 +40,12 @@ export interface SchedulerDeps {
   log?: (level: 'info' | 'warn' | 'error', message: string) => void
 }
 
-/** 无论修改时间是否变化，listed_at 超过此时长就完整枚举一次（兜底修改时间的粒度与例外） */
-export const LIST_MAX_AGE_MS = 3_600_000
 /** 同一目录的 P0 在此时长内去重 */
 export const P0_DEDUPE_MS = 2000
-/** listNow：检查时刻在此时长内视为 fresh */
+/** listNow：检查时刻在此时长内视为 fresh；后台队列也不选此时长内确认过的目录 */
 export const FRESH_MS = 2000
-/** 同一主机两次 P2 之间的最短停顿 */
-export const P2_GAP_MS = 200
+/** 最近此时长内任一窗口的关注点 / 可见范围有变化 =「用户正在操作」：后台的休息时间加倍 */
+export const BUSY_MS = 10_000
 /** 参与范围计算的热点目录数 */
 export const HOT_K = 20
 /** 本地位置（所有卷合计）同时进行的检查上限 */
@@ -54,16 +53,20 @@ export const LOCAL_LIMIT = 4
 /** pump 出错后重试的间隔 */
 export const PUMP_RETRY_MS = 1000
 
-/** 设计 4.9 的默认值：configure 之前（例如启动时的 listNow）使用 */
+/** 设计 8.2 / 4.9 的默认值：configure 之前（例如启动时的 listNow）使用 */
 const DEFAULT_SETTINGS: ScanSettings = {
-  intervalSec: { local: 5, network: 30 },
-  backgroundIntervalMin: 10,
+  interval: {
+    focus: { local: 5, network: 10 },
+    near: { local: 30, network: 60 },
+    far: { local: 120, network: 300 }
+  },
+  backgroundGapMs: { local: 500, network: 2000 },
   timeoutSec: { local: 5, network: 10 },
   activeDepth: 3
 }
 
-type Prio = 'P0' | 'P1' | 'P2' | 'probe'
-/** 每个位置组（本地卷 / 网络主机）的两条并发通道：P0 专用 1 个、P1/P2/探测共用 1 个 */
+type Prio = 'P0' | 'periodic' | 'background' | 'probe'
+/** 每个位置组（本地卷 / 网络主机）的两条并发通道：P0 专用 1 个、定期确认 / 后台队列 / 探测共用 1 个 */
 type Lane = 'p0' | 'bg'
 
 interface Waiter {
@@ -71,21 +74,6 @@ interface Waiter {
   reject: (e: AppError) => void
   /** 开始等待的时刻：排队超过 timeoutSec 以 FS_TIMEOUT 拒绝 */
   since: number
-}
-
-interface Walk {
-  /** 当前层的目录（已处理的留到本层结束，用于取下一层） */
-  level: WalkItem[]
-  cursor: number
-  running: boolean
-}
-
-interface WalkItem {
-  uri: string
-  /** 还可以向下展开的层数；null 为不限 */
-  left: number | null
-  /** 跳过（断开、已离开范围）：不展开 */
-  skip: boolean
 }
 
 interface Task {
@@ -96,7 +84,6 @@ interface Task {
   waiters: Waiter[]
   /** refresh：在共享断开时也尝试一次 */
   bypass: boolean
-  walk?: Walk
 }
 
 type Outcome = { ok: true; entries: RawEntry[] | null; at: number } | { ok: false; error: AppError }
@@ -113,7 +100,7 @@ interface Owner extends Interest {
   focused: boolean
 }
 
-interface P1Item {
+interface PeriodicEntry {
   tier: Tier
   full: boolean
   next: number
@@ -164,28 +151,18 @@ function uriError(uri: string): AppError | null {
 
 const isValidUri = (uri: string): boolean => uriError(uri) === null
 
-/** uri 在 ancestor 之下的层数（ancestor 本身为 0）；调用方保证 isUnder(uri, ancestor) */
-function depthBelow(ancestor: string, uri: string): number {
-  if (uri === ancestor) return 0
-  return uri.slice(ancestor.length).replace(/^\//, '').split('/').length
-}
-
-/** a 的展开范围是否已包含 b 的展开范围 */
-function covers(a: FrontierItem, b: FrontierItem): boolean {
-  if (!isUnder(b.uri, a.uri)) return false
-  if (a.maxDepth === null) return true
-  if (b.maxDepth === null) return false
-  return depthBelow(a.uri, b.uri) + b.maxDepth <= a.maxDepth
-}
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((x, i) => x === b[i])
 
 /**
- * 调度器（扫描进程，设计 4.3 / 4.6 / 4.7）：按优先级安排目录检查，维护缓存并发出通知。
+ * 调度器（扫描进程，设计 4.3 / 4.7 / 8.2）：按优先级安排目录检查，维护缓存并发出通知。缓存不设过期。
  *
  * - P0：用户动作（listNow、refresh、关注点变化、窗口重新获得焦点、回到视口），立即；同一目录 2 秒内去重。
- * - P1：各窗口范围（computeScope）中的目录，按位置的刷新间隔；所有窗口都失焦（或没有窗口）时暂停。
- * - P2：frontier（「积极」的上下 N 级、「全部」、建立索引）每 backgroundIntervalMin 分钟一轮，
- *   按层广度优先，用游标从 cache.childDirs 取下一层，同时只在内存中保存一层的目录。
- * - 并发：本地最多 4 个；网络每台主机 P1/P2/探测 1 个 + P0 1 个；总数不超过线程池。
+ * - 定期确认：各窗口的关注点周边按远近分层（computeScope），按层与位置的间隔；关注点每次完整读取，
+ *   近 / 远先比较目录修改时间。所有窗口都失焦（或没有窗口）时暂停。
+ * - 后台队列（BackgroundQueue）：按优先级从缓存逐个选目录，每个位置组同时 1 个，完成后休息
+ *   backgroundGapMs（用户正在操作时加倍）；窗口失焦时照常。
+ * - 并发：本地最多 4 个；每个位置组「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个；总数不超过线程池。
  *   被看门狗中止的调用在真正返回之前继续占着名额（koffi 调用无法中途取消，线程仍被占用）。
  * - 看门狗：从调用开始与每次 onBatch 起计时，超过 timeoutSec 没有进展即中止。
  * - 断开：探测（statDir，或枚举的第一批之前）超时 / FS_UNAVAILABLE → 该共享断开，只按退避探测一个目录。
@@ -207,8 +184,12 @@ export class Scheduler {
   private configKey: string | null = null
 
   private readonly owners = new Map<number, Owner>()
-  private p1 = new Map<string, P1Item>()
-  private frontier: FrontierItem[] = []
+  private periodic = new Map<string, PeriodicEntry>()
+  private readonly queue: BackgroundQueue
+  /** 位置组 → 后台队列下一次可以开始的时刻（上一个完成后的休息） */
+  private readonly backgroundNextAt = new Map<string, number>()
+  /** 最近一次任一窗口的关注点 / 可见范围变化的时刻 */
+  private lastInterestChange = -Infinity
   private scopeDirty = false
 
   /** 待执行的 P0（插入顺序 = 先进先出） */
@@ -218,14 +199,6 @@ export class Scheduler {
   private readonly running = new Map<string, Task>()
   private readonly runs = new Set<Run>()
   private readonly offline = new Map<string, Offline>()
-
-  // P2 一轮的状态：按主机分组，每组一个按层前进的游标
-  private readonly walks = new Map<string, Walk>()
-  private readonly p2NextAt = new Map<string, number>()
-  private roundFrontier: FrontierItem[] = []
-  private roundActive = false
-  private roundStart = 0
-  private nextRoundAt = 0
 
   private inFlight = { total: 0, local: 0, network: 0 }
   /** 位置组（groupKey）→ 各通道占用数 */
@@ -247,6 +220,11 @@ export class Scheduler {
       1,
       deps.threadPoolSize ?? (Number(process.env['UV_THREADPOOL_SIZE']) || 4)
     )
+    this.queue = new BackgroundQueue({
+      cache: this.cache,
+      groupKey: (u) => this.groupKey(u),
+      freshMs: FRESH_MS
+    })
   }
 
   /**
@@ -285,6 +263,14 @@ export class Scheduler {
       offscreen: interest.offscreen.filter(isValidUri)
     }
     this.owners.set(ownerId, o)
+    const before = prev ?? { focus: null, visible: [], offscreen: [] }
+    if (
+      o.focus !== before.focus ||
+      !sameList(o.visible, before.visible) ||
+      !sameList(o.offscreen, before.offscreen)
+    ) {
+      this.lastInterestChange = this.now()
+    }
     if (o.focus !== null && o.focus !== prev?.focus) {
       this.cache.visit(o.focus, this.now())
       this.requestP0(o.focus)
@@ -333,7 +319,7 @@ export class Scheduler {
     }
     if (cached) {
       const fresh = dir.checkedAt !== null && this.now() - dir.checkedAt <= FRESH_MS
-      // 刚检查过（任何优先级，含 P1 发现变化后渲染端收到 vfs.changed 的重新列出）：不再排 P0，
+      // 刚检查过（任何优先级，含定期确认发现变化后渲染端收到 vfs.changed 的重新列出）：不再排 P0，
       // 否则每次检测到变化都会多一次完整枚举
       if (!fresh) this.requestP0(uri)
       return Promise.resolve(this.listing(uri, fresh ? 'fresh' : 'cached', dir.checkedAt))
@@ -353,11 +339,13 @@ export class Scheduler {
     return isValidUri(uri) && this.offline.has(this.enumerator.shareKey(uri))
   }
 
-  /** 调试与测试用：内存中排队的目录数（P0 + P2 各组当前层）、P1 范围大小、执行中的检查数 */
-  queueStats(): { queued: number; p1: number; running: number } {
-    let queued = this.p0.size
-    for (const w of this.walks.values()) queued += w.level.length
-    return { queued, p1: this.p1.size, running: this.running.size }
+  /** 调试与测试用：内存中排队的目录数（P0 + 后台队列的候选）、定期确认的对象数、执行中的检查数 */
+  queueStats(): { queued: number; periodic: number; running: number } {
+    return {
+      queued: this.p0.size + this.queue.size(),
+      periodic: this.periodic.size,
+      running: this.running.size
+    }
   }
 
   dispose(): void {
@@ -373,7 +361,6 @@ export class Scheduler {
       t.waiters = []
     }
     this.p0.clear()
-    this.walks.clear()
     if (this.wake) this.clearTimer(this.wake.timer)
     this.wake = null
   }
@@ -440,7 +427,7 @@ export class Scheduler {
     }
   }
 
-  /** 按 P0 → 探测 → P1 → P2 的顺序启动能启动的检查；返回最早的未来唤醒时刻 */
+  /** 按 P0 → 探测 → 定期确认 → 后台队列的顺序启动能启动的检查；返回最早的未来唤醒时刻 */
   private pumpOnce(): number {
     const now = this.now()
     let wakeAt = Infinity
@@ -489,18 +476,18 @@ export class Scheduler {
       this.start({ uri: off.probeUri, prio: 'probe', full: false, waiters: [], bypass: true }, 'bg')
     }
 
-    const focused = [...this.owners.values()].some((o) => o.focused)
-    const due: [string, P1Item][] = []
-    for (const e of this.p1) {
-      // P1 层在所有窗口失焦时暂停；P2 层的条目照常
-      if (e[1].tier === 'P1' && !focused) continue
-      if (e[1].next <= now) due.push(e)
-      else wakeAt = Math.min(wakeAt, e[1].next)
-    }
-    due.sort((a, b) => a[1].next - b[1].next)
-    for (const [uri, it] of due) {
-      if (this.running.has(uri) || this.isOffline(uri) || !this.canStart(uri, 'bg')) continue
-      this.start({ uri, prio: it.tier, full: it.full, waiters: [], bypass: false }, 'bg')
+    // 定期确认：所有窗口失焦时暂停（重新获得焦点时关注点进入 P0）
+    if ([...this.owners.values()].some((o) => o.focused)) {
+      const due: [string, PeriodicEntry][] = []
+      for (const e of this.periodic) {
+        if (e[1].next <= now) due.push(e)
+        else wakeAt = Math.min(wakeAt, e[1].next)
+      }
+      due.sort((a, b) => a[1].next - b[1].next)
+      for (const [uri, it] of due) {
+        if (this.running.has(uri) || this.isOffline(uri) || !this.canStart(uri, 'bg')) continue
+        this.start({ uri, prio: 'periodic', full: it.full, waiters: [], bypass: false }, 'bg')
+      }
     }
 
     return Math.min(wakeAt, this.pumpBackground(now))
@@ -523,7 +510,10 @@ export class Scheduler {
 
   // ---- 范围 ----
 
-  /** 各 owner 分别计算范围后合并（同一 URI 取更强的 tier 与 full）；没有 owner 时按无关注点计算 */
+  /**
+   * 各 owner 分别计算范围后合并：定期确认的对象同一 URI 取更近的层（关注点的完整读取优先），
+   * 后台范围取并集。没有 owner 时按无关注点计算。
+   */
   private recompute(): void {
     const hot = this.cache.hot(HOT_K)
     const children = (u: string): string[] => this.cache.childDirs(u)
@@ -532,7 +522,9 @@ export class Scheduler {
         ? [...this.owners.values()]
         : [{ focus: null, visible: [], offscreen: [] }]
     const items = new Map<string, { tier: Tier; full: boolean }>()
-    const frontier = new Map<string, number | null>()
+    const hotSet = new Set<string>()
+    const ranges: Scope[] = []
+    let indexTargets: Scope[] = []
     for (const i of interests) {
       const r = computeScope({
         roots: this.roots,
@@ -544,147 +536,75 @@ export class Scheduler {
         activeDepth: this.settings.activeDepth,
         children
       })
-      for (const it of r.items) {
+      for (const it of r.periodic) {
         const cur = items.get(it.uri)
-        items.set(it.uri, {
-          tier: cur?.tier === 'P1' || it.tier === 'P1' ? 'P1' : 'P2',
-          full: (cur?.full ?? false) || it.full
-        })
+        if (!cur || TIER_RANK[it.tier] < TIER_RANK[cur.tier]) {
+          items.set(it.uri, { tier: it.tier, full: it.full || (cur?.full ?? false) })
+        } else if (it.full) cur.full = true
       }
-      for (const f of r.frontier) {
-        const cur = frontier.get(f.uri)
-        if (cur === undefined) frontier.set(f.uri, f.maxDepth)
-        else
-          frontier.set(
-            f.uri,
-            cur === null || f.maxDepth === null ? null : Math.max(cur, f.maxDepth)
-          )
-      }
+      for (const h of r.background.hot) hotSet.add(h)
+      ranges.push(...r.background.ranges)
+      indexTargets = r.background.indexTargets
     }
 
     const now = this.now()
-    const next = new Map<string, P1Item>()
+    const next = new Map<string, PeriodicEntry>()
     for (const [uri, it] of items) {
-      const prev = this.p1.get(uri)
-      if (prev) {
-        next.set(uri, { ...it, next: prev.next })
-        continue
-      }
-      // 新进入范围：按上次检查的时刻排期（刚检查过的不立即重复）
+      const prev = this.periodic.get(uri)
       const checkedAt = this.cache.getDir(uri)?.checkedAt ?? null
-      next.set(uri, {
-        ...it,
-        next: checkedAt === null ? now : checkedAt + this.intervalFor(uri, it.tier)
-      })
+      // 新进入范围：按上次检查的时刻排期（刚检查过的不立即重复）；变近的目录不等原来更长的间隔
+      const due = checkedAt === null ? now : checkedAt + this.intervalFor(uri, it.tier)
+      next.set(uri, { ...it, next: prev ? Math.min(prev.next, due) : due })
     }
-    this.p1 = next
-    this.setFrontier([...frontier].map(([uri, maxDepth]) => ({ uri, maxDepth })))
+    this.periodic = next
+    this.queue.setScopes({
+      indexTargets,
+      hot: [...hotSet].map((uri) => ({ uri, maxDepth: HOT_DEPTH })),
+      ranges
+    })
     this.scopeDirty = false
   }
 
+  /** 定期确认的间隔：按层与位置；出错的目录（权限、超时）按远层的间隔重试 */
   private intervalFor(uri: string, tier: Tier): number {
     const dir = this.cache.getDir(uri)
-    // 出错的目录（权限、超时）按 P2 间隔重试
-    if (tier === 'P2' || (dir !== undefined && dir.state !== 'ok')) {
-      return this.settings.backgroundIntervalMin * 60_000
-    }
-    return this.settings.intervalSec[this.enumerator.location(uri)] * 1000
+    const t = dir !== undefined && dir.state !== 'ok' ? 'far' : tier
+    return this.settings.interval[t][this.enumerator.location(uri)] * 1000
   }
 
-  // ---- P2 ----
+  // ---- 后台队列 ----
 
-  /** frontier 变化：一轮进行中（或两轮之间）出现的、未被本轮覆盖的起点立即加入 */
-  private setFrontier(list: FrontierItem[]): void {
-    this.frontier = list
-    if (!this.roundActive && this.now() >= this.nextRoundAt) return // 下一轮马上开始
-    for (const f of list) this.addToRound(f)
-  }
-
-  private addToRound(f: FrontierItem): void {
-    if (this.roundFrontier.some((g) => covers(g, f))) return
-    this.roundFrontier.push(f)
-    const key = this.groupKey(f.uri)
-    let walk = this.walks.get(key)
-    if (!walk) {
-      walk = { level: [], cursor: 0, running: false }
-      this.walks.set(key, walk)
-    }
-    walk.level.push({ uri: f.uri, left: f.maxDepth, skip: false })
-    this.roundActive = true
-  }
-
-  private startRound(now: number): void {
-    this.roundStart = now
-    this.nextRoundAt = now + this.settings.backgroundIntervalMin * 60_000
-    this.roundFrontier = []
-    this.walks.clear()
-    // 范围大的起点先加入，被它覆盖的起点不重复
-    const sorted = [...this.frontier].sort((a, b) => a.uri.length - b.uri.length)
-    for (const f of sorted) if (f.maxDepth === null) this.addToRound(f)
-    for (const f of sorted) if (f.maxDepth !== null) this.addToRound(f)
-  }
-
-  /** 每个主机组最多启动 1 个 P2；返回下一次需要唤醒的时刻 */
+  /** 每个位置组最多 1 个（与定期确认、探测共用后台名额）；返回下一次需要唤醒的时刻 */
   private pumpBackground(now: number): number {
-    if (!this.roundActive) {
-      if (this.frontier.length === 0) return Infinity
-      if (now < this.nextRoundAt) return this.nextRoundAt
-      this.startRound(now)
-    }
     let wakeAt = Infinity
-    for (const [key, walk] of this.walks) {
-      if (walk.running) continue
-      const gate = this.p2NextAt.get(key) ?? 0
+    for (const { group, sample } of this.queue.groupList()) {
+      const gate = this.backgroundNextAt.get(group) ?? 0
       if (gate > now) {
         wakeAt = Math.min(wakeAt, gate)
         continue
       }
-      for (;;) {
-        if (walk.cursor >= walk.level.length) {
-          if (!this.advanceLevel(walk)) {
-            this.walks.delete(key)
-            break
-          }
-          continue
-        }
-        const it = walk.level[walk.cursor]!
-        // 断开的共享、已离开 frontier 的目录：本轮跳过（不展开）
-        if (this.isOffline(it.uri) || !this.frontier.some((f) => isUnder(it.uri, f.uri))) {
-          it.skip = true
-          walk.cursor += 1
-          continue
-        }
-        // 本轮已由其他优先级检查过：只展开，不重复检查
-        const checkedAt = this.cache.getDir(it.uri)?.checkedAt ?? null
-        if (checkedAt !== null && checkedAt >= this.roundStart) {
-          walk.cursor += 1
-          continue
-        }
-        if (this.running.has(it.uri) || !this.canStart(it.uri, 'bg')) break
-        walk.cursor += 1
-        walk.running = true
-        this.start({ uri: it.uri, prio: 'P2', full: false, waiters: [], bypass: false, walk }, 'bg')
-        break
+      // 名额被占用：释放时会再次 pump
+      if (!this.canStart(sample, 'bg')) continue
+      const c = this.queue.peek(group, {
+        now,
+        running: new Set(this.running.keys()),
+        skip: (u) => this.running.has(u) || this.isOffline(u),
+        usable: (sc) => !this.isOffline(sc.uri)
+      })
+      if (!c) {
+        const retry = this.queue.retryAt(group)
+        if (retry > now) wakeAt = Math.min(wakeAt, retry)
+        continue
       }
-    }
-    if (this.walks.size === 0) {
-      this.roundActive = false
-      return Math.min(wakeAt, this.nextRoundAt)
+      this.queue.take(group)
+      this.start({ uri: c.uri, prio: 'background', full: c.full, waiters: [], bypass: false }, 'bg')
     }
     return wakeAt
   }
 
-  /** 本层处理完：从缓存取各目录的子目录作为下一层；没有下一层返回 false */
-  private advanceLevel(walk: Walk): boolean {
-    const next: WalkItem[] = []
-    for (const it of walk.level) {
-      if (it.skip || it.left === 0) continue
-      const left = it.left === null ? null : it.left - 1
-      for (const c of this.cache.childDirs(it.uri)) next.push({ uri: c, left, skip: false })
-    }
-    walk.level = next
-    walk.cursor = 0
-    return next.length > 0
+  private backgroundGap(uri: string, now: number): number {
+    const gap = this.settings.backgroundGapMs[this.enumerator.location(uri)]
+    return now - this.lastInterestChange < BUSY_MS ? gap * 2 : gap
   }
 
   // ---- 并发 ----
@@ -700,7 +620,7 @@ export class Scheduler {
   }
 
   /**
-   * 每组 P1/P2/探测 1 个 + P0 1 个；本地合计不超过 LOCAL_LIMIT；总数不超过线程池。
+   * 每组定期确认 / 后台队列 / 探测共用 1 个 + P0 1 个；本地合计不超过 LOCAL_LIMIT；总数不超过线程池。
    * 本地合计、网络合计、单个组都不得占用最后一个线程（线程池 − 1），卡住的一方不会堵死另一方。
    */
   private canStart(uri: string, lane: Lane): boolean {
@@ -782,15 +702,14 @@ export class Scheduler {
       const off = this.offline.get(this.enumerator.shareKey(uri))
       if (off) off.probing = false
     }
-    if (task.walk) {
-      task.walk.running = false
-      // 停顿只用于网络主机（设计 4.6：同一服务器的两个目录之间）；本地卷不停顿
-      if (this.enumerator.location(uri) === 'network') {
-        this.p2NextAt.set(this.groupKey(uri), now + P2_GAP_MS)
-      }
+    if (task.prio === 'background') {
+      this.backgroundNextAt.set(this.groupKey(uri), now + this.backgroundGap(uri, now))
     }
-    const item = this.p1.get(uri)
-    if (item && task.prio !== 'probe') item.next = now + this.intervalFor(uri, item.tier)
+    // 刚确认过：重新排期。只比较修改时间的确认不代替关注点的完整读取
+    const item = this.periodic.get(uri)
+    if (item && task.prio !== 'probe' && (task.full || !item.full)) {
+      item.next = now + this.intervalFor(uri, item.tier)
+    }
 
     if (task.waiters.length === 0) return
     if (outcome.ok) {
@@ -820,7 +739,6 @@ export class Scheduler {
         dir === undefined ||
         dir.listedAt === null ||
         dir.state !== 'ok' ||
-        t - dir.listedAt >= LIST_MAX_AGE_MS ||
         dir.dirMtime !== mtime
       if (!needList) {
         this.cache.markChecked(uri, t)
@@ -837,7 +755,9 @@ export class Scheduler {
       const { changed } = this.cache.applyListing(uri, mtime, entries, at)
       if (changed) {
         this.events.changed(uri)
-        if (this.p1.has(uri)) this.scopeDirty = true
+        // 子目录可能有增减：分层的对象要重算；后台队列可能有了新的没有信息的目录
+        if (this.periodic.has(uri)) this.scopeDirty = true
+        this.queue.markDirty(this.groupKey(uri))
       }
       return { ok: true, entries, at }
     } catch (e) {
@@ -871,6 +791,7 @@ export class Scheduler {
       if (notify !== null) this.events.changed(notify)
       return
     }
+    // 失败的时刻记为确认时刻（checked_at）：后台队列不会立即重选它
     const state = error.code === 'FS_PERMISSION_DENIED' ? 'denied' : 'unreachable'
     const { changed } = this.cache.setState(uri, state, error.code, this.now())
     if (changed) this.events.changed(uri)
@@ -887,6 +808,7 @@ export class Scheduler {
         nextProbe: now + backoffMs(0),
         probing: false
       })
+      this.queue.invalidate()
       this.events.reachability(share, 'offline', now)
       return
     }
@@ -899,6 +821,7 @@ export class Scheduler {
 
   private markReachable(share: string): void {
     if (!this.offline.delete(share)) return
+    this.queue.invalidate()
     this.events.reachability(share, 'online', this.now())
     for (const o of this.owners.values()) {
       if (o.focus !== null && this.enumerator.shareKey(o.focus) === share) this.requestP0(o.focus)

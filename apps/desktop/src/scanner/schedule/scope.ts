@@ -2,9 +2,10 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { CacheStrategy, RootConfig } from '@pch/shared'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
-import { isUnder } from '../cache/cache'
+import { isUnder, type Scope } from '../cache/cache'
 
-export type Tier = 'P1' | 'P2'
+/** 定期确认的层（设计 8.2）：关注点 / 近 / 远 */
+export type Tier = 'focus' | 'near' | 'far'
 
 export interface ScopeInput {
   roots: RootConfig[]
@@ -20,18 +21,25 @@ export interface ScopeInput {
   children: (uri: string) => string[]
 }
 
-export interface ScopeItem {
+export interface PeriodicItem {
   uri: string
   tier: Tier
-  /** true=每次完整枚举；false=先比较目录修改时间 */
+  /** true=每次完整读取（关注点）；false=先比较目录修改时间 */
   full: boolean
 }
 
-/** 后台逐步展开的子树起点；maxDepth 为相对 uri 的层数上限，null 为不限 */
-export interface FrontierItem {
-  uri: string
-  maxDepth: number | null
+/** 后台队列的范围描述（调度器据此从缓存中按优先级逐个选目录，不在内存中展开） */
+export interface BackgroundScope {
+  /** 「建立索引」的目录（整棵子树） */
+  indexTargets: Scope[]
+  /** 缓存策略为「默认」及以上的根之下的热点目录 */
+  hot: string[]
+  /** 「积极」的关注点上下 N 层范围与「全部」策略的根（整棵子树） */
+  ranges: Scope[]
 }
+
+/** 层的远近：数值小的更近 */
+export const TIER_RANK: Record<Tier, number> = { focus: 0, near: 1, far: 2 }
 
 const RANK: Record<CacheStrategy, number> = { passive: 0, default: 1, active: 2, all: 3 }
 
@@ -48,45 +56,45 @@ function sameLocalPath(a: string, b: string): boolean {
 }
 
 /**
- * 计算扫描范围（纯函数，设计 4.5 / 4.6）。
- * 范围按「包含关注点的根中 URI 最长者」计算；若关注点落在多个根之下，级别取其中最高者。
- * 不递归遍历整棵树：需要后台逐步展开的子树以 frontier 返回。
+ * 计算定期确认的对象与后台队列的范围（纯函数，设计 8.2）。
+ * - 一个目录的缓存策略取包含它的根中最高者；不在任何根之下的目录不参与。
+ * - 关注点的祖先链止于包含它的根中 URI 最长者。
+ * - 「消极」只有关注点一层；「默认」及以上：近 = 父、子、兄弟与可见的已展开目录，
+ *   远 = 祖父以上的祖先、叔伯（父目录的兄弟）、滚出视口的已展开目录与各根目录。同一 URI 取更近的层。
+ * - 后台：「建立索引」与策略无关；热点需在「默认」及以上的根之下；「积极」加关注点上下 activeDepth 层；
+ *   「全部」加整个根。
  */
-export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier: FrontierItem[] } {
-  const items = new Map<string, ScopeItem>()
-  const frontier = new Map<string, number | null>()
+export function computeScope(input: ScopeInput): {
+  periodic: PeriodicItem[]
+  background: BackgroundScope
+} {
+  const items = new Map<string, Tier>()
+  const ranges = new Map<string, number | null>()
 
-  const add = (uri: string, tier: Tier, full: boolean): void => {
+  const add = (uri: string, tier: Tier): void => {
     const cur = items.get(uri)
-    if (!cur) {
-      items.set(uri, { uri, tier, full })
+    if (cur === undefined || TIER_RANK[tier] < TIER_RANK[cur]) items.set(uri, tier)
+  }
+  const addRange = (uri: string, maxDepth: number | null): void => {
+    if (!ranges.has(uri)) {
+      ranges.set(uri, maxDepth)
       return
     }
-    items.set(uri, {
-      uri,
-      tier: cur.tier === 'P1' || tier === 'P1' ? 'P1' : 'P2',
-      full: cur.full || full
-    })
+    const cur = ranges.get(uri) ?? null
+    ranges.set(uri, cur === null || maxDepth === null ? null : Math.max(cur, maxDepth))
   }
-  const addFrontier = (uri: string, maxDepth: number | null): void => {
-    if (!frontier.has(uri)) {
-      frontier.set(uri, maxDepth)
-      return
+  /** 包含 uri 的根中最高的策略；不在任何根之下为 null */
+  const strategyOf = (uri: string): CacheStrategy | null => {
+    let best: CacheStrategy | null = null
+    for (const r of input.roots) {
+      if (isUnder(uri, r.uri) && (best === null || RANK[r.strategy] > RANK[best])) best = r.strategy
     }
-    const cur = frontier.get(uri) ?? null
-    frontier.set(uri, cur === null || maxDepth === null ? null : Math.max(cur, maxDepth))
+    return best
   }
-  /** 目录本身与其子目录（「默认」对象，不含祖先） */
-  const addWithChildren = (uri: string): void => {
-    add(uri, 'P1', false)
-    for (const c of input.children(uri)) add(c, 'P1', false)
+  const atLeastDefault = (uri: string): boolean => {
+    const s = strategyOf(uri)
+    return s !== null && RANK[s] >= RANK.default
   }
-
-  // 所有根目录
-  for (const r of input.roots) add(r.uri, 'P1', false)
-
-  // 「全部」策略的根：与关注点无关，整棵进入 frontier
-  for (const r of input.roots) if (r.strategy === 'all') addFrontier(r.uri, null)
 
   // 关注点
   const { focus } = input
@@ -94,51 +102,56 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
     const containing = input.roots.filter((r) => isUnder(focus, r.uri))
     if (containing.length > 0) {
       const rootUri = containing.reduce((a, b) => (b.uri.length > a.uri.length ? b : a)).uri
-      const level = containing.reduce<CacheStrategy>(
-        (a, b) => (RANK[b.strategy] > RANK[a] ? b.strategy : a),
-        'passive'
-      )
-      add(focus, 'P1', true)
+      const strategy = strategyOf(focus) ?? 'passive'
+      add(focus, 'focus')
 
-      if (RANK[level] >= RANK.default) {
-        // 祖先链（至根），沿途记录以便取第 N 级祖先
+      if (RANK[strategy] >= RANK.default) {
+        // 祖先链（至根）：ancestors[0] 为父目录
         const ancestors: string[] = []
         let cur = focus
         for (;;) {
           const p = parentUri(cur)
           // 越过根（含根 URI 形态不同、字符串不相等的情形）即停
           if (p === null || !isUnder(p, rootUri)) break
-          // 与根是同一路径但 URI 写法不同（如 UNC 共享根的结尾 /）：根已加入，不重复
+          // 与根是同一路径但 URI 写法不同（如 UNC 共享根的结尾 /）：根另行加入，不重复
           if (p !== rootUri && sameLocalPath(p, rootUri)) break
           ancestors.push(p)
           cur = p
           if (cur === rootUri) break
         }
-        for (const a of ancestors) add(a, 'P1', false)
-        for (const c of input.children(focus)) add(c, 'P1', false)
-        const parent = ancestors[0]
+        const [parent, grandparent] = ancestors
+        for (const c of input.children(focus)) add(c, 'near')
         if (parent !== undefined) {
-          for (const s of input.children(parent)) if (s !== focus) add(s, 'P1', false)
+          add(parent, 'near')
+          for (const s of input.children(parent)) if (s !== focus) add(s, 'near')
+        }
+        for (const a of ancestors.slice(1)) add(a, 'far')
+        if (grandparent !== undefined && parent !== undefined) {
+          for (const u of input.children(grandparent)) if (u !== parent) add(u, 'far')
         }
 
-        if (level === 'active') {
+        if (strategy === 'active') {
           const up = Math.min(input.activeDepth, ancestors.length)
           const top = up === 0 ? focus : (ancestors[up - 1] ?? focus)
-          addFrontier(top, up + input.activeDepth)
+          addRange(top, up + input.activeDepth)
         }
       }
     }
   }
 
-  const underRoot = (uri: string): boolean => input.roots.some((r) => isUnder(uri, r.uri))
-  for (const h of input.hot) if (underRoot(h)) addWithChildren(h)
+  for (const v of input.visible) if (atLeastDefault(v)) add(v, 'near')
+  for (const o of input.offscreen) if (atLeastDefault(o)) add(o, 'far')
+  for (const r of input.roots) if (atLeastDefault(r.uri)) add(r.uri, 'far')
 
-  for (const v of input.visible) add(v, 'P1', true)
-  for (const o of input.offscreen) add(o, 'P1', false)
-  for (const t of input.indexTargets) addFrontier(t, null)
+  // 「全部」策略的根：与关注点无关，整棵进入后台范围
+  for (const r of input.roots) if (r.strategy === 'all') addRange(r.uri, null)
 
   return {
-    items: [...items.values()],
-    frontier: [...frontier].map(([uri, maxDepth]) => ({ uri, maxDepth }))
+    periodic: [...items].map(([uri, tier]) => ({ uri, tier, full: tier === 'focus' })),
+    background: {
+      indexTargets: [...new Set(input.indexTargets)].map((uri) => ({ uri, maxDepth: null })),
+      hot: input.hot.filter(atLeastDefault),
+      ranges: [...ranges].map(([uri, maxDepth]) => ({ uri, maxDepth }))
+    }
   }
 }

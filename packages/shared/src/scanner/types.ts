@@ -11,11 +11,19 @@ export interface RootConfig {
   location: 'local' | 'network'
 }
 
-/** 调度器使用的设置（由设置 cache.* / vfs.timeoutSec.* 换算，设计 4.9） */
+/** 按位置类型区分的一对取值 */
+export interface LocationPair {
+  local: number
+  network: number
+}
+
+/** 调度器使用的设置（由设置 cache.* / vfs.timeoutSec.* 换算，设计 8.2 / 4.9） */
 export interface ScanSettings {
-  intervalSec: { local: number; network: number }
-  backgroundIntervalMin: number
-  timeoutSec: { local: number; network: number }
+  /** 定期确认的间隔（秒）：关注点 / 近 / 远 */
+  interval: { focus: LocationPair; near: LocationPair; far: LocationPair }
+  /** 后台队列每确认完一个目录后的休息时间（毫秒）；用户正在操作时加倍 */
+  backgroundGapMs: LocationPair
+  timeoutSec: LocationPair
   activeDepth: number
 }
 

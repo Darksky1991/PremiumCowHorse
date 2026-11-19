@@ -21,10 +21,12 @@ const RootConfigSchema = z.strictObject({
   location: z.enum(['local', 'network'])
 }) satisfies z.ZodType<RootConfig>
 
+const Pair = z.strictObject({ local: z.number().positive(), network: z.number().positive() })
+
 const ScanSettingsSchema = z.strictObject({
-  intervalSec: z.strictObject({ local: z.number().positive(), network: z.number().positive() }),
-  backgroundIntervalMin: z.number().positive(),
-  timeoutSec: z.strictObject({ local: z.number().positive(), network: z.number().positive() }),
+  interval: z.strictObject({ focus: Pair, near: Pair, far: Pair }),
+  backgroundGapMs: Pair,
+  timeoutSec: Pair,
   activeDepth: z.number().int().nonnegative()
 }) satisfies z.ZodType<ScanSettings>
 

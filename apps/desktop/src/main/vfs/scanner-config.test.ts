@@ -37,7 +37,10 @@ describe('buildScannerConfig', () => {
     const settings = {
       ...DEFAULT_SETTINGS,
       'cache.strategy.local': 'all' as const,
-      'cache.interval.near.local': 2
+      'cache.interval.focus.local': 3,
+      'cache.interval.near.local': 20,
+      'cache.interval.far.network': 600,
+      'cache.backgroundGapMs.network': 4000
     }
     const c = buildScannerConfig({
       activeWorkspaceIds: ['w1'],
@@ -58,8 +61,12 @@ describe('buildScannerConfig', () => {
     ])
     expect(c.allRootUris).toEqual(['file:///C:/a', 'file://srv/share/x', 'file:///D:/other'])
     expect(c.settings).toEqual({
-      intervalSec: { local: 2, network: 60 },
-      backgroundIntervalMin: 10,
+      interval: {
+        focus: { local: 3, network: 10 },
+        near: { local: 20, network: 60 },
+        far: { local: 120, network: 600 }
+      },
+      backgroundGapMs: { local: 500, network: 4000 },
       timeoutSec: { local: 5, network: 10 },
       activeDepth: 3
     })

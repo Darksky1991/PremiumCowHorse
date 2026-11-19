@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppError, type ErrorCode, type RootConfig, type ScanSettings } from '@pch/shared'
 import { createLocator } from '../../main/vfs/location'
-import { Cache, childUri } from '../cache/cache'
+import { Cache, childUri, type Scope } from '../cache/cache'
 import type { Enumerator, RawEntry } from '../enum/types'
+import { BATCH_SIZE, OLDEST_BATCH_SIZE } from './background-queue'
 import { Scheduler } from './scheduler'
 
 /** 注入的时钟与计时器：advance 依次触发到期的计时器，每次之后让微任务跑完（不做真实等待） */
@@ -124,6 +125,11 @@ class FakeFs implements Enumerator {
     return this.calls.filter((c) => c.op === op && c.uri === uri).length
   }
 
+  /** 每次检查都从 statDir 开始：按顺序返回被检查的目录 */
+  checked(): string[] {
+    return this.calls.filter((c) => c.op === 'stat').map((c) => c.uri)
+  }
+
   statDir(uri: string, signal: AbortSignal): Promise<{ mtime: number }> {
     return this.op(
       'stat',
@@ -172,9 +178,14 @@ class FakeFs implements Enumerator {
   }
 }
 
+/** 设计 8.2 的默认值 */
 const settings: ScanSettings = {
-  intervalSec: { local: 5, network: 30 },
-  backgroundIntervalMin: 10,
+  interval: {
+    focus: { local: 5, network: 10 },
+    near: { local: 30, network: 60 },
+    far: { local: 120, network: 300 }
+  },
+  backgroundGapMs: { local: 500, network: 2000 },
   timeoutSec: { local: 5, network: 10 },
   activeDepth: 3
 }
@@ -185,9 +196,9 @@ const SHARE = '\\\\srv\\share'
 
 const root = (
   uri: string,
-  level: RootConfig['strategy'] = 'passive',
+  strategy: RootConfig['strategy'] = 'passive',
   location: RootConfig['location'] = uri.startsWith('file:///') ? 'local' : 'network'
-): RootConfig => ({ entryId: `e-${uri}`, workspaceId: 'w', uri, strategy: level, location })
+): RootConfig => ({ entryId: `e-${uri}`, workspaceId: 'w', uri, strategy, location })
 
 const none = { focus: null, visible: [], offscreen: [] }
 
@@ -207,7 +218,10 @@ interface Harness {
   s: Scheduler
 }
 
-function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Harness {
+function setup(
+  roots: RootConfig[],
+  opts: { threadPoolSize?: number; settings?: ScanSettings; indexTargets?: string[] } = {}
+): Harness {
   const clock = new FakeClock()
   const fs = new FakeFs(clock)
   const cache = Cache.open(':memory:')
@@ -230,8 +244,8 @@ function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Har
   for (const r of roots) fs.mkdir(r.uri)
   s.configure(
     roots,
-    [],
-    settings,
+    opts.indexTargets ?? [],
+    opts.settings ?? settings,
     roots.map((r) => r.uri)
   )
   disposers.push(() => {
@@ -241,58 +255,69 @@ function setup(roots: RootConfig[], opts: { threadPoolSize?: number } = {}): Har
   return { clock, fs, cache, changed, reach, logs, s }
 }
 
-describe('Scheduler', () => {
-  it('skips enumeration when the directory mtime is unchanged and full is false', async () => {
-    const { clock, fs, s } = setup([root(R)])
-    fs.addFile(R, 'a.txt')
-    s.setInterest(1, none)
-    await clock.advance(0)
-    expect(fs.count('list', R)).toBe(1) // 从未枚举 → 枚举
-    await clock.advance(5000)
-    await clock.advance(5000)
-    expect(fs.count('stat', R)).toBe(3)
-    expect(fs.count('list', R)).toBe(1)
-  })
+/** 测试前预先写入缓存（fs 中的当前列表） */
+function prelist(h: Harness, uri: string, at: number): void {
+  const d = h.fs.dirs.get(uri)!
+  h.cache.applyListing(uri, d.mtime, d.entries, at)
+}
 
-  it('always enumerates the focus directory', async () => {
-    const { clock, fs, s } = setup([root(R)])
+describe('Scheduler: periodic checks', () => {
+  it('focus is fully enumerated every focus interval', async () => {
+    const { clock, fs, s } = setup([root(R), root(N)])
     const A = fs.addDir(R, 'a')
+    const B = fs.addDir(N, 'b')
     s.setInterest(1, { ...none, focus: A })
+    s.setInterest(2, { ...none, focus: B })
     await clock.advance(0)
     expect(fs.count('list', A)).toBe(1)
-    await clock.advance(5000)
-    await clock.advance(5000)
+    expect(fs.count('list', B)).toBe(1)
+    // 修改时间不变也每次完整读取：本地 5 秒、网络 10 秒
+    await clock.advance(10_000)
     expect(fs.count('list', A)).toBe(3)
-    expect(fs.count('list', R)).toBe(1)
+    expect(fs.count('list', B)).toBe(2)
   })
 
-  it('emits changed only when the listing differs', async () => {
-    const { clock, fs, s, changed } = setup([root(R)])
-    fs.addFile(R, 'a.txt')
-    s.setInterest(1, { ...none, focus: R })
+  it('near and far use mtime and their own intervals', async () => {
+    const { clock, fs, s } = setup([root(R, 'default')])
+    const G = fs.addDir(R, 'g')
+    const P = fs.addDir(G, 'p')
+    const F = fs.addDir(P, 'f')
+    fs.addDir(F, 'c') // 子目录：同时在热点（关注点）的后台范围内，不用于计数
+    const S = fs.addDir(P, 's')
+    const U = fs.addDir(G, 'u')
+    const V = fs.addDir(R, 'v')
+    const O = fs.addDir(R, 'o')
+    s.setInterest(1, { focus: F, visible: [V], offscreen: [O] })
     await clock.advance(0)
-    expect(changed).toEqual([R])
-    await clock.advance(5000)
-    await clock.advance(5000)
-    expect(fs.count('list', R)).toBe(3)
-    expect(changed).toEqual([R])
-    fs.addFile(R, 'b.txt')
-    await clock.advance(5000)
-    expect(changed).toEqual([R, R])
+    const near = [P, S, V]
+    const far = [G, U, R, O]
+    const stats = (list: string[]): number[] => list.map((u) => fs.count('stat', u))
+    for (const u of [...near, ...far]) expect(fs.count('stat', u), u).toBe(1)
+
+    await clock.advance(30_000)
+    expect(stats(near)).toEqual([2, 2, 2])
+    expect(stats(far)).toEqual([1, 1, 1, 1])
+    await clock.advance(90_000)
+    expect(stats(near)).toEqual([5, 5, 5])
+    expect(stats(far)).toEqual([2, 2, 2, 2])
+    // 修改时间不变：只有第一次（没有列表）完整读取
+    for (const u of [...near, ...far]) expect(fs.count('list', u), u).toBe(1)
+    // 关注点每 5 秒完整读取
+    expect(fs.count('list', F)).toBe(1 + 120_000 / 5000)
   })
 
-  it('re-enumerates after an hour even when mtime is unchanged', async () => {
+  it('passive only checks the focus', async () => {
     const { clock, fs, s } = setup([root(R)])
-    s.setInterest(1, none)
-    await clock.advance(0)
-    expect(fs.count('list', R)).toBe(1)
-    await clock.advance(3_595_000)
-    expect(fs.count('list', R)).toBe(1)
-    await clock.advance(5000)
-    expect(fs.count('list', R)).toBe(2)
+    const A = fs.addDir(R, 'a')
+    fs.addDir(A, 'c')
+    const V = fs.addDir(R, 'v')
+    s.setInterest(1, { focus: A, visible: [V], offscreen: [R] })
+    await clock.advance(200_000)
+    expect(new Set(fs.calls.map((c) => c.uri))).toEqual(new Set([A]))
+    expect(fs.count('list', A)).toBe(1 + 200_000 / 5000)
   })
 
-  it('pauses P1 while every window is unfocused and checks the focus on refocus', async () => {
+  it('periodic checks pause while every window is unfocused and the focus is checked on refocus', async () => {
     const { clock, fs, s } = setup([root(R)])
     const A = fs.addDir(R, 'a')
     const B = fs.addDir(R, 'b')
@@ -323,11 +348,187 @@ describe('Scheduler', () => {
     expect(fs.calls.length).toBe(n)
   })
 
+  it('emits changed only when the listing differs', async () => {
+    const { clock, fs, s, changed } = setup([root(R)])
+    fs.addFile(R, 'a.txt')
+    s.setInterest(1, { ...none, focus: R })
+    await clock.advance(0)
+    expect(changed).toEqual([R])
+    await clock.advance(5000)
+    await clock.advance(5000)
+    expect(fs.count('list', R)).toBe(3)
+    expect(changed).toEqual([R])
+    fs.addFile(R, 'b.txt')
+    await clock.advance(5000)
+    expect(changed).toEqual([R, R])
+  })
+
+  it('no directory is re-enumerated only because time has passed', async () => {
+    // 后台的休息时间拉长，只为让用例跑得快
+    const slow = { ...settings, backgroundGapMs: { local: 60_000, network: 60_000 } }
+    const { clock, fs, s } = setup([root(R, 'all')], { settings: slow })
+    const A = fs.addDir(R, 'a')
+    const B = fs.addDir(R, 'b')
+    const X = fs.addDir(A, 'x')
+    s.setInterest(1, { focus: null, visible: [A], offscreen: [B] })
+    await clock.advance(3 * 3_600_000)
+    for (const u of [R, A, B, X]) {
+      expect(fs.count('list', u), u).toBe(1)
+      expect(fs.count('stat', u), u).toBeGreaterThan(10)
+    }
+  })
+
+  it('permission denied marks the directory and retries at the far interval', async () => {
+    const { clock, fs, s, cache } = setup([root(R)])
+    const A = fs.addDir(R, 'a')
+    fs.errors.set(A, 'FS_PERMISSION_DENIED')
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(cache.getDir(A)).toMatchObject({ state: 'denied', errorCode: 'FS_PERMISSION_DENIED' })
+    const n = fs.count('stat', A)
+    await clock.advance(60_000)
+    expect(fs.count('stat', A)).toBe(n)
+    await clock.advance(60_000)
+    expect(fs.count('stat', A)).toBe(n + 1)
+  })
+})
+
+describe('Scheduler: background queue', () => {
+  it('background prefers unlisted index targets, then unlisted scope, then hot, then oldest', async () => {
+    const IDX = `${R}/idx`
+    const h = setup([root(R, 'default')], { indexTargets: [IDX] })
+    const { clock, fs, cache } = h
+    fs.addDir(R, 'idx')
+    const HOT = fs.addDir(R, 'hot')
+    const OTHER = fs.addDir(R, 'other')
+    const I1 = fs.addDir(IDX, 'i1')
+    const I2 = fs.addDir(IDX, 'i2')
+    const H1 = fs.addDir(HOT, 'h1')
+    const H2 = fs.addDir(HOT, 'h2')
+    // 缓存：R、idx、hot 已读过（idx 比 hot 更久没确认），子目录都还没有信息；hot 是热点
+    prelist(h, R, 100)
+    prelist(h, IDX, 200)
+    prelist(h, HOT, 300)
+    cache.visit(HOT, 300)
+    // 没有窗口：定期确认暂停，只有后台队列
+    await clock.advance(10_000)
+    const order = fs.checked()
+    // ① 建立索引中没有信息的 → ② 范围内没有信息的（热点的子目录）
+    expect(order.slice(0, 4)).toEqual([I1, I2, H1, H2])
+    // ③ 热点中最久没确认的（hot）先于 ④ 其余范围内最久没确认的（idx，确认时刻更早）
+    const rest = order.slice(4)
+    expect(rest[0]).toBe(HOT)
+    expect(rest).toContain(IDX)
+    // 不在任何后台范围内的目录不进入队列
+    expect(fs.count('stat', OTHER)).toBe(0)
+    expect(fs.count('stat', R)).toBe(0)
+  })
+
+  it('background runs one directory at a time per location group and rests backgroundGapMs between', async () => {
+    const C = 'file:///C:/r'
+    const D = 'file:///D:/s'
+    const { clock, fs } = setup([root(C, 'all'), root(D, 'all'), root(N, 'all')])
+    for (const r of [C, D, N]) {
+      fs.addDir(r, 'a')
+      fs.addDir(r, 'b')
+    }
+    fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
+    const t0 = clock.now()
+    await clock.advance(12_000) // 没有窗口：只有后台队列
+    const listAt = (prefix: string): number[] =>
+      fs.calls.filter((c) => c.op === 'list' && c.uri.startsWith(prefix)).map((c) => c.at - t0)
+    // 每个目录 statDir 1 秒 + 读取 1 秒，完成后休息：本地 0.5 秒（各卷并行），网络 2 秒
+    expect(listAt('file:///C:/')).toEqual([1000, 3500, 6000])
+    expect(listAt('file:///D:/')).toEqual([1000, 3500, 6000])
+    expect(listAt('file://srv/')).toEqual([1000, 5000, 9000])
+    expect(fs.maxInFlight.get('srv')).toBe(1)
+  })
+
+  it('background keeps going while the user is busy, with doubled gaps', async () => {
+    const P = 'file:///D:/p'
+    const { clock, fs, s } = setup([root(R, 'all'), root(P)])
+    for (let i = 0; i < 40; i++) fs.addDir(R, `d${String(i).padStart(2, '0')}`)
+    const X = fs.addDir(P, 'x')
+    const Y = fs.addDir(P, 'y')
+    const t0 = clock.now()
+    // 用户一直在操作：每秒改变一次可见范围（消极的根，本身不产生检查）
+    s.setInterest(1, { ...none, visible: [X] })
+    for (let i = 1; i <= 20; i++) {
+      await clock.advance(1000)
+      s.setInterest(1, { ...none, visible: [i % 2 === 0 ? X : Y] })
+    }
+    await clock.advance(20_000)
+    // 0 秒时根目录由定期确认（远层）读取，之后 C: 上只有后台队列
+    const starts = fs.calls
+      .filter((c) => c.op === 'stat' && (c.uri === R || c.uri.startsWith(`${R}/`)))
+      .map((c) => c.at - t0)
+    const gaps = (from: number, to: number): number[] => {
+      const t = starts.filter((x) => x >= from && x <= to)
+      return t.slice(1).map((x, i) => x - t[i]!)
+    }
+    // 操作期间（最后一次变化在 20 秒）：不停，只是休息时间加倍（0.5 → 1 秒）
+    expect(starts.filter((x) => x > 0 && x <= 20_000)).toHaveLength(20)
+    expect(new Set(gaps(1000, 20_000))).toEqual(new Set([1000]))
+    // 10 秒没有变化后恢复为 0.5 秒
+    expect(new Set(gaps(31_000, 40_000))).toEqual(new Set([500]))
+  })
+
+  it('a failing directory is not retried before others', async () => {
+    const { clock, fs } = setup([root(R, 'all')])
+    const A = fs.addDir(R, 'a')
+    const others = [fs.addDir(R, 'b'), fs.addDir(R, 'c'), fs.addDir(R, 'd')]
+    fs.errors.set(A, 'FS_PERMISSION_DENIED')
+    await clock.advance(30_000)
+    const order = fs.checked()
+    const at = order.flatMap((u, i) => (u === A ? [i] : []))
+    expect(at.length).toBeGreaterThanOrEqual(3)
+    // 失败的时刻记为确认时刻：两次重试之间其他目录都轮到一次
+    for (let k = 1; k < at.length; k++) {
+      const between = new Set(order.slice(at[k - 1]! + 1, at[k]))
+      for (const o of others) expect(between.has(o), `${k}: ${o}`).toBe(true)
+    }
+  })
+
+  it('background selection does not materialize the whole tree', async () => {
+    const h = setup([root(R, 'all')])
+    const { clock, fs, cache, s } = h
+    const n = 50_000
+    const entries = fs.dirs.get(R)!.entries
+    for (let i = 0; i < n; i++) {
+      const name = `d${i}`
+      fs.mkdir(childUri(R, name))
+      entries.push({ name, kind: 'directory', size: 0, mtime: 1, hidden: false })
+    }
+    prelist(h, R, 100) // 5 万个没有信息的目录
+    const limits: number[] = []
+    const spy =
+      (fn: (scopes: Scope[], limit: number, exclude?: Set<string>) => string[]) =>
+      (scopes: Scope[], limit: number, exclude?: Set<string>): string[] => {
+        limits.push(limit)
+        return fn.call(cache, scopes, limit, exclude)
+      }
+    cache.nextUnlisted = spy(cache.nextUnlisted)
+    cache.oldestChecked = spy(cache.oldestChecked)
+    let maxQueued = 0
+    for (let i = 0; i < 60; i++) {
+      await clock.advance(1000)
+      maxQueued = Math.max(maxQueued, s.queueStats().queued)
+    }
+    expect(fs.checked().length).toBeGreaterThanOrEqual(100) // 照常前进
+    expect(limits.length).toBeGreaterThan(0)
+    expect(Math.max(...limits)).toBeLessThanOrEqual(OLDEST_BATCH_SIZE)
+    // 内存中的候选数是常数（没有信息的每类 BATCH_SIZE 个；最久没确认的另有上限），与目录总数无关
+    expect(maxQueued).toBeGreaterThan(0)
+    expect(maxQueued).toBeLessThanOrEqual(BATCH_SIZE + OLDEST_BATCH_SIZE + 1)
+  })
+})
+
+describe('Scheduler: P0, concurrency and errors', () => {
   it('limits network concurrency to one per host plus one for P0', async () => {
     const N1 = 'file://srv/share/a'
     const N2 = 'file://srv/share/b'
     const O = 'file://other/s/c'
-    const { clock, fs, s } = setup([root(N1), root(N2), root(O)])
+    const { clock, fs, s } = setup([root(N1, 'default'), root(N2, 'default'), root(O, 'default')])
     const D = fs.mkdir('file://srv/share/d')
     const E = fs.mkdir('file://srv/share/e')
     fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
@@ -356,7 +557,7 @@ describe('Scheduler', () => {
       'file:///E:/c',
       'file://h1/s/x',
       'file://h2/s/y'
-    ].map((u) => root(u))
+    ].map((u) => root(u, 'default'))
     const { clock, fs, s } = setup(roots, { threadPoolSize: 3 })
     fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
     s.setInterest(1, none)
@@ -366,9 +567,9 @@ describe('Scheduler', () => {
   })
 
   it('a stuck local volume does not block other volumes, network hosts or P0', async () => {
-    const stuck = ['a', 'b', 'c', 'd'].map((x) => root(`file:///C:/${x}`))
+    const stuck = ['a', 'b', 'c', 'd'].map((x) => root(`file:///C:/${x}`, 'all'))
     const E = 'file:///D:/e'
-    const { clock, fs, s } = setup([...stuck, root(E), root(N)])
+    const { clock, fs, s } = setup([...stuck, root(E, 'default'), root(N, 'default')])
     const X = fs.mkdir('file:///D:/x')
     // C: 上的调用不返回、也不响应中止（故障盘）
     fs.gate = (_op, uri) =>
@@ -379,21 +580,6 @@ describe('Scheduler', () => {
     expect(fs.count('list', E)).toBe(1)
     expect(fs.count('list', N)).toBe(1)
     await expect(s.listNow(X)).resolves.toMatchObject({ state: 'fresh' })
-  })
-
-  it('local P2 does not pause and volumes advance in parallel', async () => {
-    const C = 'file:///C:/r'
-    const D = 'file:///D:/s'
-    const { clock, fs, cache } = setup([root(C, 'all'), root(D, 'all')]) // 没有 owner：只有 P2
-    const dirs = [C, fs.addDir(C, 'a'), fs.addDir(C, 'b'), D, fs.addDir(D, 'a'), fs.addDir(D, 'b')]
-    fs.gate = (_op, _uri, signal) => clock.sleep(1000, signal)
-    const t0 = clock.now()
-    await clock.advance(6000) // 每卷 3 个目录 × (stat 1s + list 1s)，两卷并行、无停顿
-    for (const u of dirs) expect(cache.getDir(u)?.listedAt, u).not.toBeNull()
-    const listAt = (prefix: string): number[] =>
-      fs.calls.filter((c) => c.op === 'list' && c.uri.startsWith(prefix)).map((c) => c.at - t0)
-    expect(listAt('file:///C:/')).toEqual([1000, 3000, 5000])
-    expect(listAt('file:///D:/')).toEqual([1000, 3000, 5000])
   })
 
   it('a queued P0 waiter times out when the P0 lane never frees', async () => {
@@ -431,9 +617,9 @@ describe('Scheduler', () => {
     const { clock, fs, s, cache, logs } = setup([root(R, 'all')])
     const A = fs.addDir(R, 'a')
     const hot = cache.hot.bind(cache)
-    const childDirs = cache.childDirs.bind(cache)
+    const nextUnlisted = cache.nextUnlisted.bind(cache)
     let failHot = true
-    let failChildren = true
+    let failQueue = true
     cache.hot = (k: number): string[] => {
       if (failHot) {
         failHot = false
@@ -441,13 +627,12 @@ describe('Scheduler', () => {
       }
       return hot(k)
     }
-    // 只让调度循环（P2 取下一层）里的调用失败；applyListing 内部也调用 childDirs
-    cache.childDirs = (u: string): string[] => {
-      if (failChildren && new Error().stack?.includes('advanceLevel')) {
-        failChildren = false
-        throw new Error('childDirs boom')
+    cache.nextUnlisted = (scopes, limit, exclude): string[] => {
+      if (failQueue) {
+        failQueue = false
+        throw new Error('queue boom')
       }
-      return childDirs(u)
+      return nextUnlisted(scopes, limit, exclude)
     }
     s.setInterest(1, none)
     await clock.advance(5000)
@@ -455,12 +640,12 @@ describe('Scheduler', () => {
     expect(cache.getDir(A)?.listedAt).not.toBeNull()
     expect(logs.filter(([level]) => level === 'error').map(([, m]) => m.split('\n')[0])).toEqual([
       expect.stringContaining('hot boom'),
-      expect.stringContaining('childDirs boom')
+      expect.stringContaining('queue boom')
     ])
   })
 
   it('a slow but progressing enumeration does not time out', async () => {
-    const { clock, fs, s, cache, reach } = setup([root(R)])
+    const { clock, fs, s, cache, reach } = setup([root(R, 'default')])
     fs.addFile(R, 'a.txt')
     fs.gate = async (op, _uri, signal, onBatch) => {
       if (op !== 'list') return
@@ -480,7 +665,7 @@ describe('Scheduler', () => {
   })
 
   it('a probe timeout marks the share offline and retries with 30s 60s 120s … 300s backoff', async () => {
-    const { clock, fs, s, reach } = setup([root(N)])
+    const { clock, fs, s, reach } = setup([root(N, 'default')])
     let first = true
     fs.gate = (op, _uri, signal) => {
       if (op === 'stat' && first) {
@@ -508,7 +693,7 @@ describe('Scheduler', () => {
   })
 
   it('a hung call keeps its host slot until it settles', async () => {
-    const { clock, fs, s } = setup([root(N)])
+    const { clock, fs, s } = setup([root(N, 'default')])
     let release: () => void = () => {}
     let first = true
     fs.gate = (op) => {
@@ -554,7 +739,7 @@ describe('Scheduler', () => {
   it('listNow returns cached items with state offline while the share is offline', async () => {
     const { clock, fs, s, cache } = setup([root(N)])
     fs.addFile(N, 'f.txt')
-    s.setInterest(1, none)
+    s.setInterest(1, { ...none, focus: N })
     await clock.advance(0)
     const checkedAt = clock.now()
     await expect(s.listNow(N)).resolves.toMatchObject({ state: 'fresh', checkedAt })
@@ -583,7 +768,7 @@ describe('Scheduler', () => {
   })
 
   it('refresh bypasses the backoff once', async () => {
-    const { clock, fs, s, reach } = setup([root(N)])
+    const { clock, fs, s, reach } = setup([root(N, 'default')])
     let first = true
     fs.gate = (op, _uri, signal) => {
       if (op === 'stat' && first) {
@@ -621,7 +806,7 @@ describe('Scheduler', () => {
   })
 
   it('deduplicates P0 for the same directory within 2 seconds', async () => {
-    const { clock, fs, s } = setup([root(R)])
+    const { clock, fs, s } = setup([root(R, 'default')])
     s.setInterest(1, none)
     await clock.advance(10_000)
     await clock.advance(3000) // 上次检查已超过 2 秒：listNow 返回 cached 并排 P0
@@ -639,13 +824,13 @@ describe('Scheduler', () => {
     expect(fs.count('stat', R)).toBe(n + 2)
   })
 
-  it('a listNow right after a P1 check found a change does not enumerate again', async () => {
-    const { clock, fs, s, changed } = setup([root(R)])
+  it('a listNow right after a periodic check found a change does not enumerate again', async () => {
+    const { clock, fs, s, changed } = setup([root(R, 'default')])
     s.setInterest(1, none)
     await clock.advance(0)
     fs.addFile(R, 'b.txt')
     changed.length = 0
-    await clock.advance(5000) // P1：修改时间变化 → 枚举 → changed
+    await clock.advance(120_000) // 远层（根）：修改时间变化 → 读取 → changed
     expect(changed).toEqual([R])
     const lists = fs.count('list', R)
     const stats = fs.count('stat', R)
@@ -659,7 +844,7 @@ describe('Scheduler', () => {
   })
 
   it('not-found removes the subtree and notifies the parent', async () => {
-    const { clock, fs, s, cache, changed } = setup([root(R)])
+    const { clock, fs, s, cache, changed } = setup([root(R, 'default')])
     const A = fs.addDir(R, 'a')
     const AB = fs.addDir(A, 'b')
     s.setInterest(1, { ...none, focus: A })
@@ -673,29 +858,15 @@ describe('Scheduler', () => {
     expect(cache.getDir(AB)).toBeUndefined()
     expect(changed).toEqual([R])
 
-    // 根目录本身不在了：删除缓存并通知根；之后 listNow 以 FS_NOT_FOUND 拒绝
+    // 根目录本身不在了（关注点的父目录：近层 30 秒）：删除缓存并通知根；之后 listNow 以 FS_NOT_FOUND 拒绝
     changed.length = 0
     fs.rmdir(R)
-    await clock.advance(5000)
+    await clock.advance(30_000)
     expect(cache.getDir(R)).toBeUndefined()
     expect(changed).toEqual([R])
     await expect(s.listNow(R)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
-    await clock.advance(5000)
+    await clock.advance(30_000)
     expect(changed).toEqual([R]) // 已没有缓存：不重复通知
-  })
-
-  it('permission denied marks the directory and retries at the background interval', async () => {
-    const { clock, fs, s, cache } = setup([root(R)])
-    const A = fs.addDir(R, 'a')
-    fs.errors.set(A, 'FS_PERMISSION_DENIED')
-    s.setInterest(1, { ...none, focus: A })
-    await clock.advance(0)
-    expect(cache.getDir(A)).toMatchObject({ state: 'denied', errorCode: 'FS_PERMISSION_DENIED' })
-    const n = fs.count('stat', A)
-    await clock.advance(60_000)
-    expect(fs.count('stat', A)).toBe(n)
-    await clock.advance(10 * 60_000)
-    expect(fs.count('stat', A)).toBe(n + 1)
   })
 
   it('an unknown error marks only that directory unreachable, not the whole share', async () => {
@@ -714,7 +885,7 @@ describe('Scheduler', () => {
   })
 
   it('rejects invalid URIs without disturbing the schedule', async () => {
-    const { clock, fs, s } = setup([root(R)])
+    const { clock, fs, s } = setup([root(R, 'default')])
     await expect(s.listNow('not a uri')).rejects.toMatchObject({ code: 'FS_INVALID_URI' })
     await expect(s.listNow('https://x/y')).rejects.toMatchObject({
       code: 'FS_UNSUPPORTED_SCHEME'
@@ -724,41 +895,5 @@ describe('Scheduler', () => {
     expect(s.isOffline('not a uri')).toBe(false)
     await clock.advance(0)
     expect(fs.count('list', R)).toBe(1)
-  })
-
-  it('all level keeps the queue bounded by the frontier', async () => {
-    // 网络根：同时验证同一主机两次 P2 之间的停顿
-    const { clock, fs, s, cache } = setup([root(N, 'all')])
-    // 3 层、每层 50 个目录：第 2 层都在第 1 层的第一个目录下，第 3 层都在第 2 层的第一个目录下
-    const all: string[] = [N]
-    let parent = N
-    for (let level = 1; level <= 3; level++) {
-      const made: string[] = []
-      for (let i = 0; i < 50; i++) made.push(fs.addDir(parent, `d${level}-${i}`))
-      all.push(...made)
-      parent = made[0]!
-    }
-    // 没有 owner：P1 暂停，只有 P2 在跑
-    let maxQueued = 0
-    for (let i = 0; i < 400; i++) {
-      await clock.advance(100)
-      maxQueued = Math.max(maxQueued, s.queueStats().queued)
-    }
-    for (const u of all) expect(cache.getDir(u)?.listedAt, u).not.toBeNull()
-    expect(maxQueued).toBeLessThanOrEqual(50 + 5)
-    expect(maxQueued).toBeGreaterThan(0)
-
-    // 同一主机两次 P2 之间至少停顿 200ms
-    const starts = fs.calls.filter((c) => c.op === 'stat').map((c) => c.at)
-    for (let i = 1; i < starts.length; i++) {
-      expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(200)
-    }
-
-    // 下一轮在 backgroundIntervalMin 之后，先比较修改时间（不枚举）
-    const lists = fs.calls.filter((c) => c.op === 'list').length
-    await clock.advance(10 * 60_000)
-    const statsAfter = fs.calls.filter((c) => c.op === 'stat').length
-    expect(statsAfter).toBeGreaterThan(starts.length)
-    expect(fs.calls.filter((c) => c.op === 'list').length).toBe(lists)
   })
 })
