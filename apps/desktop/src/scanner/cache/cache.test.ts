@@ -475,7 +475,8 @@ describe('Cache', () => {
       expect(
         count('SELECT count(*) AS n FROM entries WHERE dir_id NOT IN (SELECT id FROM dirs)')
       ).toBe(0)
-      expect(count('SELECT count(*) AS n FROM entries_fts')).toBe(
+      // entries_fts_docsize 是 FTS 自己维护的行记录（external content 表的全表扫描读的是 entries，不能用来对账）
+      expect(count('SELECT count(*) AS n FROM entries_fts_docsize')).toBe(
         count('SELECT count(*) AS n FROM entries')
       )
       expect(() =>
@@ -664,6 +665,24 @@ describe('Cache on disk', () => {
     const again = track(Cache.open(f))
     again.setRoots(['file:///C:/a'])
     expect(again.getEntries('file:///C:/a')).toHaveLength(1)
+    again.close()
+  })
+
+  it('open drops and recreates the tables directly when user_version differs from an AUTOINCREMENT database', () => {
+    const f = path.join(tmp, 'index.db')
+    const first = track(Cache.open(f))
+    first.setRoots(['file:///C:/a'])
+    first.applyListing('file:///C:/a', 1, [dir('b'), file('x')], 1)
+    first.close()
+    const old = track(new DatabaseSync(f))
+    old.exec('PRAGMA user_version = 4')
+    old.close()
+    // 不经「打开失败 → 删除文件重建」的兜底：直接 Cache.open 必须成功并得到空库，编号从 1 开始
+    const again = track(Cache.open(f))
+    again.setRoots(['file:///C:/a'])
+    expect(again.getDir('file:///C:/a')).toBeUndefined()
+    again.applyListing('file:///C:/a', 1, [], 2)
+    expect(again.select('SELECT id FROM dirs')).toEqual([{ id: 1 }])
     again.close()
   })
 

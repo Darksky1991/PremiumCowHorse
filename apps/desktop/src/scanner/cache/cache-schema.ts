@@ -8,7 +8,6 @@ export const DROP_SQL = `
 DROP TABLE IF EXISTS entries_fts;
 DROP TABLE IF EXISTS entries;
 DROP TABLE IF EXISTS dirs;
-DROP TABLE IF EXISTS sqlite_sequence;
 `
 
 export const CREATE_SQL = `

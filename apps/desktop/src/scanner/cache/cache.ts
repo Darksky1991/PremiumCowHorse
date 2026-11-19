@@ -165,8 +165,6 @@ function toDirRow(r: Row): DirRow {
  */
 export class Cache {
   private roots: string[] = []
-  /** upsertDir 新建过目录行（调用方据此在事务末尾认领孤儿） */
-  private created = false
 
   private constructor(private readonly db: DatabaseSync) {}
 
@@ -245,9 +243,8 @@ export class Cache {
       let changed = !prev || prev.listed_at === null || prev.state !== 'ok'
 
       // 目录自身行。不用 ON CONFLICT 的插入：冲突的插入也会消耗 AUTOINCREMENT 的编号
-      this.created = false
       const parentId = this.idOf(parentOf(uri, this.roots))
-      const dirId = this.upsertDir(uri, parentId, {
+      const { id: dirId, created: ownCreated } = this.upsertDir(uri, parentId, {
         dirMtime,
         listedAt: now,
         checkedAt: now,
@@ -296,7 +293,7 @@ export class Cache {
         "INSERT INTO dirs (uri, parent_id, state) VALUES (?, ?, 'ok')"
       )
       const setParent = this.db.prepare('UPDATE dirs SET parent_id = ? WHERE id = ?')
-      let created = this.created
+      let created = ownCreated
       for (const c of childDirUris) {
         const r = find.get(c)
         if (!r) {
@@ -481,14 +478,14 @@ export class Cache {
   }
 
   /**
-   * 建立目录行，或更新已有行的 parent_id（与 fields 中给出的列），返回编号。新建的行认领先于它建立的子目录。
+   * 建立目录行，或更新已有行的 parent_id（与 fields 中给出的列），返回编号与是否新建（新建后调用方需认领先于它建立的子目录，见 adoptOrphans）。
    * 先查再写而不用 INSERT … ON CONFLICT：冲突的插入也会消耗 AUTOINCREMENT 的编号（每次刷新都会烧掉一批）
    */
   private upsertDir(
     uri: string,
     parentId: number | null,
     fields?: { dirMtime: number; listedAt: number; checkedAt: number; state: DirState }
-  ): number {
+  ): { id: number; created: boolean } {
     const id = this.idOf(uri)
     if (id === null) {
       const r = this.get(
@@ -501,8 +498,7 @@ export class Cache {
         fields?.checkedAt ?? null,
         fields?.state ?? 'ok'
       )
-      this.created = true
-      return Number(r!.id)
+      return { id: Number(r!.id), created: true }
     }
     if (fields) {
       this.run(
@@ -522,7 +518,7 @@ export class Cache {
         parentId
       )
     }
-    return id
+    return { id, created: false }
   }
 
   /**
