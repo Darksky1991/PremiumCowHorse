@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FileEntry } from '@pch/plugin-sdk'
-import { breadcrumb, extensionOf, parentOf, sortEntries, visibleEntries } from './model'
+import { extensionOf, sortEntries, visibleEntries } from './model'
 
 const D = 'file:///C:/d'
 const entry = (name: string, over: Partial<FileEntry> = {}): FileEntry => ({
@@ -114,77 +114,5 @@ describe('visibleEntries', () => {
     const list = [entry('a'), entry('h', { hidden: true })]
     expect(names(visibleEntries(list, false))).toEqual(['a'])
     expect(visibleEntries(list, true)).toBe(list)
-  })
-})
-
-describe('breadcrumb', () => {
-  const ROOT = 'file:///C:/work/%E6%A1%88%E4%BB%B6'
-
-  it('starts at the entry root, decoding names', () => {
-    expect(breadcrumb(`${ROOT}/%E8%A8%AD%E8%A8%88%E6%9B%B8/v1`, ROOT)).toEqual([
-      { label: '案件', uri: ROOT },
-      { label: '設計書', uri: `${ROOT}/%E8%A8%AD%E8%A8%88%E6%9B%B8` },
-      { label: 'v1', uri: `${ROOT}/%E8%A8%AD%E8%A8%88%E6%9B%B8/v1` }
-    ])
-    expect(breadcrumb(ROOT, ROOT)).toEqual([{ label: '案件', uri: ROOT }])
-  })
-
-  it('goes up to the drive without an entry root', () => {
-    expect(breadcrumb(`${ROOT}/a`, null)).toEqual([
-      { label: 'C:', uri: 'file:///C:/' },
-      { label: 'work', uri: 'file:///C:/work' },
-      { label: '案件', uri: ROOT },
-      { label: 'a', uri: `${ROOT}/a` }
-    ])
-    expect(breadcrumb('file:///C:/', null)).toEqual([{ label: 'C:', uri: 'file:///C:/' }])
-    expect(breadcrumb('file:///C:/a/', null)).toEqual([
-      { label: 'C:', uri: 'file:///C:/' },
-      { label: 'a', uri: 'file:///C:/a' }
-    ])
-  })
-
-  it('accepts the drive root as the entry root', () => {
-    expect(breadcrumb('file:///D:/a', 'file:///D:/')).toEqual([
-      { label: 'D:', uri: 'file:///D:/' },
-      { label: 'a', uri: 'file:///D:/a' }
-    ])
-  })
-
-  it('starts UNC paths at the share', () => {
-    expect(breadcrumb('file://srv/share/a/b', null)).toEqual([
-      { label: '\\\\srv\\share', uri: 'file://srv/share' },
-      { label: 'a', uri: 'file://srv/share/a' },
-      { label: 'b', uri: 'file://srv/share/a/b' }
-    ])
-    expect(breadcrumb('file://srv/share/a/b', 'file://srv/share/a')).toEqual([
-      { label: 'a', uri: 'file://srv/share/a' },
-      { label: 'b', uri: 'file://srv/share/a/b' }
-    ])
-  })
-
-  it('ignores a root that is not an ancestor and keeps other URIs whole', () => {
-    expect(breadcrumb('file:///C:/a', 'file:///C:/ab')).toEqual([
-      { label: 'C:', uri: 'file:///C:/' },
-      { label: 'a', uri: 'file:///C:/a' }
-    ])
-    expect(breadcrumb('sftp://h/x', null)).toEqual([{ label: 'sftp://h/x', uri: 'sftp://h/x' }])
-  })
-
-  it('keeps a segment that cannot be decoded as is', () => {
-    expect(breadcrumb('file:///C:/%E6', null).at(-1)).toEqual({
-      label: '%E6',
-      uri: 'file:///C:/%E6'
-    })
-  })
-})
-
-describe('parentOf', () => {
-  it('returns the parent directory regardless of the entry root, null at the drive or share', () => {
-    expect(parentOf('file:///C:/a/b')).toBe('file:///C:/a')
-    expect(parentOf('file:///C:/a')).toBe('file:///C:/')
-    expect(parentOf('file:///C:/')).toBeNull()
-    expect(parentOf('file://srv/share/a')).toBe('file://srv/share')
-    expect(parentOf('file://srv/share')).toBeNull()
-    expect(parentOf('sftp://h/x')).toBeNull()
   })
 })

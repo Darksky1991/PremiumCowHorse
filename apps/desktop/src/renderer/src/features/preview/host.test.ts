@@ -47,6 +47,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     language: 'ja',
     theme: 'dark',
     settings: { 'explorer.showHiddenFiles': true },
+    parent: { uri: 'file:///C:/%E6%A1%88%E4%BB%B6', kind: 'directory', title: '案件' },
     roots: [
       'file:///C:/%E6%A1%88%E4%BB%B6',
       'file:///C:/%E6%A1%88%E4%BB%B6/%E8%A8%AD%E8%A8%88%E6%9B%B8'
@@ -167,6 +168,25 @@ describe('createPreviewHost: tabs', () => {
       title: '設計書',
       preview: true
     })
+  })
+
+  it('up navigates the tab to the parent location given by the container (no stat)', () => {
+    const { host, deps, calls } = setup()
+    host.tabs.up()
+    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
+      uri: 'file:///C:/%E6%A1%88%E4%BB%B6',
+      kind: 'directory',
+      title: '案件'
+    })
+    expect(deps.tabs.promote).toHaveBeenCalledWith('tab-1')
+    expect(calls).toEqual([])
+  })
+
+  it('up does nothing without a parent location (the workspace overview)', () => {
+    const { host, deps } = setup({ parent: null })
+    host.tabs.up()
+    expect(deps.tabs.navigate).not.toHaveBeenCalled()
+    expect(deps.tabs.promote).not.toHaveBeenCalled()
   })
 
   it('reports a target that cannot be read and opens nothing', async () => {

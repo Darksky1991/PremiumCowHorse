@@ -66,5 +66,20 @@ describe('tabs-store', () => {
     open('w1', file('file:///C:/d/a.txt', false))
     expect(active('w1')).toBeNull()
     expect(active('w2')).toBeNull()
+    // 工作区总览不是文件系统：不作为关注点发给扫描进程
+    open('w1', { uri: 'pch-workspace:w1', kind: 'workspace', title: 'w', preview: false })
+    expect(active('w1')).toBeNull()
+  })
+
+  it('back / forward 凭标签 id 在其历史中后退 / 前进', () => {
+    const { open } = useTabsStore.getState()
+    open('w1', { uri: 'file:///C:/a', kind: 'directory', title: 'a', preview: false })
+    const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
+    const current = (): string => selectTabs('w1')(useTabsStore.getState()).tabs[0]!.uri
+    useTabsStore.getState().navigate(id, { uri: 'file:///C:/a/b', kind: 'directory', title: 'b' })
+    useTabsStore.getState().back(id)
+    expect(current()).toBe('file:///C:/a')
+    useTabsStore.getState().forward(id)
+    expect(current()).toBe('file:///C:/a/b')
   })
 })

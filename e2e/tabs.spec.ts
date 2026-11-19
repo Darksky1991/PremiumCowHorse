@@ -49,8 +49,8 @@ test.describe('tabs opened from the explorer tree', () => {
       await expect(tab(page, '案件')).toHaveAttribute('aria-selected', 'true')
       await expect(tab(page, '案件')).toHaveCSS('font-style', 'italic')
       await expect(welcome).toHaveCount(0)
-      // 内容区为该资源的预览（目录视图：面包屑从条目根开始）
-      await expect(page.getByRole('tabpanel').getByRole('navigation')).toContainText('案件')
+      // 内容区为该资源的预览（目录视图的列表）
+      await expect(page.getByRole('tabpanel').getByRole('grid', { name: '案件' })).toBeVisible()
       // 悬停提示为完整路径
       await expect(tab(page, '案件')).toHaveAttribute('title', project)
 

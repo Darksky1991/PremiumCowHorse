@@ -1,5 +1,5 @@
 import type { HostSettings, PreviewHost, ToastType } from '@pch/plugin-sdk'
-import { AppError, isUnderUri, type DirectoryListing } from '@pch/shared'
+import { AppError, isUnderUri, type DirectoryListing, type TabLocation } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
 import type { TabTarget } from '@renderer/stores/tabs-store'
@@ -37,6 +37,8 @@ export interface PreviewHostDeps {
   settings: Partial<HostSettings> | undefined
   /** 标签所属工作区的 folder 条目的根 URI（fs.rootOf 用） */
   roots: readonly string[]
+  /** 标签当前位置按逻辑路径的上一级（lib/logical-path.ts 的 parentLocation；tabs.up 用），没有时为 null */
+  parent: TabLocation | null
 }
 
 /** 插件可读取的设置键（plugin-sdk 的 HostSettings）：其余设置即使传入也读不到 */
@@ -114,6 +116,12 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         target(uri, kind)
           .then((t) => deps.tabs.navigate(tabId, t))
           .catch(reportError)
+      },
+      up: () => {
+        const parent = deps.parent
+        if (parent === null) return
+        interacted()
+        deps.tabs.navigate(tabId, parent)
       }
     },
     system: {

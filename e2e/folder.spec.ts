@@ -43,7 +43,6 @@ test.describe('folder view (the folder plugin)', () => {
     rows(page).filter({ has: page.getByTitle(name, { exact: true }) })
   /** 各行第一列（名称） */
   const names = (page: Page): Locator => rows(page).locator('[role="gridcell"]:first-child')
-  const crumbs = (page: Page): Locator => panel(page).getByRole('navigation', { name: 'Location' })
 
   test('lists names, modified times, types and sizes; headers sort with folders first', async () => {
     const { app, page } = await launchFast(userData)
@@ -86,41 +85,43 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
-  test('double click navigates in the same tab; breadcrumb, up and Backspace go back; files open in a new tab', async () => {
+  test('double click navigates in the same tab; Backspace / Alt+Up go up to the entry root and then the workspace overview; files open in a new tab', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
-      // 面包屑从条目根开始
-      await expect(crumbs(page).getByRole('listitem')).toHaveText(['案件'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      // 面包屑与「上一级」按钮已移到应用的地址栏（M1-3b）；刷新按钮暂时保留
+      await expect(panel(page).getByRole('navigation')).toHaveCount(0)
+      await expect(panel(page).getByRole('button', { name: 'Up one level' })).toHaveCount(0)
+      await expect(panel(page).getByRole('button', { name: 'Refresh' })).toBeVisible()
 
       await row(page, '設計書').dblclick()
       await expect(tabs(page)).toHaveText(['設計書'])
       await expect(names(page)).toHaveText(['v1.txt'])
-      await expect(crumbs(page).getByRole('listitem')).toHaveText(['案件', '設計書'])
 
-      // 面包屑返回
-      await crumbs(page).getByRole('button', { name: '案件' }).click()
-      await expect(tabs(page)).toHaveText(['案件'])
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
-
-      // 键盘：↓ 选中第一行、Enter 进入，Backspace 回到上一级
+      // 键盘：Backspace 回到上一级（条目根）；↓ 选中第一行、Enter 进入，Alt+↑ 回到上一级
       await grid(page).focus()
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['案件'])
+      await expect(grid(page)).toBeFocused()
       await page.keyboard.press('ArrowDown')
       await expect(row(page, '設計書')).toHaveAttribute('aria-selected', 'true')
       await page.keyboard.press('Enter')
       await expect(tabs(page)).toHaveText(['設計書'])
       await expect(grid(page)).toBeFocused()
-      await page.keyboard.press('Backspace')
+      await page.keyboard.press('Alt+ArrowUp')
       await expect(tabs(page)).toHaveText(['案件'])
 
-      // 「上一级」可以越过条目根：面包屑一直显示到驱动器
-      await panel(page).getByRole('button', { name: 'Up one level' }).click()
-      await expect(tabs(page)).toHaveText([path.basename(files)])
-      await expect(crumbs(page).getByRole('listitem').first()).toHaveText(
-        path.parse(files).root.replace(/\\$/, '')
-      )
-      await row(page, '案件').dblclick()
+      // 条目根的上一级是工作区总览（不越过条目根走到磁盘上的上级）；总览没有上一级
+      await expect(grid(page)).toBeFocused()
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['Default'])
+      await expect(panel(page).getByRole('heading', { name: 'Default' })).toBeVisible()
+      await expect(panel(page).getByRole('button', { name: '案件' })).toBeFocused()
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['Default'])
+      await panel(page).getByRole('button', { name: '案件' }).dblclick()
       await expect(tabs(page)).toHaveText(['案件'])
 
       // 双击文件：在新的常驻标签中以 fallback 打开
@@ -131,6 +132,78 @@ test.describe('folder view (the folder plugin)', () => {
         'font-style',
         'normal'
       )
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('the workspace overview lists entries with their aliases by group; double click enters a folder or opens a file', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      await data(page, 'settings.set', { 'general.language': 'en' })
+      await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', {
+        kind: 'folder',
+        workspaceId,
+        parentId: null,
+        path: project,
+        label: '本番'
+      })
+      const group = await data(page, 'entry.add', {
+        kind: 'group',
+        workspaceId,
+        parentId: null,
+        label: 'Docs'
+      })
+      await data(page, 'entry.add', {
+        kind: 'file',
+        workspaceId,
+        parentId: group.id,
+        path: path.join(project, 'memo.txt'),
+        label: 'メモ'
+      })
+      const tree = page.getByRole('tree')
+      await tree.getByRole('treeitem', { name: '本番' }).dblclick()
+      await row(page, '設計書').dblclick()
+      await expect(tabs(page)).toHaveText(['設計書'])
+
+      // 回到条目根：标签标题为别名；再上一级是工作区总览
+      await grid(page).focus()
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['本番'])
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['Default'])
+
+      // 未分组的项在前，分组为分节；项为别名，悬停提示为真实路径
+      const ungrouped = panel(page).getByRole('list').first()
+      await expect(ungrouped.getByRole('button')).toHaveCount(1)
+      await expect(ungrouped.getByRole('button', { name: '本番' })).toHaveAttribute(
+        'title',
+        project
+      )
+      const docs = panel(page).getByRole('region', { name: 'Docs' })
+      await expect(docs.getByRole('button', { name: 'メモ' })).toHaveAttribute(
+        'title',
+        path.join(project, 'memo.txt')
+      )
+
+      // 双击 file 条目：以常驻标签打开（总览标签不变）
+      await docs.getByRole('button', { name: 'メモ' }).dblclick()
+      await expect(tabs(page)).toHaveText(['Default', 'メモ'])
+      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+
+      // 双击 folder 条目：在当前标签内进入（Enter 相同）
+      await page.getByRole('tablist').getByRole('tab', { name: 'Default' }).click()
+      await panel(page).getByRole('button', { name: '本番' }).dblclick()
+      await expect(tabs(page)).toHaveText(['本番', 'メモ'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await grid(page).focus()
+      await page.keyboard.press('Backspace')
+      await expect(tabs(page)).toHaveText(['Default', 'メモ'])
+      await panel(page).getByRole('button', { name: '本番' }).focus()
+      await page.keyboard.press('Enter')
+      await expect(tabs(page)).toHaveText(['本番', 'メモ'])
     } finally {
       await app.close()
     }
@@ -236,24 +309,44 @@ test.describe('folder view (the folder plugin)', () => {
     }
   })
 
-  test('the refresh button and F5 re-list the directory (a directory above the entry root is not updated by itself)', async () => {
-    const { app, page } = await launchFast(userData)
+  test('the refresh button and F5 re-list the directory at once (without waiting for the periodic check)', async () => {
+    // 定期确认的间隔设为 1 小时（在添加条目之前）：列表在用例期间不会自己更新，只能靠刷新
+    const { app, page } = await launch(userData)
     try {
+      await data(page, 'settings.set', {
+        'cache.interval.focus.local': 3600,
+        'cache.interval.near.local': 3600,
+        'cache.interval.far.local': 3600
+      })
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
-      await panel(page).getByRole('button', { name: 'Up one level' }).click()
-      await expect(tabs(page)).toHaveText([path.basename(files)])
-      await expect(names(page)).toHaveText(['案件'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
 
-      writeFileSync(path.join(files, 'added.txt'), 'a')
+      // 扫描进程把 2 秒内（P0_DEDUPE_MS）重复的 P0 合并掉：刚列出后立即刷新不会再读一次
+      await page.waitForTimeout(2500)
+      writeFileSync(path.join(project, 'added.txt'), 'a')
       await panel(page).getByRole('button', { name: 'Refresh' }).click()
-      await expect(names(page)).toHaveText(['案件', 'added.txt'])
+      await expect(names(page)).toHaveText([
+        '設計書',
+        'added.txt',
+        'file2.txt',
+        'file10.txt',
+        'memo.txt'
+      ])
 
       // F5：焦点在目录视图时
-      mkdirSync(path.join(files, 'new-folder'))
+      await page.waitForTimeout(2500)
+      mkdirSync(path.join(project, 'new-folder'))
       await grid(page).focus()
       await page.keyboard.press('F5')
-      await expect(names(page)).toHaveText(['new-folder', '案件', 'added.txt'])
+      await expect(names(page)).toHaveText([
+        'new-folder',
+        '設計書',
+        'added.txt',
+        'file2.txt',
+        'file10.txt',
+        'memo.txt'
+      ])
       await expect(grid(page)).toBeFocused()
     } finally {
       await app.close()

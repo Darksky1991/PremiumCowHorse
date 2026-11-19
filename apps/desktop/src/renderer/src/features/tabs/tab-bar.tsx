@@ -1,5 +1,5 @@
 import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
-import { FileIcon, FolderIcon, XIcon } from 'lucide-react'
+import { FileIcon, FolderIcon, LayoutGridIcon, XIcon, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import type { TabState, TabsState } from '@pch/shared'
@@ -7,6 +7,12 @@ import { Button } from '@pch/ui/components/button'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
+
+const KIND_ICON: Record<TabState['kind'], LucideIcon> = {
+  workspace: LayoutGridIcon,
+  directory: FolderIcon,
+  file: FileIcon
+}
 
 export interface TabBarProps {
   state: TabsState
@@ -77,7 +83,7 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
     >
       {tabs.map((tab) => {
         const active = tab.id === activeId
-        const Icon = tab.kind === 'directory' ? FolderIcon : FileIcon
+        const Icon = KIND_ICON[tab.kind]
         const domId = tabDomId(baseId, tab.id)
         return (
           <div
@@ -88,7 +94,10 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             aria-controls={active ? panelDomId(baseId) : undefined}
             aria-labelledby={`${domId}-title`}
             tabIndex={active ? 0 : -1}
-            title={fileUriToWindowsPath(tab.uri) ?? tab.uri}
+            // 悬停提示为完整路径；工作区总览（不是文件系统）为标题
+            title={
+              tab.kind === 'workspace' ? tab.title : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
+            }
             onClick={() => activate(tab.id)}
             onDoubleClick={() => promote(tab.id)}
             // 中键：按下时阻止自动滚动，auxclick 时关闭

@@ -63,66 +63,6 @@ export function visibleEntries(
   return showHidden ? entries : entries.filter((e) => !e.hidden)
 }
 
-/** 面包屑的一段：显示名与该层目录的 URI */
-export interface Crumb {
-  label: string
-  uri: string
-}
-
-function decode(segment: string): string {
-  try {
-    return decodeURIComponent(segment)
-  } catch {
-    return segment
-  }
-}
-
-/**
- * file URI 的完整路径段：本地从驱动器（`C:` → `file:///C:/`）、UNC 从共享（`\\srv\share` →
- * `file://srv/share`）开始。各段 URI 由原 URI 的编码段拼接（不重新编码，与资源树、缓存的 URI 一致）。
- * 不是 file URI 或无法分段时为 null。
- */
-function fullCrumbs(uri: string): Crumb[] | null {
-  const m = /^file:\/\/([^/]*)(\/.*)?$/i.exec(uri)
-  if (!m) return null
-  const host = m[1] ?? ''
-  const segments = (m[2] ?? '').split('/').filter(Boolean)
-  const [first, ...rest] = segments
-  if (first === undefined) return null
-  let current: string
-  let crumbs: Crumb[]
-  if (host === '') {
-    current = `file:///${first}`
-    crumbs = [{ label: decode(first), uri: `${current}/` }]
-  } else {
-    current = `file://${host}/${first}`
-    crumbs = [{ label: `\\\\${decode(host)}\\${decode(first)}`, uri: current }]
-  }
-  for (const segment of rest) {
-    current = `${current}/${segment}`
-    crumbs.push({ label: decode(segment), uri: current })
-  }
-  return crumbs
-}
-
-/**
- * 面包屑：从所属条目的根开始（rootUri 为 null 或不是 uri 的祖先时，从驱动器 / 共享开始）。
- * 不是 file URI 时只有一段（URI 本身）。
- */
-export function breadcrumb(uri: string, rootUri: string | null): Crumb[] {
-  const crumbs = fullCrumbs(uri)
-  if (crumbs === null) return [{ label: uri, uri }]
-  if (rootUri === null) return crumbs
-  const start = crumbs.findIndex((c) => c.uri === rootUri)
-  return start < 0 ? crumbs : crumbs.slice(start)
-}
-
-/** 上一级目录（与条目根无关，可以越过条目根）；已在驱动器 / 共享根或不是 file URI 时为 null */
-export function parentOf(uri: string): string | null {
-  const crumbs = fullCrumbs(uri)
-  return crumbs !== null && crumbs.length >= 2 ? crumbs[crumbs.length - 2]!.uri : null
-}
-
 /** 标签的 viewState：排序（只在内存中，随标签保存；同一标签内导航时 layoutReducer 清除，回到默认） */
 export interface FolderViewState {
   sort: Sort

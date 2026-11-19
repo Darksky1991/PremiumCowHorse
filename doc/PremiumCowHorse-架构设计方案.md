@@ -225,7 +225,7 @@ premium-cow-horse/
 │           ├── markdown/
 │           ├── media/
 │           ├── office/           # Office 文件启动面板（调用本机 Office）
-│           ├── folder/           # 目录视图：详细信息列表、面包屑与「上一级」（M1-3 已实现）
+│           ├── folder/           # 目录视图：详细信息列表、刷新（M1-3 已实现；面包屑与「上一级」M1-3b 移到地址栏）
 │           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作；M1-3 已实现）
 ├── e2e/                          # Playwright Electron 端到端测试
 ├── doc/                          # 设计文档（本文档）：最新事实依据
@@ -239,7 +239,7 @@ premium-cow-horse/
 
 内置插件放在独立于应用的包中：插件只能依赖 `plugin-sdk` 和 `ui`，无法直接 import 应用内部代码，这保证了内置插件与将来的第三方插件走完全相同的接口，插件化不会名存实亡。v1.4 起所有内置插件合并为单个 `plugins/builtin` 包（每个插件一个子目录），插件之间、插件与应用之间的隔离由 5.5 节的模块边界规则保证，只需维护一份 package.json / tsconfig。
 
-已实现（M1-3）：`plugins/builtin`（包名 `@pch/plugin-builtin`，与 `plugin-sdk` 相同的形式：`exports` 直接指向源码 `src/index.ts`，不单独构建；依赖 `@pch/plugin-sdk`、`@pch/ui`、`lucide-react`、`@tanstack/react-virtual`（与渲染端同版本），`react` 为 peer）。`src/index.ts` 导出 `builtinPlugins`（注册顺序即同分时的优先顺序：folder、fallback），`src/folder/` 为 folder 插件（`index.ts` 定义、`folder-view.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`model.ts` 排序 / 面包屑 / 隐藏项的纯函数、`format.ts` 大小 / 时间格式化纯函数；「N 前」的格式化随状态行的「基于缓存（N 前）」一起删除），`src/fallback/` 为 fallback 插件（`index.ts` 定义、`fallback-preview.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`format.ts` 大小 / 时间格式化纯函数）。渲染端由 `app/app.tsx` import 插件列表交给 `features/preview`（feature 不直接依赖插件包）；vitest 的 include 增加 `plugins/*/src/**/*.test.ts`。
+已实现（M1-3）：`plugins/builtin`（包名 `@pch/plugin-builtin`，与 `plugin-sdk` 相同的形式：`exports` 直接指向源码 `src/index.ts`，不单独构建；依赖 `@pch/plugin-sdk`、`@pch/ui`、`lucide-react`、`@tanstack/react-virtual`（与渲染端同版本），`react` 为 peer）。`src/index.ts` 导出 `builtinPlugins`（注册顺序即同分时的优先顺序：folder、fallback），`src/folder/` 为 folder 插件（`index.ts` 定义、`folder-view.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`model.ts` 排序 / 隐藏项的纯函数（面包屑 M1-3b 移除，逻辑路径在渲染端 `lib/logical-path.ts`）、`format.ts` 大小 / 时间格式化纯函数；「N 前」的格式化随状态行的「基于缓存（N 前）」一起删除），`src/fallback/` 为 fallback 插件（`index.ts` 定义、`fallback-preview.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`format.ts` 大小 / 时间格式化纯函数）。渲染端由 `app/app.tsx` import 插件列表交给 `features/preview`（feature 不直接依赖插件包）；vitest 的 include 增加 `plugins/*/src/**/*.test.ts`。
 
 5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
@@ -811,7 +811,7 @@ export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>) => plugin;
 
 **已实现（M1-3 MVP 契约，`packages/plugin-sdk/src/index.ts`）**：上面是目标形态，M1-3 实现其中的子集并有以下差异——
 - `PreviewHost.fs`：`stat(uri)`、`list(uri): Promise<DirectoryListing>`（缓存优先的目录列表，与资源树共用查询缓存；目标形态中的 `FileEntry[]` 改为带 `state` / `checkedAt` 的 `DirectoryListing`，插件可显示「已断开」；所在共享在渲染端 `stores/reachability-store.ts` 中为断开时，宿主把 `state` 报告为 `offline`——断开之前取得、仍在查询缓存中的列表也按断开显示；目录不在了以 `FS_NOT_FOUND` 拒绝）、`subscribe(uri, onChange): () => void`（该目录的 `vfs.changed`）、`toDisplayPath(uri)`（file URI → Windows 路径，用于显示）；`readText` / `readBinary` / `toResourceUrl` 随 M2。
-- `tabs`：`open(uri, { preview? })`（在标签所属工作区新开，已打开则激活）、`navigate(uri, kind?)`（替换当前标签）；宿主经 `vfs.stat` 取得类型与标题，`navigate` 给出插件已知的类型（`'directory' | 'file'`，例如目录列表中的项）时不 stat，标题取 URI 的最后一段（最终审查修复）。`pluginId` / `background` / `newWindow` 随 M3。
+- `tabs`：`open(uri, { preview? })`（在标签所属工作区新开，已打开则激活）、`navigate(uri, kind?)`（替换当前标签）；宿主经 `vfs.stat` 取得类型与标题，`navigate` 给出插件已知的类型（`'directory' | 'file'`，例如目录列表中的项）时不 stat，标题取 URI 的最后一段（最终审查修复）；`navigate` 进入标签的历史（11.1 节）。`up()`（M1-3b）：当前标签按**逻辑路径**到上一级，由宿主计算（`PreviewContainer` 用 `lib/logical-path.ts` 的 `parentLocation` 算出后注入，不 stat）——条目内逐级向上，条目根（含 file 条目）的上一级是工作区总览，不再越过条目根走到磁盘上的上级；已在总览时不做任何事。`pluginId` / `background` / `newWindow` 随 M3。
 - `system`：`revealInOs(uri)`、`copyPath(uri)`（Windows 路径写剪贴板并提示）、`openWithSystem(uri)`（可执行类扩展名由宿主先弹确认框，9.4 节）；失败时宿主以 toast 提示错误码文案，Promise 不拒绝。`getLaunchCapabilities` / `launch` 随 Office（第 10 节）。
 - `ui` 只有 `toast`（`setTitle` / `setStatus` 推迟）；`i18n.t` 查插件自带的语言资源（以插件 id 为 i18next 命名空间登记，键不含 `.`）；`settings.get` 只能读 SDK 中声明的 `HostSettings`（M1-3：`explorer.showHiddenFiles`），而不是「插件自己的命名空间」。
 - `FileStat` / `FileEntry` / `DirectoryListing` 在 SDK 中重新声明（模块边界不允许 SDK 依赖 shared），与 `@pch/shared` 的同名类型结构相同，宿主实现把 shared 的值赋给 SDK 类型、不一致时编译失败。
@@ -846,14 +846,14 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 **已实现（M1-3）**（`features/preview/`）：
 - 计分 `scoreResource(manifest, resource)`：kinds / schemes（不带冒号）不符、超过 `maxSize`、`when` 为 false → 不匹配；扩展名大小写不敏感、按「名称以 `.扩展名` 结尾」判断（支持 `tar.gz`）；声明了 `extensions` 或 `mimeTypes` 却一项都没命中 → 不匹配，都没声明 → 0 分（只按 kinds 等条件，例如 folder 插件）；命中的分数相加后加 `priority`。`pickPlugin`：得分最高者，同分取先注册的；fallback 插件不参与计分，没有任何匹配时返回它（列表中没有 fallback 时抛错）。`mime` 暂为 null；`preview.associations` 与「用其他方式打开」推迟。
-- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建。**目录标签不 stat**（最终审查修复）：直接用标签的类型与标题构造 `ResourceInfo`（大小 / 时间为 0，folder 插件不使用）交给插件，断开、无响应、被删除等状态都由插件的 `fs.list`（缓存优先）表现——此前先 stat，共享无响应时要等到 stat 超时（本地 5 秒 / 网络 10 秒）才显示错误页，缓存与「已断开」基本显示不出来，且每次切换标签都在主进程 stat 一次（占用 libuv 线程池，`knowledge/electron.md`）。**文件标签**先 `vfs.stat`（TanStack Query，新鲜期 5 秒——期间切换回标签不再 stat；错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型）；所在共享在 reachability-store 中为断开时不发 stat，只显示文件名与「已断开（重新连接后显示）」，恢复在线后自动 stat。「以文件信息显示」（fallback）对目录也先 stat。然后选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。预览标签只在插件调用宿主的动作或双击标签头时转为常驻（控制者裁定：标签内的点击、滚动、按键不算）；可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
+- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建。**工作区总览**（`kind: 'workspace'`，M1-3b）不经插件，显示内置视图 `WorkspaceOverview`（11.1 节「已实现」）。**目录标签不 stat**（最终审查修复）：直接用标签的类型与标题构造 `ResourceInfo`（大小 / 时间为 0，folder 插件不使用）交给插件，断开、无响应、被删除等状态都由插件的 `fs.list`（缓存优先）表现——此前先 stat，共享无响应时要等到 stat 超时（本地 5 秒 / 网络 10 秒）才显示错误页，缓存与「已断开」基本显示不出来，且每次切换标签都在主进程 stat 一次（占用 libuv 线程池，`knowledge/electron.md`）。**文件标签**先 `vfs.stat`（TanStack Query，新鲜期 5 秒——期间切换回标签不再 stat；错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型）；所在共享在 reachability-store 中为断开时不发 stat，只显示文件名与「已断开（重新连接后显示）」，恢复在线后自动 stat。「以文件信息显示」（fallback）对目录也先 stat。然后选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。预览标签只在插件调用宿主的动作或双击标签头时转为常驻（控制者裁定：标签内的点击、滚动、按键不算）；可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
 - e2e 的崩溃插件：`features/preview/plugins.ts` 的 `previewPlugins(builtin)` 在 bootstrap 的 `e2eCrashPlugin` 为 true 时追加两个测试插件（`.crash` 渲染时抛错、`.crashload` 懒加载失败）；主进程只在**未打包**且环境变量 `PCH_E2E_CRASH_PLUGIN=1` 时设置该标志（与 `PCH_USER_DATA_DIR` 相同的限制），打包后的应用不会注册它们。
 
 ### 9.4 内置插件
 
 | 插件 | 处理对象 | 说明 |
 |---|---|---|
-| folder | 所有目录 | 列表 / 网格 / 详细信息视图，排序、筛选、面包屑；viewState 保存视图模式与滚动位置（M1-3：详细信息列表、排序、面包屑，viewState 只保存排序） |
+| folder | 所有目录 | 列表 / 网格 / 详细信息视图，排序、筛选；viewState 保存视图模式与滚动位置（M1-3：详细信息列表、排序，viewState 只保存排序；路径与「上一级」M1-3b 起由应用的地址栏提供） |
 | text | 文本、代码、日志、CSV、bat、ini 等 | CodeMirror 6，只读，编码切换，大文件截断提示 |
 | markdown | .md | 渲染 / 源码切换 |
 | image | 常见图片 | 缩放、适应窗口 |
@@ -864,7 +864,7 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
 
-**已实现（M1-3）：folder**（`plugins/builtin/src/folder/`，`match.kinds = ['directory']`）：工具栏为「上一级」按钮与面包屑——面包屑从所属条目的根开始（`host.fs.rootOf`），不在任何条目之下时一直显示到驱动器（`C:`）/ 共享（`\\host\share`）；「上一级」可以越过条目根（之后面包屑显示到驱动器），在驱动器 / 共享根时不可用。列表（`role="grid"`）：列为名称（图标区分目录 / 文件 / 链接 / 失效链接）、修改时间（`dateStyle`/`timeStyle` short，按界面语言）、类型（文件夹 / 「扩展名大写 + 文件」/ 链接类型）、大小（1024 进位，目录与失效链接不显示）；点击列头排序（同一列再点反转，`aria-sort`），目录与指向目录的链接始终在前，名称按 `Intl.Collator('ja', { numeric: true })`，其他列相等时按名称升序；排序存于标签的 viewState（只在内存中；同一标签内导航时 `layoutReducer` 清除，回到按名称升序）。`@tanstack/react-virtual` 虚拟滚动（行高 28、`measureElement`、overscan 10；1 万项的目录 DOM 中的行数 ≤ 100，e2e 断言）。「显示隐藏文件」从 `host.settings.get` 读取，打开时隐藏项名称变淡。交互：单击只选中（不改变预览状态）；双击 / Enter 打开——目录与指向目录的链接 `host.tabs.navigate`（同一标签内导航），文件 `host.tabs.open(uri, { preview: false })`；Backspace / Alt+↑ 到上一级；↑↓ / PageUp / PageDown / Home / End 移动选中；在标签内导航后焦点回到列表。工具栏右端的「刷新」按钮与 `F5`（焦点在目录视图内时）经 `host.fs.refresh` 让扫描进程立即确认该目录并重新列出，期间保留当前内容（最终审查修复）。**越过条目根的目录**（「上一级」越过根之后）不进缓存、不在调度范围内，没有 `vfs.changed`，外部变化不会自动显示，要用「刷新」；降级模式（扫描进程不可用、主进程直接枚举）下同样只能刷新。数据：`host.fs.list`（缓存优先）+ `host.fs.subscribe`（该目录的 `vfs.changed` 时重新列出，期间保留当前内容）；出错时显示错误文案（`host.i18n.describeError`）与「重试」，错误优先于旧内容。导航（双击目录、上一级、面包屑）经 `host.tabs.navigate(uri, 'directory')`，宿主不 stat。**标签中显示的目录被删除**（最终审查修复）：不再依赖 stat——扫描进程在删除某目录的缓存时（读取得到「不存在」、被替换为文件，或父目录的列表中它已消失），除父目录外还对按关注点处理的目录（各窗口的选中目录与标签中的目录）中等于它或在其之下者各发一次 `vfs.changed`（`scheduler.ts` 的 `notifyRemoved`；之后再读取失败不再通知，不会循环），目录视图据此重新列出，`fs.list` 以 `FS_NOT_FOUND` 拒绝，显示「找不到」与「重试」（e2e 断言）。状态行：项目数、「已断开（基于缓存）」（`fs.list` 的 `state` 为 offline：扫描进程判定断开，或渲染端的可达状态为断开；可达状态变化时宿主重建、视图重新列出，显示中的目录随之切换）、读取中；**不显示「基于缓存（N 前）」**（控制者裁定）：检查后内容没有变化时扫描进程不广播 `vfs.changed`，列表的 `checkedAt` 不会更新，「N 前」会越来越旧，而该目录作为关注点实际每 5 秒都确认过，显示出来会误导用户（资源树的悬停提示「上次检查」保持不变）。
+**已实现（M1-3）：folder**（`plugins/builtin/src/folder/`，`match.kinds = ['directory']`）：工具栏只有「刷新」按钮（M1-3b 移除了面包屑与「上一级」按钮，由应用的地址栏取代；刷新按钮随后也移到地址栏）。列表（`role="grid"`）：列为名称（图标区分目录 / 文件 / 链接 / 失效链接）、修改时间（`dateStyle`/`timeStyle` short，按界面语言）、类型（文件夹 / 「扩展名大写 + 文件」/ 链接类型）、大小（1024 进位，目录与失效链接不显示）；点击列头排序（同一列再点反转，`aria-sort`），目录与指向目录的链接始终在前，名称按 `Intl.Collator('ja', { numeric: true })`，其他列相等时按名称升序；排序存于标签的 viewState（只在内存中；同一标签内导航时 `layoutReducer` 清除，回到按名称升序）。`@tanstack/react-virtual` 虚拟滚动（行高 28、`measureElement`、overscan 10；1 万项的目录 DOM 中的行数 ≤ 100，e2e 断言）。「显示隐藏文件」从 `host.settings.get` 读取，打开时隐藏项名称变淡。交互：单击只选中（不改变预览状态）；双击 / Enter 打开——目录与指向目录的链接 `host.tabs.navigate`（同一标签内导航），文件 `host.tabs.open(uri, { preview: false })`；Backspace / Alt+↑ 经 `host.tabs.up()` 到逻辑路径的上一级（条目根之上是工作区总览）；↑↓ / PageUp / PageDown / Home / End 移动选中；在标签内导航后焦点回到列表。工具栏右端的「刷新」按钮与 `F5`（焦点在目录视图内时）经 `host.fs.refresh` 让扫描进程立即确认该目录并重新列出，期间保留当前内容（最终审查修复）。**条目之外的目录**（M1-3b 起「上一级」不再越过条目根，界面上已无法到达；保留给旧数据与将来的定位）不进缓存、不在调度范围内，没有 `vfs.changed`，外部变化不会自动显示，要用「刷新」；降级模式（扫描进程不可用、主进程直接枚举）下同样只能刷新。数据：`host.fs.list`（缓存优先）+ `host.fs.subscribe`（该目录的 `vfs.changed` 时重新列出，期间保留当前内容）；出错时显示错误文案（`host.i18n.describeError`）与「重试」，错误优先于旧内容。导航（双击目录）经 `host.tabs.navigate(uri, 'directory')`，宿主不 stat；上一级经 `host.tabs.up()`。**标签中显示的目录被删除**（最终审查修复）：不再依赖 stat——扫描进程在删除某目录的缓存时（读取得到「不存在」、被替换为文件，或父目录的列表中它已消失），除父目录外还对按关注点处理的目录（各窗口的选中目录与标签中的目录）中等于它或在其之下者各发一次 `vfs.changed`（`scheduler.ts` 的 `notifyRemoved`；之后再读取失败不再通知，不会循环），目录视图据此重新列出，`fs.list` 以 `FS_NOT_FOUND` 拒绝，显示「找不到」与「重试」（e2e 断言）。状态行：项目数、「已断开（基于缓存）」（`fs.list` 的 `state` 为 offline：扫描进程判定断开，或渲染端的可达状态为断开；可达状态变化时宿主重建、视图重新列出，显示中的目录随之切换）、读取中；**不显示「基于缓存（N 前）」**（控制者裁定）：检查后内容没有变化时扫描进程不广播 `vfs.changed`，列表的 `checkedAt` 不会更新，「N 前」会越来越旧，而该目录作为关注点实际每 5 秒都确认过，显示出来会误导用户（资源树的悬停提示「上次检查」保持不变）。
 
 **已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。目录由 folder 插件显示（fallback 只在「以文件信息显示」时显示目录）。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，审查时追加 `.pif .scf .msp .jar .appref-ms`，最终审查追加 `.url .website .application .inf .chm .settingcontent-ms .psm1 .psd1 .ps1xml .ws .wsc .sct .vb .appinstaller .msix .appx .xll .diagcab .library-ms .search-ms .gadget`——只增加确认、不阻止打开，需求方可裁剪；大小写不敏感；NTFS 备用数据流的名称（`run.bat::$DATA`、`run.bat:stream`）按第一个 `:` 之前的文件名判断；判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。
 
@@ -1037,21 +1037,29 @@ export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutS
 **已实现（M1-3，单窗口子集）**：上面的 `LayoutState` / `LayoutAction` 是 M3 的目标结构。M1-3 只实现单窗口的子集，状态由**渲染端**持有（`stores/tabs-store.ts`，按工作区各保存一份、只在内存中；切换工作区时显示该工作区的标签），M3 多窗口时移到主进程 `LayoutService`（2.5 节届时落实）。类型与 reducer 在 `packages/shared/src/layout/`：
 
 ```ts
-export interface TabState { id: string; uri: string; kind: 'file' | 'directory'; title: string; preview: boolean; viewState?: unknown }
+// M1-3b：标签显示「位置」；workspace 的 uri 为 'pch-workspace:<工作区 id>'（location.ts：workspaceUri / workspaceIdOfUri）
+export type LocationKind = 'workspace' | 'directory' | 'file'
+export interface TabLocation { uri: string; kind: LocationKind; title: string }
+export interface TabHistory { back: TabLocation[]; forward: TabLocation[] }   // 各至多 TAB_HISTORY_LIMIT = 50
+export interface TabState extends TabLocation { id: string; preview: boolean; viewState?: unknown; history: TabHistory }
 export interface TabsState { tabs: TabState[]; activeId: string | null }
 export type TabsAction =
-  | { type: 'tab/open'; uri: string; kind: 'file' | 'directory'; title: string; preview: boolean }
+  | ({ type: 'tab/open'; preview: boolean } & TabLocation)
   | { type: 'tab/close'; id: string }
   | { type: 'tab/activate'; id: string }
   | { type: 'tab/promote'; id: string }
-  | { type: 'tab/navigate'; id: string; uri: string; kind: 'file' | 'directory'; title: string }
+  | ({ type: 'tab/navigate'; id: string } & TabLocation)
+  | { type: 'tab/back'; id: string }
+  | { type: 'tab/forward'; id: string }
   | { type: 'tab/viewState'; id: string; viewState: unknown }
 export function layoutReducer(state: TabsState, action: TabsAction, newId: () => string): TabsState
 ```
 
-- `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；预览打开且已有预览标签 → 在原位置替换（新 id，viewState 不沿用）；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`：同标签内改 URI 并转常驻（允许与其他标签的 URI 重复）。没有变化时返回同一个状态对象。
+- `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；预览打开且已有预览标签 → 在原位置替换（新 id，viewState 不沿用）；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`：同标签内改位置并转常驻、清除 viewState（允许与其他标签的 URI 重复），离开的位置压入后退栈、前进栈清空；导航到当前 URI 不入栈（只转常驻，viewState 保留）。`tab/back` / `tab/forward`（M1-3b）：浏览器式，当前位置压入另一侧的栈，同样转常驻并清除 viewState；没有可去的位置时不变。历史属于标签（每个标签独立、只在内存中，关闭标签即消失；新开 / 替换的预览标签历史为空），两个栈各至多 50 项，超出时丢弃最旧的。没有变化时返回同一个状态对象。
+- 逻辑路径（M1-3b，`renderer/src/lib/logical-path.ts`，地址栏与预览区共用）：`logicalPath(loc, { workspace: { id, name }, entries })` → `PathSegment[]`（`{ label, target: TabLocation, kind: 'workspace' | 'entry' | 'dir' | 'file' }`）：`工作区名` ›（分组不出现）› `条目标签（别名）` › 相对路径各段 ›（文件时）文件名。所属条目为包含它的 folder 条目或 URI 相同的 file 条目，多个时取 URI 最长者；条目段的目标标题也是别名（标签在条目根时标题为别名）。条目之外的位置在工作区之后退化为绝对路径（驱动器 `C:` / 共享 `\\host\share` 开始）。`parentLocation(loc, ctx)` = 逻辑路径的上一段：条目根之上是工作区总览、总览为 null、条目之外为磁盘上的上级（驱动器 / 共享根之上为总览）。
+- 工作区总览（M1-3b，`features/preview/workspace-overview.tsx`，应用内置视图、不是插件）：工作区 id 取自标签的 URI（标签按工作区区分，总览只会是所属工作区的），标题为工作区显示名；分组为分节（`overview-model.ts`：未分组的项在前、无标题，之后是分组；分组内先项后子分组，同层按 sortOrder），folder / file 条目为项（别名、真实路径；悬停提示为真实路径）。单击只获得焦点；双击 / Enter：folder 在当前标签内导航（进入历史），file 以常驻标签打开（总览标签转常驻）。从条目根上来时焦点落在刚离开的条目上。`pch-workspace:` 不是文件 URI：不发给扫描进程、不进 `vfs.interest.tabs`（`selectActiveDirectory` 只取 `kind: 'directory'`），资源树不定位它。
 - 资源树（`features/explorer`）：单击 = 选中 + 切换展开 + 预览打开（设置 `explorer.singleClickPreview` 为 false 时不打开）；双击（click 的 `detail` 为 2）= 常驻打开，第二次单击不再切换展开；↑↓ 只移动选中、不打开，Enter = 切换展开 + 常驻打开（错误行为重试）。条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
-- 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
+- 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`；工作区总览为标题），图标按位置种类（总览 / 目录 / 文件）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
 - 预览转常驻：只有两种触发——插件调用宿主的任何动作（`tabs.*` / `system.*`）与双击标签头（以及从资源树双击 / Enter 打开同一资源）；标签内容中的点击、选择文字、滚轮、按键不改变预览状态（控制者裁定）。
 
 ### 11.3 会话快照

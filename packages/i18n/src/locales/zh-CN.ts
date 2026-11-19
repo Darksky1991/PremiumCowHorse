@@ -144,7 +144,8 @@ export default {
     confirmTitle: '要打开“{{name}}”吗？',
     confirmDescription: '该文件会作为程序或脚本运行，可能更改电脑的设置。请只在信任该文件时打开。',
     confirmOpen: '打开',
-    cancel: '取消'
+    cancel: '取消',
+    overviewEmpty: '此工作区还没有条目。'
   },
   errors: {
     UNKNOWN: '发生了意外错误',

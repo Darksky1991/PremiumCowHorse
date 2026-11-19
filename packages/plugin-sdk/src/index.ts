@@ -99,8 +99,7 @@ export interface PreviewHost {
     /** 显示用的路径（file URI → Windows 路径；无法转换时原样返回 URI） */
     toDisplayPath(uri: string): string
     /**
-     * uri 所属的工作区条目（folder）的根 URI：包含它的条目中最内层者；不在任何条目之下时为 null。
-     * 例如目录视图的面包屑从这里开始显示
+     * uri 所属的工作区条目（folder）的根 URI：包含它的条目中最内层者；不在任何条目之下时为 null
      */
     rootOf(uri: string): string | null
   }
@@ -113,6 +112,11 @@ export interface PreviewHost {
      * kind 为插件已知的类型（例如目录列表中的项）：给出时宿主不再 stat，标题取 URI 的最后一段
      */
     navigate(uri: string, kind?: 'file' | 'directory'): void
+    /**
+     * 当前标签按逻辑路径到上一级（宿主计算）：条目内逐级向上，条目根的上一级是工作区总览，
+     * 不越过条目根走到磁盘上的上级；已在总览时不做任何事
+     */
+    up(): void
   }
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {

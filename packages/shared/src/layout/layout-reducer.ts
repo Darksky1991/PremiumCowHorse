@@ -1,14 +1,21 @@
-import type { TabState, TabsAction, TabsState } from './types'
+import type { TabHistory, TabLocation, TabState, TabsAction, TabsState } from './types'
+
+/** 每个标签的后退栈 / 前进栈各自的上限（超出时丢弃最旧的） */
+export const TAB_HISTORY_LIMIT = 50
+
+const NO_HISTORY: TabHistory = { back: [], forward: [] }
 
 /**
  * 标签布局的纯函数 reducer（单窗口子集，doc 11 节）。没有变化时返回同一个状态对象。
  * newId 生成新标签的 id（由调用方注入，便于测试）。
  *
  * - `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；
- *   预览打开且已有预览标签 → 在原位置替换为新标签（新 id，viewState 不沿用）；
- *   否则插在激活标签右侧（没有激活标签时放在末尾）。
- * - `tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧，都没有则为 null。
- * - `tab/navigate`：同一标签内改 URI，转常驻并清除 viewState（M1-3 允许与其他标签的 URI 重复）。
+ *   预览打开且已有预览标签 → 在原位置替换为新标签（新 id，viewState 与历史不沿用）；
+ *   否则插在激活标签右侧（没有激活标签时放在末尾）。新标签的历史为空。
+ * - `tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧，都没有则为 null（历史随标签消失）。
+ * - `tab/navigate`：同一标签内改位置，转常驻并清除 viewState（M1-3 允许与其他标签的 URI 重复）；
+ *   离开的位置压入后退栈、前进栈清空。导航到当前 URI 不入栈（只转常驻）。
+ * - `tab/back` / `tab/forward`：浏览器式，当前位置压入另一侧的栈；同样转常驻并清除 viewState。
  */
 export function layoutReducer(
   state: TabsState,
@@ -28,10 +35,9 @@ export function layoutReducer(
       }
       const tab: TabState = {
         id: newId(),
-        uri: action.uri,
-        kind: action.kind,
-        title: action.title,
-        preview: action.preview
+        ...locationOf(action),
+        preview: action.preview,
+        history: NO_HISTORY
       }
       const previewIndex = action.preview ? state.tabs.findIndex((t) => t.preview) : -1
       if (previewIndex >= 0) {
@@ -63,19 +69,63 @@ export function layoutReducer(
     case 'tab/navigate': {
       const tab = state.tabs.find((t) => t.id === action.id)
       if (!tab) return state
-      const next: TabState = {
-        id: tab.id,
-        uri: action.uri,
-        kind: action.kind,
-        title: action.title,
-        preview: false
+      if (tab.uri === action.uri) {
+        // 同一位置：不入栈、不清除 viewState；只转常驻（与其他导航一样视为在标签内交互）
+        if (!tab.preview && tab.kind === action.kind && tab.title === action.title) return state
+        return {
+          ...state,
+          tabs: replace(state.tabs, tab.id, {
+            kind: action.kind,
+            title: action.title,
+            preview: false
+          })
+        }
       }
-      return { ...state, tabs: state.tabs.map((t) => (t.id === action.id ? next : t)) }
+      const history: TabHistory = { back: push(tab.history.back, locationOf(tab)), forward: [] }
+      return moveTo(state, tab, locationOf(action), history)
+    }
+    case 'tab/back':
+    case 'tab/forward': {
+      const tab = state.tabs.find((t) => t.id === action.id)
+      if (!tab) return state
+      const isBack = action.type === 'tab/back'
+      const from = isBack ? tab.history.back : tab.history.forward
+      const to = isBack ? tab.history.forward : tab.history.back
+      const target = from.at(-1)
+      if (target === undefined) return state
+      const rest = from.slice(0, -1)
+      const pushed = push(to, locationOf(tab))
+      const history: TabHistory = isBack
+        ? { back: rest, forward: pushed }
+        : { back: pushed, forward: rest }
+      return moveTo(state, tab, target, history)
     }
     case 'tab/viewState':
       if (!state.tabs.some((t) => t.id === action.id)) return state
       return { ...state, tabs: replace(state.tabs, action.id, { viewState: action.viewState }) }
   }
+}
+
+/** 标签换到另一个位置：转常驻、清除 viewState（不同位置的视图状态不通用） */
+function moveTo(
+  state: TabsState,
+  tab: TabState,
+  location: TabLocation,
+  history: TabHistory
+): TabsState {
+  const next: TabState = { id: tab.id, ...location, preview: false, history }
+  return { ...state, tabs: state.tabs.map((t) => (t.id === tab.id ? next : t)) }
+}
+
+/** 只取位置的三个字段（动作 / 标签对象中的其他字段不进历史） */
+function locationOf(l: TabLocation): TabLocation {
+  return { uri: l.uri, kind: l.kind, title: l.title }
+}
+
+/** 压栈；超过上限时丢弃最旧的（栈底） */
+function push(stack: readonly TabLocation[], location: TabLocation): TabLocation[] {
+  const next = [...stack, location]
+  return next.length > TAB_HISTORY_LIMIT ? next.slice(next.length - TAB_HISTORY_LIMIT) : next
 }
 
 function replace(tabs: TabState[], id: string, patch: Partial<TabState>): TabState[] {

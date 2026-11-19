@@ -150,7 +150,8 @@ export default {
     confirmDescription:
       'このファイルはプログラムやスクリプトとして実行され、PC の設定を変更する可能性があります。信頼できるファイルの場合だけ開いてください。',
     confirmOpen: '開く',
-    cancel: 'キャンセル'
+    cancel: 'キャンセル',
+    overviewEmpty: 'このワークスペースにはまだ項目がありません。'
   },
   errors: {
     UNKNOWN: '予期しないエラーが発生しました',

@@ -151,7 +151,8 @@ export default {
     confirmDescription:
       'This file runs as a program or script and may change settings on this PC. Open it only if you trust it.',
     confirmOpen: 'Open',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    overviewEmpty: 'This workspace has no items yet.'
   },
   errors: {
     UNKNOWN: 'An unexpected error occurred',

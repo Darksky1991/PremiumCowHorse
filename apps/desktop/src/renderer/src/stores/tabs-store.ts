@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { layoutReducer, type TabState, type TabsAction, type TabsState } from '@pch/shared'
+import { layoutReducer, type TabLocation, type TabsAction, type TabsState } from '@pch/shared'
 
-export type TabTarget = Pick<TabState, 'uri' | 'kind' | 'title'>
+/** 标签打开 / 导航的目标：位置（工作区总览、目录、文件） */
+export type TabTarget = TabLocation
 
 interface TabsStore {
   /** 工作区 id → 该工作区的标签集合（只在内存中，不持久化） */
@@ -12,8 +13,11 @@ interface TabsStore {
   activate: (id: string) => void
   /** 预览标签转常驻 */
   promote: (id: string) => void
-  /** 在同一标签内导航到另一资源 */
+  /** 在同一标签内导航到另一位置（离开的位置进入该标签的后退栈） */
   navigate: (id: string, target: TabTarget) => void
+  /** 该标签的历史中后退 / 前进（没有可去的位置时不变） */
+  back: (id: string) => void
+  forward: (id: string) => void
   setViewState: (id: string, viewState: unknown) => void
 }
 
@@ -49,6 +53,8 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     activate: (id) => dispatchById({ type: 'tab/activate', id }),
     promote: (id) => dispatchById({ type: 'tab/promote', id }),
     navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
+    back: (id) => dispatchById({ type: 'tab/back', id }),
+    forward: (id) => dispatchById({ type: 'tab/forward', id }),
     setViewState: (id, viewState) => dispatchById({ type: 'tab/viewState', id, viewState })
   }
 })
@@ -60,7 +66,7 @@ export const selectTabs =
     (workspaceId === undefined ? undefined : s.byWorkspace[workspaceId]) ?? EMPTY
 
 /**
- * 工作区的激活标签显示目录时为其 URI，否则为 null（文件、没有标签）。
+ * 工作区的激活标签显示目录时为其 URI，否则为 null（文件、工作区总览、没有标签）。
  * 标签区据此告诉扫描进程「标签中显示的目录」（vfs.interest 的 tabs，按关注点处理）
  */
 export const selectActiveDirectory =

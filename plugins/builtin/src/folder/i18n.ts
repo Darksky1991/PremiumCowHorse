@@ -4,8 +4,6 @@
  */
 const ja = {
   name: 'フォルダー',
-  breadcrumb: '場所',
-  up: '上のフォルダーへ',
   refresh: '最新の情報に更新',
   colName: '名前',
   colModified: '更新日時',
@@ -29,8 +27,6 @@ type Messages = Record<keyof typeof ja, string>
 
 const zhCN: Messages = {
   name: '文件夹',
-  breadcrumb: '位置',
-  up: '上一级',
   refresh: '刷新',
   colName: '名称',
   colModified: '修改时间',
@@ -52,8 +48,6 @@ const zhCN: Messages = {
 
 const en: Messages = {
   name: 'Folder',
-  breadcrumb: 'Location',
-  up: 'Up one level',
   refresh: 'Refresh',
   colName: 'Name',
   colModified: 'Modified',

@@ -16,9 +16,10 @@ import { Spinner } from '@pch/ui/components/spinner'
 import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
 import { fetchDirectory, retryDirectory, useResourceStat } from '@renderer/data/vfs'
-import { useActiveWorkspace } from '@renderer/data/workspace'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
 import { isShareOffline } from '@renderer/lib/file-uri'
 import { call, subscribe } from '@renderer/lib/ipc'
+import { parentLocation } from '@renderer/lib/logical-path'
 import { reportError } from '@renderer/lib/report-error'
 import { useResolvedTheme } from '@renderer/providers/theme-context'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
@@ -27,6 +28,7 @@ import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
 import { PluginErrorBoundary } from './plugin-error-boundary'
 import { fallbackOf, pickPlugin } from './registry'
+import { WorkspaceOverview } from './workspace-overview'
 
 export interface PreviewContainerProps {
   tab: TabState
@@ -35,7 +37,8 @@ export interface PreviewContainerProps {
 }
 
 /**
- * 标签内容（doc 9.3）：取得资源描述 → 注册表选择插件 → 懒加载插件组件。
+ * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview；
+ * 其余取得资源描述 → 注册表选择插件 → 懒加载插件组件。
  * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
  * 共享断开 / 无响应时立即显示缓存与「已断开」，目录不在了显示「找不到」）；文件标签 stat 后显示，
  * 所在共享在 reachability-store 中为断开时不发 stat（会等到超时），只显示文件名与「已断开」。
@@ -47,8 +50,12 @@ export interface PreviewContainerProps {
 export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
   return (
     <div className="h-full min-h-0">
-      {/* 同一标签内导航到另一资源时整体重建（「以文件信息显示」等状态不沿用） */}
-      <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
+      {/* 同一标签内导航到另一位置时整体重建（「以文件信息显示」等状态不沿用） */}
+      {tab.kind === 'workspace' ? (
+        <WorkspaceOverview key={tab.uri} tab={tab} />
+      ) : (
+        <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
+      )}
     </div>
   )
 }
@@ -106,7 +113,7 @@ function StatResource(props: ViewProps): JSX.Element {
 
 /** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */
 function toResourceInfo(stat: FileStat, tab: TabState): ResourceInfo {
-  const kind = stat.kind === 'symlink' ? tab.kind : stat.kind
+  const kind = stat.kind !== 'symlink' ? stat.kind : tab.kind === 'directory' ? 'directory' : 'file'
   return { uri: tab.uri, name: stat.name, kind, size: stat.size, mtime: stat.mtime, mime: null }
 }
 
@@ -167,6 +174,20 @@ function PluginView({
     () => (entries ?? []).flatMap((e) => (e.kind === 'folder' && e.uri !== null ? [e.uri] : [])),
     [entries]
   )
+  // 「上一级」（host.tabs.up）：按逻辑路径，条目根之上是工作区总览
+  const workspaceName = workspace
+    ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
+    : undefined
+  const parent = useMemo(
+    () =>
+      workspace === undefined || workspaceName === undefined
+        ? null
+        : parentLocation(
+            { uri: tab.uri, kind: tab.kind, title: tab.title },
+            { workspace: { id: workspace.id, name: workspaceName }, entries: entries ?? [] }
+          ),
+    [workspace, workspaceName, entries, tab.uri, tab.kind, tab.title]
+  )
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
@@ -199,7 +220,8 @@ function PluginView({
       language,
       theme,
       settings,
-      roots
+      roots,
+      parent
     })
   }, [
     i18n,
@@ -216,7 +238,8 @@ function PluginView({
     language,
     theme,
     settings,
-    roots
+    roots,
+    parent
   ])
 
   const settle = (confirmed: boolean): void => {

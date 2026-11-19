@@ -11,7 +11,6 @@ import {
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  ChevronRightIcon,
   FileIcon,
   FileSymlinkIcon,
   FileXIcon,
@@ -27,11 +26,9 @@ import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import { formatSize, formatTime } from './format'
 import {
-  breadcrumb,
   DEFAULT_SORT,
   extensionOf,
   isDirectoryLike,
-  parentOf,
   sortEntries,
   visibleEntries,
   type FolderViewState,
@@ -60,7 +57,7 @@ type Listing =
  * 目录列表：经 host.fs.list 取得（缓存优先），该目录的缓存有变化（host.fs.subscribe）时重新列出。
  * 重新列出期间保留当前内容；出错时显示错误（错误优先于旧内容）。
  * retry 显示读取中后重新列出；refresh（F5 / 刷新按钮）让宿主立即确认该目录（host.fs.refresh），
- * 再重新列出，期间保留当前内容——降级模式（扫描进程不可用、直接枚举）与越过条目根的目录
+ * 再重新列出，期间保留当前内容——降级模式（扫描进程不可用、直接枚举）与条目之外的目录
  * （不进缓存）都没有 vfs.changed，列表不会自动更新，由它补上
  */
 function useListing(host: PreviewHost, uri: string): [Listing, () => void, () => void] {
@@ -121,9 +118,10 @@ const hasSize = (e: FileEntry): boolean =>
   e.kind === 'file' || (e.kind === 'symlink' && e.target === 'file')
 
 /**
- * 目录视图（folder 插件）：面包屑 +「上一级」、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
- * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航，文件以常驻标签打开；
- * Backspace / Alt+↑ 到上一级；F5（焦点在目录视图内）与工具栏的「刷新」重新确认并列出。
+ * 目录视图（folder 插件）：工具栏（刷新）、详细信息列表（虚拟滚动）、状态行（项目数 / 已断开 / 读取中）。
+ * 单击只选中（预览标签不转常驻）；双击 / Enter 打开：目录在同一标签内导航（进入标签的历史），
+ * 文件以常驻标签打开；Backspace / Alt+↑ 经 host.tabs.up 到逻辑路径的上一级（条目根之上是工作区总览）；
+ * F5（焦点在目录视图内）与工具栏的「刷新」重新确认并列出。
  * 打开与导航都经 host（宿主据此把预览标签转为常驻）；导航时给出类型（目录），宿主不再 stat。
  */
 export default function FolderView({
@@ -166,15 +164,9 @@ export default function FolderView({
     if (active === null || active === document.body) gridRef.current?.focus()
   }, [])
 
-  const parent = parentOf(resource.uri)
-  const crumbs = breadcrumb(resource.uri, host.fs.rootOf(resource.uri))
-
   const open = (entry: FileEntry): void => {
     if (isDirectoryLike(entry)) host.tabs.navigate(entry.uri, 'directory')
     else host.tabs.open(entry.uri, { preview: false })
-  }
-  const goUp = (): void => {
-    if (parent !== null) host.tabs.navigate(parent, 'directory')
   }
   /** F5：焦点在目录视图内的任何位置（列表、工具栏按钮） */
   const onRootKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
@@ -199,7 +191,7 @@ export default function FolderView({
     if (e.target !== e.currentTarget) return
     if ((e.key === 'ArrowUp' && e.altKey) || (e.key === 'Backspace' && !e.altKey)) {
       e.preventDefault()
-      goUp()
+      host.tabs.up()
       return
     }
     if (e.altKey || e.ctrlKey || e.metaKey) return
@@ -270,49 +262,8 @@ export default function FolderView({
 
   return (
     <div className="flex h-full flex-col text-[13px]" onKeyDown={onRootKeyDown}>
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b px-2">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={t('up')}
-          title={t('up')}
-          disabled={parent === null}
-          onClick={goUp}
-        >
-          <ArrowUpIcon />
-        </Button>
-        <nav aria-label={t('breadcrumb')} className="min-w-0 flex-1">
-          <ol className="flex min-w-0 items-center overflow-hidden">
-            {crumbs.map((c, i) => {
-              const current = i === crumbs.length - 1
-              return (
-                <li key={c.uri} className="flex min-w-0 shrink items-center">
-                  {i > 0 ? (
-                    <ChevronRightIcon
-                      aria-hidden
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                    />
-                  ) : null}
-                  {current ? (
-                    <span aria-current="page" className="truncate px-2 font-medium" title={c.label}>
-                      {c.label}
-                    </span>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="min-w-0"
-                      title={c.label}
-                      onClick={() => host.tabs.navigate(c.uri, 'directory')}
-                    >
-                      <span className="truncate">{c.label}</span>
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
-          </ol>
-        </nav>
+      {/* 工具栏：路径与「上一级」由应用的地址栏提供（M1-3b）；刷新按钮在 Task 2 移到地址栏 */}
+      <div className="flex h-9 shrink-0 items-center justify-end gap-1 border-b px-2">
         <Button
           variant="ghost"
           size="icon-xs"
