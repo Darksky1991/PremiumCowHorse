@@ -103,10 +103,23 @@ export function resolveDrop(
     }
   }
 
+  // 根下的显示顺序为「未分组在上、分组在下」（设计 2.7），与 sortOrder 不同：落点按同类条目换算
+  const sourceIsGroup =
+    source.type === 'entry' &&
+    nodes.find((n) => n.id === `entry:${source.entryId}`)?.kind === 'group'
+  const boundary =
+    target !== null && position !== 'inside' && target.parentId === null
+      ? rootBoundary(nodes, target, position, sourceIsGroup, source)
+      : null
+
   if (source.type !== 'entry') {
     // 位置引用同一父节点下的条目：before / after 为目标自身；展开分组的下缘为第一个子项之前
     let where: { before: string } | { after: string } | undefined
-    if (target !== null) {
+    if (boundary !== null) {
+      // 落在分组边缘：插在线之前最近的未分组条目之后（没有时在线之后最近的未分组条目之前；都没有时追加）
+      if (boundary.previous) where = { after: boundary.previous.entryId }
+      else if (boundary.next) where = { before: boundary.next.entryId }
+    } else if (target !== null) {
       if (firstChild) {
         const first = nodes.find(
           (n) => n.source === 'entry' && n.parentId === target.id && !isStatusNode(n)
@@ -129,20 +142,61 @@ export function resolveDrop(
     n = n.parentId === null ? undefined : byId.get(n.parentId)
   }
 
-  // index 基于「移除自身后」的兄弟列表（与主进程 entry.move 的语义一致）
+  // index 基于「移除自身后」、按 sortOrder 排列的兄弟列表（与主进程 entry.move 的语义一致）
   const parentNodeId = parentId === null ? null : `entry:${parentId}`
-  const siblings = nodes.filter(
-    (n) => n.source === 'entry' && n.parentId === parentNodeId && n.entryId !== source.entryId
+  const siblings = bySortOrder(
+    nodes.filter(
+      (n) => n.source === 'entry' && n.parentId === parentNodeId && n.entryId !== source.entryId
+    ),
+    nodes
   )
   let index: number
   if (target === null) index = siblings.length
   else if (position === 'inside') index = firstChild ? 0 : END
-  else {
+  else if (boundary !== null) {
+    // 落在另一类条目的边缘：插在线之前最近的同类条目之后，或线之后最近的同类条目之前
+    if (boundary.previous) index = siblings.indexOf(boundary.previous) + 1
+    else if (boundary.next) index = siblings.indexOf(boundary.next)
+    else index = siblings.length
+  } else {
     const at = siblings.findIndex((n) => n.id === target.id)
     if (at < 0) return null
     index = position === 'before' ? at : at + 1
   }
   return { type: 'move', entryId: source.entryId, parentId, index }
+}
+
+/** 同级条目节点按 sortOrder 的序号（rank）排列；没有 rank 时按显示顺序 */
+function bySortOrder(siblings: TreeNode[], nodes: readonly TreeNode[]): TreeNode[] {
+  const key = (n: TreeNode): number => n.rank ?? nodes.indexOf(n)
+  return [...siblings].sort((a, b) => key(a) - key(b))
+}
+
+/**
+ * 根下 before / after 的目标与被拖动 / 新增的条目不同类（未分组 ↔ 分组）时，按显示顺序找线两侧最近的
+ * 同类条目（不含被拖动的条目自身）：previous 为线之前最近的一个，next 为线之后最近的一个。
+ * 同类目标（或根下没有这种情况）返回 null，照常以目标自身为参照。新增的条目（fs / os）都是未分组条目
+ */
+function rootBoundary(
+  nodes: readonly TreeNode[],
+  target: TreeNode,
+  position: 'before' | 'after',
+  sourceIsGroup: boolean,
+  source: DragSource
+): { previous?: TreeNode; next?: TreeNode } | null {
+  if ((target.kind === 'group') === sourceIsGroup) return null
+  const self = source.type === 'entry' ? source.entryId : null
+  const same = nodes.filter(
+    (n) =>
+      n.source === 'entry' &&
+      n.parentId === null &&
+      n.entryId !== self &&
+      (n.kind === 'group') === sourceIsGroup
+  )
+  const line = nodes.indexOf(target) + (position === 'after' ? 1 : 0)
+  const previous = same.filter((n) => nodes.indexOf(n) < line).at(-1)
+  const next = same.find((n) => nodes.indexOf(n) >= line)
+  return { ...(previous && { previous }), ...(next && { next }) }
 }
 
 /**

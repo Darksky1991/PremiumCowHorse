@@ -376,23 +376,39 @@ test.describe('explorer tree on real directories', () => {
       expect(decodeURIComponent(pinned.uri)).toMatch(/\/案件\/設計書$/)
 
       // 真实子目录拖到某个根条目之前：按松手位置插入（不再追加到末尾），同级顺序重排
-      expect(await dragRow(page, '議事録', { row: 'ログ', at: 'top' })).toMatchObject({
+      expect(await dragRow(page, '議事録', { row: '案件', at: 'top' })).toMatchObject({
         accepted: true
       })
       await expect
         .poll(async () => (await entries()).filter((e) => !e.parentId).map((e) => e.label))
-        .toEqual(['案件', '議事録', 'ログ', '設計書'])
+        .toEqual(['議事録', '案件', 'ログ', '設計書'])
+
+      // 根下显示为未分组在上、分组在下（设计 2.7）：落在分组「ログ」的上缘 = 未分组条目的末尾
+      expect(await dragRow(page, 'README.md', { row: 'ログ', at: 'top' })).toMatchObject({
+        accepted: true
+      })
+      await expect
+        .poll(async () => (await entries()).filter((e) => !e.parentId).map((e) => e.label))
+        .toEqual(['議事録', '案件', 'ログ', '設計書', 'README.md'])
+      await expect(tree.locator('[role="treeitem"][aria-level="1"]')).toHaveText([
+        '議事録',
+        '案件',
+        '設計書',
+        'README.md',
+        'ログ'
+      ])
 
       // 落在真实节点上一律不接受（dragover 不 preventDefault，drop 不会发生）
-      expect(await dragRow(page, '仕様.xlsx', { row: '議事録', at: 'middle' })).toMatchObject({
+      // （同名的行中第一个是「案件」下的真实文件 README.md）
+      expect(await dragRow(page, '仕様.xlsx', { row: 'README.md', at: 'middle' })).toMatchObject({
         accepted: false
       })
       expect(await dragRow(page, 'ログ', { row: '仕様.xlsx', at: 'top' })).toMatchObject({
         accepted: false
       })
 
-      // 条目数据只因上面被接受的拖放而变化（案件、メモ、ログ + 固定的 設計書、議事録）；磁盘完全不变
-      expect(await entries()).toHaveLength(5)
+      // 条目数据只因上面被接受的拖放而变化（案件、メモ、ログ + 固定的 設計書、議事録、README.md）；磁盘完全不变
+      expect(await entries()).toHaveLength(6)
       expect(snapshotTree(files)).toEqual(before)
     } finally {
       await app.close()

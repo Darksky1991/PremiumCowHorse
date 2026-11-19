@@ -333,3 +333,58 @@ describe('展开分组的下缘（after）', () => {
     ).toEqual({ type: 'move', entryId: 'a', parentId: null, index: 1 })
   })
 })
+
+describe('根下未分组在上、分组在下（设计 2.7）：显示顺序与 sortOrder 不同时的换算', () => {
+  // sortOrder：g1(0) a(1) g2(2) b(3)；显示：a b g1 g2（分组均折叠）
+  const ra = { ...entryNode('a', 'folder'), expanded: false, rank: 1 }
+  const rb = { ...entryNode('b', 'file'), expandable: false, expanded: false, rank: 3 }
+  const rg1 = { ...entryNode('g1', 'group'), expanded: false, rank: 0 }
+  const rg2 = { ...entryNode('g2', 'group'), expanded: false, rank: 2 }
+  const root = [ra, rb, rg1, rg2]
+  const move = (entryId: string, target: TreeNode, position: 'before' | 'after'): unknown =>
+    resolveDrop({ type: 'entry', entryId }, target, position, root)
+
+  it('同类的目标：index 按 sortOrder 中的位置（移除自身后）计算', () => {
+    // a 拖到 b 之后：移除 a 后为 g1 g2 b → b 在 2 → index 3
+    expect(move('a', rb, 'after')).toMatchObject({ parentId: null, index: 3 })
+    // b 拖到 a 之前：移除 b 后为 g1 a g2 → a 在 1
+    expect(move('b', ra, 'before')).toMatchObject({ parentId: null, index: 1 })
+    // 分组之间：g2 拖到 g1 之前 → 0；g1 拖到 g2 之后：移除 g1 后为 a g2 b → 2
+    expect(move('g2', rg1, 'before')).toMatchObject({ parentId: null, index: 0 })
+    expect(move('g1', rg2, 'after')).toMatchObject({ parentId: null, index: 2 })
+  })
+
+  it('未分组的条目落在分组的边缘：放到未分组条目的末尾（线之前最近的未分组条目之后）', () => {
+    // a 拖到 g1 之前（b 与 g1 之间的线）→ b 之后：移除 a 后 g1 g2 b → 3
+    expect(move('a', rg1, 'before')).toMatchObject({ parentId: null, index: 3 })
+    expect(move('a', rg2, 'after')).toMatchObject({ parentId: null, index: 3 })
+  })
+
+  it('分组落在未分组条目之间：放到分组的开头（线之后最近的分组之前）', () => {
+    // g2 拖到 a 之前 → g1 之前：移除 g2 后 g1 a b → 0
+    expect(move('g2', ra, 'before')).toMatchObject({ parentId: null, index: 0 })
+    // g1 拖到 b 之后（b 与 g1 之间的线）→ g2 之前：移除 g1 后 a g2 b → 1
+    expect(move('g1', rb, 'after')).toMatchObject({ parentId: null, index: 1 })
+  })
+
+  it('add：落在分组边缘时位置改为最近的未分组条目之后', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\x'] }, rg1, 'before', root)).toMatchObject({
+      parentId: null,
+      position: { after: 'b' }
+    })
+    expect(resolveDrop({ type: 'fs', uri: 'file:///C:/f/sub' }, rg2, 'after', root)).toMatchObject({
+      parentId: null,
+      position: { after: 'b' }
+    })
+    // 同类目标照旧引用目标自身
+    expect(resolveDrop({ type: 'os', paths: ['C:\\x'] }, ra, 'after', root)).toMatchObject({
+      position: { after: 'a' }
+    })
+  })
+
+  it('add：根下只有分组时不带位置（追加到末尾，显示在分组之上）', () => {
+    const action = resolveDrop({ type: 'os', paths: ['C:\\x'] }, rg1, 'before', [rg1, rg2])
+    expect(action).toMatchObject({ type: 'add', parentId: null })
+    expect(action).not.toHaveProperty('position')
+  })
+})

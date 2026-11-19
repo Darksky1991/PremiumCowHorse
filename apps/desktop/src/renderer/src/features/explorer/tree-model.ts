@@ -29,6 +29,11 @@ export interface TreeNode {
   dimmed?: true
   /** 该目录显示的是缓存内容（state 为 cached / offline）时，上次检查的时刻；null 为没有记录 */
   checkedAt?: number | null
+  /**
+   * 条目节点在同级条目（按 sortOrder）中的序号。根下的显示顺序（未分组在上、分组在下）与 sortOrder
+   * 不同，拖放据此把落点换算为主进程 entry.move 的 index（drag-drop.ts）
+   */
+  rank?: number
 }
 
 export interface TreeInput {
@@ -101,6 +106,16 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
     else childrenOf.set(e.parentId, [e])
   }
   for (const list of childrenOf.values()) list.sort((a, b) => a.sortOrder - b.sortOrder)
+  const rankOf = new Map<string, number>()
+  for (const list of childrenOf.values()) list.forEach((e, i) => rankOf.set(e.id, i))
+  // 分组抽屉（设计 2.7）：根下未分组的条目显示在所有分组之上（各自保持 sortOrder 的顺序）
+  const root = childrenOf.get(null)
+  if (root) {
+    childrenOf.set(null, [
+      ...root.filter((e) => e.kind !== 'group'),
+      ...root.filter((e) => e.kind === 'group')
+    ])
+  }
 
   const pushStatus = (
     parent: TreeNode,
@@ -175,6 +190,7 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
         uri: e.uri,
         expandable,
         expanded: expandable && expanded.has(id),
+        rank: rankOf.get(e.id) ?? 0,
         ...(offline && { offline: true as const }),
         ...(e.kind === 'folder' && cacheInfo(e.uri))
       }
@@ -189,6 +205,16 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
 
   visitEntries(null, null, 0)
   return out
+}
+
+/**
+ * 分组抽屉：工作区根下的分组（节点 id），同一时刻只展开其中一个（设计 2.7）。
+ * 分组内的子分组按普通节点展开，不在其中
+ */
+export function drawerIds(entries: readonly WorkspaceEntry[]): string[] {
+  return entries
+    .filter((e) => e.kind === 'group' && e.parentId === null)
+    .map((e) => `entry:${e.id}`)
 }
 
 /** 需要列出与监听的目录：所有可见、已展开且可展开的节点的 URI（去重） */

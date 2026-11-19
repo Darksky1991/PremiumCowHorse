@@ -30,6 +30,8 @@ export default {
     addConnection: '添加远程连接',
     title: '资源管理器',
     refresh: '刷新',
+    collapseAll: '全部折叠',
+    locate: '定位到当前项',
     loading: '正在加载…',
     empty: '没有项目',
     retry: '重试',

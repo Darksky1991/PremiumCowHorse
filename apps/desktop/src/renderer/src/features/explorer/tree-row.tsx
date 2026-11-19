@@ -87,6 +87,8 @@ export function TreeRow({
 }: TreeRowProps): JSX.Element {
   const { t, i18n } = useTranslation()
   const FixedIcon = FIXED_ICONS[node.kind]
+  // 分组抽屉的标题（根下的分组，设计 2.7）：分节标题的外观，仍是树的一行（键盘遍历、aria-expanded）
+  const drawer = node.kind === 'group' && node.parentId === null && node.status === undefined
 
   return (
     <div
@@ -116,8 +118,10 @@ export function TreeRow({
         // 每级缩进 4 个间距单位（默认 16px），紧凑密度下随 --spacing 缩小
         paddingLeft: `calc(var(--spacing) * ${2 + node.depth * 4})`
       }}
+      data-drawer={drawer ? '' : undefined}
       className={cn(
         'absolute top-0 left-0 flex h-7 w-full cursor-default items-center gap-1 pr-2 text-[13px] select-none',
+        drawer && 'border-t border-sidebar-border bg-sidebar-accent/30 font-semibold',
         selected
           ? 'bg-sidebar-accent text-sidebar-accent-foreground group-focus/tree:outline group-focus/tree:-outline-offset-1 group-focus/tree:outline-sidebar-ring'
           : 'hover:bg-sidebar-accent/50',

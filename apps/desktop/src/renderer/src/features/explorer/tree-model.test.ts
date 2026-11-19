@@ -3,6 +3,7 @@ import type { FileEntry, WorkspaceEntry } from '@pch/shared'
 import type { DirectoryState } from '@renderer/data/vfs'
 import {
   buildVisibleNodes,
+  drawerIds,
   requiredDirectoryUris,
   resolveDirectoryUris,
   type TreeNode
@@ -366,5 +367,41 @@ describe('offline roots and cached listings', () => {
     expect(nodes.find((n) => n.id === 'entry:f')?.checkedAt).toBe(1234)
     // fresh 的目录与未展开的目录没有标注
     expect(nodes.find((n) => n.id === 'fs:f:sub')?.checkedAt).toBeUndefined()
+  })
+})
+
+describe('分组抽屉（设计 2.7）', () => {
+  // 根：分组 g1、folder a、分组 g2、file b（sortOrder 交错）；g1 内：分组 sub 与 file c
+  const entries = [
+    entry('g1', 'group', { sortOrder: 0 }),
+    entry('a', 'folder', { sortOrder: 1 }),
+    entry('g2', 'group', { sortOrder: 2 }),
+    entry('b', 'file', { sortOrder: 3 }),
+    entry('sub', 'group', { parentId: 'g1', sortOrder: 0 }),
+    entry('c', 'file', { parentId: 'g1', sortOrder: 1 })
+  ]
+
+  it('根下未分组的条目排在所有分组之上（各自按 sortOrder）；分组内部仍按 sortOrder', () => {
+    expect(ids(build(entries, ['entry:g1']))).toEqual([
+      'entry:a',
+      'entry:b',
+      'entry:g1',
+      'entry:sub',
+      'entry:c',
+      'entry:g2'
+    ])
+  })
+
+  it('条目节点带同级（按 sortOrder）中的序号 rank，拖放据此换算主进程的 index', () => {
+    const nodes = build(entries, ['entry:g1'])
+    const rank = (id: string): number | undefined => nodes.find((n) => n.id === id)?.rank
+    expect([rank('entry:g1'), rank('entry:a'), rank('entry:g2'), rank('entry:b')]).toEqual([
+      0, 1, 2, 3
+    ])
+    expect([rank('entry:sub'), rank('entry:c')]).toEqual([0, 1])
+  })
+
+  it('drawerIds：只有根下的分组是抽屉（子分组不是）', () => {
+    expect(drawerIds(entries)).toEqual(['entry:g1', 'entry:g2'])
   })
 })

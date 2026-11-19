@@ -1,6 +1,13 @@
 import { useRef, useState, type DragEvent, type JSX, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FolderPlusIcon, FolderTreeIcon, LayersIcon, RefreshCwIcon } from 'lucide-react'
+import {
+  ChevronsDownUpIcon,
+  FolderPlusIcon,
+  FolderTreeIcon,
+  LayersIcon,
+  LocateFixedIcon,
+  RefreshCwIcon
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AppError } from '@pch/shared'
@@ -20,18 +27,36 @@ import { refreshDirectories, retryDirectory } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
+import { useNavigationStore } from '@renderer/stores/navigation-store'
+import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
 import { osDropEffect, resolveDrop } from './drag-drop'
+import { useExplorerStore } from './explorer-store'
 import { ExplorerTree } from './explorer-tree'
 import { NewGroupDialog } from './new-group-dialog'
+import { revealPath } from './reveal'
 import { useDropExecutor } from './use-drop-executor'
 
-/** 侧栏「资源管理器」视图：标题行（刷新）+ 空状态或资源树 */
+/** 侧栏「资源管理器」视图：标题行（定位到当前项、全部折叠、刷新）+ 空状态或资源树 */
 export function ExplorerView(): JSX.Element {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { data: workspace } = useActiveWorkspace()
   const workspaceId = workspace?.id
   const { data: entries } = useEntries(workspaceId)
+  const activeUri = useTabsStore((s) => selectActiveTab(workspaceId)(s)?.uri ?? null)
+  const collapseAll = useExplorerStore((s) => s.collapseAll)
+  const hasTree = workspaceId !== undefined && entries !== undefined && entries.length > 0
+
+  /**
+   * 定位到当前项（设计 2.7）：把激活标签的位置在树中选中并滚动到（与搜索结果的定位相同：展开祖先、
+   * 进入被收起的抽屉、聚焦树）。没有标签、工作区总览、条目之外的位置时按钮禁用
+   */
+  const locateUri =
+    hasTree && activeUri !== null && revealPath(entries, activeUri) !== null ? activeUri : null
+  const locate = (): void => {
+    if (workspaceId === undefined || locateUri === null) return
+    useNavigationStore.getState().requestReveal(workspaceId, locateUri, 'locate')
+  }
 
   /**
    * 刷新（F5 / 按钮）：条目列表重新获取；扫描进程立即检查所有已展开的目录（P0），
@@ -60,6 +85,40 @@ export function ExplorerView(): JSX.Element {
         <h2 className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
           {t('explorer:title')}
         </h2>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('explorer:locate')}
+                disabled={locateUri === null}
+                onClick={locate}
+              />
+            }
+          >
+            <LocateFixedIcon />
+          </TooltipTrigger>
+          <TooltipContent>{t('explorer:locate')}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('explorer:collapseAll')}
+                disabled={!hasTree}
+                onClick={() => {
+                  if (workspaceId !== undefined) collapseAll(workspaceId)
+                }}
+              />
+            }
+          >
+            <ChevronsDownUpIcon />
+          </TooltipTrigger>
+          <TooltipContent>{t('explorer:collapseAll')}</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={

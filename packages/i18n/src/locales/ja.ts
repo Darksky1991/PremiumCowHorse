@@ -29,6 +29,8 @@ export default {
     addConnection: 'リモート接続を追加',
     title: 'エクスプローラー',
     refresh: '最新の情報に更新',
+    collapseAll: 'すべて折りたたむ',
+    locate: '現在の項目を表示',
     loading: '読み込み中…',
     empty: '項目はありません',
     retry: '再試行',

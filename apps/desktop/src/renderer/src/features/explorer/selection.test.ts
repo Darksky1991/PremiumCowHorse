@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { resolveSelection } from './selection'
+import type { WorkspaceEntry } from '@pch/shared'
+import { hiddenSelectionIndex, resolveSelection } from './selection'
 import type { TreeNode } from './tree-model'
 
 function node(id: string, parentId: string | null): TreeNode {
@@ -52,5 +53,60 @@ describe('resolveSelection', () => {
   it('returns -1 when the selection is gone and there is no previous position', () => {
     expect(resolveSelection(nodes, 'fs:f:gone', -1)).toBe(-1)
     expect(resolveSelection([], 'fs:f:gone', 3)).toBe(-1)
+  })
+})
+
+describe('hiddenSelectionIndex：选中项被折叠的祖先挡住（Review Focus 5）', () => {
+  const groupEntry = (
+    id: string,
+    kind: WorkspaceEntry['kind'],
+    parentId: string | null
+  ): WorkspaceEntry => ({ id, kind, parentId }) as WorkspaceEntry
+  // 顶层分组 A ⊃ folder 条目 f（真实目录 sub/x）；未分组的 folder 条目 r
+  const entries = [
+    groupEntry('A', 'group', null),
+    groupEntry('f', 'folder', 'A'),
+    groupEntry('r', 'folder', null)
+  ]
+  const at = (id: string, expanded: boolean): TreeNode => ({
+    ...node(id, null),
+    expandable: true,
+    expanded
+  })
+
+  it('选中项还在列表中、或是状态行：-1（按原规则处理）', () => {
+    const nodes = [at('entry:r', false), at('entry:A', true), at('entry:f', false)]
+    expect(hiddenSelectionIndex(nodes, entries, 'entry:f')).toBe(-1)
+    expect(hiddenSelectionIndex(nodes, entries, 'entry:f#status')).toBe(-1)
+    expect(hiddenSelectionIndex(nodes, entries, null)).toBe(-1)
+  })
+
+  it('所在的顶层分组被收起：返回该分组的位置（store 中的选中不改写）', () => {
+    const nodes = [at('entry:r', false), at('entry:A', false)]
+    expect(hiddenSelectionIndex(nodes, entries, 'fs:f:sub/x')).toBe(1)
+    expect(hiddenSelectionIndex(nodes, entries, 'entry:f')).toBe(1)
+  })
+
+  it('全部折叠后：返回最近的可见祖先（折叠的目录或条目）', () => {
+    const nodes = [
+      at('entry:r', false),
+      at('entry:A', true),
+      at('entry:f', true),
+      at('fs:f:sub', false)
+    ]
+    expect(hiddenSelectionIndex(nodes, entries, 'fs:f:sub/x')).toBe(3)
+    expect(hiddenSelectionIndex(nodes, entries, 'fs:r:y')).toBe(0)
+  })
+
+  it('最近的可见祖先是展开的（节点已被删除）：-1（按原规则停在原位置）', () => {
+    const nodes = [
+      at('entry:r', false),
+      at('entry:A', true),
+      at('entry:f', true),
+      at('fs:f:sub', true)
+    ]
+    expect(hiddenSelectionIndex(nodes, entries, 'fs:f:sub/x')).toBe(-1)
+    // 条目已被移除、祖先都不在：-1
+    expect(hiddenSelectionIndex(nodes, entries, 'entry:gone')).toBe(-1)
   })
 })

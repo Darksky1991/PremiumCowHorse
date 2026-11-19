@@ -30,6 +30,8 @@ interface ActiveReveal {
  *   （工作区总览、条目之外）时什么都不做（选中保持不变）；选中节点的 URI 已是该位置时也不动
  *   （同一 URI 在树中出现多次时，不把选中从用户点的那一行换到另一行）。
  * onRequest 在每个本工作区的请求到达时调用（资源树据此取消尚未触发的 ↑↓ 防抖打开）。
+ * 祖先链经过被收起的顶层分组时展开该分组，并按抽屉互斥收起其余顶层分组（drawers，设计 2.7）。
+ * 资源树标题栏的「定位到当前项」以 locate 请求激活标签的位置（explorer-view）。
  */
 export function useRevealRequests({
   workspaceId,
@@ -37,7 +39,8 @@ export function useRevealRequests({
   nodes,
   selectedUri,
   reveal,
-  onRequest
+  onRequest,
+  drawers
 }: {
   workspaceId: string
   entries: WorkspaceEntry[]
@@ -47,16 +50,18 @@ export function useRevealRequests({
   /** 选中并滚动到该行；locate 时还聚焦树 */
   reveal: (index: number, mode: RevealMode) => void
   onRequest: (mode: RevealMode) => void
+  /** 互斥展开的顶层分组（tree-model 的 drawerIds） */
+  drawers: readonly string[]
 }): void {
   const { t } = useTranslation()
   const pending = useNavigationStore((s) => s.pending)
   const expand = useExplorerStore((s) => s.expand)
   const active = useRef<ActiveReveal | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const latest = useRef({ nodes, reveal, t, selectedUri, onRequest })
+  const latest = useRef({ nodes, reveal, t, selectedUri, onRequest, drawers })
 
   useEffect(() => {
-    latest.current = { nodes, reveal, t, selectedUri, onRequest }
+    latest.current = { nodes, reveal, t, selectedUri, onRequest, drawers }
   })
 
   /** 按当前节点判断进展；timedOut 为计时器到期时的调用 */
@@ -120,7 +125,7 @@ export function useRevealRequests({
       depth: -1,
       deadline: Date.now() + REVEAL_LAYER_TIMEOUT_MS
     }
-    expand(workspaceId, chain)
+    expand(workspaceId, chain, latest.current.drawers)
     // 目标已经可见时展开不会引起重新渲染，这里先判断一次
     evaluate.current(false)
   }, [pending, entries, workspaceId, expand, t])

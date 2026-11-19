@@ -39,9 +39,9 @@ import { NodeContextMenu } from './node-context-menu'
 import { openTarget } from './open-target'
 import { RemoveEntryDialog, type RemoveTarget } from './remove-entry-dialog'
 import { RenameDialog, type RenameTarget } from './rename-dialog'
-import { resolveSelection } from './selection'
+import { hiddenSelectionIndex, resolveSelection } from './selection'
 import { useDropExecutor } from './use-drop-executor'
-import { buildVisibleNodes, resolveDirectoryUris, type TreeNode } from './tree-model'
+import { buildVisibleNodes, drawerIds, resolveDirectoryUris, type TreeNode } from './tree-model'
 import { TreeRow } from './tree-row'
 import { useRevealRequests } from './use-reveal'
 
@@ -94,6 +94,8 @@ export function ExplorerTree({
   const toggle = useExplorerStore((s) => s.toggle)
   const select = useExplorerStore((s) => s.select)
   const expanded = useMemo(() => new Set(expandedIds), [expandedIds])
+  // 分组抽屉：根下的分组同一时刻只展开一个（设计 2.7）
+  const drawers = useMemo(() => drawerIds(entries), [entries])
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
 
   // 需要列出的目录依赖父目录的列表（子目录的 URI 来自父目录的列表）。
@@ -125,12 +127,21 @@ export function ExplorerTree({
   // 选中的节点消失（状态行被子项取代、节点被删除）时回退，上一次的位置存为 state；
   // 回退后的节点在 effect 中写回 store，之后的键盘操作都以它为起点
   const [lastIndex, setLastIndex] = useState(-1)
-  const selectedIndex = resolveSelection(nodes, selectedId, lastIndex)
+  // 选中项被折叠的祖先挡住（抽屉互斥、全部折叠）时显示为该祖先选中，但不写回 store：
+  // 重新展开后原来的选中项恢复（Review Focus 5）
+  const hiddenIndex = useMemo(
+    () => hiddenSelectionIndex(nodes, entries, selectedId),
+    [nodes, entries, selectedId]
+  )
+  const selectedIndex =
+    hiddenIndex >= 0 ? hiddenIndex : resolveSelection(nodes, selectedId, lastIndex)
   if (selectedIndex !== lastIndex) setLastIndex(selectedIndex)
   const resolvedId = nodes[selectedIndex]?.id ?? null
+  const selectionHidden = hiddenIndex >= 0
   useEffect(() => {
+    if (selectionHidden) return
     if (resolvedId !== null && resolvedId !== selectedId) select(workspaceId, resolvedId)
-  }, [resolvedId, selectedId, select, workspaceId])
+  }, [resolvedId, selectedId, select, workspaceId, selectionHidden])
 
   // 本项目未启用 React Compiler；该规则只提示「编译器会跳过此组件」，不影响运行
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -166,7 +177,9 @@ export function ExplorerTree({
     workspaceId,
     entries,
     nodes,
-    selectedUri: nodes[selectedIndex]?.uri ?? null,
+    // 选中项被折叠挡住时，显示为选中的祖先不是真正的选中（同步不能据此跳过）
+    selectedUri: selectionHidden ? null : (nodes[selectedIndex]?.uri ?? null),
+    drawers,
     reveal: (index, mode) => {
       const node = nodes[index]
       if (!node) return
@@ -319,7 +332,7 @@ export function ExplorerTree({
     })
   const openNewGroup = (node: TreeNode | null): void => {
     // 在折叠的分组下新建时先展开，新分组才看得见
-    if (node !== null && !node.expanded) toggle(workspaceId, node.id)
+    if (node !== null && !node.expanded) toggle(workspaceId, node.id, drawers)
     openDialog({ type: 'newGroup', parentId: node?.entryId ?? null })
   }
 
@@ -353,16 +366,20 @@ export function ExplorerTree({
     }
   }
 
-  /** 折叠时若选中项在其子孙中，选择移到被折叠的节点上（否则选中项不可见，键盘无从继续） */
+  /**
+   * 折叠时若选中项在其子孙中，选择移到被折叠的节点上（否则选中项不可见，键盘无从继续）。
+   * 抽屉（顶层分组）例外：选中不改写，显示为该分组选中，重新展开后恢复（与互斥收起时相同）
+   */
   const toggleNode = (node: TreeNode): void => {
     if (
       node.expanded &&
+      !drawers.includes(node.id) &&
       resolvedId !== null &&
       isDescendant(resolvedId, node.id, nodes, indexById)
     ) {
       select(workspaceId, node.id)
     }
-    toggle(workspaceId, node.id)
+    toggle(workspaceId, node.id, drawers)
   }
 
   /**
@@ -371,6 +388,8 @@ export function ExplorerTree({
    */
   const onRowClick = (e: MouseEvent<HTMLDivElement>, node: TreeNode): void => {
     if (e.detail >= 2) return
+    // 抽屉的标题：单击 = 展开 / 收起（与箭头相同），不改变选中（被收起分组内的选中项保留）
+    if (drawers.includes(node.id)) return toggleNode(node)
     select(workspaceId, node.id)
     if (e.ctrlKey || e.metaKey) openNode(node, true)
     else if (selectionOpens) openNode(node)
@@ -382,6 +401,8 @@ export function ExplorerTree({
    * 只有设置关闭（单击只选中）时才在这里打开
    */
   const onRowDoubleClick = (node: TreeNode): void => {
+    // 抽屉的标题由单击切换；双击的第二次不再切换回去
+    if (drawers.includes(node.id)) return
     if (node.expandable) toggleNode(node)
     else if (!selectionOpens) openNode(node)
   }

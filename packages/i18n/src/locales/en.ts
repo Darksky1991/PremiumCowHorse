@@ -30,6 +30,8 @@ export default {
     addConnection: 'Add remote connection',
     title: 'Explorer',
     refresh: 'Refresh',
+    collapseAll: 'Collapse all',
+    locate: 'Reveal active item',
     loading: 'Loading…',
     empty: 'No items',
     retry: 'Retry',
