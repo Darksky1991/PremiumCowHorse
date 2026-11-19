@@ -1080,6 +1080,44 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(find('needle')).toEqual([])
   })
 
+  it('a directory replaced by a file keeps its entry in the parent listing until the parent is confirmed', async () => {
+    const h = setup([root(R)])
+    const { clock, fs, s, cache, changed } = h
+    const A = fs.addDir(R, 'a')
+    fs.addFile(A, 'inner.txt')
+    prelist(h, A, clock.now())
+    prelist(h, R, clock.now()) // 父目录刚确认过：列表中 a 是目录
+    // 目录被同名文件替换：父目录的真实列表里 a 变成文件，但缓存尚未更新
+    fs.rmdir(A)
+    const d = fs.dirs.get(R)!
+    d.entries = [{ name: 'a', kind: 'file', size: 3, mtime: 2, hidden: false }]
+    d.mtime += 1
+    fs.errors.set(A, 'FS_NOT_A_DIRECTORY')
+    changed.length = 0
+    s.refresh([A])
+    await clock.advance(0)
+    // 目录自身的缓存已删除；父目录的确认（P0，即使刚确认过）把类型更正为文件，该项没有消失
+    expect(cache.getDir(A)).toBeUndefined()
+    expect(cache.getEntries(A)).toEqual([])
+    expect(fs.count('list', R)).toBe(1)
+    expect(cache.getEntries(R).map((e) => [e.name, e.kind])).toEqual([['a', 'file']])
+    expect(changed).toContain(R)
+  })
+
+  it('a directory replaced by a file is not dropped from a stale parent listing meanwhile', async () => {
+    const h = setup([root(R)])
+    const { clock, fs, s, cache } = h
+    const A = fs.addDir(R, 'a')
+    prelist(h, A, clock.now())
+    prelist(h, R, clock.now())
+    fs.rmdir(A)
+    fs.errors.set(A, 'FS_NOT_A_DIRECTORY')
+    // 父目录的真实内容没有变（fake 中仍列出 a 目录）：确认后该项仍在
+    s.refresh([A])
+    await clock.advance(0)
+    expect(cache.getEntries(R).map((e) => e.name)).toEqual(['a'])
+  })
+
   it('confirming after a failed reveal corrects the cache of a deleted directory', async () => {
     // 定位失败时渲染端确认出错的那一层目录（revealRecheckUri → vfs.refresh）：
     // 失败在已删除的目录本身（展开时读取出错）或在它的父目录（列表中没有下一段）
@@ -1252,6 +1290,28 @@ describe('Scheduler: system clock set back', () => {
     await clock.advance(200_000)
     expect(fs.count('stat', F)).toBeGreaterThanOrEqual(1)
     expect(fs.count('stat', H)).toBeGreaterThanOrEqual(1)
+  })
+
+  it('listNow after the clock is set back still confirms a directory checked "in the future"', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, s } = h
+    const A = fs.addDir(R, 'a')
+    prelist(h, A, clock.now() + HOUR) // 回拨之前的确认时刻：比现在晚 1 小时
+    await expect(s.listNow(A)).resolves.toMatchObject({ state: 'cached' })
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(1)
+  })
+
+  it('refresh after the clock is set back is not swallowed by the P0 dedupe', async () => {
+    const { clock, fs, s } = setup([root(R, 'default')])
+    const A = fs.addDir(R, 'a')
+    s.refresh([A])
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(1)
+    clock.rollback(HOUR)
+    s.refresh([A])
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(2)
   })
 
   it('the background rest does not stretch when the clock is set back', async () => {

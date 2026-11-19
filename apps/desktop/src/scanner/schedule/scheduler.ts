@@ -344,7 +344,9 @@ export class Scheduler {
       return Promise.reject(unavailable(uri))
     }
     if (cached) {
-      const fresh = dir.checkedAt !== null && this.now() - dir.checkedAt <= FRESH_MS
+      // 时钟回拨后确认时刻可能在「未来」（差为负）：不算新鲜，否则 F5 / 展开会一直失效到时钟追上
+      const age = dir.checkedAt === null ? null : this.now() - dir.checkedAt
+      const fresh = age !== null && age >= 0 && age <= FRESH_MS
       // 刚检查过（任何优先级，含定期确认发现变化后渲染端收到 vfs.changed 的重新列出）：不再排 P0，
       // 否则每次检测到变化都会多一次完整枚举
       if (!fresh) this.requestP0(uri)
@@ -393,8 +395,12 @@ export class Scheduler {
 
   // ---- 排队 ----
 
-  private requestP0(uri: string, opts: { waiter?: Waiter; bypass?: boolean } = {}): void {
-    const { waiter, bypass = false } = opts
+  private requestP0(
+    uri: string,
+    opts: { waiter?: Waiter; bypass?: boolean; force?: boolean } = {}
+  ): void {
+    // force：不与刚完成 / 正在执行的 P0 合并（它们读到的可能是更正之前的状态）
+    const { waiter, bypass = false, force = false } = opts
     if (this.disposed) {
       waiter?.reject(cancelled())
       return
@@ -410,13 +416,15 @@ export class Scheduler {
       return
     }
     const running = this.running.get(uri)
-    if (running?.prio === 'P0' && !bypass) {
+    if (running?.prio === 'P0' && !bypass && !force) {
       if (waiter) running.waiters.push(waiter)
       return
     }
-    if (!waiter && !bypass) {
+    if (!waiter && !bypass && !force) {
       const done = this.p0Done.get(uri)
-      if (done !== undefined && this.now() - done < P0_DEDUPE_MS) return
+      // 差为负（时钟回拨）：不算重复
+      const age = done === undefined ? null : this.now() - done
+      if (age !== null && age >= 0 && age < P0_DEDUPE_MS) return
     }
     this.p0.set(uri, { uri, prio: 'P0', full: true, waiters: waiter ? [waiter] : [], bypass })
     this.requestPump()
@@ -828,7 +836,22 @@ export class Scheduler {
     }
     // 其他错误说明共享有响应
     this.markReachable(share)
-    if (error.code === 'FS_NOT_FOUND' || error.code === 'FS_NOT_A_DIRECTORY') {
+    if (error.code === 'FS_NOT_A_DIRECTORY') {
+      // 目录被同名文件替换：删除该目录自身的缓存，但不从父目录列表中删除这一项（它仍然存在，只是
+      // 变成了文件）；对父目录排一次确认（force：不与刚完成的 P0 合并），类型随确认更正
+      const dir = this.cache.getDir(uri)
+      if (!dir) {
+        this.queue.markMissing(uri)
+        return
+      }
+      this.cache.removeSubtree(uri)
+      this.scopeDirty = true
+      const parent = this.rootUris.has(uri) ? null : (dir.parentUri ?? parentUri(uri))
+      this.events.changed(parent ?? uri)
+      if (parent !== null) this.requestP0(parent, { force: true })
+      return
+    }
+    if (error.code === 'FS_NOT_FOUND') {
       const dir = this.cache.getDir(uri)
       if (!dir) {
         // 没有缓存行的目录不存在（例如不存在的建立索引目标）：后台队列不再把它当作起点反复读取
