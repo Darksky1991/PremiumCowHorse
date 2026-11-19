@@ -1,5 +1,6 @@
 import {
   AppError,
+  isUnderUri,
   type DirectoryListing,
   type FileEntry,
   type Interest,
@@ -823,6 +824,8 @@ export class Scheduler {
       const { changed } = this.cache.applyListing(uri, mtime, entries, at)
       if (changed) {
         this.events.changed(uri)
+        // 消失的子目录连同子树已从缓存删除：显示其中目录的标签另行通知（见 notifyRemoved）
+        this.notifyRemoved(uri, (u) => u !== uri && this.cache.getDir(u) === undefined)
         // 子目录可能有增减：分层的对象要重算；后台队列可能有了新的没有信息的目录
         if (this.periodic.has(uri)) this.scopeDirty = true
         this.queue.markDirty(this.groupKey(uri))
@@ -867,6 +870,7 @@ export class Scheduler {
         this.scopeDirty = true
         const parent = this.rootUris.has(uri) ? null : (dir.parentUri ?? parentUri(uri))
         this.events.changed(parent ?? uri)
+        this.notifyRemoved(uri, (u) => u !== parent)
         if (parent !== null) this.requestP0(parent, { force: true })
         return
       }
@@ -892,6 +896,7 @@ export class Scheduler {
       this.cache.removeMissing(uri)
       this.scopeDirty = true
       this.events.changed(parent ?? uri)
+      this.notifyRemoved(uri, (u) => u !== (parent ?? uri))
       if (parent !== null) {
         // 行保留为「不存在」（带确认时刻）：父目录的确认若仍列出它，下次出错不再强制父目录
         this.cache.setState(uri, 'not-found', error.code, this.now())
@@ -903,6 +908,24 @@ export class Scheduler {
     const state = error.code === 'FS_PERMISSION_DENIED' ? 'denied' : 'unreachable'
     const { changed } = this.cache.setState(uri, state, error.code, this.now())
     if (changed) this.events.changed(uri)
+  }
+
+  /**
+   * 缓存中 uri 及其子树被删除（目录不在了）：按关注点处理的目录（各窗口的选中目录与标签中显示的目录）
+   * 中等于 uri 或在其之下、且满足 pick 的，各通知一次 changed。显示它们的目录视图只订阅自身的
+   * vfs.changed，据此重新列出并得到「找不到」；只通知父目录时它们收不到任何事件。
+   * 之后对这些目录的读取再失败（没有缓存行，或行已记为「不存在」）不再通知，不会形成
+   * 「通知 → 重新列出 → 失败 → 通知」的循环
+   */
+  private notifyRemoved(uri: string, pick: (u: string) => boolean): void {
+    const seen = new Set<string>()
+    for (const o of this.owners.values()) {
+      for (const u of focusUris(o)) {
+        if (seen.has(u) || !isUnderUri(u, uri) || !pick(u)) continue
+        seen.add(u)
+        this.events.changed(u)
+      }
+    }
   }
 
   private goOffline(share: string, uri: string, fromProbe: boolean): void {

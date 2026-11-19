@@ -1084,18 +1084,61 @@ describe('Scheduler: P0, concurrency and errors', () => {
     await clock.advance(5000)
     expect(cache.getDir(A)).toBeUndefined()
     expect(cache.getDir(AB)).toBeUndefined()
-    // 通知父目录（之后父目录的确认删除「不存在」的行，可能再通知一次）
-    expect(new Set(changed)).toEqual(new Set([R]))
+    // 通知父目录（之后父目录的确认删除「不存在」的行，可能再通知一次）与关注点自身
+    // （显示它的目录视图据此重新列出，得到「找不到」）
+    expect(new Set(changed)).toEqual(new Set([R, A]))
 
-    // 根目录本身不在了（关注点的父目录：近层 30 秒）：删除缓存并通知根；之后 listNow 以 FS_NOT_FOUND 拒绝
+    // 根目录本身不在了（关注点的父目录：近层 30 秒）：删除缓存并通知根与其下的关注点；
+    // 之后 listNow 以 FS_NOT_FOUND 拒绝
     changed.length = 0
     fs.rmdir(R) // 根没有父目录的列表
     await clock.advance(30_000)
     expect(cache.getDir(R)).toBeUndefined()
-    expect(changed).toEqual([R])
+    expect(changed).toEqual([R, A])
     await expect(s.listNow(R)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
     await clock.advance(30_000)
-    expect(changed).toEqual([R]) // 已没有缓存：不重复通知
+    expect(changed).toEqual([R, A]) // 已没有缓存：不重复通知
+  })
+
+  it('a directory shown in a tab that is not found is notified itself, once', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, s, changed } = h
+    const A = fs.addDir(R, 'a')
+    const AB = fs.addDir(A, 'b')
+    for (const u of [R, A, AB]) prelist(h, u, clock.now())
+    s.setInterest(1, { ...none, tabs: [A, AB] })
+    await clock.advance(0)
+    changed.length = 0
+    fs.remove(R, 'a')
+    await clock.advance(5000)
+    // 标签中的 a 与其下的 a/b（另一个标签）：显示它们的目录视图重新列出，得到「找不到」
+    expect(changed).toContain(A)
+    expect(changed).toContain(AB)
+    await expect(s.listNow(A)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+    await expect(s.listNow(AB)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+    // 之后的定期确认（关注点 5 秒）再次失败：不再通知（否则「通知 → 重新列出 → 失败 → 通知」循环）
+    await clock.advance(0)
+    changed.length = 0
+    await clock.advance(20_000)
+    expect(changed).not.toContain(A)
+    expect(changed).not.toContain(AB)
+  })
+
+  it('a tab directory dropped by its parent listing is notified', async () => {
+    const h = setup([root(R, 'default')])
+    const { clock, fs, s, changed } = h
+    const A = fs.addDir(R, 'a')
+    const AB = fs.addDir(A, 'b')
+    for (const u of [R, A, AB]) prelist(h, u, clock.now())
+    // a/b 自身的读取一直卡住：只有父目录 r 的确认发现 a 已不在（连同子树删除缓存）
+    fs.gate = (_op, uri, signal) => (uri === AB || uri === A ? hang(signal) : undefined)
+    s.setInterest(1, { ...none, focus: R, tabs: [AB] })
+    changed.length = 0
+    fs.remove(R, 'a')
+    await clock.advance(0)
+    expect(h.cache.getDir(AB)).toBeUndefined()
+    expect(changed).toContain(R)
+    expect(changed).toContain(AB)
   })
 
   it('not-found also removes the directory from a fresh parent listing (tree and search)', async () => {
