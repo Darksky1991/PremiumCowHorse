@@ -1270,7 +1270,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级刷新级别 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
