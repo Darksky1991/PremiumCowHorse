@@ -373,10 +373,16 @@ export class Scheduler {
     )
   }
 
-  /** F5 / 重试：P0；共享断开时也立即尝试一次（不改变退避的时刻表） */
+  /**
+   * F5 / 刷新按钮 / 重试：P0；共享断开时也立即尝试一次（不改变退避的时刻表）。
+   * 显式刷新带 force：不被 2 秒去重（P0_DEDUPE_MS）丢弃，也不与正在执行的 P0 合并——
+   * 刚完成 / 执行中的读取可能早于用户想看到的变化；已在排队的仍合并（连按不重复排队）
+   */
   refresh(uris: string[]): void {
     if (this.disposed) return
-    for (const u of uris) if (isValidUri(u)) this.requestP0(u, { bypass: this.isOffline(u) })
+    for (const u of uris) {
+      if (isValidUri(u)) this.requestP0(u, { bypass: this.isOffline(u), force: true })
+    }
   }
 
   isOffline(uri: string): boolean {

@@ -322,8 +322,6 @@ test.describe('folder view (the folder plugin)', () => {
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
       await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
 
-      // 扫描进程把 2 秒内（P0_DEDUPE_MS）重复的 P0 合并掉：刚列出后立即刷新不会再读一次
-      await page.waitForTimeout(2500)
       writeFileSync(path.join(project, 'added.txt'), 'a')
       await panel(page).getByRole('button', { name: 'Refresh' }).click()
       await expect(names(page)).toHaveText([
@@ -335,7 +333,6 @@ test.describe('folder view (the folder plugin)', () => {
       ])
 
       // F5：焦点在目录视图时
-      await page.waitForTimeout(2500)
       mkdirSync(path.join(project, 'new-folder'))
       await grid(page).focus()
       await page.keyboard.press('F5')

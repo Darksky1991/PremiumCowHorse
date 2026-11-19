@@ -194,10 +194,10 @@
 - 解决：在点击之前 `app.evaluate(({ shell }) => Object.assign(shell, { openPath: async (p) => { calls.push(p); return '' }, showItemInFolder: (p) => … }))`，计数放在 `globalThis` 上，用 `expect.poll(() => app.evaluate(() => globalThis.__pchShell))` 读回（`e2e/preview.spec.ts` 的 `stubShell`）。主进程 handler 每次调用时读 `shell.openPath` 属性，所以替换生效（与替换 `dialog.showOpenDialog` 相同）。
 - 预防：替换必须在任何可能触发它的点击之前；「取消后不调用」的断言要先等对话框关闭再读计数。
 
-### e2e：刚列出目录后立即点「刷新」/ F5，磁盘上的变化不显示
+### 刚列出目录后立即点「刷新」/ F5，磁盘上的变化不显示（已修复）
 
 - 日期：2026-11-20
 - 症状：M1-3b 改写「刷新按钮与 F5 立即重新列出」用例（定期确认间隔设为 1 小时，列表不会自己更新）：目录视图列出后立即写入文件并点「刷新」，新文件一直不出现（两次重复都失败）；此前的版本在越过条目根的目录（不进缓存、主进程直接枚举）上测，没有暴露。
-- 原因：扫描进程的 `requestP0`（`scanner/schedule/scheduler.ts`）对没有等待者的 P0 做 2 秒去重（`P0_DEDUPE_MS`）：同一目录的上一次 P0 完成不到 2 秒时，`vfs.refresh` 直接丢弃。添加条目 / 打开标签时的列出就是一次 P0。
-- 解决：用例在写入磁盘之前等待 2.5 秒（`page.waitForTimeout(2500)`，注释写明原因）。临时去掉点击「刷新」确认用例会失败（有效性）。
-- 预防：依赖 `vfs.refresh` 的用例与上一次 P0 之间留出 2 秒以上；这同时是产品行为——用户在一次确认后 2 秒内按 F5 也不会重新读取（已在 M1-3b Task 1 报告的「发现的问题」中记录）。
+- 原因：扫描进程的 `requestP0`（`scanner/schedule/scheduler.ts`）对没有等待者的 P0 做 2 秒去重（`P0_DEDUPE_MS`），`vfs.refresh` 也走这条路：同一目录的上一次 P0 完成不到 2 秒时刷新被直接丢弃。添加条目 / 打开标签时的列出就是一次 P0。这是产品缺陷（用户 2 秒内按 F5 也不会重新读取），不只是测试问题。
+- 解决（M1-3b Task 1 审查修复，控制者裁定）：`Scheduler.refresh` 以 `force: true` 请求 P0——不被去重丢弃、不与正在执行的 P0 合并；已在排队的仍合并。去重只剩给隐式的 P0（关注点切换、切回窗口、滚回视口等）。单元测试「an explicit refresh right after a P0 reads again」在修复前失败；e2e 的刷新用例去掉了为躲避去重加的 `waitForTimeout(2500)`。临时去掉点击「刷新」时用例失败（有效性）。
+- 预防：显式的用户操作（刷新、重试）不要走为隐式触发设计的去重 / 合并路径；e2e 中遇到「操作后没有效果、等一会儿再操作就好」时先查调度器的去重，而不是加等待。

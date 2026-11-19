@@ -1033,7 +1033,26 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(reach.map((r) => r[1])).toEqual(['offline', 'online'])
   })
 
-  it('deduplicates P0 for the same directory within 2 seconds', async () => {
+  it('deduplicates implicit P0 for the same directory within 2 seconds', async () => {
+    const { clock, fs, s } = setup([root(R, 'default')])
+    const A = fs.addDir(R, 'a')
+    // 关注点切到 A：P0 读一次；1 秒内离开又回来（不是显式刷新）不再读
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(1)
+    await clock.advance(500)
+    s.setInterest(1, none)
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(1)
+    await clock.advance(2500)
+    s.setInterest(1, none)
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(fs.count('stat', A)).toBe(2)
+  })
+
+  it('an explicit refresh right after a P0 reads again (bypasses the 2-second dedupe)', async () => {
     const { clock, fs, s } = setup([root(R, 'default')])
     s.setInterest(1, none)
     await clock.advance(10_000)
@@ -1042,14 +1061,16 @@ describe('Scheduler: P0, concurrency and errors', () => {
     await expect(s.listNow(R)).resolves.toMatchObject({ state: 'cached' })
     await clock.advance(0)
     expect(fs.count('stat', R)).toBe(n + 1)
-    await clock.advance(1000)
-    s.refresh([R])
-    await clock.advance(0)
-    expect(fs.count('stat', R)).toBe(n + 1)
-    await clock.advance(1500)
+    // 刷新按钮 / F5：上一次 P0 刚完成也要再读（否则此刻的外部变化要等下一次定期确认）
+    await clock.advance(100)
     s.refresh([R])
     await clock.advance(0)
     expect(fs.count('stat', R)).toBe(n + 2)
+    // 连按：已在排队的合并为一次
+    s.refresh([R])
+    s.refresh([R])
+    await clock.advance(0)
+    expect(fs.count('stat', R)).toBe(n + 3)
   })
 
   it('a listNow right after a periodic check found a change does not enumerate again', async () => {
