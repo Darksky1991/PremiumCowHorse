@@ -113,6 +113,8 @@ const policies = [
   ]),
   allow('r-provider', ['r-data', 'r-lib', 'ui', 'i18n', 'shared']),
   allow('r-data', ['r-lib', 'shared']),
+  // 跨 feature 的 store 可以使用 shared 的纯函数与类型（如标签的 layoutReducer）
+  allow('r-store', ['shared']),
   allow('r-lib', ['shared']),
   allow('r-style', ['ui'])
 ]

@@ -12,6 +12,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
+import { useTabsStore } from '@renderer/stores/tabs-store'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
@@ -35,6 +36,7 @@ import { interestFromTree } from './interest'
 import { isEntryNode } from './menu-items'
 import { NewGroupDialog } from './new-group-dialog'
 import { NodeContextMenu } from './node-context-menu'
+import { openTarget } from './open-target'
 import { RemoveEntryDialog, type RemoveTarget } from './remove-entry-dialog'
 import { RenameDialog, type RenameTarget } from './rename-dialog'
 import { resolveSelection } from './selection'
@@ -82,6 +84,8 @@ export function ExplorerTree({
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const showHidden = useSetting('explorer.showHiddenFiles') ?? false
+  const singleClickPreview = useSetting('explorer.singleClickPreview') ?? true
+  const openTab = useTabsStore((s) => s.open)
   const expandedIds = useExplorerStore((s) => s.expanded[workspaceId] ?? NO_IDS)
   const selectedId = useExplorerStore((s) => s.selected[workspaceId] ?? null)
   const toggle = useExplorerStore((s) => s.toggle)
@@ -332,6 +336,26 @@ export function ExplorerTree({
     toggle(workspaceId, node.id)
   }
 
+  /** 在标签中打开节点（分组、状态行、失效链接不打开）；preview 为单击的预览打开 */
+  const openNode = (node: TreeNode, preview: boolean): void => {
+    const target = openTarget(node)
+    if (target) openTab(workspaceId, { ...target, preview })
+  }
+
+  /**
+   * 单击：选中、切换展开，并按设置预览打开；双击（第二次单击，detail 为 2）：常驻打开，
+   * 不再切换展开（否则双击目录会展开又折叠）
+   */
+  const onRowClick = (e: MouseEvent<HTMLDivElement>, node: TreeNode): void => {
+    if (e.detail >= 2) {
+      openNode(node, false)
+      return
+    }
+    select(workspaceId, node.id)
+    if (node.expandable) toggleNode(node)
+    if (singleClickPreview) openNode(node, true)
+  }
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     // 只处理树本身获得焦点时的按键：行内控件（「重试」按钮）上的 Enter / ↑↓ 交给控件自己
     if (e.target !== e.currentTarget) return
@@ -357,8 +381,12 @@ export function ExplorerTree({
         else if (current.parentId !== null) moveTo(indexById.get(current.parentId) ?? 0)
         break
       case 'Enter':
-        if (current?.expandable) toggleNode(current)
-        else if (current?.status === 'error' && current.uri !== null) onRetry(current.uri)
+        // ↑↓ 只移动选中、不打开（避免键盘浏览时不停替换预览标签）；Enter 以常驻标签打开
+        if (current?.status === 'error' && current.uri !== null) onRetry(current.uri)
+        else if (current) {
+          if (current.expandable) toggleNode(current)
+          openNode(current, false)
+        }
         break
       case 'F2':
         if (!isEntryNode(current)) return
@@ -419,10 +447,7 @@ export function ExplorerTree({
                       setDropTarget(null)
                     }}
                     style={{ transform: `translateY(${v.start}px)` }}
-                    onClick={() => {
-                      select(workspaceId, node.id)
-                      if (node.expandable) toggleNode(node)
-                    }}
+                    onClick={(e) => onRowClick(e, node)}
                     onRetry={() => {
                       if (node.uri !== null) onRetry(node.uri)
                     }}

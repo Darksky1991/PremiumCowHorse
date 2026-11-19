@@ -135,6 +135,11 @@ export default {
     shortcutSettings: 'Open settings',
     comingSoon: 'This feature arrives in a later milestone'
   },
+  tabs: {
+    label: 'Open tabs',
+    close: 'Close',
+    placeholder: 'A view for this resource is coming soon'
+  },
   errors: {
     UNKNOWN: 'An unexpected error occurred',
     IPC_FORBIDDEN: 'This call is not allowed',

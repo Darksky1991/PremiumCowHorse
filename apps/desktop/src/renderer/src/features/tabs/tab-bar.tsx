@@ -1,0 +1,137 @@
+import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
+import { FileIcon, FolderIcon, XIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { cn } from 'cn'
+import type { TabState, TabsState } from '@pch/shared'
+import { Button } from '@pch/ui/components/button'
+import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { useTabsStore } from '@renderer/stores/tabs-store'
+import { panelDomId, tabDomId } from './dom-ids'
+
+export interface TabBarProps {
+  state: TabsState
+  /** 标签与标签面板的 DOM id 前缀（tab 的 aria-controls / 面板的 aria-labelledby） */
+  baseId: string
+}
+
+/**
+ * 标签栏：单击激活、双击转常驻、× / 中键关闭；预览标签标题斜体；溢出时横向滚动（滚轮也可）。
+ * 键盘：标签栏只有一个 Tab 停靠点（激活标签），←→ / Home / End 切换激活标签。
+ */
+export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
+  const { t } = useTranslation('tabs')
+  const listRef = useRef<HTMLDivElement>(null)
+  const activate = useTabsStore((s) => s.activate)
+  const promote = useTabsStore((s) => s.promote)
+  const close = useTabsStore((s) => s.close)
+  const { tabs, activeId } = state
+
+  /** 本次变化由标签栏内的键盘操作 / 焦点在栏内时的关闭引起：之后把焦点移到新的激活标签 */
+  const refocus = useRef(false)
+
+  // 激活标签滚动到可见范围（溢出时）；需要时移交焦点（被关闭的标签带走焦点后不落到 body）
+  useEffect(() => {
+    if (activeId === null) return
+    const el = document.getElementById(tabDomId(baseId, activeId))
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (refocus.current) el?.focus()
+    refocus.current = false
+  }, [activeId, baseId, tabs])
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+    const index = tabs.findIndex((tab) => tab.id === activeId)
+    let next: TabState | undefined
+    if (e.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length]
+    else if (e.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length]
+    else if (e.key === 'Home') next = tabs[0]
+    else if (e.key === 'End') next = tabs.at(-1)
+    else return
+    e.preventDefault()
+    // 只有一个标签时激活不变、effect 不会运行：不留下待处理的 refocus（否则之后会夺走焦点）
+    if (next && next.id !== activeId) {
+      refocus.current = true
+      activate(next.id)
+    }
+  }
+
+  // 只有纵向滚轮时把它换成横向滚动（鼠标滚轮浏览溢出的标签）
+  const onWheel = (e: WheelEvent<HTMLDivElement>): void => {
+    if (e.deltaX !== 0 || e.deltaY === 0) return
+    e.currentTarget.scrollLeft += e.deltaY
+  }
+
+  const closeTab = (id: string): void => {
+    refocus.current = listRef.current?.contains(document.activeElement) ?? false
+    close(id)
+  }
+
+  return (
+    <div
+      ref={listRef}
+      role="tablist"
+      aria-label={t('label')}
+      onKeyDown={onKeyDown}
+      onWheel={onWheel}
+      className="flex h-9 shrink-0 overflow-x-auto overflow-y-hidden border-b bg-sidebar [scrollbar-width:thin]"
+    >
+      {tabs.map((tab) => {
+        const active = tab.id === activeId
+        const Icon = tab.kind === 'directory' ? FolderIcon : FileIcon
+        const domId = tabDomId(baseId, tab.id)
+        return (
+          <div
+            key={tab.id}
+            id={domId}
+            role="tab"
+            aria-selected={active}
+            aria-controls={active ? panelDomId(baseId) : undefined}
+            aria-labelledby={`${domId}-title`}
+            tabIndex={active ? 0 : -1}
+            title={fileUriToWindowsPath(tab.uri) ?? tab.uri}
+            onClick={() => activate(tab.id)}
+            onDoubleClick={() => promote(tab.id)}
+            // 中键：按下时阻止自动滚动，auxclick 时关闭
+            onMouseDown={(e) => {
+              if (e.button === 1) e.preventDefault()
+            }}
+            onAuxClick={(e) => {
+              if (e.button !== 1) return
+              e.preventDefault()
+              closeTab(tab.id)
+            }}
+            className={cn(
+              'group/tab flex max-w-60 min-w-0 shrink-0 cursor-default items-center gap-1.5 border-r pr-1 pl-3 text-[13px] outline-none select-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-ring',
+              active
+                ? 'bg-background text-foreground shadow-[inset_0_2px_0_0_var(--primary)]'
+                : 'text-muted-foreground hover:bg-sidebar-accent/50',
+              tab.preview && 'italic'
+            )}
+          >
+            <Icon aria-hidden className="size-4 shrink-0" />
+            <span id={`${domId}-title`} className="min-w-0 truncate">
+              {tab.title}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="shrink-0"
+              aria-label={t('close')}
+              title={t('close')}
+              // 标签栏只保留一个 Tab 停靠点；按下时不夺取焦点
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation()
+                closeTab(tab.id)
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
+              <XIcon />
+            </Button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

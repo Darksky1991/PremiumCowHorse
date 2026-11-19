@@ -134,6 +134,11 @@ export default {
     shortcutSettings: '設定を開く',
     comingSoon: 'この機能は今後のマイルストーンで実装されます'
   },
+  tabs: {
+    label: '開いているタブ',
+    close: '閉じる',
+    placeholder: 'このリソースの表示は準備中です'
+  },
   errors: {
     UNKNOWN: '予期しないエラーが発生しました',
     IPC_FORBIDDEN: '許可されていない呼び出しです',

@@ -342,10 +342,11 @@ apps/desktop/src/renderer/
 - M1-2：`features/explorer/`（资源树，8.2 节）、`features/workspace/`（标题栏的工作区切换器与新建 / 重命名 / 删除对话框）；`data/` 增加 `workspace.ts`、`entries.ts`、`vfs.ts`（工作区、条目、目录列表与关注点 `vfs.interest` 的 hooks；监听的 hooks 已于 2026-11-19 删除）；`lib/` 增加 `file-uri.ts`（file URI → Windows 路径，用于「复制路径」；URI 规范化 `normalizeRootUri` 与 `isUnderUri` 在 `packages/shared/src/vfs/normalize-uri.ts`，主进程、扫描进程、渲染端共用）；`stores/ui-store.ts` 增加「新建工作区」对话框的开关（标题栏切换器与欢迎页共用）。
 - 文件名搜索（2026-11-19，8.4 节）：`features/search/`（搜索视图 `search-view.tsx`、结果列表 `search-results.tsx`、按工作区保存输入与类型筛选的 `search-store.ts`、格式化纯函数 `format.ts`）；`data/search.ts`（`search.query` 的查询与取消）；`stores/navigation-store.ts`（跨 feature 的「在树中定位」请求：搜索视图发出、资源树处理）；`features/explorer/reveal.ts`（URI → 所属条目与节点 id、定位进展，纯函数）与 `use-reveal.ts`；`stores/ui-store.ts` 的 `SidebarView` 增加 `search`，并增加 `showView`（显示视图而不折叠）与 `searchFocusRequest`（`Ctrl+Shift+F` 聚焦搜索框）。
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 写入：先订阅 `vfs.reachability`，再以 `vfs.offlineShares` 初始化（查询返回前已收到事件的共享以事件为准），窗口启动 / 重新加载前已断开的共享也能显示——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
+- M1-3 标签（进行中，11 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
-外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher` 等组合进去。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
+外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`TabsArea` 等组合进去；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
 
 ### 5.4 命名与编码约定
 
@@ -993,6 +994,25 @@ export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutS
 
 **同步**：主进程每次 reduce 后，只向受影响的窗口推送 `layout.changed`（该窗口自己的 WindowView），渲染端 zustand store 整体替换。`tab/viewState` 属于高频更新，渲染端防抖 500ms 后发送，主进程不广播此类变化。
 
+**已实现（M1-3，单窗口子集）**：上面的 `LayoutState` / `LayoutAction` 是 M3 的目标结构。M1-3 只实现单窗口的子集，状态由**渲染端**持有（`stores/tabs-store.ts`，按工作区各保存一份、只在内存中；切换工作区时显示该工作区的标签），M3 多窗口时移到主进程 `LayoutService`（2.5 节届时落实）。类型与 reducer 在 `packages/shared/src/layout/`：
+
+```ts
+export interface TabState { id: string; uri: string; kind: 'file' | 'directory'; title: string; preview: boolean; viewState?: unknown }
+export interface TabsState { tabs: TabState[]; activeId: string | null }
+export type TabsAction =
+  | { type: 'tab/open'; uri: string; kind: 'file' | 'directory'; title: string; preview: boolean }
+  | { type: 'tab/close'; id: string }
+  | { type: 'tab/activate'; id: string }
+  | { type: 'tab/promote'; id: string }
+  | { type: 'tab/navigate'; id: string; uri: string; kind: 'file' | 'directory'; title: string }
+  | { type: 'tab/viewState'; id: string; viewState: unknown }
+export function layoutReducer(state: TabsState, action: TabsAction, newId: () => string): TabsState
+```
+
+- `tab/open`：同 URI 已打开 → 只激活（请求为常驻时顺带转常驻）；预览打开且已有预览标签 → 在原位置替换（新 id，viewState 不沿用）；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`：同标签内改 URI 并转常驻（允许与其他标签的 URI 重复）。没有变化时返回同一个状态对象。
+- 资源树（`features/explorer`）：单击 = 选中 + 切换展开 + 预览打开（设置 `explorer.singleClickPreview` 为 false 时不打开）；双击（click 的 `detail` 为 2）= 常驻打开，第二次单击不再切换展开；↑↓ 只移动选中、不打开，Enter = 切换展开 + 常驻打开（错误行为重试）。条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
+- 标签栏（`features/tabs`）：`role="tablist"` / `tab`，预览标签标题斜体；单击激活、双击转常驻、× / 中键关闭、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区暂为占位（显示 URI），由 PreviewContainer 取代（9 节）。
+
 ### 11.3 会话快照
 
 ```ts
@@ -1017,7 +1037,7 @@ export interface SessionSnapshot {
 | 状态类别 | 工具 | 例子 |
 |---|---|---|
 | 来自主进程的数据 | TanStack Query | 工作区列表、条目、目录列表、连接、设置 |
-| 主进程持有、渲染端镜像 | zustand（只读镜像 + dispatch） | 当前窗口的标签与激活状态 |
+| 主进程持有、渲染端镜像 | zustand（只读镜像 + dispatch） | 当前窗口的标签与激活状态（M1-3 先由渲染端直接持有，见 11 节「已实现」） |
 | 纯 UI 状态 | zustand | 树展开/选中、侧栏宽度、命令面板开关 |
 | 表单状态 | react-hook-form + zod | 连接编辑、设置页 |
 
@@ -1039,7 +1059,7 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；标签栏与 PreviewContainer 随 M1-3 实现。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 随 M1-3 后续任务实现。
 
 ### 12.3 渲染端入口
 

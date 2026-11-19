@@ -129,6 +129,11 @@ export default {
     shortcutSettings: '打开设置',
     comingSoon: '该功能将在后续里程碑中实现'
   },
+  tabs: {
+    label: '已打开的标签',
+    close: '关闭',
+    placeholder: '该资源的显示正在准备中'
+  },
   errors: {
     UNKNOWN: '发生了意外错误',
     IPC_FORBIDDEN: '不允许的调用',

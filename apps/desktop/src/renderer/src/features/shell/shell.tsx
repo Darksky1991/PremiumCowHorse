@@ -2,6 +2,8 @@ import type { JSX, ReactNode } from 'react'
 import { useEffect } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@pch/ui/components/resizable'
+import { useActiveWorkspace } from '@renderer/data/workspace'
+import { selectTabs, useTabsStore } from '@renderer/stores/tabs-store'
 import { useUiStore, type SidebarView } from '@renderer/stores/ui-store'
 import { ActivityBar } from './components/activity-bar'
 import { SideBar } from './components/side-bar'
@@ -16,20 +18,24 @@ export interface ShellProps {
   sidebarViews: Record<SidebarView, ReactNode>
   /** 标题栏中的工作区切换器 */
   workspaceSwitcher: ReactNode
+  /** 主区域的标签区（标签栏 + 内容）；当前工作区没有标签时显示欢迎页 */
+  tabsArea: ReactNode
 }
 
 /**
  * 主窗口整体布局（架构文档 12.2 节）：
  * 标题栏 / 活动栏 + 可调宽侧栏 + 内容区 / 状态栏。
- * 标签栏与 PreviewContainer 在 M1–M2 接入内容区，没有标签时显示欢迎页。
+ * 内容区：当前工作区有标签时显示标签区（features/tabs），没有标签时显示欢迎页。
  */
-export function Shell({ sidebarViews, workspaceSwitcher }: ShellProps): JSX.Element {
+export function Shell({ sidebarViews, workspaceSwitcher, tabsArea }: ShellProps): JSX.Element {
   useShellShortcuts()
   useReachabilityEvents()
   const sidebarRef = usePanelRef()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const view = useUiStore((s) => s.sidebarView)
+  const { data: workspace } = useActiveWorkspace()
+  const hasTabs = useTabsStore((s) => selectTabs(workspace?.id)(s).tabs.length > 0)
 
   // store → 面板：活动栏点击、Ctrl+B
   useEffect(() => {
@@ -60,9 +66,7 @@ export function Shell({ sidebarViews, workspaceSwitcher }: ShellProps): JSX.Elem
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel id="content" minSize="30">
-            <main className="h-full min-w-0">
-              <Welcome />
-            </main>
+            <main className="h-full min-w-0">{hasTabs ? tabsArea : <Welcome />}</main>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

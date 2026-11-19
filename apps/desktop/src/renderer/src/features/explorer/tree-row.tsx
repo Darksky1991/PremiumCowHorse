@@ -1,4 +1,4 @@
-import type { CSSProperties, DragEvent, JSX, Ref } from 'react'
+import type { CSSProperties, DragEvent, JSX, MouseEvent, Ref } from 'react'
 import {
   ChevronRightIcon,
   CircleAlertIcon,
@@ -45,7 +45,8 @@ export interface TreeRowProps {
   dropPosition: DropPosition | null
   onDragStart: (e: DragEvent<HTMLDivElement>) => void
   onDragEnd: () => void
-  onClick: () => void
+  /** 单击与双击（e.detail 区分）都经由 click 事件 */
+  onClick: (e: MouseEvent<HTMLDivElement>) => void
   onRetry: () => void
 }
 
