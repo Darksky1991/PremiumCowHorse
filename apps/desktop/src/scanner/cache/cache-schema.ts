@@ -2,7 +2,7 @@
  * 缓存库 index.db 的表结构。这是可随时删除重建的缓存：不做迁移，
  * 结构变化时递增 CACHE_VERSION，打开时发现 user_version 不符就删表重建。
  */
-export const CACHE_VERSION = 1
+export const CACHE_VERSION = 2
 
 export const DROP_SQL = `
 DROP TABLE IF EXISTS entries_fts;
@@ -23,6 +23,8 @@ CREATE TABLE dirs (
   visit_score REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX dirs_parent ON dirs (parent_uri);
+-- 后台缓存队列：未完整读取的目录（部分索引只含这些行）。按 checked_at 找最旧的查询走 uri 主键范围 + 排序：范围小时最快，整卷约 10-25ms（5 万行）
+CREATE INDEX dirs_unlisted ON dirs (uri) WHERE listed_at IS NULL;
 
 -- 需要整数 rowid 供 FTS5 external content 使用，所以不用 WITHOUT ROWID
 CREATE TABLE entries (

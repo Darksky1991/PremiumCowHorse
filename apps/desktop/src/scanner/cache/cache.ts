@@ -21,6 +21,12 @@ export interface DirRow {
   visitScore: number
 }
 
+/** 队列查询的范围：scope.uri 本身及其下 maxDepth 层（0 = 只有它自己，1 = 它与直接子目录，null = 不限） */
+export interface Scope {
+  uri: string
+  maxDepth: number | null
+}
+
 /** 热点计分的半衰期：3 天 */
 const HALF_LIFE_MS = 3 * 24 * 3600 * 1000
 
@@ -52,6 +58,15 @@ export function subtreeCondition(
   })
   return { sql: `(${parts.join(' OR ')})`, params }
 }
+
+/** URI 的层级数（「/」的个数）。驱动器根（file:///C:/）末尾的 / 不算：它与 file:///C:/x 的差是一层 */
+function slashDepth(uri: string): number {
+  const n = uri.split('/').length - 1
+  return uri.endsWith('/') ? n - 1 : n
+}
+
+/** SQL 版 slashDepth（dirs.uri 的层级数） */
+const DEPTH_SQL = "(length(uri) - length(replace(uri, '/', '')) - (substr(uri, -1) = '/'))"
 
 /** 父目录 URI（字符串方式，仅用于目录行尚未由父目录建立时）。根没有父目录 */
 function parentOf(uri: string, roots: string[]): string | null {
@@ -304,6 +319,44 @@ export class Cache {
       .map((x) => x.uri)
   }
 
+  /**
+   * 还没有完整读取过（listed_at 为 NULL）的目录，范围内「深度浅的优先、同深度按 uri」（由上而下）。
+   * 多个范围的结果合并去重，limit 为合并后的总数。
+   */
+  nextUnlisted(scopes: Scope[], limit: number, exclude?: Set<string>): string[] {
+    const found = new Map<string, number>()
+    for (const sc of scopes) {
+      for (const r of this.scopeQuery(sc, 'listed_at IS NULL', DEPTH_SQL, limit, exclude)) {
+        found.set(r.uri as string, Number(r.depth))
+      }
+    }
+    return [...found]
+      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .slice(0, Math.max(0, limit))
+      .map(([uri]) => uri)
+  }
+
+  /** 已完整读取过的目录，范围内按 checked_at 升序（从未确认过的视为最旧）。多个范围合并去重 */
+  oldestChecked(scopes: Scope[], limit: number, exclude?: Set<string>): string[] {
+    const found = new Map<string, number>()
+    for (const sc of scopes) {
+      for (const r of this.scopeQuery(
+        sc,
+        'listed_at IS NOT NULL',
+        'checked_at',
+        limit,
+        exclude,
+        'checked_at'
+      )) {
+        found.set(r.uri as string, r.checked_at == null ? -Infinity : Number(r.checked_at))
+      }
+    }
+    return [...found]
+      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .slice(0, Math.max(0, limit))
+      .map(([uri]) => uri)
+  }
+
   /** 只读查询（搜索用）：调用方保证 sql 是 SELECT */
   select(sql: string, ...params: SQLInputValue[]): Record<string, SQLOutputValue>[] {
     return this.all(sql, ...params)
@@ -348,6 +401,38 @@ export class Cache {
     this.run(`DELETE FROM entries WHERE ${entries.sql}`, ...entries.params)
     const dirs = subtreeCondition('uri', [uri])
     this.run(`DELETE FROM dirs WHERE ${dirs.sql}`, ...dirs.params)
+  }
+
+  /**
+   * 单个范围内的取数：每个范围各取前 limit 条（合并后的前 limit 条必然在其中）。
+   * 范围条件走主键（dirs.uri）的范围查找，层数条件只是过滤。
+   */
+  private scopeQuery(
+    scope: Scope,
+    where: string,
+    extra: string,
+    limit: number,
+    exclude: Set<string> | undefined,
+    orderBy?: string
+  ): Row[] {
+    if (limit <= 0) return []
+    const range = subtreeCondition('uri', [scope.uri])
+    const params: SQLInputValue[] = [...range.params]
+    let sql = `SELECT uri, ${extra === 'checked_at' ? 'checked_at' : `${extra} AS depth`} FROM dirs WHERE ${where} AND ${range.sql}`
+    if (scope.maxDepth !== null) {
+      sql += ` AND ${DEPTH_SQL} <= ?`
+      params.push(slashDepth(scope.uri) + scope.maxDepth)
+    }
+    // 排除项通常很少（正在处理的目录），逐个排除
+    const ex = exclude ? [...exclude] : []
+    if (ex.length > 0) {
+      sql += ` AND uri NOT IN (${ex.map(() => '?').join(', ')})`
+      params.push(...ex)
+    }
+    sql += orderBy ? ` ORDER BY ${orderBy}, uri` : ` ORDER BY ${DEPTH_SQL}, uri`
+    sql += ' LIMIT ?'
+    params.push(limit)
+    return this.all(sql, ...params)
   }
 
   private tx<T>(fn: () => T): T {

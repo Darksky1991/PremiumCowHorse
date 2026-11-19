@@ -211,6 +211,124 @@ describe('Cache', () => {
     }
   })
 
+  describe('queue queries', () => {
+    // A 下：b（已读，含 b1、b2）、c（未读）、d（未读，含不在范围内的前缀兄弟 A+"x"）
+    const B = 'file:///C:/a/b'
+    const C = 'file:///C:/a/c'
+    const D = 'file:///C:/a/d'
+    beforeEach(() => {
+      cache.setRoots([A, 'file:///C:/ax', 'file:///C:/'])
+      cache.applyListing(A, 1, [dir('b'), dir('c'), dir('d')], 100)
+      cache.applyListing(B, 1, [dir('b1'), dir('b2')], 300)
+      cache.applyListing('file:///C:/a/b/b1', 1, [dir('deep')], 200)
+      cache.applyListing('file:///C:/ax', 1, [dir('y')], 50)
+    })
+
+    it('nextUnlisted returns unlisted directories in scope, shallow first then by uri', () => {
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: null }], 10)).toEqual([
+        C,
+        D,
+        'file:///C:/a/b/b2',
+        'file:///C:/a/b/b1/deep'
+      ])
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: null }], 2)).toEqual([C, D])
+    })
+
+    it('nextUnlisted honours maxDepth relative to the scope uri', () => {
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: 0 }], 10)).toEqual([])
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: 1 }], 10)).toEqual([C, D])
+      expect(cache.nextUnlisted([{ uri: B, maxDepth: 0 }], 10)).toEqual([])
+      expect(cache.nextUnlisted([{ uri: B, maxDepth: 1 }], 10)).toEqual(['file:///C:/a/b/b2'])
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/a/b/b1', maxDepth: 1 }], 10)).toEqual([
+        'file:///C:/a/b/b1/deep'
+      ])
+    })
+
+    it('maxDepth 0 includes the scope itself when it is unlisted', () => {
+      expect(cache.nextUnlisted([{ uri: C, maxDepth: 0 }], 10)).toEqual([C])
+    })
+
+    it('does not include prefix siblings of the scope', () => {
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: null }], 10)).not.toContain('file:///C:/ax/y')
+      expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 10)).not.toContain('file:///C:/ax')
+    })
+
+    it('counts depth correctly for a drive root scope', () => {
+      cache.applyListing('file:///C:/', 1, [dir('x'), dir('a')], 10)
+      cache.applyListing('file:///C:/x', 1, [dir('z')], 10)
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/', maxDepth: 0 }], 10)).toEqual([])
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/', maxDepth: 1 }], 10)).toEqual([])
+      cache.applyListing('file:///C:/', 1, [dir('x'), dir('a'), dir('q')], 10)
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/', maxDepth: 1 }], 10)).toEqual([
+        'file:///C:/q'
+      ])
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/', maxDepth: 2 }], 10)).toContain(
+        'file:///C:/x/z'
+      )
+      expect(cache.nextUnlisted([{ uri: 'file:///C:/', maxDepth: 1 }], 10)).not.toContain(
+        'file:///C:/x/z'
+      )
+    })
+
+    it('merges several scopes without duplicates and limits the merged total', () => {
+      const scopes = [
+        { uri: A, maxDepth: 1 },
+        { uri: A, maxDepth: null },
+        { uri: B, maxDepth: null }
+      ]
+      expect(cache.nextUnlisted(scopes, 10)).toEqual([
+        C,
+        D,
+        'file:///C:/a/b/b2',
+        'file:///C:/a/b/b1/deep'
+      ])
+      expect(cache.nextUnlisted(scopes, 3)).toEqual([C, D, 'file:///C:/a/b/b2'])
+      expect(cache.nextUnlisted([], 5)).toEqual([])
+      expect(cache.nextUnlisted(scopes, 0)).toEqual([])
+    })
+
+    it('exclude removes URIs from both queries', () => {
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: 1 }], 10, new Set([C]))).toEqual([D])
+      expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 10, new Set([A]))).not.toContain(A)
+    })
+
+    it('oldestChecked returns listed directories by checked_at ascending, NULL oldest', () => {
+      // A=100, b=300, b1=200（均已读）；c、d 未读不出现
+      expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 10)).toEqual([
+        A,
+        'file:///C:/a/b/b1',
+        B
+      ])
+      expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 2)).toEqual([A, 'file:///C:/a/b/b1'])
+      expect(cache.oldestChecked([{ uri: A, maxDepth: 1 }], 10)).toEqual([A, B])
+      cache.markChecked(B, 50)
+      expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 1)).toEqual([B])
+    })
+
+    it('nextUnlisted and oldestChecked use indexes', () => {
+      const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare')
+      let sqls: string[]
+      try {
+        cache.nextUnlisted([{ uri: A, maxDepth: 3 }], 5, new Set([C]))
+        cache.oldestChecked([{ uri: A, maxDepth: 3 }], 5, new Set([C]))
+        sqls = prepare.mock.calls.map(([sql]) => sql)
+      } finally {
+        prepare.mockRestore()
+      }
+      const queries = sqls.filter((s) => /FROM dirs/.test(s))
+      expect(queries).toHaveLength(2)
+      for (const sql of queries) {
+        const n = (sql.match(/\?/g) ?? []).length
+        const plan = cache
+          .select(`EXPLAIN QUERY PLAN ${sql}`, ...Array<string>(n).fill(A))
+          .map((r) => String(r.detail))
+        // 允许「按索引顺序扫描」，不允许对 dirs 的全表扫描
+        expect(plan.join('\n'), sql).not.toMatch(/SCAN dirs(?! USING)/)
+        expect(plan.join('\n'), sql).toMatch(/USING .*INDEX/)
+      }
+    })
+  })
+
   it('visit decays scores with a three day half-life and hot returns the top k', () => {
     cache.applyListing(A, 1, [dir('x'), dir('y'), dir('z')], 0)
     const [x, y, z] = [`${A}/x`, `${A}/y`, `${A}/z`] as [string, string, string]
