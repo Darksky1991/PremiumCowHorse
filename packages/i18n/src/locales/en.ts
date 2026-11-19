@@ -52,8 +52,8 @@ export default {
     removeGroupDescription:
       'This group and everything inside it are removed from the workspace. This does not delete any files or folders on disk.',
     reveal: 'Reveal in File Explorer',
-    refreshLevel: 'Refresh level',
-    refreshLevelFollowGlobal: 'Use global setting ({{level}})',
+    cacheStrategy: 'Cache strategy',
+    cacheStrategyFollowGlobal: 'Use global setting ({{strategy}})',
     levelAll: 'All',
     levelActive: 'Active',
     levelDefault: 'Default',
@@ -85,7 +85,7 @@ export default {
     kindDirectory: 'Folders',
     resultsLabel: 'Search results',
     scopeHint:
-      'Searches file names in the cache of the current workspace. What can be found depends on each entry’s refresh level and “Build index”.',
+      'Searches file names in the cache of the current workspace. What can be found depends on each entry’s cache strategy and “Build index”.',
     wildcardHint: 'Separate words with spaces to match all of them; use * and ? as wildcards',
     noResults: 'No results',
     count: '{{total}} found',

@@ -127,7 +127,7 @@ function wireScanner(c: Container): void {
   void push()
   c.bus.on('workspace.changed', () => void push())
   c.bus.on('settings.changed', (patch) => {
-    if (Object.keys(patch).some((k) => k.startsWith('refresh.') || k.startsWith('vfs.'))) {
+    if (Object.keys(patch).some((k) => k.startsWith('cache.') || k.startsWith('vfs.'))) {
       void push()
     }
   })

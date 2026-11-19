@@ -17,7 +17,7 @@ const RootConfigSchema = z.strictObject({
   entryId: z.string().min(1),
   workspaceId: z.string().min(1),
   uri,
-  level: z.enum(['passive', 'default', 'active', 'all']),
+  strategy: z.enum(['passive', 'default', 'active', 'all']),
   location: z.enum(['local', 'network'])
 }) satisfies z.ZodType<RootConfig>
 

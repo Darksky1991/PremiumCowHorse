@@ -185,9 +185,9 @@ const SHARE = '\\\\srv\\share'
 
 const root = (
   uri: string,
-  level: RootConfig['level'] = 'passive',
+  level: RootConfig['strategy'] = 'passive',
   location: RootConfig['location'] = uri.startsWith('file:///') ? 'local' : 'network'
-): RootConfig => ({ entryId: `e-${uri}`, workspaceId: 'w', uri, level, location })
+): RootConfig => ({ entryId: `e-${uri}`, workspaceId: 'w', uri, strategy: level, location })
 
 const none = { focus: null, visible: [], offscreen: [] }
 

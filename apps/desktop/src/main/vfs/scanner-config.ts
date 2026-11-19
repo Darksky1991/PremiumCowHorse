@@ -3,7 +3,7 @@ import type { RootConfig, ScanSettings, ScannerConfig, Settings, WorkspaceEntry 
 
 /**
  * 构造下发给扫描进程的配置（设计 4.5 / 4.9），纯函数：
- * - roots = 活动工作区的 folder 条目；级别 = 条目级 refreshLevel ?? refresh.defaultLevel.<位置>
+ * - roots = 活动工作区的 folder 条目；策略 = 条目级 cacheStrategy ?? cache.strategy.<位置>
  * - allRootUris = 所有工作区的 folder 条目 URI（缓存清理只删不属于任何工作区的目录）
  * - indexTargets = 活动工作区的「建立索引」目标
  * 条目 URI 一律经 normalizeRootUri 规范化（旧数据可能带结尾 `/`）。
@@ -37,7 +37,7 @@ export function buildScannerConfig(input: {
       entryId: e.id,
       workspaceId: e.workspaceId,
       uri,
-      level: e.refreshLevel ?? settings[`refresh.defaultLevel.${location}`],
+      strategy: e.cacheStrategy ?? settings[`cache.strategy.${location}`],
       location
     })
   }
@@ -56,11 +56,12 @@ export function buildScannerConfig(input: {
 export function toScanSettings(s: Settings): ScanSettings {
   return {
     intervalSec: {
-      local: s['refresh.intervalSec.local'],
-      network: s['refresh.intervalSec.network']
+      local: s['cache.interval.near.local'],
+      network: s['cache.interval.near.network']
     },
-    backgroundIntervalMin: s['refresh.backgroundIntervalMin'],
+    // Task 3 起改用 cache.backgroundGapMs.*；此前保持原来的常量
+    backgroundIntervalMin: 10,
     timeoutSec: { local: s['vfs.timeoutSec.local'], network: s['vfs.timeoutSec.network'] },
-    activeDepth: s['refresh.activeDepth']
+    activeDepth: s['cache.activeDepth']
   }
 }

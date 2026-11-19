@@ -7,7 +7,7 @@ const entry = (
   workspaceId: string,
   kind: WorkspaceEntry['kind'],
   uri: string | null,
-  refreshLevel: WorkspaceEntry['refreshLevel'] = null
+  cacheStrategy: WorkspaceEntry['cacheStrategy'] = null
 ): WorkspaceEntry => ({
   id,
   workspaceId,
@@ -17,7 +17,7 @@ const entry = (
   uri,
   sortOrder: 0,
   meta: null,
-  refreshLevel,
+  cacheStrategy,
   createdAt: 0,
   updatedAt: 0
 })
@@ -36,8 +36,8 @@ describe('buildScannerConfig', () => {
   it('当前工作区的 folder 条目为根（级别取按位置的全局默认），所有工作区的 folder 条目进入 allRootUris', () => {
     const settings = {
       ...DEFAULT_SETTINGS,
-      'refresh.defaultLevel.local': 'all' as const,
-      'refresh.intervalSec.local': 2
+      'cache.strategy.local': 'all' as const,
+      'cache.interval.near.local': 2
     }
     const c = buildScannerConfig({
       activeWorkspaceIds: ['w1'],
@@ -47,18 +47,18 @@ describe('buildScannerConfig', () => {
       location
     })
     expect(c.roots).toEqual([
-      { entryId: 'a', workspaceId: 'w1', uri: 'file:///C:/a', level: 'all', location: 'local' },
+      { entryId: 'a', workspaceId: 'w1', uri: 'file:///C:/a', strategy: 'all', location: 'local' },
       {
         entryId: 'n',
         workspaceId: 'w1',
         uri: 'file://srv/share/x',
-        level: 'default',
+        strategy: 'default',
         location: 'network'
       }
     ])
     expect(c.allRootUris).toEqual(['file:///C:/a', 'file://srv/share/x', 'file:///D:/other'])
     expect(c.settings).toEqual({
-      intervalSec: { local: 2, network: 30 },
+      intervalSec: { local: 2, network: 60 },
       backgroundIntervalMin: 10,
       timeoutSec: { local: 5, network: 10 },
       activeDepth: 3
@@ -79,7 +79,7 @@ describe('buildScannerConfig', () => {
     expect(c.allRootUris).toEqual(['file:///C:/a'])
   })
 
-  it('条目级刷新级别优先于按位置的全局默认；null 沿用全局默认', () => {
+  it('条目级缓存策略优先于按位置的全局默认；null 沿用全局默认', () => {
     const c = buildScannerConfig({
       activeWorkspaceIds: ['w1'],
       allFolderEntries: [
@@ -88,10 +88,10 @@ describe('buildScannerConfig', () => {
         entry('n', 'w1', 'folder', 'file://srv/share/x', 'all')
       ],
       indexTargets: [],
-      settings: { ...DEFAULT_SETTINGS, 'refresh.defaultLevel.local': 'active' },
+      settings: { ...DEFAULT_SETTINGS, 'cache.strategy.local': 'active' },
       location
     })
-    expect(c.roots.map((r) => [r.entryId, r.level])).toEqual([
+    expect(c.roots.map((r) => [r.entryId, r.strategy])).toEqual([
       ['a', 'passive'],
       ['b', 'active'],
       ['n', 'all']

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { RefreshLevel, RootConfig } from '@pch/shared'
+import type { CacheStrategy, RootConfig } from '@pch/shared'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
 import { isUnder } from '../cache/cache'
 
@@ -33,7 +33,7 @@ export interface FrontierItem {
   maxDepth: number | null
 }
 
-const LEVEL_RANK: Record<RefreshLevel, number> = { passive: 0, default: 1, active: 2, all: 3 }
+const RANK: Record<CacheStrategy, number> = { passive: 0, default: 1, active: 2, all: 3 }
 
 /** 父目录 URI：用与子目录生成相同的路径函数，不手工截字符串；已到文件系统根则返回 null（调度器也用它） */
 export function parentUri(uri: string): string | null {
@@ -85,8 +85,8 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
   // 所有根目录
   for (const r of input.roots) add(r.uri, 'P1', false)
 
-  // 「全部」级别的根：与关注点无关，整棵进入 frontier
-  for (const r of input.roots) if (r.level === 'all') addFrontier(r.uri, null)
+  // 「全部」策略的根：与关注点无关，整棵进入 frontier
+  for (const r of input.roots) if (r.strategy === 'all') addFrontier(r.uri, null)
 
   // 关注点
   const { focus } = input
@@ -94,13 +94,13 @@ export function computeScope(input: ScopeInput): { items: ScopeItem[]; frontier:
     const containing = input.roots.filter((r) => isUnder(focus, r.uri))
     if (containing.length > 0) {
       const rootUri = containing.reduce((a, b) => (b.uri.length > a.uri.length ? b : a)).uri
-      const level = containing.reduce<RefreshLevel>(
-        (a, b) => (LEVEL_RANK[b.level] > LEVEL_RANK[a] ? b.level : a),
+      const level = containing.reduce<CacheStrategy>(
+        (a, b) => (RANK[b.strategy] > RANK[a] ? b.strategy : a),
         'passive'
       )
       add(focus, 'P1', true)
 
-      if (LEVEL_RANK[level] >= LEVEL_RANK.default) {
+      if (RANK[level] >= RANK.default) {
         // 祖先链（至根），沿途记录以便取第 N 级祖先
         const ancestors: string[] = []
         let cur = focus

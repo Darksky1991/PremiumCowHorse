@@ -29,13 +29,13 @@ describe('menuItemsFor', () => {
     ])
   })
 
-  it('folder 条目：刷新级别与建立索引；file 条目只有显示与复制', () => {
+  it('folder 条目：缓存策略与建立索引；file 条目只有显示与复制', () => {
     expect(menuItemsFor(node({ kind: 'folder' }))).toEqual([
       'reveal',
       'copyPath',
       'copyUri',
       'separator',
-      'refreshLevel',
+      'cacheStrategy',
       'buildIndex',
       'separator',
       'rename',

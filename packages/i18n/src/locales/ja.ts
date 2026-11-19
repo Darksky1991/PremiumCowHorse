@@ -51,8 +51,8 @@ export default {
     removeGroupDescription:
       'このグループとその中の項目をすべてワークスペースから外します。ディスク上のファイルやフォルダーは削除されません。',
     reveal: 'エクスプローラーで表示',
-    refreshLevel: '更新レベル',
-    refreshLevelFollowGlobal: '全体設定に従う（{{level}}）',
+    cacheStrategy: 'キャッシュ方針',
+    cacheStrategyFollowGlobal: '全体設定に従う（{{strategy}}）',
     levelAll: 'すべて',
     levelActive: '積極',
     levelDefault: '標準',
@@ -84,7 +84,7 @@ export default {
     kindDirectory: 'フォルダー',
     resultsLabel: '検索結果',
     scopeHint:
-      '現在のワークスペースのキャッシュをファイル名で検索します。検索できる範囲は、各項目の更新レベルと「インデックスを作成」によって決まります。',
+      '現在のワークスペースのキャッシュをファイル名で検索します。検索できる範囲は、各項目のキャッシュ方針と「インデックスを作成」によって決まります。',
     wildcardHint: 'スペース区切りで AND 検索、* と ? でワイルドカード',
     noResults: '見つかりませんでした',
     count: '{{total}} 件',

@@ -419,7 +419,7 @@ describe('WorkspaceService', () => {
     })
   })
 
-  describe('refresh levels and index targets', () => {
+  describe('cache strategies and index targets', () => {
     const folder = (p: string, parentId: string | null = null): Promise<WorkspaceEntry> =>
       service.addEntry({ kind: 'folder', workspaceId: DEFAULT_WORKSPACE_ID, parentId, path: p })
     const uriOf = (...parts: string[]): string => pathToFileURL(at(...parts)).href
@@ -436,23 +436,23 @@ describe('WorkspaceService', () => {
       expect(byUri.uri).toBe(uriOf('work', 'a'))
     })
 
-    it('sets and clears the refresh level of a folder, emitting workspace.changed', async () => {
+    it('sets and clears the cache strategy of a folder, emitting workspace.changed', async () => {
       const f = await folder(at('work'))
-      expect(f.refreshLevel).toBeNull()
+      expect(f.cacheStrategy).toBeNull()
       events.length = 0
-      const set = await service.setRefreshLevel({
+      const set = await service.setCacheStrategy({
         workspaceId: DEFAULT_WORKSPACE_ID,
         entryId: f.id,
-        level: 'active'
+        strategy: 'active'
       })
-      expect(set.refreshLevel).toBe('active')
+      expect(set.cacheStrategy).toBe('active')
       expect(events).toEqual([{ id: DEFAULT_WORKSPACE_ID }])
-      const cleared = await service.setRefreshLevel({
+      const cleared = await service.setCacheStrategy({
         workspaceId: DEFAULT_WORKSPACE_ID,
         entryId: f.id,
-        level: null
+        strategy: null
       })
-      expect(cleared.refreshLevel).toBeNull()
+      expect(cleared.cacheStrategy).toBeNull()
     })
 
     it('rejects a group or file with ENTRY_KIND_MISMATCH', async () => {
@@ -465,7 +465,7 @@ describe('WorkspaceService', () => {
       })
       for (const entryId of [g.id, file.id]) {
         await expect(
-          service.setRefreshLevel({ workspaceId: DEFAULT_WORKSPACE_ID, entryId, level: 'all' })
+          service.setCacheStrategy({ workspaceId: DEFAULT_WORKSPACE_ID, entryId, strategy: 'all' })
         ).rejects.toMatchObject({ code: 'ENTRY_KIND_MISMATCH' })
       }
     })
@@ -474,7 +474,7 @@ describe('WorkspaceService', () => {
       const f = await folder(at('work'))
       const w = await service.create({ name: 'w2' })
       await expect(
-        service.setRefreshLevel({ workspaceId: w.id, entryId: f.id, level: 'all' })
+        service.setCacheStrategy({ workspaceId: w.id, entryId: f.id, strategy: 'all' })
       ).rejects.toMatchObject({ code: 'ENTRY_NOT_FOUND' })
     })
 

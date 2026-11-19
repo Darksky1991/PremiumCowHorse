@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RefreshLevel, RootConfig } from '@pch/shared'
+import type { CacheStrategy, RootConfig } from '@pch/shared'
 import { computeScope } from './scope'
 import type { ScopeInput } from './scope'
 
@@ -16,15 +16,15 @@ const tree: Record<string, string[]> = {
 }
 const children = (uri: string): string[] => tree[uri] ?? []
 
-const root = (level: RefreshLevel, uri = R): RootConfig => ({
+const root = (level: CacheStrategy, uri = R): RootConfig => ({
   entryId: `e-${uri}`,
   workspaceId: 'w',
   uri,
-  level,
+  strategy: level,
   location: 'local'
 })
 
-function input(level: RefreshLevel, over: Partial<ScopeInput> = {}): ScopeInput {
+function input(level: CacheStrategy, over: Partial<ScopeInput> = {}): ScopeInput {
   return {
     roots: [root(level)],
     focus: u('a/b'),

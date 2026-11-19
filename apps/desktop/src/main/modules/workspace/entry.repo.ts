@@ -1,10 +1,10 @@
 import type { Selectable, Updateable } from 'kysely'
-import type { EntryMeta, RefreshLevel, WorkspaceEntry } from '@pch/shared'
+import type { EntryMeta, CacheStrategy, WorkspaceEntry } from '@pch/shared'
 import type { Database } from '../../infra/db/client'
 import type { WorkspaceEntriesTable } from '../../infra/db/schema'
 
 export type EntryPatch = Partial<
-  Pick<WorkspaceEntry, 'label' | 'meta' | 'parentId' | 'sortOrder' | 'refreshLevel'>
+  Pick<WorkspaceEntry, 'label' | 'meta' | 'parentId' | 'sortOrder' | 'cacheStrategy'>
 >
 
 /**
@@ -46,7 +46,7 @@ export class EntryRepo {
         uri: e.uri,
         sort_order: e.sortOrder,
         meta: e.meta === null ? null : JSON.stringify(e.meta),
-        refresh_level: e.refreshLevel,
+        cache_strategy: e.cacheStrategy,
         created_at: e.createdAt,
         updated_at: e.updatedAt
       })
@@ -57,7 +57,7 @@ export class EntryRepo {
     const set: Updateable<WorkspaceEntriesTable> = { updated_at: Date.now() }
     if (patch.label !== undefined) set.label = patch.label
     if (patch.meta !== undefined) set.meta = patch.meta === null ? null : JSON.stringify(patch.meta)
-    if (patch.refreshLevel !== undefined) set.refresh_level = patch.refreshLevel
+    if (patch.cacheStrategy !== undefined) set.cache_strategy = patch.cacheStrategy
     if (patch.parentId !== undefined) set.parent_id = patch.parentId
     if (patch.sortOrder !== undefined) set.sort_order = patch.sortOrder
     await this.db.updateTable('workspace_entries').set(set).where('id', '=', id).execute()
@@ -128,7 +128,7 @@ function toEntry(row: Selectable<WorkspaceEntriesTable>): WorkspaceEntry {
     uri: row.uri,
     sortOrder: row.sort_order,
     meta: row.meta === null ? null : (JSON.parse(row.meta) as EntryMeta),
-    refreshLevel: row.refresh_level as RefreshLevel | null,
+    cacheStrategy: row.cache_strategy as CacheStrategy | null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }

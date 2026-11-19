@@ -39,7 +39,7 @@ describe('migration 0003-refresh', () => {
     await row('e', 'file:///C:/e')
     await row('g', null, 'group')
 
-    expect((await migrator.migrateToLatest()).error).toBeUndefined()
+    expect((await migrator.migrateTo('0003-refresh')).error).toBeUndefined()
 
     const rows = await sql<{ id: string; uri: string | null; refresh_level: string | null }>`
       select id, uri, refresh_level from workspace_entries order by id`.execute(db)

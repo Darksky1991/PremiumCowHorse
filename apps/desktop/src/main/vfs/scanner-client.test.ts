@@ -38,7 +38,7 @@ class FakePort implements ScannerPort {
 
 const config: ScannerConfig = {
   roots: [
-    { entryId: 'e', workspaceId: 'w', uri: 'file:///C:/a', level: 'default', location: 'local' }
+    { entryId: 'e', workspaceId: 'w', uri: 'file:///C:/a', strategy: 'default', location: 'local' }
   ],
   allRootUris: ['file:///C:/a'],
   indexTargets: [],

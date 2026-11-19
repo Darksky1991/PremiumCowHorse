@@ -1,4 +1,4 @@
-import type { RefreshLevel } from '../scanner/types'
+import type { CacheStrategy } from '../scanner/types'
 
 /** 默认工作区：由迁移写入，不可删除；name 为空字符串时界面显示本地化的默认名称 */
 export const DEFAULT_WORKSPACE_ID = 'default'
@@ -36,8 +36,8 @@ export interface WorkspaceEntry {
   uri: string | null
   sortOrder: number
   meta: EntryMeta | null
-  /** 条目级刷新级别；null = 沿用全局默认。folder 以外恒为 null */
-  refreshLevel: RefreshLevel | null
+  /** 条目级缓存策略；null = 沿用全局默认。folder 以外恒为 null */
+  cacheStrategy: CacheStrategy | null
   createdAt: number
   updatedAt: number
 }

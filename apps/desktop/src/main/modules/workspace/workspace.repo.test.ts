@@ -29,7 +29,7 @@ const entry = (id: string, over: Partial<WorkspaceEntry> = {}): WorkspaceEntry =
   uri: null,
   sortOrder: 0,
   meta: null,
-  refreshLevel: null,
+  cacheStrategy: null,
   createdAt: 1,
   updatedAt: 1,
   ...over
@@ -97,17 +97,17 @@ describe('workspace repositories (migration 0002)', () => {
     expect(await entries.get('t1')).toBeDefined()
   })
 
-  describe('migration 0003 (refresh level, index targets)', () => {
-    it('leaves existing entries with a null refresh level and stores / clears a level', async () => {
+  describe('migration 0003 (cache strategy, index targets)', () => {
+    it('leaves existing entries with a null cache strategy and stores / clears a level', async () => {
       await entries.insert(entry('f1', { kind: 'folder', uri: 'file:///C:/a' }))
-      expect((await entries.get('f1'))?.refreshLevel).toBeNull()
-      await entries.update('f1', { refreshLevel: 'all' })
-      expect((await entries.get('f1'))?.refreshLevel).toBe('all')
-      await entries.update('f1', { refreshLevel: null })
-      expect((await entries.get('f1'))?.refreshLevel).toBeNull()
+      expect((await entries.get('f1'))?.cacheStrategy).toBeNull()
+      await entries.update('f1', { cacheStrategy: 'all' })
+      expect((await entries.get('f1'))?.cacheStrategy).toBe('all')
+      await entries.update('f1', { cacheStrategy: null })
+      expect((await entries.get('f1'))?.cacheStrategy).toBeNull()
     })
 
-    it('rejects an unknown refresh level at the database level', async () => {
+    it('rejects an unknown cache strategy at the database level', async () => {
       await expect(
         db
           .insertInto('workspace_entries')
@@ -120,7 +120,7 @@ describe('workspace repositories (migration 0002)', () => {
             uri: 'file:///C:/x',
             sort_order: 0,
             meta: null,
-            refresh_level: 'bogus' as never,
+            cache_strategy: 'bogus' as never,
             created_at: 1,
             updated_at: 1
           })

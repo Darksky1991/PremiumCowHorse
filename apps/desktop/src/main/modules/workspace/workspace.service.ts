@@ -8,7 +8,7 @@ import {
   DEFAULT_WORKSPACE_ID,
   type EntryAddInput,
   type EntryMoveInput,
-  type EntrySetRefreshLevelInput,
+  type EntrySetCacheStrategyInput,
   type IndexSetTargetInput,
   type EntryUpdateInput,
   type Workspace,
@@ -168,7 +168,7 @@ export class WorkspaceService {
         uri,
         sortOrder: index,
         meta: null,
-        refreshLevel: null,
+        cacheStrategy: null,
         createdAt: now,
         updatedAt: now
       }
@@ -209,8 +209,8 @@ export class WorkspaceService {
     })
   }
 
-  /** 设置条目级刷新级别（null = 沿用全局默认）；只有 folder 条目可设置 */
-  async setRefreshLevel(input: EntrySetRefreshLevelInput): Promise<WorkspaceEntry> {
+  /** 设置条目级缓存策略（null = 沿用全局默认）；只有 folder 条目可设置 */
+  async setCacheStrategy(input: EntrySetCacheStrategyInput): Promise<WorkspaceEntry> {
     return this.write(async (trx) => {
       const entries = new EntryRepo(trx)
       const existing = await this.requireEntry(entries, input.entryId)
@@ -220,7 +220,7 @@ export class WorkspaceService {
       if (existing.kind !== 'folder') {
         throw new AppError({ code: 'ENTRY_KIND_MISMATCH', detail: `${existing.kind} → folder` })
       }
-      await entries.update(existing.id, { refreshLevel: input.level })
+      await entries.update(existing.id, { cacheStrategy: input.strategy })
       return {
         workspaceId: existing.workspaceId,
         result: await this.requireEntry(entries, existing.id)

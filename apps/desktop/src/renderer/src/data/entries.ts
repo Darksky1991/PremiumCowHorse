@@ -7,7 +7,7 @@ import {
 import type {
   EntryAddInput,
   EntryMoveInput,
-  EntrySetRefreshLevelInput,
+  EntrySetCacheStrategyInput,
   EntryUpdateInput,
   IndexSetTargetInput,
   WorkspaceEntry
@@ -37,7 +37,7 @@ export interface EntryActions {
   update: UseMutationResult<WorkspaceEntry, Error, EntryUpdateInput>
   remove: UseMutationResult<void, Error, string>
   move: UseMutationResult<void, Error, EntryMoveInput>
-  setRefreshLevel: UseMutationResult<WorkspaceEntry, Error, EntrySetRefreshLevelInput>
+  setCacheStrategy: UseMutationResult<WorkspaceEntry, Error, EntrySetCacheStrategyInput>
   setIndexTarget: UseMutationResult<void, Error, IndexSetTargetInput>
 }
 
@@ -49,11 +49,11 @@ export function useEntryActions(): EntryActions {
   })
   const remove = useMutation({ mutationFn: (id: string) => call('entry.remove', { id }) })
   const move = useMutation({ mutationFn: (input: EntryMoveInput) => call('entry.move', input) })
-  const setRefreshLevel = useMutation({
-    mutationFn: (input: EntrySetRefreshLevelInput) => call('entry.setRefreshLevel', input)
+  const setCacheStrategy = useMutation({
+    mutationFn: (input: EntrySetCacheStrategyInput) => call('entry.setCacheStrategy', input)
   })
   const setIndexTarget = useMutation({
     mutationFn: (input: IndexSetTargetInput) => call('index.setTarget', input)
   })
-  return { add, update, remove, move, setRefreshLevel, setIndexTarget }
+  return { add, update, remove, move, setCacheStrategy, setIndexTarget }
 }

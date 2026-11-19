@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CACHE_STRATEGIES } from '../scanner/types'
 
 const id = z.string().min(1)
 const name = z.string().trim().min(1).max(100)
@@ -63,15 +64,15 @@ export const EntryUpdateInput = z.strictObject({
 })
 export type EntryUpdateInput = z.infer<typeof EntryUpdateInput>
 
-export const RefreshLevelSchema = z.enum(['passive', 'default', 'active', 'all'])
+export const CacheStrategySchema = z.enum(CACHE_STRATEGIES)
 
-export const EntrySetRefreshLevelInput = z.strictObject({
+export const EntrySetCacheStrategyInput = z.strictObject({
   workspaceId: id,
   entryId: id,
   /** null = 清除条目级设置，沿用全局默认 */
-  level: RefreshLevelSchema.nullable()
+  strategy: CacheStrategySchema.nullable()
 })
-export type EntrySetRefreshLevelInput = z.infer<typeof EntrySetRefreshLevelInput>
+export type EntrySetCacheStrategyInput = z.infer<typeof EntrySetCacheStrategyInput>
 
 export const IndexSetTargetInput = z.strictObject({
   workspaceId: id,

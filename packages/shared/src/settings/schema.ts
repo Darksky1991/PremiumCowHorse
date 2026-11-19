@@ -1,19 +1,11 @@
 import { z } from 'zod'
-import type { RefreshLevel } from '../scanner/types'
+import { CACHE_STRATEGIES } from '../scanner/types'
 
 export const LANGUAGES = ['ja', 'zh-CN', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
 
 export const ACCENTS = ['neutral', 'blue', 'green', 'violet', 'orange'] as const
 export type Accent = (typeof ACCENTS)[number]
-
-/** 与 scanner/types.ts 的 RefreshLevel 一致（消极 / 默认 / 积极 / 全部） */
-const REFRESH_LEVELS = [
-  'passive',
-  'default',
-  'active',
-  'all'
-] as const satisfies readonly RefreshLevel[]
 
 /**
  * 设置项的唯一定义：同时提供默认值与校验。数据库只保存与默认值不同的键。
@@ -31,16 +23,21 @@ export const settingsSchema = z.object({
   'session.restoreOnStartup': z.boolean().default(true),
   'window.onDetachedClose': z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),
   'remote.cacheSizeMB': z.number().int().min(100).default(1024),
-  /** 刷新级别的全局默认（设计 4.5）：本地「积极」、网络「默认」；条目可单独设置（Task 7） */
-  'refresh.defaultLevel.local': z.enum(REFRESH_LEVELS).default('active'),
-  'refresh.defaultLevel.network': z.enum(REFRESH_LEVELS).default('default'),
-  /** 「积极」级别以关注点为中心上下的层数 */
-  'refresh.activeDepth': z.number().int().min(1).max(10).default(3),
-  /** P1（关注点附近、可见的已展开目录）的检查间隔（秒） */
-  'refresh.intervalSec.local': z.number().int().min(2).default(5),
-  'refresh.intervalSec.network': z.number().int().min(10).default(30),
-  /** P2（积极 / 全部多出的范围、建立索引）一轮的间隔（分钟） */
-  'refresh.backgroundIntervalMin': z.number().int().min(1).default(10),
+  /** 缓存策略的全局默认（设计 8）：本地「积极」、网络「默认」；条目可单独设置 */
+  'cache.strategy.local': z.enum(CACHE_STRATEGIES).default('active'),
+  'cache.strategy.network': z.enum(CACHE_STRATEGIES).default('default'),
+  /** 「积极」策略以关注点为中心上下的层数 */
+  'cache.activeDepth': z.number().int().min(1).max(10).default(3),
+  /** 定期确认的间隔（秒）：关注点 / 近 / 远三层 */
+  'cache.interval.focus.local': z.number().int().min(2).default(5),
+  'cache.interval.focus.network': z.number().int().min(10).default(10),
+  'cache.interval.near.local': z.number().int().min(2).default(30),
+  'cache.interval.near.network': z.number().int().min(10).default(60),
+  'cache.interval.far.local': z.number().int().min(2).default(120),
+  'cache.interval.far.network': z.number().int().min(10).default(300),
+  /** 后台填充缓存时，每个目录完成后的休息时间（毫秒） */
+  'cache.backgroundGapMs.local': z.number().int().min(100).default(500),
+  'cache.backgroundGapMs.network': z.number().int().min(500).default(2000),
   /** 文件系统调用的超时（秒）：扫描进程按「没有进展的时间」计，VfsService 的一次性调用按总时长计 */
   'vfs.timeoutSec.local': z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network': z.number().int().min(10).max(120).default(10),

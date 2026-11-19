@@ -56,7 +56,13 @@ describe('scanner host (handleMessage)', () => {
       type: 'configure',
       config: {
         roots: [
-          { entryId: 'e1', workspaceId: 'w', uri: url(root), level: 'default', location: 'local' }
+          {
+            entryId: 'e1',
+            workspaceId: 'w',
+            uri: url(root),
+            strategy: 'default',
+            location: 'local'
+          }
         ],
         allRootUris: [url(root)],
         indexTargets: [],

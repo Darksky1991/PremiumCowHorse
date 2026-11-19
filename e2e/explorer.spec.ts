@@ -19,7 +19,7 @@ type Listing = { items: Named[]; state: 'fresh' | 'cached' | 'offline'; checkedA
  */
 async function launchFast(userData: string): Promise<{ app: ElectronApplication; page: Page }> {
   const launched = await launch(userData)
-  await data(launched.page, 'settings.set', { 'refresh.intervalSec.local': 2 })
+  await data(launched.page, 'settings.set', { 'cache.interval.near.local': 2 })
   return launched
 }
 
@@ -405,24 +405,24 @@ test.describe('explorer tree on real directories', () => {
     }
   })
 
-  /** 右键 → 刷新级别子菜单（点击触发器展开），返回子菜单中的单选项 */
+  /** 右键 → 缓存策略子菜单（点击触发器展开），返回子菜单中的单选项 */
   async function openLevelMenu(
     page: Page,
     row: string
   ): Promise<(name: RegExp) => ReturnType<Page['getByRole']>> {
     await page.getByRole('tree').getByRole('treeitem', { name: row }).click({ button: 'right' })
-    await page.getByRole('menuitem', { name: /^(更新レベル|刷新级别|Refresh level)/ }).click()
+    await page.getByRole('menuitem', { name: /^(キャッシュ方針|缓存策略|Cache strategy)/ }).click()
     return (name) => page.getByRole('menuitemradio', { name })
   }
 
-  test('menu: refresh level and build index', async () => {
+  test('menu: cache strategy and build index', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const { id: workspaceId } = await data(page, 'workspace.active')
       await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
       const tree = page.getByRole('tree')
       const rootUri = pathToFileURL(project).href
-      const entries = (): Promise<(Entry & { refreshLevel: string | null })[]> =>
+      const entries = (): Promise<(Entry & { cacheStrategy: string | null })[]> =>
         data(page, 'entry.list', { workspaceId })
 
       // 初始：跟随全局（本地全局默认为 積極 / 积极 / Active）被选中
@@ -438,7 +438,7 @@ test.describe('explorer tree on real directories', () => {
       await radio(/^(すべて|全部|All)$/).click()
       await expect(page.getByRole('menu')).toHaveCount(0)
       await expect
-        .poll(async () => (await entries()).find((e) => e.label === '案件')?.refreshLevel)
+        .poll(async () => (await entries()).find((e) => e.label === '案件')?.cacheStrategy)
         .toBe('all')
 
       // 重新打开：「全部」为选中

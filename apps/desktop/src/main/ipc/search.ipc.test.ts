@@ -12,7 +12,7 @@ const entry = (
   uri: null,
   sortOrder: 0,
   meta: null,
-  refreshLevel: null,
+  cacheStrategy: null,
   createdAt: 0,
   updatedAt: 0,
   ...e

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppError, normalizeRootUri, type RefreshLevel } from '@pch/shared'
+import { AppError, normalizeRootUri, type CacheStrategy } from '@pch/shared'
 import {
   ContextMenuCheckboxItem,
   ContextMenuContent,
@@ -34,13 +34,13 @@ import { fileUriToWindowsPath, isUncUri } from '@renderer/lib/file-uri'
 import { menuItemsFor, type MenuItemId } from './menu-items'
 import type { TreeNode } from './tree-model'
 
-/** 刷新级别子菜单的选项顺序（跟随全局之后）与对应的文案键 */
+/** 缓存策略子菜单的选项顺序（跟随全局之后）与对应的文案键 */
 const LEVELS = [
   ['all', 'explorer:levelAll'],
   ['active', 'explorer:levelActive'],
   ['default', 'explorer:levelDefault'],
   ['passive', 'explorer:levelPassive']
-] as const satisfies readonly (readonly [RefreshLevel, string])[]
+] as const satisfies readonly (readonly [CacheStrategy, string])[]
 
 /** 单选组的值：null（沿用全局默认）用 follow 表示 */
 const FOLLOW = 'follow'
@@ -63,7 +63,7 @@ const ICONS: Partial<Record<MenuItemId, LucideIcon>> = {
   addFolder: FolderPlusIcon,
   addFile: FilePlusIcon,
   reveal: FolderSearchIcon,
-  refreshLevel: RefreshCwIcon,
+  cacheStrategy: RefreshCwIcon,
   buildIndex: DatabaseIcon,
   copyPath: CopyIcon,
   copyUri: LinkIcon,
@@ -90,9 +90,9 @@ export function NodeContextMenu({
   const items = menuItemsFor(node)
   const { data: entries } = useEntries(workspaceId)
   const { data: indexTargets } = useIndexTargets(workspaceId)
-  const { setRefreshLevel, setIndexTarget } = useEntryActions()
-  const globalLocal = useSetting('refresh.defaultLevel.local')
-  const globalNetwork = useSetting('refresh.defaultLevel.network')
+  const { setCacheStrategy, setIndexTarget } = useEntryActions()
+  const globalLocal = useSetting('cache.strategy.local')
+  const globalNetwork = useSetting('cache.strategy.network')
   if (items.length === 0) return null
 
   const reportError = (e: unknown): void => {
@@ -113,16 +113,19 @@ export function NodeContextMenu({
     call('system.revealInOs', { uri }).catch(reportError)
   }
 
-  // 刷新级别：条目自身的设置；跟随全局时显示该位置（UNC 为网络，其余为本地）对应的全局值。
+  // 缓存策略：条目自身的设置；跟随全局时显示该位置（UNC 为网络，其余为本地）对应的全局值。
   // 映射网络盘在渲染端无法识别，按本地显示（扫描进程按真实位置类型生效）
   const entry = node === null ? undefined : entries?.find((e) => e.id === node.entryId)
   const globalLevel = (uri !== null && isUncUri(uri) ? globalNetwork : globalLocal) ?? 'default'
-  const levelName = (level: RefreshLevel): string =>
+  const levelName = (level: CacheStrategy): string =>
     t(LEVELS.find(([l]) => l === level)?.[1] ?? 'explorer:levelDefault')
   const onLevelChange = (value: string): void => {
     if (node === null) return
-    const level = value === FOLLOW ? null : (value as RefreshLevel)
-    setRefreshLevel.mutate({ workspaceId, entryId: node.entryId, level }, { onError: reportError })
+    const strategy = value === FOLLOW ? null : (value as CacheStrategy)
+    setCacheStrategy.mutate(
+      { workspaceId, entryId: node.entryId, strategy },
+      { onError: reportError }
+    )
   }
 
   const indexed =
@@ -153,7 +156,7 @@ export function NodeContextMenu({
     addFolder: t('explorer:menuAddFolder'),
     addFile: t('explorer:menuAddFile'),
     reveal: t('explorer:reveal'),
-    refreshLevel: t('explorer:refreshLevel'),
+    cacheStrategy: t('explorer:cacheStrategy'),
     buildIndex: t('explorer:buildIndex'),
     copyPath: t('explorer:copyPath'),
     copyUri: t('explorer:copyUri'),
@@ -174,7 +177,7 @@ export function NodeContextMenu({
         if (id === 'separator') return <ContextMenuSeparator key={`sep-${i}`} />
         const Icon = ICONS[id]
         const shortcut = shortcuts[id]
-        if (id === 'refreshLevel') {
+        if (id === 'cacheStrategy') {
           return (
             <ContextMenuSub key={id}>
               <ContextMenuSubTrigger>
@@ -184,11 +187,11 @@ export function NodeContextMenu({
               <ContextMenuSubContent>
                 {/* Base UI 的 RadioItem 默认点击后不关闭菜单：选中即生效并关闭，传 closeOnClick */}
                 <ContextMenuRadioGroup
-                  value={entry?.refreshLevel ?? FOLLOW}
+                  value={entry?.cacheStrategy ?? FOLLOW}
                   onValueChange={onLevelChange}
                 >
                   <ContextMenuRadioItem value={FOLLOW} closeOnClick>
-                    {t('explorer:refreshLevelFollowGlobal', { level: levelName(globalLevel) })}
+                    {t('explorer:cacheStrategyFollowGlobal', { strategy: levelName(globalLevel) })}
                   </ContextMenuRadioItem>
                   {LEVELS.map(([level, key]) => (
                     <ContextMenuRadioItem key={level} value={level} closeOnClick>

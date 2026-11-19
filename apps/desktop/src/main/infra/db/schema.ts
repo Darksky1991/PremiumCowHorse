@@ -33,7 +33,7 @@ export interface WorkspaceEntriesTable {
   uri: string | null
   sort_order: number
   meta: string | null
-  refresh_level: 'passive' | 'default' | 'active' | 'all' | null
+  cache_strategy: 'passive' | 'default' | 'active' | 'all' | null
   created_at: number
   updated_at: number
 }

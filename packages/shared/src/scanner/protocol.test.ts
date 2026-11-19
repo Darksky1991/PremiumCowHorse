@@ -7,7 +7,7 @@ const config: ScannerConfig = {
       entryId: 'e1',
       workspaceId: 'default',
       uri: 'file:///C:/a',
-      level: 'default',
+      strategy: 'default',
       location: 'local'
     }
   ],
@@ -27,7 +27,7 @@ const mainToScanner: Array<[string, unknown, unknown]> = [
   [
     'configure',
     { type: 'configure', config },
-    { type: 'configure', config: { ...config, roots: [{ ...config.roots[0], level: 'max' }] } }
+    { type: 'configure', config: { ...config, roots: [{ ...config.roots[0], strategy: 'max' }] } }
   ],
   ['list', { type: 'list', id: 1, uri: 'file:///C:/a' }, { type: 'list', id: -1, uri: 'x' }],
   [

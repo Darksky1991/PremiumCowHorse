@@ -16,7 +16,7 @@ export function workspaceHandlers(
   | 'entry.update'
   | 'entry.remove'
   | 'entry.move'
-  | 'entry.setRefreshLevel'
+  | 'entry.setCacheStrategy'
   | 'index.setTarget'
   | 'index.list'
 > {
@@ -32,7 +32,7 @@ export function workspaceHandlers(
     'entry.update': (input) => workspaces.updateEntry(input),
     'entry.remove': ({ id }) => workspaces.removeEntry(id),
     'entry.move': (input) => workspaces.moveEntry(input),
-    'entry.setRefreshLevel': (input) => workspaces.setRefreshLevel(input),
+    'entry.setCacheStrategy': (input) => workspaces.setCacheStrategy(input),
     'index.setTarget': (input) => workspaces.setIndexTarget(input),
     'index.list': ({ workspaceId }) => workspaces.listIndexTargets(workspaceId)
   }

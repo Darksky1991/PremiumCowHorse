@@ -20,7 +20,7 @@ function entry(
     uri: opts.uri === undefined ? (kind === 'group' ? null : `${ROOT}/${id}`) : opts.uri,
     sortOrder: 0,
     meta: null,
-    refreshLevel: null,
+    cacheStrategy: null,
     createdAt: 0,
     updatedAt: 0
   }
