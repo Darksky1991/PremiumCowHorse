@@ -837,19 +837,25 @@ export class Scheduler {
     // 其他错误说明共享有响应
     this.markReachable(share)
     if (error.code === 'FS_NOT_A_DIRECTORY') {
-      // 目录被同名文件替换：删除该目录自身的缓存，但不从父目录列表中删除这一项（它仍然存在，只是
-      // 变成了文件）；对父目录排一次确认（force：不与刚完成的 P0 合并），类型随确认更正
       const dir = this.cache.getDir(uri)
       if (!dir) {
         this.queue.markMissing(uri)
         return
       }
-      this.cache.removeSubtree(uri)
-      this.scopeDirty = true
-      const parent = this.rootUris.has(uri) ? null : (dir.parentUri ?? parentUri(uri))
-      this.events.changed(parent ?? uri)
-      if (parent !== null) this.requestP0(parent, { force: true })
-      return
+      // 已经记为「不是目录」后再次出错（父目录仍把它列为目录）：不再强制父目录，否则
+      // 「删除 → 强制父目录 → 列表重建该行 → 后台队列再选中」会无限循环；走通用错误分支（按间隔重试）
+      if (!(dir.state === 'unreachable' && dir.errorCode === 'FS_NOT_A_DIRECTORY')) {
+        // 目录被同名文件替换：删除该目录自身的缓存（含子目录），但不从父目录列表中删除这一项
+        // （它仍然存在，只是变成了文件）；该目录的行保留为错误状态（带确认时刻，后台队列不立即重选），
+        // 并对父目录排一次确认（force：不与刚完成的 P0 合并），类型随确认更正（变成文件的项由列表删除其行）
+        this.cache.removeSubtree(uri)
+        this.cache.setState(uri, 'unreachable', 'FS_NOT_A_DIRECTORY', this.now())
+        this.scopeDirty = true
+        const parent = this.rootUris.has(uri) ? null : (dir.parentUri ?? parentUri(uri))
+        this.events.changed(parent ?? uri)
+        if (parent !== null) this.requestP0(parent, { force: true })
+        return
+      }
     }
     if (error.code === 'FS_NOT_FOUND') {
       const dir = this.cache.getDir(uri)

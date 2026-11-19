@@ -378,6 +378,11 @@ export class Cache {
       // 条目随目录级联删除
       const delDir = this.db.prepare('DELETE FROM dirs WHERE uri = ?')
       for (const u of stale) delDir.run(u)
+      // 留下的行（例如根）的 parent_id 可能指向刚删除的行：置空，之后父目录行重建时由 adoptOrphans 认领
+      if (stale.length > 0)
+        this.run(
+          'UPDATE dirs SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM dirs)'
+        )
       return stale.length
     })
   }
@@ -502,7 +507,7 @@ export class Cache {
     }
     if (fields) {
       this.run(
-        'UPDATE dirs SET parent_id = ?, dir_mtime = ?, listed_at = ?, checked_at = ?, state = ?, error_code = NULL WHERE id = ?',
+        'UPDATE dirs SET parent_id = COALESCE(?, parent_id), dir_mtime = ?, listed_at = ?, checked_at = ?, state = ?, error_code = NULL WHERE id = ?',
         parentId,
         fields.dirMtime,
         fields.listedAt,

@@ -1118,6 +1118,35 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(cache.getEntries(R).map((e) => e.name)).toEqual(['a'])
   })
 
+  it('a name the parent lists as a directory but cannot be read as one does not loop on the parent', async () => {
+    // 父目录持续把 a 列为目录，读取 a 本身却返回 FS_NOT_A_DIRECTORY：不能反复强制父目录
+    const h = setup([root(R, 'all')])
+    const { clock, fs, cache } = h
+    const A = fs.addDir(R, 'a')
+    for (let i = 0; i < 5; i++) {
+      const d = fs.addDir(R, `z${i}`)
+      for (let j = 0; j < 5; j++) fs.addDir(d, `c${j}`)
+    }
+    fs.rmdir(A)
+    fs.errors.set(A, 'FS_NOT_A_DIRECTORY')
+    await clock.advance(600_000)
+    expect(fs.count('list', R)).toBeLessThanOrEqual(3)
+    expect(cache.getDir(A)).toMatchObject({ state: 'unreachable', errorCode: 'FS_NOT_A_DIRECTORY' })
+  })
+
+  it('a root replaced by a file is recorded as an error and is not retried in a loop', async () => {
+    const h = setup([root(R, 'all')])
+    const { clock, fs, cache } = h
+    fs.addFile(R, 'x.txt')
+    prelist(h, R, clock.now())
+    fs.rmdir(R)
+    fs.errors.set(R, 'FS_NOT_A_DIRECTORY')
+    h.s.refresh([R])
+    await clock.advance(600_000)
+    expect(cache.getDir(R)).toMatchObject({ state: 'unreachable', errorCode: 'FS_NOT_A_DIRECTORY' })
+    expect(fs.count('stat', R)).toBeLessThanOrEqual(6)
+  })
+
   it('confirming after a failed reveal corrects the cache of a deleted directory', async () => {
     // 定位失败时渲染端确认出错的那一层目录（revealRecheckUri → vfs.refresh）：
     // 失败在已删除的目录本身（展开时读取出错）或在它的父目录（列表中没有下一段）

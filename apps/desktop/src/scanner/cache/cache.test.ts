@@ -146,6 +146,33 @@ describe('Cache', () => {
     expect(cache.getDir('file:///C:/ab')).toBeUndefined()
   })
 
+  it('nested roots: listing the inner root keeps the parent_id set by the outer listing', () => {
+    const B = 'file:///C:/a/b'
+    cache.setRoots([A, B])
+    cache.applyListing(A, 1, [dir('b')], 1)
+    expect(cache.getDir(B)?.parentUri).toBe(A)
+    cache.applyListing(B, 1, [file('x')], 2)
+    expect(cache.getDir(B)?.parentUri).toBe(A)
+    expect(cache.childDirs(A)).toEqual([B])
+    cache.applyListing(A, 2, [dir('b')], 3)
+    expect(cache.childDirs(A)).toEqual([B])
+  })
+
+  it('prune clears parent_id left dangling so a re-created parent adopts the row', () => {
+    const B = 'file:///C:/a/b'
+    cache.setRoots([A])
+    cache.applyListing(A, 1, [dir('b')], 1)
+    cache.applyListing(B, 1, [dir('c')], 1)
+    cache.setRoots([B])
+    expect(cache.prune()).toBe(1)
+    expect(cache.getDir(B)?.parentUri).toBeNull()
+    cache.setRoots([A])
+    cache.visit(A, 5) // A 的行重新建立：认领 B
+    expect(cache.childDirs(A)).toEqual([B])
+    cache.applyListing(A, 2, [], 6) // 列表中不再有 b：B 的子树被删除
+    expect(cache.getDir(B)).toBeUndefined()
+  })
+
   it('markChecked and setState update the row', () => {
     expect(cache.setState(A, 'denied', 'FS_PERMISSION', 10).changed).toBe(true)
     expect(cache.setState(A, 'denied', 'FS_PERMISSION', 20).changed).toBe(false)
