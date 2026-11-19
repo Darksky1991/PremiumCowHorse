@@ -65,8 +65,54 @@ function slashDepth(uri: string): number {
   return uri.endsWith('/') ? n - 1 : n
 }
 
-/** SQL 版 slashDepth（dirs.uri 的层级数） */
-const DEPTH_SQL = "(length(uri) - length(replace(uri, '/', '')) - (substr(uri, -1) = '/'))"
+type QueueKind = 'unlisted' | 'checked'
+
+/** 范围内行数达到此值时，队列查询改为按索引顺序扫描（见 Cache.countInScope） */
+const INDEX_SCAN_THRESHOLD = 2000
+
+/** 队列查询的 WHERE 条件：状态、范围（主键范围查找）、层数（dirs.depth 生成列）、排除项 */
+function queueWhere(
+  kind: QueueKind,
+  scope: Scope,
+  exclude: Set<string> | undefined
+): { where: string; params: SQLInputValue[] } {
+  const range = subtreeCondition('uri', [scope.uri])
+  const params: SQLInputValue[] = [...range.params]
+  let where = `checked_at IS ${kind === 'unlisted' ? '' : 'NOT '}NULL AND ${range.sql}`
+  if (scope.maxDepth !== null) {
+    where += ' AND depth <= ?'
+    params.push(slashDepth(scope.uri) + scope.maxDepth)
+  }
+  // 排除项通常很少（正在处理的目录），逐个排除
+  const ex = exclude ? [...exclude] : []
+  if (ex.length > 0) {
+    where += ` AND uri NOT IN (${ex.map(() => '?').join(', ')})`
+    params.push(...ex)
+  }
+  return { where, params }
+}
+
+/**
+ * 队列查询的 SQL。indexed 为 true 时用 INDEXED BY 固定按队列索引的顺序扫描
+ * （unlisted：(depth, uri)；checked：(checked_at, uri, depth)），范围条件作为过滤，配合 LIMIT 很快结束；
+ * 否则走主键范围查找再排序（范围小时最快）。
+ */
+export function queueQuery(
+  kind: QueueKind,
+  scope: Scope,
+  limit: number,
+  exclude: Set<string> | undefined,
+  indexed: boolean
+): { sql: string; params: SQLInputValue[] } {
+  const unlisted = kind === 'unlisted'
+  const { where, params } = queueWhere(kind, scope, exclude)
+  const index = indexed ? ` INDEXED BY ${unlisted ? 'dirs_unlisted' : 'dirs_checked'}` : ''
+  const order = unlisted ? 'depth' : 'checked_at'
+  return {
+    sql: `SELECT uri, ${order} AS key FROM dirs${index} WHERE ${where} ORDER BY ${order}, uri LIMIT ?`,
+    params: [...params, limit]
+  }
+}
 
 /** 父目录 URI（字符串方式，仅用于目录行尚未由父目录建立时）。根没有父目录 */
 function parentOf(uri: string, roots: string[]): string | null {
@@ -320,41 +366,20 @@ export class Cache {
   }
 
   /**
-   * 还没有完整读取过（listed_at 为 NULL）的目录，范围内「深度浅的优先、同深度按 uri」（由上而下）。
+   * 从未尝试读取过的目录（checked_at 为 NULL：只从父目录的列表得知存在），范围内「深度浅的优先、
+   * 同深度按 uri」（由上而下）。读取失败的目录（拒绝访问等）也会写 checked_at，所以不会永远排在最前。
    * 多个范围的结果合并去重，limit 为合并后的总数。
    */
   nextUnlisted(scopes: Scope[], limit: number, exclude?: Set<string>): string[] {
-    const found = new Map<string, number>()
-    for (const sc of scopes) {
-      for (const r of this.scopeQuery(sc, 'listed_at IS NULL', DEPTH_SQL, limit, exclude)) {
-        found.set(r.uri as string, Number(r.depth))
-      }
-    }
-    return [...found]
-      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-      .slice(0, Math.max(0, limit))
-      .map(([uri]) => uri)
+    return this.queue('unlisted', scopes, limit, exclude)
   }
 
-  /** 已完整读取过的目录，范围内按 checked_at 升序（从未确认过的视为最旧）。多个范围合并去重 */
+  /**
+   * 尝试过读取的目录（checked_at 不为 NULL，含失败的），范围内按 checked_at 升序（最久没确认的在前）。
+   * 多个范围的结果合并去重，limit 为合并后的总数。
+   */
   oldestChecked(scopes: Scope[], limit: number, exclude?: Set<string>): string[] {
-    const found = new Map<string, number>()
-    for (const sc of scopes) {
-      for (const r of this.scopeQuery(
-        sc,
-        'listed_at IS NOT NULL',
-        'checked_at',
-        limit,
-        exclude,
-        'checked_at'
-      )) {
-        found.set(r.uri as string, r.checked_at == null ? -Infinity : Number(r.checked_at))
-      }
-    }
-    return [...found]
-      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-      .slice(0, Math.max(0, limit))
-      .map(([uri]) => uri)
+    return this.queue('checked', scopes, limit, exclude)
   }
 
   /** 只读查询（搜索用）：调用方保证 sql 是 SELECT */
@@ -403,36 +428,35 @@ export class Cache {
     this.run(`DELETE FROM dirs WHERE ${dirs.sql}`, ...dirs.params)
   }
 
-  /**
-   * 单个范围内的取数：每个范围各取前 limit 条（合并后的前 limit 条必然在其中）。
-   * 范围条件走主键（dirs.uri）的范围查找，层数条件只是过滤。
-   */
-  private scopeQuery(
-    scope: Scope,
-    where: string,
-    extra: string,
-    limit: number,
-    exclude: Set<string> | undefined,
-    orderBy?: string
-  ): Row[] {
+  /** 每个范围各取前 limit 条（合并后的前 limit 条必然在其中），合并去重后排序、截取 */
+  private queue(kind: QueueKind, scopes: Scope[], limit: number, exclude?: Set<string>): string[] {
     if (limit <= 0) return []
+    const found = new Map<string, number>()
+    for (const sc of scopes) {
+      const indexed = this.countInScope(sc) >= INDEX_SCAN_THRESHOLD
+      const { sql, params } = queueQuery(kind, sc, limit, exclude, indexed)
+      for (const r of this.all(sql, ...params)) found.set(r.uri as string, Number(r.key))
+    }
+    return [...found]
+      .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .slice(0, limit)
+      .map(([uri]) => uri)
+  }
+
+  /**
+   * 范围内的目录数（数到 INDEX_SCAN_THRESHOLD 为止，成本有上限）。范围小时走主键范围 + 排序最快；
+   * 范围大时必须按队列索引的顺序取，否则要读完范围内所有行再排序（30 万行约 250ms）。
+   * 数的是范围大小而不是符合条件的行数：符合条件的行很少（例如浅层都已读完）时，
+   * 数符合条件的行本身就要读完整个范围。
+   */
+  private countInScope(scope: Scope): number {
     const range = subtreeCondition('uri', [scope.uri])
-    const params: SQLInputValue[] = [...range.params]
-    let sql = `SELECT uri, ${extra === 'checked_at' ? 'checked_at' : `${extra} AS depth`} FROM dirs WHERE ${where} AND ${range.sql}`
-    if (scope.maxDepth !== null) {
-      sql += ` AND ${DEPTH_SQL} <= ?`
-      params.push(slashDepth(scope.uri) + scope.maxDepth)
-    }
-    // 排除项通常很少（正在处理的目录），逐个排除
-    const ex = exclude ? [...exclude] : []
-    if (ex.length > 0) {
-      sql += ` AND uri NOT IN (${ex.map(() => '?').join(', ')})`
-      params.push(...ex)
-    }
-    sql += orderBy ? ` ORDER BY ${orderBy}, uri` : ` ORDER BY ${DEPTH_SQL}, uri`
-    sql += ' LIMIT ?'
-    params.push(limit)
-    return this.all(sql, ...params)
+    const r = this.get(
+      `SELECT count(*) AS n FROM (SELECT 1 FROM dirs WHERE ${range.sql} LIMIT ?)`,
+      ...range.params,
+      INDEX_SCAN_THRESHOLD
+    )
+    return Number(r?.n ?? 0)
   }
 
   private tx<T>(fn: () => T): T {

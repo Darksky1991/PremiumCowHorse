@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Cache, isUnder } from './cache'
+import { Cache, isUnder, queueQuery } from './cache'
 import type { RawEntry } from '../enum/types'
 
 const file = (name: string, size = 1, mtime = 1000): RawEntry => ({
@@ -305,27 +305,109 @@ describe('Cache', () => {
       expect(cache.oldestChecked([{ uri: A, maxDepth: null }], 1)).toEqual([B])
     })
 
-    it('nextUnlisted and oldestChecked use indexes', () => {
+    it('a directory that failed to read leaves nextUnlisted and joins oldestChecked by its failure time', () => {
+      cache.setState(C, 'denied', 'EPERM', 150)
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: 1 }], 10)).toEqual([D])
+      expect(cache.oldestChecked([{ uri: A, maxDepth: 1 }], 10)).toEqual([A, C, B])
+      expect(cache.getDir(C)?.listedAt).toBeNull()
+    })
+
+    it('markChecked also takes a never-attempted directory out of nextUnlisted', () => {
+      cache.markChecked(D, 10)
+      expect(cache.nextUnlisted([{ uri: A, maxDepth: 1 }], 10)).toEqual([C])
+      expect(cache.oldestChecked([{ uri: A, maxDepth: 1 }], 1)).toEqual([D])
+    })
+
+    it('both query shapes are index driven (no full scan, no sort over the whole range)', () => {
+      const scope = { uri: A, maxDepth: 3 }
+      for (const kind of ['unlisted', 'checked'] as const) {
+        const small = queueQuery(kind, scope, 5, new Set([C]), false)
+        const smallPlan = cache
+          .select(`EXPLAIN QUERY PLAN ${small.sql}`, ...small.params)
+          .map((r) => String(r.detail))
+          .join('\n')
+        expect(smallPlan, kind).not.toMatch(/SCAN dirs(?! USING)/)
+        expect(smallPlan, kind).toMatch(/SEARCH dirs USING .*INDEX/)
+
+        const big = queueQuery(kind, scope, 5, new Set([C]), true)
+        const bigPlan = cache
+          .select(`EXPLAIN QUERY PLAN ${big.sql}`, ...big.params)
+          .map((r) => String(r.detail))
+          .join('\n')
+        expect(bigPlan, kind).toMatch(kind === 'unlisted' ? /dirs_unlisted/ : /dirs_checked/)
+        expect(bigPlan, kind).not.toMatch(/TEMP B-TREE/)
+      }
+    })
+  })
+
+  describe('queue queries on 50k rows', () => {
+    let big: Cache
+    beforeEach(() => {
+      big = Cache.open(':memory:')
+      const db = (big as unknown as { db: DatabaseSync }).db
+      const ins = db.prepare(
+        "INSERT INTO dirs (uri, listed_at, checked_at, state) VALUES (?, 1, ?, 'ok')"
+      )
+      db.exec('BEGIN')
+      for (let i = 0; i < 50000; i++) {
+        const checked = i % 3 === 0 ? null : (i * 7919) % 1000003
+        ins.run(`file:///C:/r${i % 50}/d${i % 1000}/e${i}`, checked)
+      }
+      db.exec('COMMIT')
+    })
+    afterEach(() => big.close())
+
+    const ms = (fn: () => unknown): number => {
+      fn()
+      const t = performance.now()
+      for (let i = 0; i < 20; i++) fn()
+      return (performance.now() - t) / 20
+    }
+    const LIMIT_MS = 20
+
+    it('whole-volume and subtree queries stay fast and return the right rows', () => {
+      const whole = [{ uri: 'file:///C:/', maxDepth: null }]
+      const deep = [{ uri: 'file:///C:/', maxDepth: 5 }]
+      const sub = [{ uri: 'file:///C:/r7', maxDepth: null }]
       const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare')
       let sqls: string[]
       try {
-        cache.nextUnlisted([{ uri: A, maxDepth: 3 }], 5, new Set([C]))
-        cache.oldestChecked([{ uri: A, maxDepth: 3 }], 5, new Set([C]))
+        big.nextUnlisted(whole, 20)
+        big.oldestChecked(whole, 20)
+        big.nextUnlisted(sub, 20)
+        big.oldestChecked(sub, 20)
         sqls = prepare.mock.calls.map(([sql]) => sql)
       } finally {
         prepare.mockRestore()
       }
-      const queries = sqls.filter((s) => /FROM dirs/.test(s))
-      expect(queries).toHaveLength(2)
-      for (const sql of queries) {
-        const n = (sql.match(/\?/g) ?? []).length
-        const plan = cache
-          .select(`EXPLAIN QUERY PLAN ${sql}`, ...Array<string>(n).fill(A))
-          .map((r) => String(r.detail))
-        // 允许「按索引顺序扫描」，不允许对 dirs 的全表扫描
-        expect(plan.join('\n'), sql).not.toMatch(/SCAN dirs(?! USING)/)
-        expect(plan.join('\n'), sql).toMatch(/USING .*INDEX/)
+      // 整卷用 INDEXED BY，子树（约 1000 行）走主键范围
+      expect(sqls.filter((q) => /INDEXED BY dirs_unlisted/.test(q))).toHaveLength(1)
+      expect(sqls.filter((q) => /INDEXED BY dirs_checked/.test(q))).toHaveLength(1)
+
+      const timings = {
+        unlistedWhole: ms(() => big.nextUnlisted(whole, 20)),
+        checkedWhole: ms(() => big.oldestChecked(whole, 20)),
+        unlistedDeep: ms(() => big.nextUnlisted(deep, 20)),
+        checkedDeep: ms(() => big.oldestChecked(deep, 20)),
+        unlistedSub: ms(() => big.nextUnlisted(sub, 20)),
+        checkedSub: ms(() => big.oldestChecked(sub, 20))
       }
+      for (const [name, t] of Object.entries(timings)) expect(t, name).toBeLessThan(LIMIT_MS)
+
+      // 结果与暴力计算一致
+      const rows = big.select('SELECT uri, checked_at FROM dirs').map((r) => ({
+        uri: r.uri as string,
+        at: r.checked_at as number | null
+      }))
+      const oldest = rows
+        .filter((r) => r.at !== null)
+        .sort((a, b) => a.at! - b.at! || (a.uri < b.uri ? -1 : 1))
+        .slice(0, 20)
+        .map((r) => r.uri)
+      expect(big.oldestChecked(whole, 20)).toEqual(oldest)
+      const top = big.nextUnlisted(whole, 20)
+      expect(top).toHaveLength(20)
+      expect(top).toEqual([...top].sort())
     })
   })
 
