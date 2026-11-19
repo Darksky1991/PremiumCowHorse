@@ -35,6 +35,23 @@ export const data = async <T = Named>(page: Page, channel: string, input?: unkno
 }
 
 /**
+ * 启动后把本地定期确认的三层间隔（关注点 / 近 / 远，默认 5 / 30 / 120 秒）都设为下限 2 秒，
+ * 让「下一次检查」在用例的等待时间内发生。
+ * 在添加任何条目之前设置：调度器已排期的目录不会因设置变化而提前（只影响之后的排期）。
+ */
+export async function launchFast(
+  userData: string
+): Promise<{ app: ElectronApplication; page: Page }> {
+  const launched = await launch(userData)
+  await data(launched.page, 'settings.set', {
+    'cache.interval.focus.local': 2,
+    'cache.interval.near.local': 2,
+    'cache.interval.far.local': 2
+  })
+  return launched
+}
+
+/**
  * 目录的递归快照：每项一行「相对路径 | 类型 | 大小 | mtime」（lstat，不跟随链接），按路径排序。
  * 拖放前后比较快照，证明磁盘上没有任何文件或目录被新建、删除、移动或修改。
  */

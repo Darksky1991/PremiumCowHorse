@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { data, launch, type Named, removeDirs, snapshotTree } from './support'
+import { expect, test, type Page } from '@playwright/test'
+import { data, launchFast, type Named, removeDirs, snapshotTree } from './support'
 
 /** 「找不到」错误行的文案（errors:FS_NOT_FOUND，ja | zh-CN | en） */
 const notFoundLabel =
@@ -12,21 +12,6 @@ const retryButton = /^(再試行|重试|Retry)$/
 
 type Entry = Named & { kind: string; parentId: string | null }
 type Listing = { items: Named[]; state: 'fresh' | 'cached' | 'offline'; checkedAt: number | null }
-
-/**
- * 启动后把本地定期确认的三层间隔（关注点 / 近 / 远，默认 5 / 30 / 120 秒）都设为下限 2 秒，
- * 让「下一次检查」在用例的等待时间内发生。
- * 在添加任何条目之前设置：调度器已排期的目录不会因设置变化而提前（只影响之后的排期）。
- */
-async function launchFast(userData: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const launched = await launch(userData)
-  await data(launched.page, 'settings.set', {
-    'cache.interval.focus.local': 2,
-    'cache.interval.near.local': 2,
-    'cache.interval.far.local': 2
-  })
-  return launched
-}
 
 /** 落点：行的上缘（before）、中间（分组为 inside）、下缘（after）；null 为树的空白处 */
 type DropAt = { row: string; at: 'top' | 'middle' | 'bottom' } | null
