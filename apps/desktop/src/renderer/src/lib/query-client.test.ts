@@ -60,6 +60,25 @@ describe('bridgeMainEvents', () => {
     expect(client.getQueryState(other)?.isInvalidated).toBe(false)
   })
 
+  it('共享恢复在线（online）时，让该共享 / 卷下的目录查询失效；offline 不失效', () => {
+    const onShare = queryKeys.directory('file://Srv/Share/a')
+    const shareRoot = queryKeys.directory('file://srv/share')
+    const otherShare = queryKeys.directory('file://srv/other/a')
+    const local = queryKeys.directory('file:///E:/x')
+    for (const k of [onShare, shareRoot, otherShare, local]) {
+      client.setQueryData(k, { items: [], state: 'offline', checkedAt: 1 })
+    }
+    emit('vfs.reachability', { share: '\\\\srv\\share', state: 'offline', since: 1 })
+    expect(client.getQueryState(onShare)?.isInvalidated).toBe(false)
+    emit('vfs.reachability', { share: '\\\\srv\\share', state: 'online', since: 2 })
+    expect(client.getQueryState(onShare)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(shareRoot)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(otherShare)?.isInvalidated).toBe(false)
+    expect(client.getQueryState(local)?.isInvalidated).toBe(false)
+    emit('vfs.reachability', { share: 'E:', state: 'online', since: 3 })
+    expect(client.getQueryState(local)?.isInvalidated).toBe(true)
+  })
+
   it('全局默认：永不过期、聚焦时不重新获取、不重试', () => {
     expect(client.getDefaultOptions().queries).toMatchObject({
       staleTime: Infinity,

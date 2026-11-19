@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import type { Settings } from '@pch/shared'
+import { shareKeyOfUri } from './file-uri'
 import { subscribe } from './ipc'
 import { queryKeys } from './query-keys'
 
@@ -40,6 +41,19 @@ export function bridgeMainEvents(client: QueryClient): () => void {
     // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）
     subscribe('vfs.changed', ({ uri }) => {
       void client.invalidateQueries({ queryKey: queryKeys.directory(uri) })
+    }),
+    // 共享 / 卷恢复在线：该位置下的目录查询失效，显示中的重新列出（state 不再是 offline）。
+    // 断开时不需要：之后的列出由扫描进程返回 offline
+    subscribe('vfs.reachability', ({ share, state }) => {
+      if (state !== 'online') return
+      const key = share.toLowerCase()
+      void client.invalidateQueries({
+        queryKey: queryKeys.directoryRoot,
+        predicate: (q) => {
+          const uri = q.queryKey[2]
+          return typeof uri === 'string' && shareKeyOfUri(uri)?.toLowerCase() === key
+        }
+      })
     })
   ]
   return () => offs.forEach((off) => off())
