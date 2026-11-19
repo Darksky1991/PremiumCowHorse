@@ -176,6 +176,25 @@ describe('Cache', () => {
     expect(cache.getEntries('file:///C:/ab')).toHaveLength(1)
   })
 
+  it('removeMissing also removes the directory from its parent listing, but not a symlink', () => {
+    cache.setRoots([A])
+    const link: RawEntry = { ...dir('l'), kind: 'symlink', target: 'directory' }
+    cache.applyListing(A, 1, [dir('b'), file('f'), link], 1)
+    cache.applyListing(`${A}/b`, 1, [file('x')], 1)
+    cache.applyListing(`${A}/l`, 1, [file('y')], 1)
+    expect(cache.removeMissing(`${A}/b`)).toEqual({ parentChanged: true })
+    expect(cache.getDir(`${A}/b`)).toBeUndefined()
+    expect(cache.getEntries(`${A}/b`)).toEqual([])
+    expect(cache.getEntries(A).map((e) => e.name)).toEqual(['f', 'l'])
+    // 目标不在的符号链接本身仍在父目录中：只删除它的缓存
+    expect(cache.removeMissing(`${A}/l`)).toEqual({ parentChanged: false })
+    expect(cache.getDir(`${A}/l`)).toBeUndefined()
+    expect(cache.getEntries(A).map((e) => e.name)).toEqual(['f', 'l'])
+    // 根：没有父目录的列表
+    expect(cache.removeMissing(A)).toEqual({ parentChanged: false })
+    expect(cache.getDir(A)).toBeUndefined()
+  })
+
   it('removeSubtree of a drive root removes the whole volume but not other volumes', () => {
     cache.setRoots(['file:///C:/', 'file:///D:/'])
     cache.applyListing('file:///C:/', 1, [dir('a')], 1)

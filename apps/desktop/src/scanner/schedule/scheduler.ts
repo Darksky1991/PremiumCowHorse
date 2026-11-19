@@ -813,7 +813,8 @@ export class Scheduler {
         this.queue.markMissing(uri)
         return
       }
-      this.cache.removeSubtree(uri)
+      // 连同父目录缓存列表中的该项一起删除：父目录刚确认过（fresh）时，树与搜索也不再显示它
+      this.cache.removeMissing(uri)
       this.scopeDirty = true
       const notify = this.rootUris.has(uri) ? uri : (dir.parentUri ?? parentUri(uri))
       if (notify !== null) this.events.changed(notify)

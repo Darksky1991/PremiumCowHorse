@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { AppError, type ErrorCode, type RootConfig, type ScanSettings } from '@pch/shared'
+import {
+  AppError,
+  parseQuery,
+  type ErrorCode,
+  type RootConfig,
+  type ScanSettings
+} from '@pch/shared'
 import { createLocator } from '../../main/vfs/location'
 import { Cache, childUri, type Scope } from '../cache/cache'
 import type { Enumerator, RawEntry } from '../enum/types'
 import { BATCH_SIZE, OLDEST_BATCH_SIZE } from './background-queue'
+import { search } from '../search/search'
 import { Scheduler } from './scheduler'
 import { TIER_LIMIT } from './scope'
 
@@ -1017,6 +1024,70 @@ describe('Scheduler: P0, concurrency and errors', () => {
     await expect(s.listNow(R)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
     await clock.advance(30_000)
     expect(changed).toEqual([R]) // 已没有缓存：不重复通知
+  })
+
+  it('not-found also removes the directory from a fresh parent listing (tree and search)', async () => {
+    const h = setup([root(R)])
+    const { clock, fs, s, cache, changed } = h
+    const A = fs.addDir(R, 'alpha')
+    fs.addFile(A, 'needle.txt')
+    prelist(h, A, clock.now())
+    fs.rmdir(A) // 父目录的条目与修改时间不变（尚未重新读取）
+    prelist(h, R, clock.now()) // 父目录刚确认过（fresh），列表中仍有 alpha
+    s.refresh([A])
+    await clock.advance(0)
+    expect(cache.getDir(A)).toBeUndefined()
+    expect(changed).toContain(R)
+    // 树：父目录 fresh，直接返回缓存——已不含 alpha
+    const l = await s.listNow(R)
+    expect(l.state).toBe('fresh')
+    expect(l.items.map((i) => i.name)).toEqual([])
+    // 搜索：目录本身与其中的文件都不再出现
+    const find = (text: string): string[] =>
+      search(cache, {
+        scopes: [{ uri: R, entryId: 'e', label: 'R' }],
+        terms: parseQuery(text).terms,
+        kind: 'all',
+        showHidden: true,
+        limit: 100
+      }).items.map((i) => i.name)
+    expect(find('alpha')).toEqual([])
+    expect(find('needle')).toEqual([])
+  })
+
+  it('confirming after a failed reveal corrects the cache of a deleted directory', async () => {
+    // 定位失败时渲染端确认出错的那一层目录（revealRecheckUri → vfs.refresh）：
+    // 失败在已删除的目录本身（展开时读取出错）或在它的父目录（列表中没有下一段）
+    for (const confirmParent of [false, true]) {
+      const h = setup([root(R)])
+      const { clock, fs, s, cache, changed } = h
+      const X = fs.addDir(R, 'x')
+      fs.addFile(X, 'needle.txt')
+      prelist(h, R, clock.now())
+      prelist(h, X, clock.now())
+      await clock.advance(60_000) // 缓存已不 fresh；没有窗口：不做定期确认
+      fs.rmdir(X)
+      if (confirmParent) {
+        // 父目录的列表与修改时间随删除而变化
+        const d = fs.dirs.get(R)!
+        d.entries = d.entries.filter((e) => e.name !== 'x')
+        d.mtime += 1
+      }
+      s.refresh([confirmParent ? R : X])
+      await clock.advance(0)
+      expect(cache.getDir(X), `${confirmParent}`).toBeUndefined()
+      expect(cache.getEntries(X)).toEqual([])
+      expect(cache.getEntries(R).map((e) => e.name)).toEqual([])
+      expect(changed).toContain(R)
+      const hits = search(cache, {
+        scopes: [{ uri: R, entryId: 'e', label: 'R' }],
+        terms: parseQuery('needle').terms,
+        kind: 'all',
+        showHidden: true,
+        limit: 100
+      }).items
+      expect(hits).toEqual([])
+    }
   })
 
   it('an unknown error marks only that directory unreachable, not the whole share', async () => {

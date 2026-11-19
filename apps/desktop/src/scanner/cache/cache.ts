@@ -315,6 +315,27 @@ export class Cache {
     this.tx(() => this.removeSubtreeRows(uri))
   }
 
+  /**
+   * 目录已不存在（读取得到「不存在」）：删除它与全部子目录，并从父目录的缓存列表中删除该项
+   * （一个事务）。父目录列表中同名的是符号链接时保留（链接本身可能仍在，只是目标不在）。
+   * parentChanged：父目录的列表有变化
+   */
+  removeMissing(uri: string): { parentChanged: boolean } {
+    return this.tx(() => {
+      const row = this.get('SELECT parent_uri FROM dirs WHERE uri = ?', uri)
+      const parent = (row?.parent_uri as string | null | undefined) ?? parentOf(uri, this.roots)
+      this.removeSubtreeRows(uri)
+      if (parent === null) return { parentChanged: false }
+      const name = path.basename(fileUriToLocalPath(uri))
+      // 名称经与列表相同的函数还原：不一致（例如 URI 写法不同）时不猜测
+      if (name === '' || childUri(parent, name) !== uri) return { parentChanged: false }
+      const r = this.db
+        .prepare("DELETE FROM entries WHERE dir_uri = ? AND name = ? AND kind = 'directory'")
+        .run(parent, name)
+      return { parentChanged: Number(r.changes) > 0 }
+    })
+  }
+
   /** 删除不在任何根之下的目录（连同条目），返回删除的目录数 */
   prune(): number {
     return this.tx(() => {
