@@ -200,6 +200,43 @@ describe('ScannerClient', () => {
     expect(onReachability).toHaveBeenCalledWith({ share: '\\\\srv\\s', state: 'offline', since: 9 })
   })
 
+  it('keeps the set of offline shares from reachability events', () => {
+    const { client, port } = setup()
+    expect(client.offlineShares()).toEqual([])
+    port().emit({ type: 'reachability', share: '\\\\srv\\s', state: 'offline', since: 9 })
+    port().emit({ type: 'reachability', share: 'E:', state: 'offline', since: 10 })
+    port().emit({ type: 'reachability', share: '\\\\srv\\s', state: 'online', since: 11 })
+    expect(client.offlineShares()).toEqual([{ share: 'E:', since: 10 }])
+  })
+
+  it('reports offline shares as online when the scanner restarts (the new process re-detects)', () => {
+    let t = 100
+    const { client, port, ports, onReachability } = setup({ now: () => t })
+    port().emit({ type: 'reachability', share: '\\\\srv\\s', state: 'offline', since: 9 })
+    onReachability.mockClear()
+    t = 500
+    ports[0]!.exit(1)
+    expect(onReachability.mock.calls).toEqual([
+      [{ share: '\\\\srv\\s', state: 'online', since: 500 }]
+    ])
+    expect(client.offlineShares()).toEqual([])
+  })
+
+  it('reports offline shares as online when it gives up (degraded mode lists directly)', () => {
+    let t = 0
+    const { client, port, ports, onReachability } = setup({ now: () => t })
+    ports[0]!.exit(1)
+    t += 1000
+    ports[1]!.exit(1)
+    port().emit({ type: 'reachability', share: 'E:', state: 'offline', since: 1500 })
+    onReachability.mockClear()
+    t += 1000
+    ports[2]!.exit(1)
+    expect(client.available).toBe(false)
+    expect(onReachability.mock.calls).toEqual([[{ share: 'E:', state: 'online', since: 2000 }]])
+    expect(client.offlineShares()).toEqual([])
+  })
+
   it('writes scanner logs to the logger and ignores invalid messages', () => {
     const { port, log, onChanged } = setup()
     port().emit({ type: 'log', level: 'error', message: 'boom' })
@@ -211,7 +248,7 @@ describe('ScannerClient', () => {
     expect(onChanged).not.toHaveBeenCalled()
   })
 
-  it('rejects a request with INDEX_UNAVAILABLE when the scanner does not answer within 60 seconds', async () => {
+  it('rejects a request with FS_TIMEOUT when the scanner does not answer within 60 seconds', async () => {
     vi.useFakeTimers()
     try {
       const { client, port, log } = setup()
@@ -231,7 +268,8 @@ describe('ScannerClient', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(settled).toBe(false)
       await vi.advanceTimersByTimeAsync(1)
-      await expect(code).resolves.toBe('INDEX_UNAVAILABLE')
+      // INDEX_UNAVAILABLE 会让 vfs.list 回退到直接枚举（同一共享上并发第二次枚举）：用单独的错误码
+      await expect(code).resolves.toBe('FS_TIMEOUT')
       expect(log.warn).toHaveBeenCalled()
       // 迟到的结果被忽略；之后的请求照常
       port().emit({ type: 'result', id: port().last('list').id, ok: true, value: listing('late') })

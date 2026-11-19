@@ -19,7 +19,7 @@ interface ReachabilityState {
 
 /**
  * 扫描进程报告的可达状态（设计 4.7）。主进程事件 vfs.reachability 由外壳（features/shell）
- * 订阅后写入，资源树据此在断开的根条目上显示图标（Task 8）。只记录本窗口启动后收到的变化。
+ * 订阅后写入（启动时先以 vfs.offlineShares 初始化），资源树据此在断开的根条目上显示图标。
  */
 export const useReachabilityStore = create<ReachabilityState>((set, get) => ({
   offlineShares: {},

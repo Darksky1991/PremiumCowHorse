@@ -22,6 +22,7 @@ function setup(scanner: Partial<ScannerApi> & { available: boolean }): {
     cacheInfo: vi.fn(async () => ({ bytes: 0 })),
     clearCache: vi.fn(async () => undefined),
     cancelSearch: vi.fn(),
+    offlineShares: vi.fn(() => []),
     ...scanner
   }
   return { handlers: vfsHandlers(vfs as unknown as VfsService, full), vfs }
@@ -59,6 +60,19 @@ describe('vfsHandlers vfs.list', () => {
     expect(vfs.list).toHaveBeenCalledWith(uri, undefined)
   })
 
+  it('客户端兜底超时（FS_TIMEOUT）原样抛出，不回退到直接枚举', async () => {
+    const { handlers, vfs } = setup({
+      available: true,
+      list: vi.fn(async () => {
+        throw new AppError({ code: 'FS_TIMEOUT', detail: 'no result within 60s' })
+      })
+    })
+    await expect(handlers['vfs.list']({ uri }, ctx)).rejects.toMatchObject({
+      code: 'FS_TIMEOUT'
+    })
+    expect(vfs.list).not.toHaveBeenCalled()
+  })
+
   it('扫描进程返回的文件系统错误原样抛出，不回退', async () => {
     const { handlers, vfs } = setup({
       available: true,
@@ -83,5 +97,11 @@ describe('vfsHandlers 的其他通道', () => {
     expect(interest).toHaveBeenCalledWith(7, i)
     await handlers['vfs.refresh']({ uris: [uri] }, ctx)
     expect(refresh).toHaveBeenCalledWith([uri])
+  })
+
+  it('offlineShares 返回扫描进程客户端记录的断开共享', async () => {
+    const offline = [{ share: 'E:', since: 10 }]
+    const { handlers } = setup({ available: true, offlineShares: vi.fn(() => offline) })
+    await expect(handlers['vfs.offlineShares']({}, ctx)).resolves.toEqual(offline)
   })
 })

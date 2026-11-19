@@ -6,10 +6,20 @@ import type { VfsService } from './vfs.service'
 /** handler 用到的 ScannerClient 部分（测试可注入假实现） */
 export type ScannerApi = Pick<
   ScannerClient,
-  'available' | 'list' | 'interest' | 'refresh' | 'cacheInfo' | 'clearCache' | 'cancelSearch'
+  | 'available'
+  | 'list'
+  | 'interest'
+  | 'refresh'
+  | 'cacheInfo'
+  | 'clearCache'
+  | 'cancelSearch'
+  | 'offlineShares'
 >
 
-/** 扫描进程不可用（超过重启上限、index.db 打不开、请求兜底超时等） */
+/**
+ * 扫描进程不可用（超过重启上限、index.db 打不开等）。客户端的兜底超时是 FS_TIMEOUT，不回退：
+ * 扫描进程可能仍在同一共享上枚举，回退会并发第二次访问
+ */
 const isUnavailable = (e: unknown): boolean =>
   e instanceof AppError && e.code === 'INDEX_UNAVAILABLE'
 
@@ -26,6 +36,7 @@ export function vfsHandlers(
   | 'vfs.cancel'
   | 'vfs.interest'
   | 'vfs.refresh'
+  | 'vfs.offlineShares'
   | 'vfs.cacheInfo'
   | 'vfs.clearCache'
 > {
@@ -51,6 +62,7 @@ export function vfsHandlers(
     },
     'vfs.interest': async (interest, ctx) => scanner.interest(ctx.senderId, interest),
     'vfs.refresh': async ({ uris }) => scanner.refresh(uris),
+    'vfs.offlineShares': async () => scanner.offlineShares(),
     'vfs.cacheInfo': () => scanner.cacheInfo(),
     'vfs.clearCache': () => scanner.clearCache()
   }

@@ -4,6 +4,7 @@ import {
   type DirectoryListing,
   type Interest,
   type MainToScanner,
+  type OfflineShare,
   type ReachabilityEvent,
   type ScannerConfig,
   type SearchQuery,
@@ -33,9 +34,10 @@ export interface ScannerClientOptions {
   /** dispose 时等待进程自行退出的时长，超时则 kill；默认 2 秒 */
   shutdownTimeoutMs?: number
   /**
-   * 请求的兜底超时：超过此时长没有结果即以 INDEX_UNAVAILABLE 拒绝（默认 60 秒）。
+   * 请求的兜底超时：超过此时长没有结果即以 FS_TIMEOUT 拒绝（默认 60 秒）。
    * 扫描进程自身的超时（timeoutSec、排队的 P0 等待者）远短于此；这里只防扫描进程的事件循环卡住、
-   * 结果消息丢失等情况让调用方永远等待。
+   * 结果消息丢失等情况让调用方永远等待。不用 INDEX_UNAVAILABLE：vfs.list 遇到它会回退到直接枚举，
+   * 而扫描进程可能仍在同一共享上枚举（并发第二次访问）。
    */
   requestTimeoutMs?: number
   now?: () => number
@@ -77,6 +79,8 @@ export class ScannerClient {
   private exited: (() => void) | null = null
   /** 进行中的搜索：渲染端的 requestId → 请求 id（同一 requestId 的新查询取代旧查询） */
   private readonly searches = new Map<string, number>()
+  /** 当前断开的共享 → 断开时刻（随 reachability 事件维护；渲染端启动 / 重新加载时查询） */
+  private readonly offline = new Map<string, number>()
 
   constructor(private readonly opts: ScannerClientOptions) {
     this.maxRestarts = opts.maxRestarts ?? 3
@@ -167,6 +171,11 @@ export class ScannerClient {
     this.settle(id)?.reject(new AppError({ code: 'FS_CANCELLED' }))
   }
 
+  /** 当前断开的共享（扫描进程报告 offline、尚未报告 online 的） */
+  offlineShares(): OfflineShare[] {
+    return [...this.offline].map(([share, since]) => ({ share, since }))
+  }
+
   /** 请求扫描进程退出（关闭缓存库），超时则 kill；之后所有请求以 INDEX_UNAVAILABLE 拒绝 */
   async dispose(): Promise<void> {
     if (this.state === 'disposed') return
@@ -235,6 +244,7 @@ export class ScannerClient {
     }
     this.port = null
     this.rejectAll(`scanner exited (code ${code})`)
+    this.resetReachability()
     const t = this.now()
     this.exits = [...this.exits.filter((x) => t - x < this.windowMs), t]
     if (this.exits.length >= this.maxRestarts) {
@@ -251,6 +261,7 @@ export class ScannerClient {
     this.state = 'unavailable'
     this.port = null
     this.rejectAll(`scanner unavailable: ${reason}`)
+    this.resetReachability()
     this.opts.log.error(
       `[scanner] ${reason}; not restarting (degraded mode: directories are listed directly without the cache)`
     )
@@ -277,6 +288,8 @@ export class ScannerClient {
       case 'changed':
         return this.opts.onChanged(m.uri)
       case 'reachability':
+        if (m.state === 'offline') this.offline.set(m.share, m.since)
+        else this.offline.delete(m.share)
         return this.opts.onReachability({ share: m.share, state: m.state, since: m.since })
       case 'log':
         return this.opts.log[m.level](`[scanner] ${m.message}`)
@@ -298,7 +311,12 @@ export class ScannerClient {
         this.opts.log.warn(
           `[scanner] ${message.type} #${id} got no result within ${this.requestTimeoutMs / 1000}s`
         )
-        reject(unavailable(`no result within ${this.requestTimeoutMs / 1000}s`))
+        reject(
+          new AppError({
+            code: 'FS_TIMEOUT',
+            detail: `no result from the scanner within ${this.requestTimeoutMs / 1000}s`
+          })
+        )
       }, this.requestTimeoutMs)
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
       if (!this.post(port, message)) {
@@ -330,6 +348,17 @@ export class ScannerClient {
       this.opts.log.error(`[scanner] cannot send ${m.type}`, e)
       return false
     }
+  }
+
+  /**
+   * 扫描进程退出（将重启）或进入降级模式：断开状态由该进程的探测判定，随进程一起失效。
+   * 对每个断开的共享发出 online 并清空（新进程若仍连不上会重新发出 offline；降级模式直接枚举）
+   */
+  private resetReachability(): void {
+    const since = this.now()
+    const shares = [...this.offline.keys()]
+    this.offline.clear()
+    for (const share of shares) this.opts.onReachability({ share, state: 'online', since })
   }
 
   private rejectAll(detail: string): void {

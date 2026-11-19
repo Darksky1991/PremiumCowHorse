@@ -33,3 +33,9 @@ export interface ReachabilityEvent {
   state: 'online' | 'offline'
   since: number
 }
+
+/** 当前断开的共享 / 卷与断开时刻（vfs.offlineShares：渲染端启动 / 重新加载时初始化断开状态） */
+export interface OfflineShare {
+  share: string
+  since: number
+}

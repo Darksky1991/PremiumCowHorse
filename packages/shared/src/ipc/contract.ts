@@ -12,7 +12,7 @@ import {
 } from '../workspace/schema'
 import type { DirectoryListing, FileStat } from '../vfs/types'
 import type { SearchResult } from '../search/types'
-import type { ReachabilityEvent } from '../scanner/types'
+import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
@@ -87,6 +87,11 @@ export const ipcContract = {
     z.strictObject({ uris: z.array(z.string().min(1)).max(VFS_REFRESH_MAX) })
   ),
   /** 目录缓存（userData/cache/index.db）的占用与清空；界面随 M5 设置页 */
+  /**
+   * 当前断开的共享 / 卷（主进程随 vfs.reachability 维护）。渲染端订阅 vfs.reachability 时先查询一次，
+   * 窗口启动、重新加载后不漏掉此前已断开的共享
+   */
+  'vfs.offlineShares': route<OfflineShare[]>()(z.strictObject({})),
   'vfs.cacheInfo': route<{ bytes: number }>()(z.strictObject({})),
   'vfs.clearCache': route<void>()(z.strictObject({})),
   /**
