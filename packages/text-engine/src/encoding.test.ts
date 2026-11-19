@@ -133,6 +133,19 @@ describe('detectEncoding：前置判断', () => {
   })
 })
 
+/** windows-1252 编码（只覆盖测试用到的非 ASCII 字符） */
+function cp1252(text: string): Uint8Array {
+  const table: Record<string, number> = { é: 0xe9, '“': 0x93, '”': 0x94, '’': 0x92, ü: 0xfc }
+  return Uint8Array.from([...text].map((ch) => table[ch] ?? ch.charCodeAt(0)))
+}
+
+describe('detectEncoding：windows-1252 短英文不被当作无 BOM 的纯中日文 UTF-16', () => {
+  // 回归（审查第 1 轮）：小写字母两两组成的 UTF-16 单元落在 U+4E00–9FFF，曾被判成 utf-16le / be（likely）
+  it.each(['report résumé meeting', 'and “draft” fine'])('%s', (text) => {
+    expect(detectEncoding([cp1252(text)]).label).toBe('windows-1252')
+  })
+})
+
 describe('detectEncoding：preferred', () => {
   // B0A1 B0A2：EUC-JP「亜唖」、GBK「啊阿」、Big5「陛陝」，都是各自的常用字区，得分相同
   const tie = Uint8Array.from([0xb0, 0xa1, 0xb0, 0xa2])

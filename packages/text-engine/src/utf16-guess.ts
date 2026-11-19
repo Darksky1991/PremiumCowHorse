@@ -4,6 +4,8 @@
 //    不合法或常用字区打分不为正），且按某一字节序读出的码点集中在 CJK / 假名区。
 //    先排除字节编码是因为 ASCII 与 Shift_JIS 片假名按 UTF-16LE 读也常落在 CJK 区（'ex' = U+7865）；
 //    只看「合法」不够：UTF-16LE 的片假名（D5 30 A1 30 …）恰好是合法的 GB18030 四字节序列。
+//    windows-1252 总能解码，因此另看「像不像西欧文本」：打分为正，且字母 / 空格 / 常用标点占字节的大多数
+//    （西欧短文本按 UTF-16 读时小写字母两两组成 U+6100–7AFF 的汉字，曾被误判）。
 import { scoreLegacy, type LegacyLabel } from './legacy-score'
 import { decodesStrictly } from './strict-decode'
 
@@ -19,6 +21,19 @@ const MIN_PLAUSIBLE = 0.95
 const MIN_CJK = 0.9
 /** 纯中日文路径：至少这么多个 UTF-16 单元 */
 const MIN_PURE_UNITS = 8
+/**
+ * 「像西欧文本」：ASCII 文本字符占字节的比例下限。实测（样本集原文的子串）纯中日文 UTF-16 的中位数约 0.37、
+ * 8 字的 99.9 百分位约 0.75（多为 U+61xx–7Axx 的汉字与 U+20xx 的标点）；英文行最低约 0.69、中位数约 0.93。
+ * 与 windows-1252 打分为正同时要求：只看打分会漏判短的纯中日文 UTF-16（8 字的检出率实测从 61% 降到 42%），
+ * 只看比例则两者的分布有重叠。
+ */
+const MIN_WESTERN_TEXT = 0.6
+/** ASCII 文本字符：空格、字母、数字 1–9（不含 0：假名 U+30xx 的一个字节就是 0x30）、常用标点 */
+const WESTERN_TEXT_BYTES = new Set(
+  [...' ,.:;\'"()/=-_!?#@%&*+123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'].map(
+    (c) => c.charCodeAt(0)
+  )
+)
 
 const CJK_BYTE_ENCODINGS: LegacyLabel[] = ['shift_jis', 'euc-jp', 'gb18030', 'big5']
 
@@ -52,8 +67,17 @@ function byteEncodingExplains(bytes: Uint8Array): boolean {
     decodesStrictly('utf-8', bytes) ||
     CJK_BYTE_ENCODINGS.some(
       (label) => decodesStrictly(label, bytes) && scoreLegacy(label, bytes) > 0
-    )
+    ) ||
+    looksWestern(bytes)
   )
+}
+
+/** windows-1252 打分为正，且 ASCII 文本字符占字节的大多数 */
+function looksWestern(bytes: Uint8Array): boolean {
+  if (scoreLegacy('windows-1252', bytes) <= 0) return false
+  let text = 0
+  for (const b of bytes) if (WESTERN_TEXT_BYTES.has(b)) text++
+  return text >= bytes.length * MIN_WESTERN_TEXT
 }
 
 /** 按某一字节序读出的单元中：可显示文字的比例、CJK / 假名（含 CJK 标点）占非换行单元的比例；有孤立代理时都为 0 */
