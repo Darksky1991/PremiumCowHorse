@@ -25,7 +25,29 @@ describe('isExecutableExtension', () => {
     'x.scf',
     'x.msp',
     'x.jar',
-    'x.appref-ms'
+    'x.appref-ms',
+    // 最终审查追加
+    'x.url',
+    'x.website',
+    'x.application',
+    'x.inf',
+    'x.chm',
+    'x.settingcontent-ms',
+    'x.psm1',
+    'x.psd1',
+    'x.ps1xml',
+    'x.ws',
+    'x.wsc',
+    'x.sct',
+    'x.vb',
+    'x.appinstaller',
+    'x.msix',
+    'x.appx',
+    'x.xll',
+    'x.diagcab',
+    'x.library-ms',
+    'x.search-ms',
+    'x.gadget'
   ])('%s is executable', (name) => {
     expect(isExecutableExtension(name)).toBe(true)
   })

@@ -1,6 +1,7 @@
 /**
  * 「用系统应用打开」前需要确认的可执行类扩展名（设计 devDoc/2026-11-19-12 第 3.3 节，
- * 审查时追加 .pif .scf .msp .jar .appref-ms）：双击这些文件会运行程序、脚本或修改系统设置。
+ * 审查时追加 .pif .scf .msp .jar .appref-ms，最终审查追加 .url 起的 21 个）：双击这些文件会运行程序、
+ * 脚本、安装应用或修改系统设置。只增加确认，不阻止打开（需求方可裁剪）。
  */
 const EXECUTABLE_EXTENSIONS = new Set([
   'exe',
@@ -25,7 +26,31 @@ const EXECUTABLE_EXTENSIONS = new Set([
   'scf',
   'msp',
   'jar',
-  'appref-ms'
+  'appref-ms',
+  // 最终审查追加：快捷方式 / 网页应用、ClickOnce、安装信息、HTML 帮助、设置快捷方式
+  'url',
+  'website',
+  'application',
+  'inf',
+  'chm',
+  'settingcontent-ms',
+  // PowerShell 模块 / 数据 / 格式文件、Windows Script（组件）、VB 源码
+  'psm1',
+  'psd1',
+  'ps1xml',
+  'ws',
+  'wsc',
+  'sct',
+  'vb',
+  // 应用安装包、Excel 加载项、诊断包、库 / 搜索连接器、边栏小工具
+  'appinstaller',
+  'msix',
+  'appx',
+  'xll',
+  'diagcab',
+  'library-ms',
+  'search-ms',
+  'gadget'
 ])
 
 /**
