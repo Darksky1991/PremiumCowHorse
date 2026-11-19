@@ -278,7 +278,9 @@ test.describe('workspace data layer over IPC', () => {
       // 添加后目录被移走：展开时列目录失败
       rmSync(folder, { recursive: true, force: true })
       await root.click()
-      const retry = page.getByRole('button', { name: /^(再試行|重试|Retry)$/ })
+      const retry = page
+        .getByTestId('sidebar')
+        .getByRole('button', { name: /^(再試行|重试|Retry)$/ })
       await expect(retry).toBeVisible()
 
       // 目录恢复后「重试」重新列出
@@ -304,7 +306,9 @@ test.describe('workspace data layer over IPC', () => {
 
       rmSync(folder, { recursive: true, force: true })
       await root.click()
-      const retry = page.getByRole('button', { name: /^(再試行|重试|Retry)$/ })
+      const retry = page
+        .getByTestId('sidebar')
+        .getByRole('button', { name: /^(再試行|重试|Retry)$/ })
       await expect(retry).toBeVisible()
 
       // 树内只有一个 Tab 停靠点：Tab 不会停在「重试」按钮上
