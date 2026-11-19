@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Cache, isUnder } from './cache'
 import type { RawEntry } from '../enum/types'
 
@@ -174,6 +174,41 @@ describe('Cache', () => {
     expect(cache.getDir(`${A}/b`)).toBeUndefined()
     expect(cache.getEntries(`${A}/b`)).toEqual([])
     expect(cache.getEntries('file:///C:/ab')).toHaveLength(1)
+  })
+
+  it('removeSubtree of a drive root removes the whole volume but not other volumes', () => {
+    cache.setRoots(['file:///C:/', 'file:///D:/'])
+    cache.applyListing('file:///C:/', 1, [dir('a')], 1)
+    cache.applyListing('file:///C:/a', 1, [file('f')], 1)
+    cache.applyListing('file:///D:/', 1, [dir('a')], 1)
+    cache.removeSubtree('file:///C:/')
+    expect(cache.getDir('file:///C:/')).toBeUndefined()
+    expect(cache.getDir('file:///C:/a')).toBeUndefined()
+    expect(cache.getEntries('file:///C:/a')).toEqual([])
+    expect(cache.getDir('file:///D:/')).toBeDefined()
+    expect(cache.childDirs('file:///D:/')).toEqual(['file:///D:/a'])
+  })
+
+  it('removeSubtree deletes through the primary key indexes (no full table scan)', () => {
+    cache.applyListing(A, 1, [dir('b')], 1)
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare')
+    let sqls: string[]
+    try {
+      cache.removeSubtree(A)
+      sqls = prepare.mock.calls.map(([sql]) => sql)
+    } finally {
+      prepare.mockRestore() // 同时清空 mock.calls：先取出
+    }
+    const deletes = sqls.filter((s) => /^DELETE/.test(s))
+    expect(deletes).toHaveLength(2)
+    for (const sql of deletes) {
+      const n = (sql.match(/\?/g) ?? []).length
+      const plan = cache
+        .select(`EXPLAIN QUERY PLAN ${sql}`, ...Array<string>(n).fill(A))
+        .map((r) => String(r.detail))
+      expect(plan.join('\n'), sql).not.toMatch(/\bSCAN\b/)
+      expect(plan.join('\n'), sql).toMatch(/USING .*INDEX/)
+    }
   })
 
   it('visit decays scores with a three day half-life and hot returns the top k', () => {

@@ -34,6 +34,25 @@ export function childUri(dirUri: string, name: string): string {
   return pathToFileURL(path.join(fileUriToLocalPath(dirUri), name)).href
 }
 
+/**
+ * 「等于其中某个 URI 或在其之下」的 SQL 条件（对应 isUnder：等于根，或以「根 + /」开头）。
+ * 写成范围比较而不是 LIKE / substr：不需要转义通配符，并且能用主键（dirs.uri、entries 的
+ * (dir_uri, name)）的索引。前缀以 / 结尾，字典序上紧随其后的是把 / 换成 0（'/' + 1）。
+ * 缓存的子树删除与搜索的范围共用这一份实现。
+ */
+export function subtreeCondition(
+  column: string,
+  uris: readonly string[]
+): { sql: string; params: string[] } {
+  const params: string[] = []
+  const parts = uris.map((uri) => {
+    const prefix = prefixOf(uri)
+    params.push(uri, prefix, `${prefix.slice(0, -1)}0`)
+    return `(${column} = ? OR (${column} >= ? AND ${column} < ?))`
+  })
+  return { sql: `(${parts.join(' OR ')})`, params }
+}
+
 /** 父目录 URI（字符串方式，仅用于目录行尚未由父目录建立时）。根没有父目录 */
 function parentOf(uri: string, roots: string[]): string | null {
   if (roots.includes(uri)) return null
@@ -325,10 +344,10 @@ export class Cache {
   }
 
   private removeSubtreeRows(uri: string): void {
-    const prefix = prefixOf(uri)
-    const n = prefix.length
-    this.run('DELETE FROM entries WHERE dir_uri = ? OR substr(dir_uri, 1, ?) = ?', uri, n, prefix)
-    this.run('DELETE FROM dirs WHERE uri = ? OR substr(uri, 1, ?) = ?', uri, n, prefix)
+    const entries = subtreeCondition('dir_uri', [uri])
+    this.run(`DELETE FROM entries WHERE ${entries.sql}`, ...entries.params)
+    const dirs = subtreeCondition('uri', [uri])
+    this.run(`DELETE FROM dirs WHERE ${dirs.sql}`, ...dirs.params)
   }
 
   private tx<T>(fn: () => T): T {

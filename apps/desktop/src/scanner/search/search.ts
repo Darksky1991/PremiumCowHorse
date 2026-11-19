@@ -10,7 +10,7 @@ import {
   type SearchTerm
 } from '@pch/shared'
 import type { SQLInputValue } from 'node:sqlite'
-import { Cache, childUri, isUnder } from '../cache/cache'
+import { Cache, childUri, isUnder, subtreeCondition } from '../cache/cache'
 
 /** trigram 索引只能查 3 个字符（按 Unicode 码点计）以上的词 */
 const FTS_MIN = 3
@@ -20,19 +20,12 @@ const escapeLike = (s: string): string => s.replace(/[\\%_]/g, '\\$&')
 const escapeGlob = (s: string): string => s.replace(/\[/g, '[[]')
 const ftsPhrase = (s: string): string => `"${s.replaceAll('"', '""')}"`
 
-/**
- * URI 前缀范围条件（对应 shared 的 isUnderUri：等于根，或以「根 + /」开头）。
- * 写成范围比较而不是 LIKE：不需要转义通配符，并且能用主键 / 目录主键的索引。
- * 前缀以 / 结尾，字典序上紧随其后的是把 / 换成 0（'/' + 1）。
- */
+/** 搜索范围条件：与缓存的子树删除共用 subtreeCondition（范围比较，走主键索引） */
 function scopeCondition(column: string, scopes: SearchScope[]): { sql: string; params: string[] } {
-  const params: string[] = []
-  const parts = scopes.map((s) => {
-    const prefix = prefixOf(s.uri)
-    params.push(s.uri, prefix, `${prefix.slice(0, -1)}0`)
-    return `(${column} = ? OR (${column} >= ? AND ${column} < ?))`
-  })
-  return { sql: `(${parts.join(' OR ')})`, params }
+  return subtreeCondition(
+    column,
+    scopes.map((s) => s.uri)
+  )
 }
 
 function termConditions(terms: SearchTerm[]): { sql: string[]; params: SQLInputValue[] } {
