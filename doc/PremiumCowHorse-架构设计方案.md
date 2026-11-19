@@ -708,12 +708,12 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 - 匹配：只匹配名称、不区分大小写（不做全角半角归一化）；空白分隔的多个词 = 全部包含（AND）；含 `*` / `?` 的词按通配匹配整个名称。解析与匹配规则只有一份：`packages/shared/src/search/query.ts`（`parseQuery` / `matchesName`，界面高亮用同一文件的 `matchRanges`）。
 - 执行：扫描进程中查询（`scanner/search/search.ts`），主进程 `search.query` 组装范围并合并固定的单个文件条目（5.2、6.3 节）；结果上限 1000、`total` 计数到 10000；`indexedAt` 为范围内目录 `checked_at` 的最小值，`incomplete` 为范围内存在从未列出的目录。
 - 界面（活动栏「搜索」视图，位于资源管理器之下；`Ctrl+Shift+F` 打开并聚焦搜索框，`Ctrl+F` 留给将来的预览窗口）：搜索框（防抖 150ms，Esc 清空）、类型筛选（全部 / 文件 / 文件夹）、摘要行「N 件 · 基于缓存（N 分钟前更新）」（`Intl.RelativeTimeFormat`，按界面语言，30 秒刷新一次）与「部分目录尚未扫描」、虚拟滚动的结果列表（两行：名称中匹配的片段 `<mark>` 高亮；「条目标签 › 父目录…」，行宽不够时省略中间部分、保留最后一级目录；悬停显示完整路径）。空输入时显示范围说明，无结果时显示「没有找到」与范围说明，截断时在底部显示「只显示前 1000 项」，扫描进程不可用（`INDEX_UNAVAILABLE`）时显示「搜索不可用」及原因。固定的单个文件条目的命中项没有缓存的大小 / 修改时间，界面不显示大小与时间。
-- 键盘：搜索框 ↓ 进入结果列表；列表 ↑↓ / Home / End 移动，Enter 定位，Esc 回到搜索框。列表为 `listbox` + `aria-activedescendant`（一个 Tab 停靠点）。
+- 键盘：搜索框 ↓ 进入结果列表；列表 ↑↓ / Home / End 移动，Enter 定位，Esc 回到搜索框。列表为 `listbox` + `aria-activedescendant`（一个 Tab 停靠点）；虚拟滚动只渲染视口附近的行，每行带 `aria-posinset` / `aria-setsize`（读屏读出「第 N 项，共 M 项」）。
 - 结果操作（全部只读）：单击 / Enter = 在资源树中定位；右键菜单：在树中定位、在资源管理器中显示、复制路径、复制 URI。
 - 在树中定位：搜索视图调用 `navigation-store` 的 `requestReveal(workspaceId, uri)` 并切到资源管理器视图（资源树在其他视图显示期间不挂载）；资源树挂载后取出请求（`consume()`；不是当前工作区的请求丢弃）：URI → 所属条目（固定的单个文件条目按 URI 完全一致优先，其余取 URI 前缀最长的 folder 条目，`isUnderUri`）→ 一次展开所有祖先（分组、条目、中间目录；树按层列出目录，已缓存的多层一次求出）→ 目标行出现后选中、`scrollToIndex`（居中）并聚焦树。某一层的列表已就绪却没有下一段（缓存过期、目录被删除）、或该层出错，停在已到达的最深一层并提示；某一层超过 10 秒（`REVEAL_LAYER_TIMEOUT_MS`）仍未就绪同样停下并提示；不在任何条目之下时提示「该项目不在当前工作区的条目中」。
 - 状态保存：搜索框内容与类型筛选按工作区保存在 `features/search/search-store.ts`（只在内存中），切换侧栏视图后保留；切换工作区时搜索面板重建，不显示其他工作区的结果。
 
-**已实现（2026-11-19，Task 11 后端 + Task 12 界面；记录见 `devDoc/2026-11-19-07-search.md`）**：以上全部。渲染端查询 key `['search', workspaceId, text, kind]`，`staleTime: 0`（切回搜索视图时重新查询），不随 `vfs.changed` 失效；每次查询用新的 requestId，TanStack Query 取消查询时以该 id 发送 `vfs.cancel`（12.1 节）。e2e：`search: typing shows matches from the cache and Enter reveals the row in the tree`、`search: kind filter`、`search: no results`、`search: Ctrl+Shift+F focuses the input`、`search: right-click a result to copy its path` 与整窗截图用例。未验证：`INDEX_UNAVAILABLE` 的界面（e2e 中无法让扫描进程不可用）、定位的 10 秒超时（只有单元测试覆盖进展判断）、系统级截图。
+**已实现（2026-11-19，Task 11 后端 + Task 12 界面；记录见 `devDoc/2026-11-19-07-search.md`）**：以上全部。渲染端查询 key `['search', workspaceId, text, kind]`，`staleTime: 0`（切回搜索视图时重新查询），不随 `vfs.changed` 失效；每次查询用新的 requestId，TanStack Query 取消查询时以该 id 发送 `vfs.cancel`（12.1 节）。e2e：`search: typing shows matches from the cache and Enter reveals the row in the tree`、`search: kind filter`、`search: no results`、`search: Ctrl+Shift+F focuses the input`、`search: right-click a result to copy its path`、`search: virtualized result rows announce their position in the whole list` 与整窗截图用例。未验证：`INDEX_UNAVAILABLE` 的界面（e2e 中无法让扫描进程不可用）、定位的 10 秒超时（只有单元测试覆盖进展判断）、系统级截图。
 
 ---
 

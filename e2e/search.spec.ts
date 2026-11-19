@@ -169,6 +169,41 @@ test.describe('file name search view', () => {
     }
   })
 
+  test('search: virtualized result rows announce their position in the whole list', async () => {
+    // 虚拟滚动只渲染视口附近的行：aria-posinset / aria-setsize 让读屏读出「第 N 项，共 M 项」
+    const bulk = path.join(project, '大量')
+    mkdirSync(bulk)
+    for (let i = 1; i <= 100; i++) {
+      writeFileSync(path.join(bulk, `log_${String(i).padStart(3, '0')}.txt`), String(i))
+    }
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await data(page, 'vfs.list', { uri: pathToFileURL(bulk).href })
+      const input = await openSearch(page)
+      await input.fill('log_')
+      const options = page.getByRole('listbox').getByRole('option')
+      await expect(options.first()).toHaveAttribute('aria-posinset', '1')
+      await expect(options.first()).toHaveAttribute('aria-setsize', '100')
+
+      await input.press('ArrowDown')
+      await page.keyboard.press('End')
+      const last = page.getByRole('option', { name: /log_100\.txt/ })
+      await expect(last).toHaveAttribute('aria-selected', 'true')
+      await expect(last).toHaveAttribute('aria-posinset', '100')
+      await expect(last).toHaveAttribute('aria-setsize', '100')
+      // 滚到底部后，第一行（log_001）不再渲染：渲染出的第一行的位置不是 1
+      const first = await options.first().getAttribute('aria-posinset')
+      expect(Number(first)).toBeGreaterThan(1)
+      const sizes = await options.evaluateAll((els) =>
+        els.map((el) => el.getAttribute('aria-setsize'))
+      )
+      expect(new Set(sizes)).toEqual(new Set(['100']))
+    } finally {
+      await app.close()
+    }
+  })
+
   test('search: right-click a result to copy its path', async () => {
     const { app, page } = await launch(userData)
     try {

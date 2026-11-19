@@ -172,6 +172,7 @@ export function SearchResults({
                   ref={virtualizer.measureElement}
                   id={`${baseId}-${r.index}`}
                   index={r.index}
+                  setSize={items.length}
                   hit={hit}
                   terms={terms}
                   entryLabel={entryLabels.get(hit.entryId) ?? ''}
@@ -220,6 +221,7 @@ function ResultRow({
   ref,
   id,
   index,
+  setSize,
   hit,
   terms,
   entryLabel,
@@ -230,6 +232,8 @@ function ResultRow({
   ref: (el: HTMLElement | null) => void
   id: string
   index: number
+  /** 结果总行数（aria-setsize） */
+  setSize: number
   hit: SearchHit
   terms: SearchTerm[]
   entryLabel: string
@@ -247,6 +251,9 @@ function ResultRow({
       id={id}
       role="option"
       aria-selected={selected}
+      // 虚拟滚动只渲染视口附近的行：显式给出在整个结果中的位置（读屏读「第 N 项，共 M 项」）
+      aria-posinset={index + 1}
+      aria-setsize={setSize}
       data-index={index}
       onClick={onClick}
       title={path}
