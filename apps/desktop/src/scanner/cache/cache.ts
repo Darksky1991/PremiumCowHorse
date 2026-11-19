@@ -288,19 +288,23 @@ export class Cache {
 
       // 子目录行：新增的建立（已存在的行，例如先访问了深层目录时建立的，补上 parent_id），
       // 消失的（含变成文件的）连同子树删除。逐个子目录查找：不存在则建立，已有的补 parent_id（准备好语句，目录可能有几万个子目录）
-      const find = this.db.prepare('SELECT id, parent_id FROM dirs WHERE uri = ?')
+      const find = this.db.prepare('SELECT id, parent_id, state FROM dirs WHERE uri = ?')
       const insertChild = this.db.prepare(
         "INSERT INTO dirs (uri, parent_id, state) VALUES (?, ?, 'ok')"
       )
       const setParent = this.db.prepare('UPDATE dirs SET parent_id = ? WHERE id = ?')
+      // 「不存在」的子目录行：父目录的真实列表仍列出它（例如上级目录被改名后改回），把它恢复为「从未尝试过」
+      // （checked_at 为 NULL），由后台队列或定期确认尽快重新读取；状态保留到读取成功为止
+      const reset = this.db.prepare('UPDATE dirs SET checked_at = NULL WHERE id = ?')
       let created = ownCreated
       for (const c of childDirUris) {
         const r = find.get(c)
         if (!r) {
           insertChild.run(c, dirId)
           created = true
-        } else if (r.parent_id !== dirId) {
-          setParent.run(dirId, r.id as number)
+        } else {
+          if (r.parent_id !== dirId) setParent.run(dirId, r.id as number)
+          if (r.state === 'not-found') reset.run(r.id as number)
         }
       }
       if (created) this.adoptOrphans()

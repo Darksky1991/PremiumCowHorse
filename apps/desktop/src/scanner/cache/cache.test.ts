@@ -191,6 +191,18 @@ describe('Cache', () => {
     expect(cache.getDir('file:///C:/other')).toBeUndefined()
   })
 
+  it('applyListing makes a not-found child directory never-attempted again (checked_at NULL)', () => {
+    const B = `${A}/b`
+    cache.applyListing(A, 1, [dir('b')], 10)
+    cache.applyListing(B, 1, [file('c.txt')], 10)
+    cache.setState(B, 'not-found', 'FS_NOT_FOUND', 20)
+    expect(cache.getDir(B)).toMatchObject({ state: 'not-found', checkedAt: 20 })
+    // 父目录再次列出 b：b 成为「从未尝试过」，后台队列与定期确认会尽快重新读取
+    cache.applyListing(A, 2, [dir('b')], 30)
+    expect(cache.getDir(B)).toMatchObject({ state: 'not-found', checkedAt: null })
+    expect(cache.nextUnlisted([{ uri: A, maxDepth: null }], 10)).toEqual([B])
+  })
+
   it('removeSubtree removes the directory and descendants but not prefix siblings', () => {
     cache.setRoots([A, 'file:///C:/ab'])
     cache.applyListing(A, 1, [dir('b')], 1)

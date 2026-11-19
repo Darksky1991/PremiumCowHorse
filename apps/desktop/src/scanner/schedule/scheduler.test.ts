@@ -1136,6 +1136,33 @@ describe('Scheduler: P0, concurrency and errors', () => {
     expect(cache.getEntries(A).map((e) => e.name)).toEqual(['b'])
   })
 
+  it('a not-found child is re-read soon after the parent lists it again, and becomes searchable', async () => {
+    // 上级被改名期间读取 b 得到「不存在」，随即改回：不能等到远层间隔（本地 2 分钟）才再读取，
+    // 也不能一直搜不到 b 之下的内容。父目录再次列出 b 时 b 成为「从未尝试过」，由后台队列重新读取
+    const h = setup([root(R, 'all')])
+    const { clock, fs, s, cache } = h
+    const A = fs.addDir(R, 'a')
+    const B = fs.addDir(A, 'b')
+    fs.addFile(B, 'c.txt')
+    for (const u of [R, A, B]) prelist(h, u, clock.now())
+    fs.failOnce.set(B, 'FS_NOT_FOUND')
+    s.refresh([B])
+    await clock.advance(0)
+    expect(fs.count('list', A)).toBe(1)
+    // 短时间内（远小于 2 分钟）b 被重新读取：状态恢复为 ok，子树可搜
+    await clock.advance(10_000)
+    expect(cache.getDir(B)).toMatchObject({ state: 'ok', errorCode: null })
+    expect(cache.getEntries(B).map((e) => e.name)).toEqual(['c.txt'])
+    const hits = search(cache, {
+      scopes: [{ uri: R, entryId: 'e', label: 'R' }],
+      terms: parseQuery('c.txt').terms,
+      kind: 'all',
+      showHidden: true,
+      limit: 100
+    }).items.map((i) => i.name)
+    expect(hits).toEqual(['c.txt'])
+  })
+
   it('a name the parent lists as a directory but reports not-found does not loop on the parent', async () => {
     // 父目录的真实列表持续含 a，读取 a 本身却返回「不存在」（权限、时序异常等）：不能反复强制父目录
     const h = setup([root(R, 'all')])
