@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, type JSX } from 'react'
-import { FileIcon, FolderRootIcon, LayersIcon } from 'lucide-react'
+import { FolderRootIcon, LayersIcon } from 'lucide-react'
+import { FileIcon } from '@pch/ui/file-icon'
 import { useTranslation } from 'react-i18next'
 import { workspaceIdOfUri, type TabState, type WorkspaceEntry } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
@@ -152,7 +153,6 @@ function EntryItem({
   entry: WorkspaceEntry & { uri: string }
   onActivate: (entry: WorkspaceEntry & { uri: string }, newTab: boolean) => void
 }): JSX.Element {
-  const Icon = entry.kind === 'folder' ? FolderRootIcon : FileIcon
   const path = fileUriToWindowsPath(entry.uri) ?? entry.uri
   return (
     // 单击只获得焦点（选中）；双击 / Enter 在当前标签打开（Enter 的默认 click 被阻止，避免与单击语义混淆）；
@@ -182,7 +182,16 @@ function EntryItem({
       }}
       className="flex w-full min-w-0 cursor-default items-center gap-3 rounded-md px-3 py-2 text-left outline-none select-none hover:bg-accent/50 focus-visible:outline-1 focus-visible:outline-ring focus:bg-accent focus:text-accent-foreground"
     >
-      <Icon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      {entry.kind === 'folder' ? (
+        <FolderRootIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      ) : (
+        <FileIcon
+          // 标签可能是别名，类型按真实路径的文件名判断
+          name={path.split(/[\\/]/).pop() ?? path}
+          kind="file"
+          className="size-5 shrink-0 text-muted-foreground"
+        />
+      )}
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-[13px]">{entry.label}</span>
         <span className="truncate text-xs text-muted-foreground">{path}</span>

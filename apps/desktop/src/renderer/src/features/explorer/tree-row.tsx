@@ -2,32 +2,37 @@ import type { CSSProperties, DragEvent, JSX, MouseEvent, Ref } from 'react'
 import {
   ChevronRightIcon,
   CircleAlertIcon,
-  FileIcon,
-  FileSymlinkIcon,
-  FileXIcon,
-  FolderIcon,
-  FolderOpenIcon,
   FolderRootIcon,
-  FolderSymlinkIcon,
   LayersIcon,
   UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
+import { FileIcon } from '@pch/ui/file-icon'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import type { DropPosition } from './drag-drop'
 import type { NodeKind, TreeNode } from './tree-model'
 
-const ICONS: Record<NodeKind, LucideIcon> = {
+/** 分组与工作区条目根的固定图标；真实文件 / 目录 / 链接按类型显示（FileIcon） */
+const FIXED_ICONS: Partial<Record<NodeKind, LucideIcon>> = {
   group: LayersIcon,
-  folder: FolderRootIcon,
-  file: FileIcon,
-  directory: FolderIcon,
-  'link-directory': FolderSymlinkIcon,
-  'link-file': FileSymlinkIcon,
-  'link-broken': FileXIcon
+  folder: FolderRootIcon
+}
+
+/** 树节点类型 → FileIcon 的 kind / target（group / folder 不走这里） */
+const FS_KIND: Record<
+  NodeKind,
+  { kind: 'file' | 'directory' | 'symlink'; target?: 'file' | 'directory' | null }
+> = {
+  group: { kind: 'directory' },
+  folder: { kind: 'directory' },
+  file: { kind: 'file' },
+  directory: { kind: 'directory' },
+  'link-directory': { kind: 'symlink', target: 'directory' },
+  'link-file': { kind: 'symlink', target: 'file' },
+  'link-broken': { kind: 'symlink', target: null }
 }
 
 export interface TreeRowProps {
@@ -81,7 +86,7 @@ export function TreeRow({
   onRetry
 }: TreeRowProps): JSX.Element {
   const { t, i18n } = useTranslation()
-  const Icon = node.kind === 'directory' && node.expanded ? FolderOpenIcon : ICONS[node.kind]
+  const FixedIcon = FIXED_ICONS[node.kind]
 
   return (
     <div
@@ -138,13 +143,16 @@ export function TreeRow({
               node.expanded && 'rotate-90'
             )}
           />
-          <Icon
-            aria-hidden
-            className={cn(
-              'size-4 shrink-0 text-muted-foreground',
-              node.kind === 'link-broken' && 'text-destructive'
-            )}
-          />
+          {FixedIcon ? (
+            <FixedIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <FileIcon
+              name={node.label}
+              {...FS_KIND[node.kind]}
+              open={node.expanded}
+              className="size-4 shrink-0 text-muted-foreground"
+            />
+          )}
           <span
             className={cn('min-w-0 truncate', node.dimmed && 'text-muted-foreground')}
             title={rowTitle(

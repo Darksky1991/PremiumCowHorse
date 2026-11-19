@@ -241,6 +241,8 @@ premium-cow-horse/
 
 已实现（M1-3）：`plugins/builtin`（包名 `@pch/plugin-builtin`，与 `plugin-sdk` 相同的形式：`exports` 直接指向源码 `src/index.ts`，不单独构建；依赖 `@pch/plugin-sdk`、`@pch/ui`、`lucide-react`、`@tanstack/react-virtual`（与渲染端同版本），`react` 为 peer）。`src/index.ts` 导出 `builtinPlugins`（注册顺序即同分时的优先顺序：folder、fallback），`src/folder/` 为 folder 插件（`index.ts` 定义、`folder-view.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`model.ts` 排序 / 隐藏项的纯函数（面包屑 M1-3b 移除，逻辑路径在渲染端 `lib/logical-path.ts`）、`format.ts` 大小 / 时间格式化纯函数；「N 前」的格式化随状态行的「基于缓存（N 前）」一起删除），`src/fallback/` 为 fallback 插件（`index.ts` 定义、`fallback-preview.tsx` 懒加载组件、`i18n.ts` 自带三语资源、`format.ts` 大小 / 时间格式化纯函数）。渲染端由 `app/app.tsx` import 插件列表交给 `features/preview`（feature 不直接依赖插件包）；vitest 的 include 增加 `plugins/*/src/**/*.test.ts`。
 
+已实现（M1-3b Task 4）：按类型的图标在 `@pch/ui`（`exports` 增加 `./file-icon`）：`src/lib/file-icon-map.ts` 的纯函数 `iconFor(name, kind, target?)` 按扩展名（小写，取最后一个）返回图标类别（文件夹 / 文件夹链接 / 文件链接 / 失效链接 / 文本 / 日志 / 代码 / JSON / 表格 / 文档 / 演示 / PDF / 图片 / 音频 / 视频 / 压缩包 / 可执行 / 配置 / 兜底），`src/file-icon.tsx` 的 `FileIcon({ name, kind, target, open, className })` 把类别映射到 lucide 图标（失效链接红色）。资源树行、folder 插件目录视图、工作区总览的文件条目使用；分组与条目根保留固定图标。可执行扩展名在 ui 内另列一份（不依赖渲染端）。
+
 5.2、5.3 节的目录树是**目标结构**，各目录随对应里程碑创建；M0 已实现的部分在树后注明。
 
 ### 5.2 主进程 `apps/desktop/src/main`

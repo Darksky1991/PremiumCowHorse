@@ -8,19 +8,10 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from 'react'
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  FileIcon,
-  FileSymlinkIcon,
-  FileXIcon,
-  FolderIcon,
-  FolderSymlinkIcon,
-  UnplugIcon,
-  type LucideIcon
-} from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, UnplugIcon } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { DirectoryListing, FileEntry, PreviewHost, PreviewProps } from '@pch/plugin-sdk'
+import { FileIcon } from '@pch/ui/file-icon'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import { formatSize, formatTime } from './format'
@@ -102,13 +93,6 @@ function useListing(host: PreviewHost, uri: string): [Listing, () => void] {
     setAttempt((n) => n + 1)
   }
   return [listing, retry]
-}
-
-function iconOf(e: FileEntry): LucideIcon {
-  if (e.kind === 'directory') return FolderIcon
-  if (e.kind === 'file') return FileIcon
-  if (e.target === 'directory') return FolderSymlinkIcon
-  return e.target === 'file' ? FileSymlinkIcon : FileXIcon
 }
 
 function typeLabel(e: FileEntry, t: PreviewHost['i18n']['t']): string {
@@ -316,7 +300,6 @@ export default function FolderView({
               {virtualRows.map((v) => {
                 const entry = rows[v.index]
                 if (!entry) return null
-                const Icon = iconOf(entry)
                 const selected = v.index === selectedIndex
                 return (
                   <div
@@ -351,13 +334,11 @@ export default function FolderView({
                     }`}
                   >
                     <div role="gridcell" className="flex min-w-0 items-center gap-2">
-                      <Icon
-                        aria-hidden
-                        className={`size-4 shrink-0 ${
-                          entry.kind === 'symlink' && entry.target === null
-                            ? 'text-destructive'
-                            : 'text-muted-foreground'
-                        }`}
+                      <FileIcon
+                        name={entry.name}
+                        kind={entry.kind}
+                        target={entry.target}
+                        className="size-4 shrink-0 text-muted-foreground"
                       />
                       <span
                         className={`truncate ${entry.hidden ? 'text-muted-foreground' : ''}`}
