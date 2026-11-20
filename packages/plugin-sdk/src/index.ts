@@ -1,4 +1,7 @@
 import type { ComponentType } from 'react'
+import type { PreviewDocApi } from './doc'
+
+export * from './doc'
 
 /**
  * 预览插件 SDK（架构文档第 9 节）。
@@ -45,6 +48,11 @@ export interface ResourceInfo {
   mtime: number
   /** M1-3 不推断，为 null */
   mime: string | null
+  /**
+   * 没有插件按扩展名 / MIME 匹配、宿主读开头 8KB 判为文本时为 true（此时交给声明了 match.textLike 的插件）；
+   * 未判断时不存在
+   */
+  textLike?: boolean
 }
 
 export interface PreviewPluginManifest {
@@ -69,12 +77,20 @@ export interface PreviewPluginManifest {
     schemes?: string[]
     /** 超过则不参与匹配（字节） */
     maxSize?: number
+    /**
+     * 也接受「没有任何插件按扩展名 / MIME 匹配、开头判为文本」的文件（ResourceInfo.textLike 为 true）。
+     * 只在未匹配时参与：扩展名 / MIME 命中的插件优先
+     */
+    textLike?: boolean
   }
   /** 声明式不够用时的补充判断：返回 false 则排除 */
   when?: (resource: ResourceInfo) => boolean
 }
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error'
+
+/** PreviewHost.tabs.viewAs 的查看方式 */
+export type ViewAsMode = 'text' | 'info'
 
 /** 插件可读取的应用设置（只读，键与应用设置相同） */
 export interface HostSettings {
@@ -124,7 +140,16 @@ export interface PreviewHost {
      * 刷新入口在应用的地址栏（M1-3b），插件不自带刷新按钮与 F5 处理（避免重复触发）
      */
     onRefresh(listener: () => void): () => void
+    /**
+     * 本标签改用另一种方式查看当前资源（按标签的临时状态，导航到其他位置后恢复自动选择）：
+     * text = 文本插件（pch.preview.text），info = 文件信息（fallback 插件）
+     */
+    viewAs(mode: ViewAsMode): void
+    /** 该查看方式是否可用（对应的插件已注册、资源是文件）；不可用时 viewAs 不做任何事 */
+    canViewAs(mode: ViewAsMode): boolean
   }
+  /** 文本文档（分页读取）；自动刷新由宿主负责 */
+  doc: PreviewDocApi
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {
     revealInOs(uri: string): void
@@ -174,5 +199,8 @@ export type AnyPreviewPlugin = PreviewPlugin<any>
 
 /** 无任何插件匹配时使用的插件 id（doc 9.3） */
 export const FALLBACK_PLUGIN_ID = 'pch.preview.fallback'
+
+/** 文本插件的 id（「作为文本查看」使用） */
+export const TEXT_PLUGIN_ID = 'pch.preview.text'
 
 export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>): PreviewPlugin<VS> => plugin

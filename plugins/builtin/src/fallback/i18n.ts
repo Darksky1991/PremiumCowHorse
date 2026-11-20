@@ -11,7 +11,8 @@ const ja = {
   noPreview: 'この種類のファイルはプレビューできません。',
   reveal: 'エクスプローラーで表示',
   copyPath: 'パスをコピー',
-  openWithSystem: '既定のアプリで開く'
+  openWithSystem: '既定のアプリで開く',
+  viewAsText: 'テキストとして表示'
 }
 
 type Messages = Record<keyof typeof ja, string>
@@ -28,7 +29,8 @@ const zhCN: Messages = {
   noPreview: '无法预览此类文件。',
   reveal: '在资源管理器中显示',
   copyPath: '复制路径',
-  openWithSystem: '用系统应用打开'
+  openWithSystem: '用系统应用打开',
+  viewAsText: '作为文本查看'
 }
 
 const en: Messages = {
@@ -43,7 +45,8 @@ const en: Messages = {
   noPreview: "This kind of file can't be previewed.",
   reveal: 'Reveal in File Explorer',
   copyPath: 'Copy path',
-  openWithSystem: 'Open with default app'
+  openWithSystem: 'Open with default app',
+  viewAsText: 'View as text'
 }
 
 export const messages: Record<string, Messages> = { ja, 'zh-CN': zhCN, en }

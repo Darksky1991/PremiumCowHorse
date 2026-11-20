@@ -545,6 +545,62 @@ describe('DocumentService: owners and lifetime', () => {
     await expect(s.docs.readLines(2, other.docId, 0, 1)).resolves.toBeDefined()
   })
 
+  it('resetOwner (reload / renderer crash) closes the documents but keeps accepting new ones', async () => {
+    const s = setup()
+    s.files.put(URI, enc('a\n'))
+    const before = await openAndIndex(s)
+    const other = await s.docs.open(2, { uri: URI })
+    s.docs.resetOwner(OWNER)
+    await expect(s.docs.readLines(OWNER, before.docId, 0, 1)).rejects.toMatchObject({
+      code: 'DOC_NOT_FOUND'
+    })
+    await expect(s.docs.readLines(2, other.docId, 0, 1)).resolves.toBeDefined()
+    // 重新加载后的页面照常打开
+    const after = await s.docs.open(OWNER, { uri: URI })
+    await expect(s.docs.readLines(OWNER, after.docId, 0, 1)).resolves.toBeDefined()
+  })
+
+  it('resetOwner closes a document whose open was still in flight (the old page never sees it)', async () => {
+    const s = setup()
+    s.files.put(URI, enc('a\n'))
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    s.files.onRead = () => gate
+    const opening = s.docs.open(OWNER, { uri: URI })
+    await until(() => s.files.reads.length > 0)
+    s.docs.resetOwner(OWNER)
+    s.files.onRead = undefined
+    release()
+    await expect(opening).rejects.toMatchObject({ code: 'DOC_NOT_FOUND' })
+    // 被关闭的文档不占上限、不再发事件
+    const progressBefore = s.progress.length
+    await new Promise((r) => setTimeout(r, 20))
+    expect(s.progress.slice(progressBefore)).toEqual([])
+  })
+
+  it('emits nothing after close, even from a refresh that was already running (appended / reset)', async () => {
+    for (const change of ['appended', 'reset'] as const) {
+      const s = setup()
+      s.files.put(URI, enc('a\nb\n'))
+      const info = await openAndIndex(s)
+      if (change === 'appended') s.files.append(URI, enc('c\n'))
+      else s.files.put(URI, enc('x\n'), 5)
+      let release!: () => void
+      const gate = new Promise<void>((r) => (release = r))
+      s.files.onRead = () => gate
+      const readsBefore = s.files.reads.length
+      const refreshing = s.docs.refresh(OWNER, info.docId)
+      await until(() => s.files.reads.length > readsBefore)
+      s.docs.close(OWNER, info.docId)
+      s.files.onRead = undefined
+      release()
+      await refreshing.catch(() => undefined)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(s.changed, change).toEqual([])
+      current?.dispose()
+    }
+  })
+
   it('does not let another window use a document', async () => {
     const s = setup()
     s.files.put(URI, enc('a\n'))

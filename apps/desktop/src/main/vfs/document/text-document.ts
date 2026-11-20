@@ -224,7 +224,7 @@ export class TextDocument {
     const change = judgeChange(this.snapshot, now?.snapshot ?? null)
     if (!now) {
       // 只在变为不存在时通知一次（渲染端按间隔自动刷新）
-      if (!this.missing) this.deps.emitChanged({ missing: true })
+      if (!this.missing) this.emitChanged({ missing: true })
       this.missing = true
       return
     }
@@ -232,7 +232,7 @@ export class TextDocument {
     if (change === 'reset' || this.missing) {
       this.missing = false
       await this.load(now.stat)
-      this.deps.emitChanged({ reset: true })
+      this.emitChanged({ reset: true })
       return
     }
     if (change === 'appended') {
@@ -245,7 +245,7 @@ export class TextDocument {
       if (!followsEnd) return
       this.layout = { ...this.layout, end: now.stat.size }
       if (!afterShrink) this.ensureIndexing()
-      this.deps.emitChanged({ appended: true })
+      this.emitChanged({ appended: true })
       return
     }
     if (!afterShrink) this.ensureIndexing()
@@ -339,7 +339,12 @@ export class TextDocument {
     this.encoding = encoding
     // 旧编码之间换行单元相同，索引照用；万一判为 UTF-16 则重建
     if (unitOf(encoding.label) !== unitOf(before.label)) await this.relayout()
-    this.deps.emitChanged({ reset: true })
+    this.emitChanged({ reset: true })
+  }
+
+  /** 关闭之后不再发事件（关闭前已开始的刷新 / 重新判断可能在关闭后才走到这里） */
+  private emitChanged(event: Omit<DocChangedEvent, 'docId'>): void {
+    if (!this.closed) this.deps.emitChanged(event)
   }
 
   private progress(index: LineIndex, final: boolean, error?: string): void {

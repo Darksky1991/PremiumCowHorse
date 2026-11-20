@@ -1,4 +1,10 @@
-import type { HostSettings, PreviewHost, ToastType } from '@pch/plugin-sdk'
+import type {
+  HostSettings,
+  PreviewDocApi,
+  PreviewHost,
+  ToastType,
+  ViewAsMode
+} from '@pch/plugin-sdk'
 import { AppError, isUnderUri, type DirectoryListing, type TabLocation } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
@@ -22,6 +28,10 @@ export interface PreviewHostDeps {
   onVfsChanged: (listener: (uri: string) => void) => () => void
   /** 订阅本标签的刷新请求（地址栏的刷新按钮 / F5）；返回取消订阅函数 */
   onRefresh: (listener: () => void) => () => void
+  /** 文本文档 API（doc-session.ts；在标签内容存续期间是同一个对象） */
+  doc: PreviewDocApi
+  /** 本标签的查看方式覆盖（preview-container 的按标签状态） */
+  viewAs: { can: (mode: ViewAsMode) => boolean; set: (mode: ViewAsMode) => void }
   tabs: {
     open: (workspaceId: string, target: TabTarget) => void
     navigate: (id: string, target: TabTarget) => void
@@ -120,8 +130,13 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         if (parent === null) return
         deps.tabs.navigate(tabId, parent)
       },
-      onRefresh: (listener) => deps.onRefresh(listener)
+      onRefresh: (listener) => deps.onRefresh(listener),
+      viewAs: (mode) => {
+        if (deps.viewAs.can(mode)) deps.viewAs.set(mode)
+      },
+      canViewAs: (mode) => deps.viewAs.can(mode)
     },
+    doc: deps.doc,
     system: {
       revealInOs: (uri) => {
         invoke('system.revealInOs', { uri }).catch(reportError)

@@ -12,6 +12,7 @@ import {
 import { applySecurityPolicies } from '../windows/security'
 import { driveTypeStatus, location } from '../vfs/location'
 import { createContainer, type Container } from './container'
+import { bindDocumentOwner } from '../vfs/document/document-owner'
 import { buildScannerConfig } from '../vfs/scanner-config'
 import { registerShutdown } from './shutdown'
 
@@ -94,12 +95,12 @@ function wireEvents(c: Container): void {
   nativeTheme.on('updated', () => c.windows.syncChrome())
 }
 
-/** 文本文档归属窗口（owner = webContents id，与 IPC 的 senderId 一致）：窗口销毁时全部释放 */
+/**
+ * 文本文档归属窗口（owner = webContents id，与 IPC 的 senderId 一致）：页面重新加载 / 渲染进程崩溃时关闭，
+ * 窗口销毁时全部释放
+ */
 function wireDocuments(c: Container): void {
-  app.on('browser-window-created', (_event, win) => {
-    const id = win.webContents.id
-    win.webContents.once('destroyed', () => c.documents.releaseOwner(id))
-  })
+  app.on('browser-window-created', (_event, win) => bindDocumentOwner(win.webContents, c.documents))
 }
 
 /**

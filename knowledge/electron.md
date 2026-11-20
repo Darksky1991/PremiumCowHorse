@@ -67,3 +67,17 @@
 - 解决：`scanner/schedule/scheduler.ts` 让同时进行的原生调用总数不超过 `threadPoolSize`（默认取 `UV_THREADPOOL_SIZE`，未设置为 4），并发按位置组（本地卷 / 网络主机）各限后台 1 个 + P0 1 个，本地合计、网络合计、单个组都最多占 `threadPoolSize - 1`（卡住的一方不会占掉最后一个线程）；被看门狗中止的调用在其 promise 真正 settle 之前继续占着并发名额（同一主机不会因重试而堆积卡住的线程）。
 - 注意：Win32 枚举器解析链接目标时内部还有并发的 `fs` 调用，未计入上限；扫描进程 fork 时经环境变量设置 `UV_THREADPOOL_SIZE=16`（必须在线程池首次使用之前设置；`main/vfs/scanner-process.ts`），扫描进程把同一值作为调度器的 `threadPoolSize`。
 - 预防：给原生 / `fs` 调用加超时时，确认调用数受线程池约束，或从「实际开始执行」起计时。
+
+### 主进程按窗口持有的资源：重新加载 / 渲染进程崩溃时 webContents 不销毁
+
+- 日期：2026-11-20
+- 症状：（预防性，文本预览 Task 4 审查发现）按 owner（webContents id）持有的文本文档只在 `destroyed` 时释放；按 F5 / Ctrl+R 重新加载、渲染进程崩溃后，webContents（及其 id）不变、`destroyed` 不触发，新页面不知道旧的 docId，旧文档一直占着每窗口 16 个的名额，直到被 LRU 挤掉。
+- 解决：`vfs/document/document-owner.ts` 的 `bindDocumentOwner` 另外监听 `did-start-navigation`（只处理 `isMainFrame && !isSameDocument`；Electron 45 的第一个参数是带 `isMainFrame` / `isSameDocument` 的事件对象，其余位置参数已废弃）与 `render-process-gone`，调用 `DocumentService.resetOwner`：关闭全部文档并递增该 owner 的页面代号，旧页面发起、之后才完成的 `doc.open` 也关闭。与 `releaseOwner` 不同，之后的 open 照常受理（id 还会被新页面使用）。
+- 预防：主进程按窗口持有状态时，同时考虑「窗口销毁」与「同一 webContents 换了页面」两种生命周期。
+
+### 渲染端：宿主对象在 useState 中惰性创建，卸载时 dispose，之后仍可使用（StrictMode）
+
+- 日期：2026-11-20
+- 症状：（预防性，文本预览 Task 5）预览宿主的 `doc` API 要在插件第一次渲染时就可用，且子组件的 effect（插件打开文档）先于父组件的 effect 执行——在父组件 effect 里创建会晚；而开发模式的 StrictMode 会执行「effect → cleanup → effect」，cleanup 中 dispose 后对象若不能再用，第二轮 effect 中插件的调用就失效。
+- 解决：`features/preview/use-doc-session.ts` 用 `useState(() => createDocSession(...))` 惰性创建；IPC 事件订阅在第一个文档打开时建立、最后一个关闭时取消；`dispose` 只关闭现有文档并递增代号（之前发出、之后才完成的 open 关闭并拒绝），对象之后照常可用。
+- 预防：在 effect 中释放、在渲染中创建的对象，按「dispose 之后还会被再次使用」设计，并加单元测试（`doc-session.test.ts` 的 StrictMode 用例）。

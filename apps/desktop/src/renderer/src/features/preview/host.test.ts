@@ -45,6 +45,8 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
       refreshListeners.add(listener)
       return () => refreshListeners.delete(listener)
     },
+    doc: {} as PreviewHostDeps['doc'],
+    viewAs: { can: (mode) => mode === 'text', set: vi.fn() },
     tabs: { open: vi.fn(), navigate: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
     notify: vi.fn(),
@@ -277,5 +279,22 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     const { host } = setup({ settings })
     expect(host.settings.get('explorer.showHiddenFiles')).toBe(false)
     expect(host.settings.get('general.language' as 'explorer.showHiddenFiles')).toBeUndefined()
+  })
+})
+
+describe('createPreviewHost: viewAs / doc', () => {
+  it('switches the view only when the container allows it', () => {
+    const { host, deps } = setup()
+    expect(host.tabs.canViewAs('text')).toBe(true)
+    expect(host.tabs.canViewAs('info')).toBe(false)
+    host.tabs.viewAs('info')
+    expect(deps.viewAs.set).not.toHaveBeenCalled()
+    host.tabs.viewAs('text')
+    expect(deps.viewAs.set).toHaveBeenCalledWith('text')
+  })
+
+  it('exposes the document API given by the container as is (stable across host rebuilds)', () => {
+    const { host, deps } = setup()
+    expect(host.doc).toBe(deps.doc)
   })
 })

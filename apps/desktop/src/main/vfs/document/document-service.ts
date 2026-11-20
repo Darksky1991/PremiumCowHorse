@@ -1,5 +1,6 @@
 // 打开的文本文档表（设计 3.1、3.7 节）：文档归属调用方窗口（owner = webContents id），
-// 每个窗口最多 16 个（超出时关闭最久未用的），窗口销毁时全部释放；事件只发给所属窗口。
+// 每个窗口最多 16 个（超出时关闭最久未用的），窗口销毁时全部释放，页面重新加载 / 渲染进程崩溃时也全部关闭；
+// 事件只发给所属窗口。
 import { randomUUID } from 'node:crypto'
 import {
   AppError,
@@ -50,6 +51,8 @@ export class DocumentService {
   private readonly owners = new Map<number, Set<string>>()
   /** 已销毁的窗口（webContents id 不会复用）：在其销毁后才完成的 open 立即关闭 */
   private readonly released = new Set<number>()
+  /** owner → 页面代号（resetOwner 递增）：在旧页面发起、新页面开始后才完成的 open 立即关闭 */
+  private readonly generations = new Map<number, number>()
 
   constructor(private readonly opts: DocumentServiceOptions) {}
 
@@ -58,9 +61,10 @@ export class DocumentService {
     input: { uri: string; encoding?: DocEncoding; at?: 'start' | 'end' }
   ): Promise<DocumentInfo> {
     const id = (this.opts.newId ?? randomUUID)()
+    const generation = this.generations.get(owner) ?? 0
     const options: OpenOptions = { encoding: input.encoding, at: input.at }
     const doc = await TextDocument.open(id, input.uri, options, this.depsFor(owner, id))
-    if (this.released.has(owner)) {
+    if (this.released.has(owner) || (this.generations.get(owner) ?? 0) !== generation) {
       doc.close()
       throw new AppError({ code: 'DOC_NOT_FOUND', detail: id })
     }
@@ -110,11 +114,21 @@ export class DocumentService {
     this.owners.get(owner)?.delete(docId)
   }
 
-  /** 窗口销毁：关闭其全部文档 */
-  releaseOwner(owner: number): void {
-    this.released.add(owner)
+  /**
+   * 页面重新加载 / 导航、渲染进程崩溃：关闭其全部文档（新页面不知道旧的 docId），
+   * 旧页面发起、尚未完成的 open 完成时也关闭。之后的 open 照常受理
+   */
+  resetOwner(owner: number): void {
+    this.generations.set(owner, (this.generations.get(owner) ?? 0) + 1)
     for (const id of [...(this.owners.get(owner) ?? [])]) this.close(owner, id)
     this.owners.delete(owner)
+  }
+
+  /** 窗口销毁：关闭其全部文档，之后完成的 open 也关闭 */
+  releaseOwner(owner: number): void {
+    this.released.add(owner)
+    this.resetOwner(owner)
+    this.generations.delete(owner)
   }
 
   dispose(): void {

@@ -1,10 +1,20 @@
 import type { JSX } from 'react'
-import { CopyIcon, ExternalLinkIcon, FileIcon, FolderIcon, FolderOpenIcon } from 'lucide-react'
+import {
+  CopyIcon,
+  ExternalLinkIcon,
+  FileIcon,
+  FileTextIcon,
+  FolderIcon,
+  FolderOpenIcon
+} from 'lucide-react'
 import type { PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
 import { formatBytes, formatDateTime } from './format'
 
-/** 文件信息（名称、位置、类型、大小、修改时间）与三个动作；所有访问都经 host */
+/**
+ * 文件信息（名称、位置、类型、大小、修改时间）与三个动作；所有访问都经 host。
+ * 文件且文本插件可用时另有「作为文本查看」（按标签切换查看方式，导航离开后恢复）
+ */
 export default function FallbackPreview({ resource, host }: PreviewProps): JSX.Element {
   const { t, language } = host.i18n
   const isDirectory = resource.kind === 'directory'
@@ -54,6 +64,12 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
             <CopyIcon data-icon="inline-start" />
             {t('copyPath')}
           </Button>
+          {!isDirectory && host.tabs.canViewAs('text') ? (
+            <Button variant="outline" onClick={() => host.tabs.viewAs('text')}>
+              <FileTextIcon data-icon="inline-start" />
+              {t('viewAsText')}
+            </Button>
+          ) : null}
         </div>
       </section>
     </div>

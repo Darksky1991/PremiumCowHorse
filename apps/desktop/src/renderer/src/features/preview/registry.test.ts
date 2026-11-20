@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   FALLBACK_PLUGIN_ID,
+  TEXT_PLUGIN_ID,
   type AnyPreviewPlugin,
   type PreviewPluginManifest,
   type ResourceInfo
 } from '@pch/plugin-sdk'
-import { pickPlugin, scoreResource } from './registry'
+import {
+  canViewAs,
+  needsSniff,
+  pickPlugin,
+  pluginById,
+  resolvePlugin,
+  scoreResource
+} from './registry'
 
 const file = (name: string, extra: Partial<ResourceInfo> = {}): ResourceInfo => ({
   uri: `file:///C:/x/${encodeURIComponent(name)}`,
@@ -102,5 +110,82 @@ describe('pickPlugin', () => {
 
   it('throws when the fallback plugin is missing', () => {
     expect(() => pickPlugin([text], file('a.bin'))).toThrow(FALLBACK_PLUGIN_ID)
+  })
+})
+
+describe('textLike plugins (sniffed text files)', () => {
+  const fallback = plugin(FALLBACK_PLUGIN_ID, manifest({}))
+  const folder = plugin('pch.preview.folder', manifest({ kinds: ['directory'] }))
+  const text = plugin(
+    'pch.preview.text',
+    manifest({ kinds: ['file'], extensions: ['txt', 'log'], textLike: true })
+  )
+  const image = plugin('image', manifest({ kinds: ['file'], extensions: ['png'] }))
+  const all = [folder, text, image, fallback]
+
+  it('do not take an unknown file that was not sniffed, or was sniffed as binary', () => {
+    expect(pickPlugin(all, file('app.out'))).toBe(fallback)
+    expect(pickPlugin(all, file('app.out', { textLike: false }))).toBe(fallback)
+  })
+
+  it('take an unknown file sniffed as text', () => {
+    expect(pickPlugin(all, file('app.out', { textLike: true }))).toBe(text)
+    expect(scoreResource(text.manifest, file('app.out', { textLike: true }))).toBe(0)
+  })
+
+  it('an extension match wins over textLike', () => {
+    expect(pickPlugin(all, file('a.png', { textLike: true }))).toBe(image)
+    expect(pickPlugin(all, file('a.log'))).toBe(text)
+  })
+
+  it('still honour kinds, schemes, maxSize and when', () => {
+    const small = plugin('small', manifest({ textLike: true, maxSize: 10 }))
+    expect(pickPlugin([small, fallback], file('a.out', { textLike: true }))).toBe(fallback)
+    const sftp = plugin('sftp', manifest({ textLike: true, schemes: ['sftp'] }))
+    expect(pickPlugin([sftp, fallback], file('a.out', { textLike: true }))).toBe(fallback)
+  })
+
+  it('needsSniff: only an unmatched, non-empty file with a textLike plugin registered', () => {
+    expect(needsSniff(all, file('app.out'))).toBe(true)
+    expect(needsSniff(all, file('a.log'))).toBe(false)
+    expect(needsSniff(all, file('a.png'))).toBe(false)
+    expect(needsSniff(all, dir)).toBe(false)
+    expect(needsSniff(all, file('empty.out', { size: 0 }))).toBe(false)
+    expect(needsSniff([folder, image, fallback], file('app.out'))).toBe(false)
+    // 已经判断过
+    expect(needsSniff(all, file('app.out', { textLike: false }))).toBe(false)
+  })
+
+  it('pluginById finds a registered plugin, or null', () => {
+    expect(pluginById(all, 'pch.preview.text')).toBe(text)
+    expect(pluginById([folder, fallback], 'pch.preview.text')).toBeNull()
+  })
+})
+
+describe('view-as overrides', () => {
+  const fallback = plugin(FALLBACK_PLUGIN_ID, manifest({}))
+  const folder = plugin('pch.preview.folder', manifest({ kinds: ['directory'] }))
+  const text = plugin(TEXT_PLUGIN_ID, manifest({ kinds: ['file'], extensions: ['txt'] }))
+  const all = [folder, text, fallback]
+
+  it('resolvePlugin: info → fallback, text → the text plugin, null → normal selection', () => {
+    expect(resolvePlugin(all, file('a.bin'), 'text')).toBe(text)
+    expect(resolvePlugin(all, file('a.txt'), 'info')).toBe(fallback)
+    expect(resolvePlugin(all, file('a.txt'), null)).toBe(text)
+    // 文本插件未注册（Task 6 之前）：退回 fallback
+    expect(resolvePlugin([folder, fallback], file('a.bin'), 'text')).toBe(fallback)
+  })
+
+  it('canViewAs: text only for files, when registered and not already shown', () => {
+    expect(canViewAs(all, file('a.bin'), FALLBACK_PLUGIN_ID, 'text')).toBe(true)
+    expect(canViewAs(all, file('a.txt'), TEXT_PLUGIN_ID, 'text')).toBe(false)
+    expect(canViewAs(all, dir, FALLBACK_PLUGIN_ID, 'text')).toBe(false)
+    expect(canViewAs([folder, fallback], file('a.bin'), FALLBACK_PLUGIN_ID, 'text')).toBe(false)
+  })
+
+  it('canViewAs: info unless the fallback is already shown', () => {
+    expect(canViewAs(all, file('a.txt'), TEXT_PLUGIN_ID, 'info')).toBe(true)
+    expect(canViewAs(all, dir, 'pch.preview.folder', 'info')).toBe(true)
+    expect(canViewAs(all, file('a.bin'), FALLBACK_PLUGIN_ID, 'info')).toBe(false)
   })
 })

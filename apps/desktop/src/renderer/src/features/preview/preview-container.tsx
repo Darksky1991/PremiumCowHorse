@@ -8,7 +8,8 @@ import {
   FALLBACK_PLUGIN_ID,
   type AnyPreviewPlugin,
   type PreviewProps,
-  type ResourceInfo
+  type ResourceInfo,
+  type ViewAsMode
 } from '@pch/plugin-sdk'
 import { AppError, type FileStat, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
@@ -27,7 +28,9 @@ import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
 import { PluginErrorBoundary } from './plugin-error-boundary'
-import { fallbackOf, pickPlugin } from './registry'
+import { canViewAs, needsSniff, resolvePlugin } from './registry'
+import { useDocSession } from './use-doc-session'
+import { useSniff } from './use-sniff'
 import { WorkspaceOverview } from './workspace-overview'
 
 export interface PreviewContainerProps {
@@ -38,19 +41,21 @@ export interface PreviewContainerProps {
 
 /**
  * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview；
- * 其余取得资源描述 → 注册表选择插件 → 懒加载插件组件。
+ * 其余取得资源描述 → 注册表选择插件（没有插件按扩展名 / MIME 匹配的文件先 vfs.sniff，文本交给 textLike 插件）
+ * → 懒加载插件组件。
  * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
  * 共享断开 / 无响应时立即显示缓存与「已断开」，目录不在了显示「找不到」）；文件标签 stat 后显示，
  * 所在共享在 reachability-store 中为断开时不发 stat（会等到超时），只显示文件名与「已断开」。
  * 每个标签一层 ErrorBoundary + Suspense：插件抛错或懒加载失败只在该标签显示错误面板，
  * 并提供「以文件信息显示」（fallback 插件）的出口。
+ * 查看方式覆盖（viewAs：info = 文件信息、text = 作为文本查看）是按标签、按位置的临时状态，导航离开后清除。
  * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
  * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
  */
 export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
   return (
     <div className="h-full min-h-0">
-      {/* 同一标签内导航到另一位置时整体重建（「以文件信息显示」等状态不沿用） */}
+      {/* 同一标签内导航到另一位置时整体重建（查看方式覆盖、sniff 结果等状态不沿用） */}
       {tab.kind === 'workspace' ? (
         <WorkspaceOverview key={tab.uri} tab={tab} />
       ) : (
@@ -61,11 +66,11 @@ export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.E
 }
 
 function ResourcePreview({ tab, plugins }: PreviewContainerProps): JSX.Element {
-  // 「以文件信息显示」（fallback 插件）：目录也要 stat 才有大小与时间
-  const [showInfo, setShowInfo] = useState(false)
-  const view = { tab, plugins, showInfo, onShowInfo: () => setShowInfo(true) }
-  if (tab.kind === 'directory' && !showInfo) {
-    return <PluginView {...view} resource={directoryResource(tab)} />
+  // 查看方式覆盖：「以文件信息显示」（目录也要 stat 才有大小与时间）/「作为文本查看」
+  const [viewAs, setViewAs] = useState<ViewAsMode | null>(null)
+  const view = { tab, plugins, viewAs, onViewAs: setViewAs }
+  if (tab.kind === 'directory' && viewAs === null) {
+    return <SelectPlugin {...view} resource={directoryResource(tab)} />
   }
   return <StatResource {...view} />
 }
@@ -75,7 +80,10 @@ function directoryResource(tab: TabState): ResourceInfo {
   return { uri: tab.uri, name: tab.title, kind: 'directory', size: 0, mtime: 0, mime: null }
 }
 
-type ViewProps = PreviewContainerProps & { showInfo: boolean; onShowInfo: () => void }
+type ViewProps = PreviewContainerProps & {
+  viewAs: ViewAsMode | null
+  onViewAs: (mode: ViewAsMode) => void
+}
 
 function StatResource(props: ViewProps): JSX.Element {
   const { tab } = props
@@ -117,7 +125,27 @@ function StatResource(props: ViewProps): JSX.Element {
     )
   }
   if (stat.data === undefined) return <Loading />
-  return <PluginView {...props} resource={toResourceInfo(stat.data, tab)} />
+  return <SelectPlugin {...props} resource={toResourceInfo(stat.data, tab)} />
+}
+
+/**
+ * 选择插件：没有插件按扩展名 / MIME 匹配的文件先 sniff（显示加载中），
+ * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。查看方式覆盖时不 sniff
+ */
+function SelectPlugin(props: ViewProps & { resource: ResourceInfo }): JSX.Element {
+  const { plugins, resource, viewAs } = props
+  const needed = viewAs === null && needsSniff(plugins, resource)
+  const sniffed = useSniff(resource.uri, needed)
+  if (!needed) return <PluginView {...props} plugin={resolvePlugin(plugins, resource, viewAs)} />
+  if (sniffed === undefined) return <Loading />
+  const sniffedResource = { ...resource, textLike: sniffed === 'text' }
+  return (
+    <PluginView
+      {...props}
+      resource={sniffedResource}
+      plugin={resolvePlugin(plugins, sniffedResource, null)}
+    />
+  )
 }
 
 /** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */
@@ -169,10 +197,10 @@ interface PendingConfirm {
 function PluginView({
   tab,
   plugins,
-  showInfo,
-  onShowInfo,
-  resource
-}: ViewProps & { resource: ResourceInfo }): JSX.Element {
+  onViewAs,
+  resource,
+  plugin
+}: ViewProps & { resource: ResourceInfo; plugin: AnyPreviewPlugin }): JSX.Element {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const theme = useResolvedTheme()
@@ -202,10 +230,11 @@ function PluginView({
   const navigate = useTabsStore((s) => s.navigate)
   const setViewState = useTabsStore((s) => s.setViewState)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
+  const doc = useDocSession(tab.id, settings)
 
-  const plugin = showInfo ? fallbackOf(plugins) : pickPlugin(plugins, resource)
   const pluginId = plugin.manifest.id
   const language = i18n.language
+  const resourceKind = resource.kind
 
   const host = useMemo(() => {
     registerPluginResources(i18n, plugin)
@@ -220,6 +249,11 @@ function PluginView({
       isOffline: (uri) => isShareOffline(uri, offlineShares),
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
       onRefresh: (listener) => onTabRefresh(tab.id, listener),
+      doc,
+      viewAs: {
+        can: (mode) => canViewAs(plugins, { kind: resourceKind }, pluginId, mode),
+        set: onViewAs
+      },
       tabs: { open, navigate },
       confirmExecutable: (name) =>
         new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
@@ -239,6 +273,10 @@ function PluginView({
     tab.id,
     workspace?.id,
     queryClient,
+    doc,
+    plugins,
+    resourceKind,
+    onViewAs,
     offlineShares,
     open,
     navigate,
@@ -275,7 +313,7 @@ function PluginView({
               </p>
             </div>
             {pluginId === FALLBACK_PLUGIN_ID ? null : (
-              <Button variant="outline" onClick={onShowInfo}>
+              <Button variant="outline" onClick={() => onViewAs('info')}>
                 {t('preview:showInfo')}
               </Button>
             )}
