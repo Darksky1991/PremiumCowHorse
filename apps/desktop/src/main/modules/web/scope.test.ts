@@ -10,11 +10,19 @@ function table(root: string): { scopes: ScopeTable; id: string } {
 }
 
 describe('scopeIdOf', () => {
-  it('is 16 hex chars and stable for the same input', () => {
+  it('is `s` + 16 hex chars and stable for the same input', () => {
     const a = scopeIdOf('file:///C:/案件%20A')
-    expect(a).toMatch(/^[0-9a-f]{16}$/)
+    expect(a).toMatch(/^s[0-9a-f]{16}$/)
     expect(scopeIdOf('file:///C:/案件%20A')).toBe(a)
     expect(scopeIdOf('file:///C:/案件%20B')).not.toBe(a)
+  })
+
+  it('always parses back as the same host name (never IPv4-like)', () => {
+    for (let i = 0; i < 300; i++) {
+      const id = scopeIdOf(`file:///C:/dir${i}`)
+      expect(id).toHaveLength(17)
+      expect(new URL(`pch-web://${id}/a.html`).hostname).toBe(id)
+    }
   })
 })
 

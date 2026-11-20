@@ -638,7 +638,7 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
 
 ### 7.3 `pcfs://` 协议：让预览插件「像访问网页资源一样」访问任意文件
 
-> **已实现（M2，浏览器视图用的 `pch-web://`）**：`modules/web/{scope,mime,web-protocol}.ts`。地址 `pch-web://<范围编号>/<逐段 encodeURIComponent 的相对路径>`，范围编号 = `sha256(范围根 URI)` 前 16 个十六进制字符，`ScopeTable` 在内存登记 编号 → 范围根；`fromWebUrl` 逐段解码后拒绝空段、`.` / `..`、含 `/` `\` NUL 的段，并用 `isUnderUri` 复核（未登记 → 404，范围外 → 403）。`createWebProtocolHandler` 只读：GET / HEAD，单区间 `Range`（206 / 416），`Content-Type` 取内置表（`mimeOf`，不引入 `mime` 包），`Cache-Control: no-store`，目录 / 不存在 → 404，`FS_UNAVAILABLE` → 502，`FS_TIMEOUT` → 504，查询参数一律忽略；响应体取消或请求中止时销毁流。`registerPrivilegedSchemes` 登记 `pch-web`、`pch-asset`（`standard`、`secure`、`supportFetchAPI`、`corsEnabled`、`stream`）；处理器在 Task 6 注册到浏览器视图的会话。下文的 `pcfs://` 仍是目标结构。
+> **已实现（M2，浏览器视图用的 `pch-web://`）**：`modules/web/{scope,mime,web-protocol}.ts`。地址 `pch-web://<范围编号>/<逐段 encodeURIComponent 的相对路径>`，范围编号 = `s` + `sha256(范围根 URI)` 前 16 个十六进制字符（`s` 前缀避免主机名被当作 IPv4 数字解析），`ScopeTable` 在内存登记 编号 → 范围根；`fromWebUrl` 逐段解码后拒绝空段、`.` / `..`、含 `/` `\` NUL 的段，并用 `isUnderUri` 复核（未登记 → 404，范围外 → 403）。`createWebProtocolHandler` 只读：GET / HEAD，单区间 `Range`（206 / 416），`Content-Type` 取内置表（`mimeOf`，不引入 `mime` 包），`Cache-Control: no-store`，目录 / 不存在 → 404，`FS_UNAVAILABLE` → 502，`FS_TIMEOUT` → 504，查询参数一律忽略；响应体取消或请求中止时销毁流。`registerPrivilegedSchemes` 登记 `pch-web`、`pch-asset`（`standard`、`secure`、`supportFetchAPI`、`corsEnabled`、`stream`）；处理器在 Task 6 注册到浏览器视图的会话。下文的 `pcfs://` 仍是目标结构。
 
 插件拿到的是一个 URL（`pcfs://res/<encodeURIComponent(uri)>`），可以直接用于 `<img>`、`<video>`、pdf.js、`fetch()`，无需关心文件在本地还是 FTP 上。
 

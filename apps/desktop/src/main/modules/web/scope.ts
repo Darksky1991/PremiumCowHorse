@@ -3,9 +3,9 @@ import { isUnderUri } from '@pch/shared'
 
 export const WEB_SCHEME = 'pch-web'
 
-/** 范围编号：sha256(范围根 URI) 的前 16 个十六进制字符（同一目录重启后不变，localStorage 稳定） */
+/** 范围编号：`s` + sha256(范围根 URI) 的前 16 个十六进制字符（共 17 个字符；同一目录重启后不变，localStorage 稳定；`s` 前缀避免全数字的主机名被当作 IPv4 数字解析） */
 export function scopeIdOf(rootUri: string): string {
-  return createHash('sha256').update(rootUri).digest('hex').slice(0, 16)
+  return 's' + createHash('sha256').update(rootUri).digest('hex').slice(0, 16)
 }
 
 function prefixOf(root: string): string {
