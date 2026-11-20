@@ -38,8 +38,6 @@ interface OpenDoc {
   uri: string
   /** reset / setEncoding / buildIndex 时递增：发出时的代号与当前不同的 readLines 结果过期 */
   generation: number
-  /** 最近一次刷新时文件不存在：暂停自动刷新（地址栏刷新时再检查） */
-  missing: boolean
   /** 收到、尚未连同 info 通知插件的变化 */
   pending: ChangeFlags
   refreshing: boolean
@@ -51,7 +49,8 @@ const isEmpty = (flags: ChangeFlags): boolean => !flags.appended && !flags.reset
 /**
  * 预览宿主的文本文档 API（设计 3.5、3.6 节）。
  * - 自动刷新由宿主负责：激活且聚焦时，每个打开的文档按位置（UNC = 网络）每隔设置的秒数 doc.refresh 一次
- *   （上一次返回后才计时，不重叠）；文件不存在后暂停；地址栏刷新 / F5 立即刷新全部文档。
+ *   （上一次返回后才计时，不重叠）；文件不存在（missing）后也照常检查，日志轮转（改名后新建同名文件）时
+ *   不按 F5 也会以 reset 回到新文件；地址栏刷新 / F5 立即刷新全部文档。
  * - 变化通知：主进程的 doc.changed 先记下，等刷新的应答（DocumentInfo）到达后连同 info 一起交给插件；
  *   主进程自行发现的变化（建索引中重新判断编码等）没有进行中的刷新时，宿主刷新一次取得 info。
  * - 过期丢弃：reset 事件到达、setEncoding / buildIndex 完成时文档的代号递增，
@@ -85,7 +84,7 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
   }
 
   const schedule = (doc: OpenDoc): void => {
-    if (!active || doc.missing || doc.refreshing || doc.timer !== null) return
+    if (!active || doc.refreshing || doc.timer !== null) return
     if (docs.get(doc.docId) !== doc) return
     const ms = isUncUri(doc.uri) ? intervals.networkMs : intervals.localMs
     doc.timer = setTimeout(() => {
@@ -125,13 +124,8 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
     if (!doc) return
     if (flags.reset) {
       doc.generation++
-      doc.missing = false
       // 文件又出现了：之前记下的 missing 不再成立
       delete doc.pending.missing
-    }
-    if (flags.missing) {
-      doc.missing = true
-      clearTimer(doc)
     }
     doc.pending = { ...doc.pending, ...flags }
     refresh(doc)
@@ -191,7 +185,6 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
         docId: info.docId,
         uri,
         generation: 0,
-        missing: false,
         pending: {},
         refreshing: false,
         timer: null

@@ -260,31 +260,37 @@ describe('createDocSession: polling (the host refreshes, plugins do not keep tim
     expect(refreshCalls(calls)).toEqual([docId])
   })
 
-  it('stops polling a missing document; F5 still checks it; a reset resumes polling', async () => {
+  it('keeps polling a missing document at the same interval; a rotated file comes back as reset without F5', async () => {
     const s = setup()
     s.session.setActive(true)
     const { docId } = await s.session.open(LOCAL)
     const changes = vi.fn()
     s.session.onChanged(docId, changes)
+    // 第一次轮询：文件已被改名（轮转）→ missing
     const pending = s.hold('doc.refresh')
     await vi.advanceTimersByTimeAsync(5000)
     s.emitChanged({ docId, missing: true })
     pending.resolve(info(docId, LOCAL))
     await settle()
     expect(changes).toHaveBeenCalledWith({ docId, missing: true, info: info(docId, LOCAL) })
-    await vi.advanceTimersByTimeAsync(30_000)
-    expect(refreshCalls(s.calls)).toHaveLength(1)
-    // F5：文件又出现 → reset
+    // 不存在期间照常每 5 秒检查（主进程只在变为不存在时通知一次）
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(refreshCalls(s.calls)).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(refreshCalls(s.calls)).toHaveLength(3)
+    expect(changes).toHaveBeenCalledTimes(1)
+    // 新建了同名文件：下一次轮询（不按 F5）得到 reset
     const back = info(docId, LOCAL, { size: 99 })
     s.infos.set(docId, back)
     const again = s.hold('doc.refresh')
-    s.refresh()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(refreshCalls(s.calls)).toHaveLength(4)
     s.emitChanged({ docId, reset: true })
     again.resolve(back)
     await settle()
     expect(changes).toHaveBeenLastCalledWith({ docId, reset: true, info: back })
     await vi.advanceTimersByTimeAsync(5000)
-    expect(refreshCalls(s.calls)).toHaveLength(3)
+    expect(refreshCalls(s.calls)).toHaveLength(5)
   })
 
   it('stops polling a document the main process no longer has (DOC_NOT_FOUND)', async () => {
