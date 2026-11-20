@@ -326,6 +326,87 @@ describe('WebViewManager', () => {
     })
   })
 
+  describe('键盘焦点：应用界面操作 attach 之后，视图不经用户点击拿不走焦点（资源树键盘浏览，Q18）', () => {
+    /** 视图拿到焦点（webContents 的 focus 事件） */
+    const gainFocus = (v: FakeView): void => {
+      v.focused = true
+      v.events.focused()
+    }
+
+    it('新建视图加载时拿到焦点 → 交回应用界面', () => {
+      manager.attach(win, input('t1'))
+      gainFocus(viewOf(0))
+      expect(win.focuses).toBe(1)
+    })
+
+    it('复用视图加载新地址（或再次显示）时拿到焦点 → 交回应用界面', () => {
+      manager.attach(win, input('t1'))
+      manager.hide(win.id, 't1')
+      manager.attach(win, input('t1', 'second.html'))
+      gainFocus(viewOf(0))
+      expect(win.focuses).toBe(1)
+      // 焦点已在应用界面（假对象不联动）
+      viewOf(0).focused = false
+      manager.hide(win.id, 't1')
+      manager.attach(win, input('t1', 'second.html'))
+      gainFocus(viewOf(0))
+      expect(win.focuses).toBe(2)
+    })
+
+    it('用户在视图内按下鼠标之后拿到焦点 → 不动；焦点先被交回时按下鼠标把焦点给视图', () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      v.events.pointerDown()
+      // 按下鼠标时视图还没有焦点：给视图（焦点事件与鼠标事件的先后不确定）
+      expect(v.focused).toBe(true)
+      v.events.focused()
+      expect(win.focuses).toBe(0)
+
+      manager.attach(win, input('t2', 'b.html'))
+      const w = viewOf(1)
+      gainFocus(w)
+      expect(win.focuses).toBe(1)
+      w.focused = false
+      w.events.pointerDown()
+      expect(w.focused).toBe(true)
+      w.events.focused()
+      expect(win.focuses).toBe(1)
+    })
+
+    it('attach 时视图已持有焦点（在页面中点链接 / 按 Alt+←）→ 加载后的焦点不交回', () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      v.events.pointerDown()
+      manager.attach(win, input('t1', 'second.html'))
+      v.events.focused()
+      expect(win.focuses).toBe(0)
+    })
+
+    it('unfreeze 还给视图的焦点不交回', async () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      v.events.pointerDown()
+      await manager.freeze(win.id, 't1')
+      expect(win.focuses).toBe(1)
+      v.focused = false
+      manager.unfreeze(win.id, 't1', true)
+      v.events.focused()
+      expect(v.focused).toBe(true)
+      expect(win.focuses).toBe(1)
+    })
+
+    it('隐藏中 / 已销毁的视图的焦点事件不处理', () => {
+      manager.attach(win, input('t1'))
+      manager.hide(win.id, 't1')
+      gainFocus(viewOf(0))
+      expect(win.focuses).toBe(0)
+      manager.release(win.id, 't1')
+      viewOf(0).events.focused()
+      viewOf(0).events.pointerDown()
+      expect(win.focuses).toBe(1) // release 时视图持有焦点 → 交回一次
+    })
+  })
+
   it('截图期间被隐藏的视图，unfreeze 不再显示它；截图中的视图不参与淘汰', async () => {
     manager.attach(win, input('t1'))
     await manager.freeze(win.id, 't1')

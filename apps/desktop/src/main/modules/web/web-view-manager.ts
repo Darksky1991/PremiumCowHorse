@@ -40,6 +40,10 @@ export interface ViewEvents {
   key(input: KeyInput): boolean
   /** 鼠标侧键抬起（后退 / 前进）；调用方已阻止页面收到侧键 */
   sideButton(direction: 'back' | 'forward'): void
+  /** 用户在视图内按下鼠标（左 / 中 / 右键） */
+  pointerDown(): void
+  /** 视图的 webContents 拿到键盘焦点 */
+  focused(): void
   titleChanged(title: string): void
   loadingChanged(loading: boolean): void
   /** 主框架加载失败（错误码见 WebViewState.failed） */
@@ -103,6 +107,11 @@ interface Entry {
   shown: boolean
   /** 截图替身中（视图本身隐藏） */
   frozen: boolean
+  /**
+   * 不让视图自己拿走焦点：attach 时视图没有焦点（用户在应用界面中操作，例如资源树的 ↑↓）即为真，
+   * 用户在视图内按下鼠标 / 应用把焦点还给视图（unfreeze）时为假
+   */
+  guardFocus: boolean
   /** 最近一次显示的时刻（attach / hide 时更新的单调序号；LRU 用） */
   lastShown: number
   state: Omit<WebViewState, 'tabId'>
@@ -155,6 +164,7 @@ export class WebViewManager {
     entry.view.setVisible(true)
     entry.shown = true
     entry.frozen = false
+    entry.guardFocus = !this.hasFocus(entry)
     entry.lastShown = ++this.clock
     entry.scopeId = scopeId
     // 只换片段（同一页面）不重新加载：页面内的锚点跳转由页面自己处理，不经 web.navigate
@@ -218,7 +228,10 @@ export class WebViewManager {
     entry.frozen = false
     if (!entry.shown) return
     entry.view.setVisible(true)
-    if (refocus) entry.view.webContents.focus()
+    if (refocus) {
+      entry.guardFocus = false
+      entry.view.webContents.focus()
+    }
   }
 
   /** 会话事件（下载）→ 按 webContents id 找到所属视图后发提示 */
@@ -260,6 +273,14 @@ export class WebViewManager {
     }
   }
 
+  private hasFocus(entry: Entry): boolean {
+    try {
+      return entry.view.webContents.isFocused()
+    } catch {
+      return false
+    }
+  }
+
   private find(ownerId: number, tabId: string): Entry | undefined {
     return this.windows.get(ownerId)?.get(tabId)
   }
@@ -277,6 +298,7 @@ export class WebViewManager {
       scopeId,
       shown: false,
       frozen: false,
+      guardFocus: true,
       lastShown: 0,
       state: { title: '', loading: false, failed: null },
       destroyed: false
@@ -363,6 +385,24 @@ export class WebViewManager {
           shift: false,
           alt: true
         })
+      },
+      pointerDown: () => {
+        const entry = live()
+        if (!entry) return
+        entry.guardFocus = false
+        // 焦点事件可能先于鼠标事件到达并已被交回应用界面：按用户的意图把焦点给视图
+        if (!this.hasFocus(entry)) entry.view.webContents.focus()
+      },
+      focused: () => {
+        const entry = live()
+        if (!entry || !entry.shown || !entry.guardFocus) return
+        // 视图加载时会拿走键盘焦点（实测：新建视图 / loadURL），用户的方向键随之进入页面。
+        // 用户没有点击视图时交回应用界面
+        if (this.yieldFocus(entry)) {
+          this.deps.logger.debug(
+            `[web] gave the focus back to the app from the view of tab ${entry.tabId}`
+          )
+        }
       },
       titleChanged: (title) => pushState({ title }),
       loadingChanged: (loading) => pushState(loading ? { loading, failed: null } : { loading }),

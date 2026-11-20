@@ -220,14 +220,17 @@ test.describe('the browser view (html plugin)', () => {
     )
   }
 
-  /** 键盘焦点移到视图中（窗口也置于前台：webContents.isFocused 以窗口持有系统焦点为前提） */
+  /**
+   * 键盘焦点移到视图中（窗口也置于前台：webContents.isFocused 以窗口持有系统焦点为前提）。
+   * 先在页面左上角的空白处按下鼠标（用户点击视图）：没有点击时视图拿到的焦点由主进程交回应用界面（Q18）
+   */
   async function focusView(app: ElectronApplication, view: Page): Promise<void> {
     await app.evaluate(({ BrowserWindow, webContents }, url) => {
       BrowserWindow.getAllWindows()[0]!.focus()
-      webContents
-        .getAllWebContents()
-        .find((w) => w.getURL() === url)!
-        .focus()
+      const wc = webContents.getAllWebContents().find((w) => w.getURL() === url)!
+      wc.sendInputEvent({ type: 'mouseDown', x: 2, y: 2, button: 'left', clickCount: 1 })
+      wc.sendInputEvent({ type: 'mouseUp', x: 2, y: 2, button: 'left', clickCount: 1 })
+      wc.focus()
     }, view.url())
   }
 
@@ -550,6 +553,55 @@ test.describe('the browser view (html plugin)', () => {
       const again = await viewPage(app, '/proto/index.html')
       await expect(again.locator('#counter')).toHaveText('2')
       await expect.poll(() => visibility(app)).toEqual([true])
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('keyboard browsing in the tree keeps the focus in the tree when it passes web pages; a click in the page moves it there', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+      await tree.getByRole('treeitem', { name: 'app.js' }).click()
+      await expect(tabs(page)).toHaveText(['app.js'])
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus())
+      await expect.poll(() => focus(app)).toEqual({ app: true, views: [] })
+
+      // ↓ → index.html：在当前标签以浏览器视图打开，视图加载后焦点仍在应用界面（资源树）
+      await page.keyboard.press('ArrowDown')
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const view = await viewPage(app, '/proto/index.html')
+      await expect(view.locator('#counter')).toHaveText('1')
+      await expect.poll(() => visibility(app)).toEqual([true])
+      // 视图拿走焦点（若发生）在加载期间：留出时间
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: true, views: [false] })
+      // 资源树持有焦点（行以 aria-activedescendant 表示）
+      await expect(tree).toBeFocused()
+      await expect(tree.getByRole('treeitem', { name: 'index.html' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+
+      // 再 ↓ → notes.md（Markdown 视图，新建）：同样留在资源树
+      await page.keyboard.press('ArrowDown')
+      await expect(tabs(page)).toHaveText(['notes.md'])
+      const notes = await viewPage(app, '/proto/notes.md?pch-view=markdown')
+      await expect(notes.locator('#content h1')).toHaveText('Notes')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: true, views: [false] })
+      // 资源树持有焦点（行以 aria-activedescendant 表示）
+      await expect(tree).toBeFocused()
+      await expect(tree.getByRole('treeitem', { name: 'notes.md' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+
+      // 用户点击页面：焦点进入视图
+      await clickIn(app, notes, '#content h1')
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
     } finally {
       await app.close()
     }

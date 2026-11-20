@@ -131,10 +131,16 @@ export function createWebContentsView(ses: Session, events: ViewEvents): ViewLik
   wc.on('before-mouse-event', (event, mouse) => {
     // electron.d.ts 的 button 类型只列 left / middle / right；Electron 源码（blink_converter.cc）对侧键输出 back / forward
     const button: string | undefined = mouse.button
-    if (button !== 'back' && button !== 'forward') return
+    if (button !== 'back' && button !== 'forward') {
+      if (mouse.type === 'mouseDown') events.pointerDown()
+      return
+    }
     event.preventDefault()
     if (mouse.type === 'mouseUp') events.sideButton(button)
   })
+  // 焦点（Q18）：视图不经用户点击拿到的焦点由 manager 交回应用界面。推迟到焦点切换完成之后：
+  // 在 focus 事件中同步调用应用 webContents.focus() 不生效（实测，焦点仍在视图）；setImmediate 之后生效
+  wc.on('focus', () => setImmediate(() => events.focused()))
 
   // 页面状态（设计 5.3.5）
   wc.on('page-title-updated', (_event, title) => events.titleChanged(title))
