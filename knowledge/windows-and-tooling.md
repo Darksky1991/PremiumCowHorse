@@ -186,3 +186,11 @@
 - 原因：5.1 的 `ConvertFrom-Json` 把 JSON 数组作为**一个** `Object[]` 写出，`@()` 只包一层，`$list` 变成「只有一个元素（数组）」，`ForEach-Object` 的 `$_` 是整个数组。
 - 解决：`foreach ($x in (ConvertFrom-Json …)) { $list += [string]$x }`（`foreach` 会遍历数组本身，5.1 / 7 都适用）。
 - 预防：在 PowerShell 中处理 JSON 数组一律用 `foreach` 遍历；脚本逻辑要在真实 PowerShell 上跑一遍（见 `detect-script.test.ts`），不要只看字符串。另：Excel 把**加了引号的开关**（`"/r"`）当作文件名，开关不加引号、路径加引号。
+
+### `execFile` 的 `timeout`：子进程已以 0 退出、孙进程持有管道时，超时被当作成功
+
+- 日期：2026-11-20
+- 症状（M2 Task 9 审查与最终修复波核对）：PowerShell 脚本用 `ProcessStartInfo`（`UseShellExecute = $false`）启动 Excel 后立即退出，`execFile` 却要等到 15 秒超时才回调，而且回调的 `error` 为 null（启动被当作成功）。复现：`UseShellExecute=$false` 启动睡 6 秒的 `wscript.exe`，`timeout: 2000` → 2123 ms 回调，`error` 为 null。
+- 原因：.NET Framework 在 `UseShellExecute = $false` 时以继承句柄创建进程，孙进程继承了 Node 给 powershell 建的 stdout / stderr 管道；`execFile` 等到管道关闭（`close`）才回调。超时时 Node 结束子进程并销毁流，但子进程早已以 0 退出，于是按「退出码 0、无信号」回调成功。
+- 解决：启动外部程序的脚本一律 `UseShellExecute = $true`（经 ShellExecute，不继承管道）；`launcher/detect-script.test.ts` 有回归测试（孙进程睡 6 秒，脚本须在 3 秒内返回）。
+- 预防：不要把 `execFile` 的超时当作失败的保证；从脚本启动长期运行的程序时确认不继承标准输入输出句柄。

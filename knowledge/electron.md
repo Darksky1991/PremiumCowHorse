@@ -119,3 +119,11 @@
 - 原因：`setVisible(false)` 或销毁视图不会把焦点交回所属窗口的渲染端；焦点留在看不见的视图（按键落进隐藏的页面）或无处可去。
 - 解决：`WebViewManager` 在 `hide` / `release` / `freeze` 时，视图 `webContents.isFocused()` 为真则调用所属窗口渲染端的 `webContents.focus()`。`freeze`（截图替身）同样交回（隐藏的视图拿不住焦点：`setVisible(false)` 后视图与应用的 `isFocused()` 都为假，按键无处可去，页面里的输入法组字也被取消），是否在 `unfreeze` 时还给视图由渲染端判断——只在期间用户没有在应用中操作时还，否则会抢走用户刚移到资源树等处的焦点。
 - 预防：任何隐藏 / 移除原生视图的路径都要考虑焦点归属；e2e 中可用主进程 `webContents.isFocused()` 断言（Playwright 的 `page.keyboard` 直接发给页面、不经系统焦点，不能证明真实按键的去向——真实行为用系统级 `keybd_event` 确认）。
+
+### `WebContentsView` 加载时拿走键盘焦点；在其 `focus` 事件中同步交回不生效
+
+- 日期：2026-11-20
+- 症状（M2 最终审查 I3 / Q18）：在资源树中用 ↑↓ 浏览，选中 html / pdf / 图片 / md 时在当前标签打开浏览器视图，视图加载后键盘焦点进入页面，之后方向键滚动页面而不是继续移动树的选中。e2e 中主进程 `webContents.isFocused()`：应用 false、视图 true。
+- 原因：新建视图并 `loadURL`（以及复用视图加载新地址）时，Chromium 在加载开始后约 50 ms 把焦点给视图（应用 `blur`、视图 `focus`，早于 `dom-ready`）。在视图 `focus` 事件的处理函数中**同步**调用应用 `webContents.focus()` 不生效（焦点仍在视图，之后也没有新的 focus / blur 事件）。
+- 解决：`attach` 时视图没有焦点（用户在应用界面中操作）就记一个标记；视图之后自己拿到的焦点在 `setImmediate` 之后交回应用渲染端（推迟后生效，`dom-ready` / `did-finish-load` 不会再拿走）；用户在视图内按下鼠标（`before-mouse-event` 的 `mouseDown`）时清除标记，焦点已被交回时主动 `webContents.focus()` 给视图（焦点事件与鼠标事件的先后不确定）。代码：`modules/web/web-view-manager.ts`（`guardFocus`）、`web-session.ts`。
+- 预防：在焦点事件里改焦点要推迟到事件之后；e2e 中模拟「用户点击视图」要用 `sendInputEvent` 的鼠标事件（会触发 `before-mouse-event`），只调 `webContents.focus()` 会被上述规则交回应用。
