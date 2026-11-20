@@ -1,7 +1,8 @@
-/** html 插件自带的语言资源（键不含 '.'；三种语言的键必须一致） */
+/**
+ * 浏览器视图类插件（html / markdown）共用的语言资源：各插件把它与自己的 name 合并为 PreviewPlugin.i18n
+ * （键不含 '.'；三种语言的键必须一致）
+ */
 const ja = {
-  name: 'ブラウザー表示',
-  page: 'ページ',
   loading: '読み込み中…',
   failed: '表示できません: {{reason}}',
   retry: '再試行',
@@ -14,8 +15,6 @@ const ja = {
 type Messages = Record<keyof typeof ja, string>
 
 const zhCN: Messages = {
-  name: '浏览器显示',
-  page: '页面',
   loading: '正在加载…',
   failed: '无法显示：{{reason}}',
   retry: '重试',
@@ -26,8 +25,6 @@ const zhCN: Messages = {
 }
 
 const en: Messages = {
-  name: 'Browser view',
-  page: 'Page',
   loading: 'Loading…',
   failed: "Can't display: {{reason}}",
   retry: 'Retry',
@@ -37,4 +34,13 @@ const en: Messages = {
   noticeUnsupported: "This link can't be opened"
 }
 
-export const messages: Record<string, Messages> = { ja, 'zh-CN': zhCN, en }
+/** 合并插件自己的名称：`webPageMessages({ ja: '…', 'zh-CN': '…', en: '…' })` */
+export function webPageMessages(
+  name: Record<'ja' | 'zh-CN' | 'en', string>
+): Record<string, Record<string, string>> {
+  return {
+    ja: { ...ja, name: name.ja },
+    'zh-CN': { ...zhCN, name: name['zh-CN'] },
+    en: { ...en, name: name.en }
+  }
+}

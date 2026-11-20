@@ -461,6 +461,11 @@ test.describe('the browser view (html plugin)', () => {
     writeFileSync(path.join(docs, 'img', 'a.png'), PNG)
     writeFileSync(path.join(docs, 'spec.xlsx'), 'not a real workbook')
     writeFileSync(path.join(docs, 'other.md'), '# Other\n\nother page\n')
+    // 同源的本地 HTML：若能在 Markdown 的 iframe 中运行，就能操作外壳页（parent.document）
+    writeFileSync(
+      path.join(docs, 'x.html'),
+      "<!doctype html><script>parent.document.title = 'z'; parent.document.body.dataset.framed = '1'</script>\n"
+    )
     writeFileSync(
       path.join(docs, 'README.md'),
       [
@@ -486,6 +491,8 @@ test.describe('the browser view (html plugin)', () => {
         "<script>document.title='x'</script>",
         '',
         '<img id="evil" src="x" onerror="document.title=\'y\'">',
+        '',
+        '<iframe id="frame" src="./x.html"></iframe>',
         '',
         '- [仕様書](./spec.xlsx)',
         '- [その他](./other.md)',
@@ -518,7 +525,7 @@ test.describe('the browser view (html plugin)', () => {
       await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
       await expect(view.locator('#content .mermaid-error pre')).toHaveText('this is not a diagram')
 
-      // Markdown 中的脚本不执行（<script> 与 onerror=）：标题是查看脚本设的第一个 h1
+      // Markdown 中的脚本不执行（<script>、onerror=、iframe 中的同源 HTML）：标题是查看脚本设的第一个 h1
       await expect
         .poll(() =>
           view.evaluate(() => {
@@ -527,7 +534,10 @@ test.describe('the browser view (html plugin)', () => {
           })
         )
         .toBe(true)
+      // iframe 的加载（若未被阻止）晚于标题的设置：留出时间
+      await page.waitForTimeout(1000)
       expect(await view.title()).toBe('設計メモ')
+      expect(await view.evaluate(() => document.body.dataset.framed ?? null)).toBeNull()
       await expect(statusLine(page).locator('[data-page-title]')).toHaveText('設計メモ')
       // 没有「システムのブラウザーで開く」
       await expect(statusLine(page).getByRole('button')).toHaveCount(0)

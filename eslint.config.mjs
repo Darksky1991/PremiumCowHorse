@@ -19,6 +19,8 @@ const elements = [
   { type: 'plugin-sdk', pattern: 'packages/plugin-sdk' },
   // 文本预览的纯逻辑（行索引、按行读取、编码判断）：不依赖任何包，主进程 vfs 与插件共用
   { type: 'text-engine', pattern: 'packages/text-engine' },
+  // 浏览器视图类插件（html / markdown）共用的界面与文案：不是插件，放在 plugin 之前（先匹配者优先）
+  { type: 'plugin-web-page', pattern: 'plugins/builtin/src/web-page' },
   // 内置插件包（doc 5.1）：每个子目录是一个插件；包入口 src/index.ts 见下方 files 的 plugin-entry
   { type: 'plugin', pattern: 'plugins/builtin/src/*', capture: ['name'] },
   // 主进程（架构文档 5.2 节）
@@ -72,6 +74,12 @@ const policies = [
   allow('i18n', ['shared']),
   // 插件只能依赖 SDK、UI 与纯逻辑包 text-engine，与将来的第三方插件走相同接口；插件子目录之间不得互相 import
   allow('plugin', ['plugin-sdk', 'ui', 'text-engine']),
+  // 共用的浏览器视图界面只依赖 SDK 与 UI，只给 html / markdown 插件引用
+  allow('plugin-web-page', ['plugin-sdk', 'ui']),
+  {
+    from: { element: { type: 'plugin', captured: { name: ['html', 'markdown'] } } },
+    allow: { to: { element: { types: ['plugin-web-page'] } } }
+  },
   allowFile('plugin-entry', ['plugin', 'plugin-sdk']),
   // 主进程：ipc → modules → infra / core；模块之间不得互相 import（经构造函数注入）
   allowFile('main-entry', ['main-bootstrap']),

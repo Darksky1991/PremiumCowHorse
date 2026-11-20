@@ -1,5 +1,5 @@
 import { definePreviewPlugin } from '@pch/plugin-sdk'
-import { messages } from './i18n'
+import { webPageMessages } from '../web-page/i18n'
 
 /** 参与匹配的大小上限：与主进程 `?pch-raw=1` 的上限（markdown-shell.ts 的 MARKDOWN_MAX_BYTES）相同，超过时落到文本 */
 const MAX_SIZE = 5 * 1024 * 1024
@@ -22,6 +22,6 @@ export const markdownPlugin = definePreviewPlugin({
       maxSize: MAX_SIZE
     }
   },
-  i18n: messages,
+  i18n: webPageMessages({ ja: 'Markdown 表示', 'zh-CN': 'Markdown 显示', en: 'Markdown' }),
   load: () => import('./markdown-preview')
 })

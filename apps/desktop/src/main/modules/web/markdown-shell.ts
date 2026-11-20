@@ -14,14 +14,21 @@ export const MARKDOWN_MAX_BYTES = 5 * 1024 * 1024
  * 节点带 style 属性）；connect-src 落到 default-src 的 'self'（查看脚本 fetch `?pch-raw=1`）。
  * mermaid 12 渲染不需要 eval（未加 'unsafe-eval'，e2e 中图正常生成）。
  * img-src / style-src 比设计 5.4 的原值多 `http:`（控制者裁定）：本地页面允许访问外网，内网系统常为 http，
- * Markdown 引用的内网图片与样式应能显示；脚本仍只允许 pch-asset:
+ * Markdown 引用的内网图片与样式应能显示；脚本仍只允许 pch-asset:。
+ * frame-src 'none'（审查第 1 轮）：否则 frame-src 落到 default-src，Markdown 中的 `<iframe src="./x.html">`
+ * 会加载同源的本地 HTML（它没有 CSP，脚本照常执行且可操作外壳页；e2e 实测改动了外壳的标题），
+ * data: 框架中的脚本同样会运行。
+ * mermaid 只在 securityLevel 'sandbox' 时用 iframe，'strict' 不需要。base-uri / form-action 同样一律禁止
  */
 export const MARKDOWN_CSP = [
   "default-src 'self' https: data:",
   'script-src pch-asset:',
   "style-src 'self' 'unsafe-inline' http: https: pch-asset:",
   "img-src 'self' http: https: data: blob:",
-  "object-src 'none'"
+  "object-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'"
 ].join('; ')
 
 const escapeAttr = (s: string): string =>

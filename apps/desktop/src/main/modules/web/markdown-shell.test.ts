@@ -34,4 +34,10 @@ describe('MARKDOWN_CSP', () => {
     expect(directive('style-src')).toContain('http:')
     expect(directive('script-src')).toEqual(['pch-asset:'])
   })
+
+  it('禁止 iframe（同源本地 HTML 会无 CSP 地运行）、<base> 与表单提交', () => {
+    expect(MARKDOWN_CSP).toContain("frame-src 'none'")
+    expect(MARKDOWN_CSP).toContain("base-uri 'none'")
+    expect(MARKDOWN_CSP).toContain("form-action 'none'")
+  })
 })

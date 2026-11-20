@@ -1,5 +1,5 @@
 import { definePreviewPlugin } from '@pch/plugin-sdk'
-import { messages } from './i18n'
+import { webPageMessages } from '../web-page/i18n'
 
 /**
  * 浏览器显示（设计 devDoc/2026-11-20-22-m2-design.md 5.5）：本地 HTML 原型，以及浏览器能直接显示的
@@ -19,6 +19,6 @@ export const htmlPlugin = definePreviewPlugin({
       extensions: ['html', 'htm', 'xhtml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp']
     }
   },
-  i18n: messages,
+  i18n: webPageMessages({ ja: 'ブラウザー表示', 'zh-CN': '浏览器显示', en: 'Browser view' }),
   load: () => import('./html-preview')
 })
