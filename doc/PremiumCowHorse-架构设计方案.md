@@ -928,7 +928,7 @@ export default definePreviewPlugin<{ zoom: number }>({
 | image | 常见图片 | 缩放、适应窗口（M2 起先由 html 插件经 Chromium 的图片文档显示；专用插件推迟） |
 | pdf | .pdf | pdf.js，页码与缩放进 viewState（M2 起先由 html 插件经 Chromium 内置 PDF 查看器显示；专用插件推迟） |
 | media | 音视频 | 原生播放器，依赖 pcfs 的 Range 支持 |
-| office | Excel / Word / PowerPoint 等（扩展名可在设置中调整） | 不渲染内容，显示启动面板：只读 / 编辑 / 新建打开（按检测结果显示）与远程编辑状态，见第 10 节 |
+| office | Excel / Word / PowerPoint 等（扩展名固定在 manifest） | 不渲染内容，显示启动面板：按检测结果（`options` 的顺序）显示 読み取り専用 / 編集 / 新規作成 / 保護ビュー 按钮；已实现（M2 Task 10），见 10.6 |
 | fallback | 其他 | 文件信息 + 用系统默认程序打开 |
 
 需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
@@ -1042,6 +1042,8 @@ FTP/SFTP 上的文件无法被 Office 直接写回，因此由本应用代理：
 1. 目录视图（预览窗口中的 `pch.preview.folder`）的右键菜单出现「用 {appName} 打开 ▸ 只读 / 编辑 / 新建」，子项按检测结果动态生成。资源树不提供（需求方 2026-11-19 决定：资源树只用于展示，打开动作只由将来的预览窗口提供）。
 2. 设置 `launcher.officeDefaultAction` 与 `launcher.officeExtensions` 已删除（M2）：单击 / 双击 Office 文件都先显示启动面板（`pch.preview.office`），由用户选择打开方式；Office 扩展名固定在插件 manifest。
 3. 在应用内以标签方式打开 Office 文件时，由内置的 `pch.preview.office` 插件显示一个启动面板：文件信息、三个打开按钮（只显示可用的）、该文件的远程编辑会话状态。这样标签、会话恢复等机制对 Office 文件依然成立。
+
+**已实现（M2 Task 10）**：`plugins/builtin/src/office/`（id `pch.preview.office`，`match = { kinds: ['file'], extensions: [xlsx xlsm xls xltx xltm xlsb docx docm doc dotx pptx pptm ppt potx] }`）。面板：图标、文件名、位置（`toDisplayPath`）、大小、修改时间；「{{app}} で開く」+ 按 `options` 的顺序显示的按钮（插件只看 `mode`，不关心 `via`）；`appName` 为空（null 或空串）时显示「関連付けられたアプリで開く」；检测不到任何方式（`options` 为空）时只有「既定のアプリで開く」（`openWithSystem`）；底部「エクスプローラーで表示」「パスをコピー」「再検出」（`redetectLaunchCapabilities()` 后重新取能力）。按钮按下后进入「起動中」状态（所有方式按钮禁用，`launch` 的 Promise 结束即恢复），防止连按。SDK `system.getLaunchCapabilities(uri)`（失败由宿主提示并返回 null）/ `launch(uri, mode)`（失败由宿主提示，不拒绝）/ `redetectLaunchCapabilities()`，`LaunchCapabilities` 等类型在 SDK 中重新声明，宿主赋值保证结构一致。远程编辑会话状态尚未实现（第 10.5 节）。e2e（`e2e/office.spec.ts`）经「未打包且 `PCH_E2E_FAKE_LAUNCHER=1`」在组合根注入假 run（`modules/launcher/fake-run.ts`：检测返回固定 JSON，启动为空操作并记录）。
 
 ### 10.7 代码位置
 

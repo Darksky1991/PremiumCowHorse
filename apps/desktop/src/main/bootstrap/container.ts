@@ -19,6 +19,7 @@ import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
 import { LauncherService } from '../modules/launcher/launcher.service'
+import { fakeRunPowerShell } from '../modules/launcher/fake-run'
 import { runPowerShell } from '../modules/launcher/powershell'
 import { ScopeTable } from '../modules/web/scope'
 import { markdownShell, MARKDOWN_ASSET_BASE } from '../modules/web/markdown-shell'
@@ -121,7 +122,15 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     logger
   })
 
-  const launcher = new LauncherService({ run: runPowerShell, vfs, logger })
+  const launcher = new LauncherService({
+    // 测试用的假 run：打包后的应用绝不启用（与 PCH_E2E_CRASH_PLUGIN 相同，只在未打包时读取环境变量）
+    run:
+      !app.isPackaged && process.env.PCH_E2E_FAKE_LAUNCHER === '1'
+        ? fakeRunPowerShell
+        : runPowerShell,
+    vfs,
+    logger
+  })
 
   return {
     paths,

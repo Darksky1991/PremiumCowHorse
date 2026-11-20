@@ -169,6 +169,28 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         } catch (e) {
           reportError(e)
         }
+      },
+      getLaunchCapabilities: async (uri) => {
+        try {
+          return await invoke('launcher.capabilities', { uri })
+        } catch (e) {
+          reportError(e)
+          return null
+        }
+      },
+      launch: async (uri, mode) => {
+        try {
+          await invoke('launcher.open', { uri, mode })
+        } catch (e) {
+          reportError(e)
+        }
+      },
+      redetectLaunchCapabilities: async () => {
+        try {
+          await invoke('launcher.redetect', undefined)
+        } catch (e) {
+          reportError(e)
+        }
       }
     },
     ui: {

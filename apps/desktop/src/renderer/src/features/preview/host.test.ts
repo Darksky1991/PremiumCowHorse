@@ -122,6 +122,45 @@ describe('createPreviewHost: system', () => {
   })
 })
 
+describe('createPreviewHost: launcher', () => {
+  const caps = { ext: 'xlsx', appName: 'Microsoft Excel', options: [] }
+
+  it('getLaunchCapabilities returns the detected capabilities', async () => {
+    const invoke = vi.fn(async () => caps) as unknown as PreviewHostDeps['invoke']
+    const { host } = setup({ invoke })
+    await expect(host.system.getLaunchCapabilities(TXT)).resolves.toEqual(caps)
+    expect(invoke).toHaveBeenCalledWith('launcher.capabilities', { uri: TXT })
+  })
+
+  it('getLaunchCapabilities notifies and returns null on failure', async () => {
+    const invoke = vi.fn(async () => {
+      throw new AppError({ code: 'FS_UNSUPPORTED_SCHEME' })
+    }) as unknown as PreviewHostDeps['invoke']
+    const { host, deps } = setup({ invoke })
+    await expect(host.system.getLaunchCapabilities(TXT)).resolves.toBeNull()
+    expect(deps.notify).toHaveBeenCalledWith('errors:FS_UNSUPPORTED_SCHEME', 'error')
+  })
+
+  it('launch calls launcher.open and does not reject on failure', async () => {
+    const { host, calls } = setup()
+    await host.system.launch(TXT, 'readOnly')
+    expect(calls).toEqual([['launcher.open', { uri: TXT, mode: 'readOnly' }]])
+
+    const invoke = vi.fn(async () => {
+      throw new AppError({ code: 'LAUNCH_FAILED' })
+    }) as unknown as PreviewHostDeps['invoke']
+    const failing = setup({ invoke })
+    await expect(failing.host.system.launch(TXT, 'edit')).resolves.toBeUndefined()
+    expect(failing.deps.notify).toHaveBeenCalledWith('errors:LAUNCH_FAILED', 'error')
+  })
+
+  it('redetectLaunchCapabilities calls launcher.redetect', async () => {
+    const { host, calls } = setup()
+    await host.system.redetectLaunchCapabilities()
+    expect(calls).toEqual([['launcher.redetect', undefined]])
+  })
+})
+
 describe('createPreviewHost: tabs', () => {
   it('navigate replaces the current tab with the stat of the target', async () => {
     const { host, deps } = setup()
