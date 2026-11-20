@@ -387,6 +387,47 @@ describe('DocumentService: refresh', () => {
     expect(s.changed).toEqual([])
   })
 
+  it('reset: a read failing in the middle of the rebuild leaves the old state, so the next refresh resets again', async () => {
+    const s = setup()
+    // 超过 64KB：重建时除开头外还要读中间 / 末尾的样本
+    const rows = (256 * 1024) / LINE
+    s.files.put(URI, fixedLines(rows))
+    const info = await openAndIndex(s)
+    // 轮转：新文件的开头不同（行号从 500000 起）
+    s.files.put(URI, fixedLines(rows, 500_000), 2)
+    let failing = true
+    s.files.onRead = (offset) => {
+      // 开头的读取（身份判断、文件开头）成功，之后的样本读取超时（UNC 上轮转时常见）
+      if (failing && offset > 0) throw new AppError({ code: 'FS_TIMEOUT' })
+    }
+    await expect(s.docs.refresh(OWNER, info.docId)).rejects.toMatchObject({ code: 'FS_TIMEOUT' })
+    expect(s.changed).toEqual([])
+    failing = false
+    const done = completed(s, info.docId)
+    await s.docs.refresh(OWNER, info.docId)
+    expect(s.changed).toEqual([{ docId: info.docId, reset: true, owner: OWNER }])
+    await until(done)
+    const block = await s.docs.readLines(OWNER, info.docId, 0, 1)
+    expect(text(block.bytes)).toBe('L00500000______\n')
+  })
+
+  it('missing → back: a failed rebuild keeps reporting the file as gone until a rebuild succeeds', async () => {
+    const s = setup()
+    s.files.put(URI, enc('a\nb\n'))
+    const info = await openAndIndex(s)
+    s.files.files.delete(URI)
+    await s.docs.refresh(OWNER, info.docId)
+    s.files.put(URI, enc('a\nb\n'))
+    // 文件开头（FILE_HEAD_BYTES）的读取失败；身份判断的 4KB 读取成功
+    s.files.onRead = (_offset, length) => {
+      if (length > 4096) throw new AppError({ code: 'FS_TIMEOUT' })
+    }
+    await expect(s.docs.refresh(OWNER, info.docId)).rejects.toMatchObject({ code: 'FS_TIMEOUT' })
+    s.files.onRead = undefined
+    await s.docs.refresh(OWNER, info.docId)
+    expect(s.changed.slice(1)).toEqual([{ docId: info.docId, reset: true, owner: OWNER }])
+  })
+
   it('reset: the file shrinking during the scan triggers a rebuild', async () => {
     const s = setup()
     s.files.put(URI, fixedLines((3 * MB) / LINE))
@@ -478,6 +519,28 @@ describe('DocumentService: encoding', () => {
       bomLength: 0,
       manual: false
     })
+  })
+
+  it('setEncoding failing while re-aligning the window keeps the previous encoding and index', async () => {
+    const s = setup({ fullIndexLimitBytes: () => MB })
+    s.files.put(URI, fixedLines((6 * MB) / LINE))
+    const info = await openAndIndex(s, { uri: URI, at: 'end' })
+    expect(info.mode).toBe('partial')
+    // 切换到 UTF-16 要重新对齐窗口（读窗口起点附近）：该读取超时
+    s.files.onRead = (offset) => {
+      if (offset > 0) throw new AppError({ code: 'FS_TIMEOUT' })
+    }
+    await expect(s.docs.setEncoding(OWNER, info.docId, 'utf-16le')).rejects.toMatchObject({
+      code: 'FS_TIMEOUT'
+    })
+    s.files.onRead = undefined
+    const after = await s.docs.refresh(OWNER, info.docId)
+    expect(after.encoding).toEqual(info.encoding)
+    expect(after.window).toEqual(info.window)
+    expect(after.index).toEqual(info.index)
+    // 自动判断仍以之前的状态为准：再次切换照常生效
+    const wide = await s.docs.setEncoding(OWNER, info.docId, 'utf-16le')
+    expect(wide.encoding).toMatchObject({ label: 'utf-16le', manual: true })
   })
 
   it('keeps the BOM length when the chosen encoding matches the BOM', async () => {

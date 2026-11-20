@@ -1,6 +1,7 @@
 // 一个打开的文本文档（设计 3.1、3.4、3.6 节）：窗口与模式、编码、行索引、刷新。
 // 不持有文件句柄：每次读取都经 read（provider 的开-读-关）。改变状态的操作（刷新、切换编码、建立全量索引、
 // 建索引中发现非法 UTF-8 后的重新判断）按顺序执行；readLines 不排队。
+// 这些操作先把需要读取的结果都算好，最后一次性提交（中途读取失败时状态不变，之后的刷新从旧状态重新判断）。
 import {
   AppError,
   type DocChangedEvent,
@@ -138,9 +139,7 @@ export class TextDocument {
   /** 手动指定编码（null = 自动判断）。换行单元改变（切换到 / 离开 UTF-16）时重新对齐窗口并重建索引 */
   setEncoding(label: EncodingLabel | null): Promise<void> {
     return this.serial(async () => {
-      const unit = unitOf(this.encoding.label)
-      this.manualLabel = label
-      this.encoding = label
+      const encoding = label
         ? manualEncoding(label, this.fileHead)
         : await detectInWindow(
             this.layout,
@@ -148,7 +147,10 @@ export class TextDocument {
             this.readAt,
             this.deps.preferredLanguage()
           )
-      if (unitOf(this.encoding.label) !== unit) await this.relayout()
+      const layout = await this.relayoutFor(encoding)
+      this.manualLabel = label
+      this.encoding = encoding
+      if (layout) this.commitLayout(layout)
       else if (!this.verifiesUtf8()) this.job.utf8 = undefined
     })
   }
@@ -157,8 +159,8 @@ export class TextDocument {
   buildIndex(): Promise<void> {
     return this.serial(async () => {
       if (this.layout.mode === 'full') return
+      await this.load(await this.deps.stat(this.uri), true)
       this.forceFull = true
-      await this.load(await this.deps.stat(this.uri))
     })
   }
 
@@ -168,45 +170,54 @@ export class TextDocument {
     this.lifetime.abort()
   }
 
-  /** 重新读取文件开头，决定窗口、编码并重建索引（打开、reset、buildIndex） */
-  private async load(stat: FileStat): Promise<void> {
+  /**
+   * 重新读取文件开头，决定窗口、编码并重建索引（打开、reset、buildIndex）。
+   * 读取全部完成后才一次性提交（snapshot 最后写）：中途失败时快照、窗口、编码与索引都还是旧的，
+   * 下一次刷新仍判为 reset 并重试（否则快照已是新文件的、索引还是旧的，之后永远判为 unchanged / appended）
+   */
+  private async load(stat: FileStat, full = this.forceFull): Promise<void> {
     const head = await this.readAt(0, FILE_HEAD_BYTES)
-    this.fileHead = head.subarray(0, Math.min(head.length, stat.size))
-    this.snapshot = {
-      size: stat.size,
-      mtime: stat.mtime,
-      head: this.headOf(this.fileHead, stat.size)
-    }
-    this.binary = sniff(this.fileHead).kind === 'binary'
-    const plan = this.plan(stat.size)
+    const fileHead = head.subarray(0, Math.min(head.length, stat.size))
+    const plan = this.plan(stat.size, full)
     // 对齐窗口需要换行单元：手动指定 / BOM / 计划起点处能否判为 UTF-16
     const probe =
       this.manualLabel ??
       probeEncoding(
-        this.fileHead,
-        plan.start === 0 ? this.fileHead : await this.readAt(plan.start, SAMPLE_BYTES)
+        fileHead,
+        plan.start === 0 ? fileHead : await this.readAt(plan.start, SAMPLE_BYTES)
       )
     let layout = await alignWindow(plan, stat.size, unitOf(probe), this.readAt)
     const encoding = this.manualLabel
-      ? manualEncoding(this.manualLabel, this.fileHead)
-      : await detectInWindow(layout, this.fileHead, this.readAt, this.deps.preferredLanguage())
+      ? manualEncoding(this.manualLabel, fileHead)
+      : await detectInWindow(layout, fileHead, this.readAt, this.deps.preferredLanguage())
     if (unitOf(encoding.label) !== unitOf(probe)) {
       layout = await alignWindow(plan, stat.size, unitOf(encoding.label), this.readAt)
     }
-    this.layout = layout
+    this.fileHead = fileHead
+    this.binary = sniff(fileHead).kind === 'binary'
     this.encoding = encoding
-    this.startIndex()
+    this.snapshot = { size: stat.size, mtime: stat.mtime, head: this.headOf(fileHead, stat.size) }
+    this.commitLayout(layout)
   }
 
-  /** 编码的换行单元改变后：按当前大小重新计划并对齐窗口，重建索引（不重新判断编码） */
-  private async relayout(): Promise<void> {
+  /**
+   * 换成 encoding 后的窗口：换行单元改变时按当前大小重新计划并对齐（需要读取）；不变时为 null（索引照用）。
+   * 只计算不提交，调用方在全部读取成功后再改状态
+   */
+  private async relayoutFor(encoding: EncodingState): Promise<WindowPlan | null> {
+    if (unitOf(encoding.label) === unitOf(this.encoding.label)) return null
     const size = this.snapshot.size
-    this.layout = await alignWindow(this.plan(size), size, unitOf(this.encoding.label), this.readAt)
+    return alignWindow(this.plan(size), size, unitOf(encoding.label), this.readAt)
+  }
+
+  /** 新窗口生效并重建索引（this.encoding 须已是新的：索引按它的换行单元） */
+  private commitLayout(layout: WindowPlan): void {
+    this.layout = layout
     this.startIndex()
   }
 
-  private plan(size: number): WindowPlan {
-    return this.forceFull
+  private plan(size: number, full = this.forceFull): WindowPlan {
+    return full
       ? { mode: 'full', start: 0, end: size }
       : planWindow(size, this.deps.fullIndexLimitBytes(), this.at)
   }
@@ -228,10 +239,11 @@ export class TextDocument {
       this.missing = true
       return
     }
-    // 不存在之后又出现：不论内容是否相同都重建（渲染端借 reset 离开「文件已不存在」）
+    // 不存在之后又出现：不论内容是否相同都重建（渲染端借 reset 离开「文件已不存在」）。
+    // 重建成功后才清除 missing：失败时下一次刷新仍按「又出现」重建
     if (change === 'reset' || this.missing) {
-      this.missing = false
       await this.load(now.stat)
+      this.missing = false
       this.emitChanged({ reset: true })
       return
     }
@@ -336,9 +348,11 @@ export class TextDocument {
     if (stale()) return
     const before = this.encoding
     if (encoding.label === before.label && encoding.confidence === before.confidence) return
+    // 旧编码之间换行单元相同，索引照用；万一判为 UTF-16 则重建（对齐窗口的读取成功后才一起提交）
+    const layout = await this.relayoutFor(encoding)
+    if (stale()) return
     this.encoding = encoding
-    // 旧编码之间换行单元相同，索引照用；万一判为 UTF-16 则重建
-    if (unitOf(encoding.label) !== unitOf(before.label)) await this.relayout()
+    if (layout) this.commitLayout(layout)
     this.emitChanged({ reset: true })
   }
 
