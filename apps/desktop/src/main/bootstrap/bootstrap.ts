@@ -13,6 +13,7 @@ import { applySecurityPolicies } from '../windows/security'
 import { driveTypeStatus, location } from '../vfs/location'
 import { createContainer, type Container } from './container'
 import { bindDocumentOwner } from '../vfs/document/document-owner'
+import { bindWebViewOwner } from '../modules/web/web-session'
 import { buildScannerConfig } from '../vfs/scanner-config'
 import { registerShutdown } from './shutdown'
 
@@ -63,6 +64,7 @@ export async function bootstrap(): Promise<void> {
   wireEvents(c)
   wireScanner(c)
   wireDocuments(c)
+  app.on('browser-window-created', (_event, win) => bindWebViewOwner(win.webContents, c.web))
   registerShutdown(c, disposeIpc)
 
   c.windows.openMainWindow()

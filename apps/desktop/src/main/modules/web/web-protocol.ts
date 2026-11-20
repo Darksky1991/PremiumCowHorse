@@ -87,3 +87,26 @@ export function createWebProtocolHandler(deps: {
     }
   }
 }
+
+/** Electron 的 protocol.handle 在标准 Request 上追加的字段：发起请求的源（不透明源为 "null"；浏览器自身发起时不存在） */
+type ProtocolRequest = Request & { initiatorOrigin?: string }
+
+/**
+ * 发起方检查（包在 pch-web 处理器外）：只放行「无发起方」（视图的主框架加载 = 应用的 loadURL / reload）
+ * 与「与被请求资源同一 `pch-web://<范围编号>` 源」的请求，其余 403——页面里嵌入的外站 iframe、
+ * 其他范围的页面、不透明源（沙箱 iframe、data: 框架）不能读取本地资源。
+ * 用 initiatorOrigin 而非 Referer：前者不受页面控制（electron.d.ts 的 Protocol.handle 说明）。
+ * 期望的源手工拼接：WHATWG URL 对非特殊 scheme 的 origin 一律为 "null"，Chromium 中 pch-web 是标准 scheme
+ */
+export function guardInitiator(
+  handler: (request: Request) => Promise<Response>
+): (request: ProtocolRequest) => Promise<Response> {
+  return async (request) => {
+    const initiator = request.initiatorOrigin
+    if (initiator !== undefined && URL.canParse(request.url)) {
+      const u = new URL(request.url)
+      if (initiator !== `${u.protocol}//${u.host}`) return fail(403)
+    }
+    return handler(request)
+  }
+}

@@ -8,7 +8,7 @@ import { AppError, type FileStat } from '@pch/shared'
 import { LocalProvider } from '../../vfs/providers/local.provider'
 import { VfsService } from '../../vfs/vfs.service'
 import { ScopeTable, toWebUrl } from './scope'
-import { createWebProtocolHandler } from './web-protocol'
+import { createWebProtocolHandler, guardInitiator } from './web-protocol'
 
 const unused = (): never => {
   throw new Error('unused')
@@ -202,5 +202,40 @@ describe('createWebProtocolHandler', () => {
     await res.arrayBuffer()
     await wait(20)
     renameSync(root, path.join(tmp, '案件 B'))
+  })
+})
+
+describe('guardInitiator', () => {
+  const ok = async (): Promise<Response> => new Response('ok')
+  const guarded = guardInitiator(ok)
+  /** protocol.handle 的请求：标准 Request + Electron 追加的 initiatorOrigin（浏览器自身发起时不存在） */
+  const req = (url: string, initiatorOrigin?: string): Request =>
+    Object.assign(new Request(url), initiatorOrigin === undefined ? {} : { initiatorOrigin })
+
+  it('无发起方（浏览器自身的主框架加载）→ 放行', async () => {
+    expect((await guarded(req('pch-web://sabc/index.html'))).status).toBe(200)
+  })
+
+  it('同一 pch-web://<范围编号> 源 → 放行', async () => {
+    expect((await guarded(req('pch-web://sabc/img/a.png', 'pch-web://sabc'))).status).toBe(200)
+  })
+
+  it('外站、其他范围、不透明源（"null"）、其他协议 → 403，不调用处理器', async () => {
+    let called = 0
+    const g = guardInitiator(async () => {
+      called++
+      return new Response('ok')
+    })
+    for (const origin of [
+      'https://example.com',
+      'pch-web://sdef',
+      'null',
+      'pch-asset://viewer',
+      'pch-web://sabc.evil'
+    ]) {
+      const res = await g(req('pch-web://sabc/a.png', origin))
+      expect(res.status, origin).toBe(403)
+    }
+    expect(called).toBe(0)
   })
 })

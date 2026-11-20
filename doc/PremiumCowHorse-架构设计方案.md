@@ -442,7 +442,9 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
 // vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
-// window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed
+// window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）；
+// 事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
+// web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）
 // （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
@@ -490,6 +492,11 @@ export const ipcContract = {
   'window.close':        route<void>()(z.void()),
   'window.getState':     route<WindowState>()(z.void()),     // { maximized }
   'log.write':           route<void>()(LogWriteInput),          // 渲染端错误写入 main.log
+  // 浏览器视图（每个（窗口, 标签）一个 WebContentsView，归属调用方窗口；bounds 为 DIP 整数，宿主取整、不乘 devicePixelRatio）
+  'web.attach':          route<void>()(z.object({ tabId: z.string(), uri: z.string(), scopeRoot: z.string(), view: z.enum(['page', 'markdown']), bounds: WebBounds })),  // 新建或复用并显示；uri 不在 scopeRoot 之下 → FS_INVALID_URI
+  'web.setBounds':       route<void>()(z.object({ tabId: z.string(), bounds: WebBounds })),
+  'web.hide':            route<void>()(z.object({ tabId: z.string() })),   // 只隐藏（页面状态保留）；web.release 销毁；web.reload 同形
+  'web.freeze':          route<{ image: string }>()(z.object({ tabId: z.string() })),  // 截图替身（data:image/png，物理像素）并隐藏；web.unfreeze 恢复
   // ……
 } as const;
 
@@ -509,6 +516,10 @@ export interface IpcEvents {
   'window.stateChanged': WindowState;
   'doc.progress':      DocProgressEvent;              // 只发给文档所属的窗口
   'doc.changed':       DocChangedEvent;               // 同上
+  'web.state':         WebViewState;                  // { tabId, title, loading, failed }；以下 web.* 只发给视图所属的窗口
+  'web.navigate':      { tabId: string; uri: string; newTab: boolean };  // 视图内的链接指向范围内的资源
+  'web.notice':        { tabId: string; notice: 'outOfScope' | 'download' | 'unsupported' };
+  'web.shortcut':      { tabId: string; key: string; ctrl: boolean; shift: boolean; alt: boolean };  // 焦点在视图中的应用快捷键 / 鼠标侧键
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppErrorPayload };
@@ -1358,13 +1369,21 @@ shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通
 ## 15. 安全设计
 
 1. 所有窗口统一由 window-factory 创建：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`、`webSecurity: true`。
-2. `index.html` 以 meta 声明 CSP（`script-src 'self'`，不允许内联脚本；`style-src` 因组件浮层定位需要 `'unsafe-inline'`）；禁止页面内导航到外部地址，`setWindowOpenHandler` 一律拒绝，外部链接经白名单校验后用 `shell.openExternal` 打开。
+2. `index.html` 以 meta 声明 CSP（`script-src 'self'`，不允许内联脚本；`style-src` 因组件浮层定位需要 `'unsafe-inline'`）；禁止页面内导航到外部地址，`setWindowOpenHandler` 一律拒绝，外部链接经白名单校验后用 `shell.openExternal` 打开。这些全局限制（`windows/security.ts`）施加于默认会话中的 webContents（即所有应用窗口）；浏览器视图在专用会话中，由 `modules/web` 施加自己的处理（第 9 项）。`will-attach-webview` 对所有 webContents 一律拒绝。
 3. IPC 校验发送方来源（只接受 `app://renderer` 或开发地址），所有输入经 zod 校验。
 4. `pcfs://` 只接受已知 scheme，远程 URI 必须对应已存在的连接；本地路径做规范化，防止路径穿越。
 5. 机密使用 `safeStorage`（Windows 下为 DPAPI）加密存储，不进入渲染进程、不写日志。
 6. SFTP 主机密钥 TOFU 校验；FTP 明文连接在界面上标注风险并推荐 FTPS。
 7. 插件仅能访问 PreviewHost；第三方插件默认关闭，需用户显式启用。
 8. 打包时启用 Electron Fuses（`electron-builder.yml` 的 `electronFuses`：关闭 RunAsNode、NODE_OPTIONS 与 inspect 参数，启用 asar 完整性校验与仅从 asar 加载）；渲染端产物位于 asar 内，同受完整性校验保护；发布时进行代码签名。
+9. **浏览器视图（M2，主进程 `modules/web`）**：本地 HTML / Markdown 显示在主进程为每个标签创建的 `WebContentsView` 中（独立渲染进程），插件只放占位元素。
+   - **已实现**（`web-session.ts`、`web-view-manager.ts`、`navigation.ts`、`shortcuts.ts`、`web.ipc.ts`）：
+     - 视图 `webPreferences`：`sandbox`、`contextIsolation`、`nodeIntegration: false`、无 preload、`webSecurity`、`devTools: false`、`spellcheck: false`；会话 `persist:pch-web`（持久化，localStorage 按范围编号隔离）。
+     - 会话：只注册 `pch-web` 处理器（范围内只读，7.3 节；`pch-asset` 随 Markdown 查看脚本加入）。处理器外包**发起方检查**：按 `request.initiatorOrigin` 只放行「无发起方」（应用的 `loadURL` / `reload`）与「同一 `pch-web://<范围编号>` 源」，其余（外站 iframe、其他范围的页面、沙箱 iframe 等不透明源 `"null"`）403。权限请求与检查除剪贴板写入（`clipboard-sanitized-write`，原型的「复制」按钮）外一律拒绝；`will-download` 一律取消并向该视图发 `web.notice download`。
+     - 导航：主框架的 `will-navigate` / `will-redirect` 与 `setWindowOpenHandler` 一律阻止视图自己导航，经 `decideNavigation` 判定——同范围 `pch-web`、范围内 `file:` → `web.navigate`（由应用在标签中打开，新窗口请求为 `newTab`）；`http:` / `https:` / `mailto:` → `shell.openExternal`；其他范围 / 范围外 → `web.notice outOfScope`；其他协议 → `web.notice unsupported`。子框架不拦截。每次主框架提交后清空视图的导航历史（标签历史由应用管理，页面的历史导航无处可去）。页面中点击 `file:` 链接（主框架与 `target=_blank`）在渲染进程即被 Chromium 拦截（`Not allowed to load local resource`），不触发上述事件：结果是静默无反应（不读取文件，但不提示，范围内的 `file:` 绝对链接也打不开）。
+     - 按键：`before-input-event` 中应用快捷键（F5、Alt+← / Alt+→、Ctrl+W、Ctrl+Shift+F、Ctrl+B，以渲染端 window 级 keydown 为准）不交给页面，作为 `web.shortcut` 发给所属窗口；鼠标侧键（`before-mouse-event` 的 `back` / `forward`）整组阻止，抬起时转为 Alt+← / Alt+→。
+     - 生命周期：每窗口最多 8 个视图（LRU，显示中的除外）；窗口关闭、渲染端提交新文档（重新加载）或崩溃时销毁该窗口的全部视图；退出时全部销毁。
+   - 未实现（目标）：宿主 `PreviewHost.web` 与截图替身的渲染端（M2 后续任务）。
 
 ---
 

@@ -74,6 +74,7 @@
 - 症状：（预防性，文本预览 Task 4 审查发现）按 owner（webContents id）持有的文本文档只在 `destroyed` 时释放；按 F5 / Ctrl+R 重新加载、渲染进程崩溃后，webContents（及其 id）不变、`destroyed` 不触发，新页面不知道旧的 docId，旧文档一直占着每窗口 16 个的名额，直到被 LRU 挤掉。
 - 解决：`vfs/document/document-owner.ts` 的 `bindDocumentOwner` 另外监听 `did-start-navigation`（只处理 `isMainFrame && !isSameDocument`；Electron 45 的第一个参数是带 `isMainFrame` / `isSameDocument` 的事件对象，其余位置参数已废弃）与 `render-process-gone`，调用 `DocumentService.resetOwner`：关闭全部文档并递增该 owner 的页面代号，旧页面发起、之后才完成的 `doc.open` 也关闭。与 `releaseOwner` 不同，之后的 open 照常受理（id 还会被新页面使用）。
 - 预防：主进程按窗口持有状态时，同时考虑「窗口销毁」与「同一 webContents 换了页面」两种生命周期。
+- 补充（2026-11-20，M2 Task 6 实测，修正上面的做法）：**被 `will-navigate` 阻止的导航也会先发出 `did-start-navigation`**（`isMainFrame && !isSameDocument` 同样为真）。应用窗口里点外部链接（`windows/security.ts` 阻止并交给 `openExternal`）时，按上面的写法会误清理该窗口的全部资源（实测：浏览器视图全部被销毁）。浏览器视图的 `bindWebViewOwner`（`modules/web/web-session.ts`）因此改用 `did-navigate`（主框架提交了新文档才发出；重新加载也会发出）。`bindDocumentOwner` 仍用 `did-start-navigation`，同样会在点外部链接时关闭全部文本文档——已报告，未修改。
 
 ### 渲染端：宿主对象在 useState 中惰性创建，卸载时 dispose，之后仍可使用（StrictMode）
 
@@ -89,3 +90,16 @@
 - 原因 / 结论（实测）：单位是 DIP。宿主页 `getBoundingClientRect()` 的 CSS 像素（页面缩放为 1）直接传给 `setBounds`，在 125%（`--force-device-scale-factor=1.25`）与 150% 下视图都与占位元素逐像素对齐。传小数不报错，Electron 四舍五入（`{120.4, 80.6, 400.5, 300.5}` → `{120, 81, 401, 300}`）。`webContents.capturePage()` 的图是物理像素尺寸（400×300 DIP 在 150% 下为 600×450）。
 - 解决：宿主自行取整（`x = round(left)`、`width = round(right) - x`）后发送，不乘 `devicePixelRatio`；截图替身按 CSS 尺寸缩放显示。
 - 预防：宿主页面若被缩放（`zoomFactor ≠ 1`），CSS 像素不再等于 DIP，需要乘缩放系数（未验证）。视图的 `prefers-color-scheme` 跟随 `nativeTheme.themeSource`、自定义协议提供的 PDF 用内置查看器直接显示（不需要 `plugins: true`）——见 `devDoc/2026-11-20-24-m2-ledger.md`。
+
+### 浏览器视图（WebContentsView）中的几个事件行为（Electron 45，实测）
+
+- 日期：2026-11-20
+- 症状 / 原因（M2 Task 6，一次性脚本与已构建应用实测）：
+  - 自定义协议处理器返回 4xx / 5xx 且响应体为空时，**不触发 `did-fail-load`**，Chromium 显示空白页；`did-navigate` 的 `httpResponseCode` 为 404 等。
+  - 页面（`pch-web://`）中点击 `file:` 链接（主框架与 `target=_blank`）在渲染进程就被拦截（控制台 `Not allowed to load local resource`），**`will-navigate` 与 `setWindowOpenHandler` 都不触发**。
+  - `before-input-event` 的 `input.type`：真实按键的 RawKeyDown 也报告为 `keyDown`（抬起为 `keyUp`）；被 `preventDefault` 的按下之后不再收到对应的 `keyUp`。
+  - `before-mouse-event` 的 `button` 类型定义只列 left / middle / right，但 Electron 源码（`shell/common/gin_converters/blink_converter.cc` 的 ToV8）对侧键输出 `back` / `forward`；`sendInputEvent` 的 FromV8 只接受 left / middle / right（其他值当作 left），因此**无法用 `sendInputEvent` 合成侧键**。
+  - `web-contents-created` 在 `new WebContentsView()` 的构造中同步发出（早于构造函数返回），其中 `contents.session` 已是视图的会话。
+  - `request.initiatorOrigin`（`protocol.handle`）：应用 `loadURL` 的主框架请求不存在该字段；同源子资源为 `pch-web://<主机>`；沙箱 iframe / `data:` 框架为 `"null"`；URL 中的主机名已被 Chromium 转为小写，`%2e%2e` / `..` 段已折叠，`%5c` 原样保留。
+- 解决：处理方式见 `modules/web/web-session.ts`（失败状态同时看 `did-navigate` 的状态码；导航判定中的 `file:` 分支只在 Chromium 放行时起作用）。
+- 预防：视图的失败 / 导航相关行为以实测为准，不按类型定义或文档推断。

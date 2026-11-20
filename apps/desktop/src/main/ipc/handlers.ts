@@ -5,6 +5,8 @@ import { windowHandlers } from '../modules/window/window.ipc'
 import { workspaceHandlers } from '../modules/workspace/workspace.ipc'
 import { vfsHandlers } from '../vfs/vfs.ipc'
 import { documentHandlers } from '../vfs/document/document.ipc'
+import { webHandlers } from '../modules/web/web.ipc'
+import { ownerWindowOf } from '../modules/web/web-session'
 import { searchHandlers } from './search.ipc'
 import type { Handlers } from './router'
 
@@ -17,6 +19,7 @@ export function createHandlers(c: Container): Handlers {
     ...workspaceHandlers(c.workspaces),
     ...vfsHandlers(c.vfs, c.scanner),
     ...documentHandlers(c.documents),
-    ...searchHandlers(c.workspaces, c.settings, c.scanner)
+    ...searchHandlers(c.workspaces, c.settings, c.scanner),
+    ...webHandlers(c.web, ownerWindowOf)
   }
 }

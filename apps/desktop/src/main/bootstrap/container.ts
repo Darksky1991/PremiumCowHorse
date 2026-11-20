@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, session, shell } from 'electron'
 import type { i18n } from 'i18next'
 import { resolveLanguage } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
@@ -17,6 +17,14 @@ import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
+import { ScopeTable } from '../modules/web/scope'
+import { createWebProtocolHandler } from '../modules/web/web-protocol'
+import { WebViewManager } from '../modules/web/web-view-manager'
+import {
+  configureWebSession,
+  createWebContentsView,
+  WEB_PARTITION
+} from '../modules/web/web-session'
 
 export interface Container {
   paths: AppPaths
@@ -30,6 +38,7 @@ export interface Container {
   documents: DocumentService
   i18n: i18n
   windows: WindowService
+  web: WebViewManager
 }
 
 /**
@@ -75,5 +84,36 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     preferredLanguage: () => resolveLanguage(settings.get('general.language'), app.getLocale())
   })
 
-  return { paths, logger, db, bus, settings, workspaces, vfs, scanner, documents, i18n, windows }
+  // 浏览器视图（doc 第 15 节）：专用会话 + pch-web 协议（范围内只读）；视图归属窗口，事件只发给所属窗口
+  const webScopes = new ScopeTable()
+  const webSession = session.fromPartition(WEB_PARTITION)
+  const web = new WebViewManager({
+    createView: (events) => createWebContentsView(webSession, events),
+    send: (owner, event, payload) => windows.sendTo(owner, event, payload),
+    scopes: webScopes,
+    openExternal: (url) => {
+      shell.openExternal(url).catch((e: unknown) => logger.warn(`[web] openExternal ${url}`, e))
+    },
+    logger
+  })
+  configureWebSession(webSession, {
+    handler: createWebProtocolHandler({ scopes: webScopes, vfs }),
+    onDownload: (id) => web.notifyContents(id, 'download'),
+    logger
+  })
+
+  return {
+    paths,
+    logger,
+    db,
+    bus,
+    settings,
+    workspaces,
+    vfs,
+    scanner,
+    documents,
+    i18n,
+    windows,
+    web
+  }
 }

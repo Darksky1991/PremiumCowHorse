@@ -14,6 +14,11 @@ export function applySecurityPolicies(rendererUrl: string, logger: Logger): void
   })
 
   app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-attach-webview', (event) => event.preventDefault())
+    // 浏览器视图（modules/web）在专用会话 persist:pch-web 中，由 web 模块施加自己的导航 / 新窗口处理
+    // （同范围交给应用、外部交给系统浏览器、其余阻止）。应用窗口都在默认会话，下面的限制对它们不变。
+    // 按会话判断而非由 web 模块登记：web-contents-created 在 new WebContentsView() 的构造中同步发出，早于任何登记
+    if (contents.session !== session.defaultSession) return
     contents.setWindowOpenHandler(({ url }) => {
       openExternalIfAllowed(url, logger)
       return { action: 'deny' }
@@ -24,7 +29,6 @@ export function applySecurityPolicies(rendererUrl: string, logger: Logger): void
         openExternalIfAllowed(url, logger)
       }
     })
-    contents.on('will-attach-webview', (event) => event.preventDefault())
   })
 }
 

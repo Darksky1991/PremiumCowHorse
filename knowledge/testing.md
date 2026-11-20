@@ -271,3 +271,10 @@
 - 症状：（M2 先行验证 S1）需要对主窗口中嵌入的 `WebContentsView` 页面做断言。
 - 解决：视图的页面与窗口页面一样出现在 `electronApp.windows()` / `context().pages()` 中，`Page` API（`locator`、`evaluate`、`title`）可直接使用：`app.windows().find((p) => p.url().startsWith('pch-web:'))`。Electron 模式下 `context().browser()` 为 `null`，不能开 Browser 级 CDP 会话。备选：`electronApp.evaluate` 中调 `view.webContents.executeJavaScript(...)`。
 - 预防：不要假设 `app.windows()` 的顺序，按 URL 找；视图同样受 Playwright 的各种模拟（颜色方案等）影响。
+
+### e2e：Playwright 的 `click` 在被阻止的导航上一直等待；锁屏时系统级输入不可用
+
+- 日期：2026-11-20
+- 症状（M2 Task 6 实机验证）：① 浏览器视图中点链接（主进程 `will-navigate` 里 `preventDefault`）后，`page.click` 卡在 `waiting for scheduled navigations to finish` 直到超时，`noWaitAfter` 也会让下一次操作卡在 `waiting for navigation to finish`。② 工作站锁屏时 PowerShell 的 `SetCursorPos` 返回 False、`GetForegroundWindow` 为 0，`mouse_event` / `keybd_event` 不送达任何窗口（系统级侧键、按键、系统截屏都无法进行）。
+- 解决：① 视图内的点击改为主进程 `webContents.sendInputEvent` 的 `mouseDown` / `mouseUp`（坐标取元素中心，经 `electronApp.evaluate`），按键同样用 `sendInputEvent`（`rawKeyDown` 会触发 `before-input-event`）。② 系统级输入与截屏需在用户未锁屏时进行；无法进行时在报告中写「未验证」。
+- 预防：系统级验证前先用 `GetForegroundWindow` 是否为 0 判断桌面是否可用。
