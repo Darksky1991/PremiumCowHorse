@@ -51,6 +51,44 @@ export class VfsService {
     return this.run(uri, undefined, (p, url, s) => p.read(url, offset, length, s), signal)
   }
 
+  /**
+   * 打开文件并返回读取流。超时（按位置）只覆盖「打开」阶段；之后的读取由调用方控制：
+   * 流结束 / 出错 / destroy 时 provider 关闭句柄，external 中止时这里销毁流。
+   * 若流在调用已超时 / 已取消之后才打开完成，立即销毁（不泄漏句柄）。
+   */
+  async createReadStream(
+    uri: string,
+    range?: { start: number; end: number },
+    signal?: AbortSignal
+  ): Promise<NodeJS.ReadableStream> {
+    let settled = false
+    let stream: NodeJS.ReadableStream
+    try {
+      stream = await this.run(
+        uri,
+        undefined,
+        async (p, url, s) => {
+          const opened = await p.createReadStream(url, range, s)
+          // 调用已超时 / 已取消（run 已抛错）后才打开完成：没有人会接收这个流，立即销毁
+          if (settled) destroyStream(opened)
+          return opened
+        },
+        signal
+      )
+    } finally {
+      settled = true
+    }
+    if (signal) {
+      const onAbort = (): void => destroyStream(stream)
+      if (signal.aborted) onAbort()
+      else {
+        signal.addEventListener('abort', onAbort, { once: true })
+        stream.once('close', () => signal.removeEventListener('abort', onAbort))
+      }
+    }
+    return stream
+  }
+
   /** 取消进行中的请求；未知或已结束的 id 不做任何事 */
   cancel(requestId: string): void {
     this.requests.get(requestId)?.abort()
@@ -107,4 +145,9 @@ export class VfsService {
       }
     }
   }
+}
+
+function destroyStream(stream: NodeJS.ReadableStream): void {
+  const s = stream as Partial<{ destroy(): void }>
+  s.destroy?.()
 }

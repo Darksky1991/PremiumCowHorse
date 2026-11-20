@@ -599,6 +599,8 @@ export interface FileEntry {
 
 已实现的是上面接口的子集（`stat`、`list`、`read`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入）。**`read(uri, offset, length, signal?)`**（2026-11-20，文本预览）：每次调用 = 打开 → 读 → 在 `finally` 中关闭，不在调用之间持有句柄；到达文件末尾时返回更短的结果（offset 在末尾之后为空），不存在 → `FS_NOT_FOUND`。本地 provider 用 `fs.promises.open(p, 'r')`：libuv 在 Windows 上以 `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE` 打开（`knowledge/windows-and-tooling.md`），读取期间他人仍可追加、改名、删除该文件；但 **读取进行中的那一刻其上级目录不能改名**（Windows 的限制，与共享标志无关），因此只在一次读取期间打开（本地 1MB 约毫秒级）。`VfsService.read(uri, offset, length, signal?)` 同样按位置超时，并接受调用方的 `AbortSignal`（文档关闭时中止索引中的读取）。`watch` 已于 2026-11-19 删除（目录的持续刷新改由扫描进程负责，见下文），目标结构中也不再有 `watch`。`VfsService` 只负责一次性调用（`stat`、条目添加时的校验、扫描进程不可用时的直接枚举）：按 scheme 路由、统一超时（按位置取 `vfs.timeoutSec.local` / `vfs.timeoutSec.network`，整次调用的总时长，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
+**`createReadStream(uri, range?, signal?)`（M2，已实现）**：打开 → 返回 Node 读取流（`range` 为闭区间字节 `{start, end}`）；句柄由流持有（`autoClose`），流结束、出错、`destroy()` 或 `signal` 中止时关闭，打开方式同 `read`（他人仍可改名 / 删除，读取进行中其上级目录暂不能改名）。`VfsService.createReadStream` 的超时（按位置）只覆盖「打开」阶段，打开之后调用方的 `signal` 中止即销毁流；调用已超时 / 取消之后才打开完成的流立即销毁，不泄漏句柄。
+
 `FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次（计入同一并发上限），资源树据此判断能否展开（已实现，M1-2）。目标是文件以外的类型（如设备）也归为 `'file'`；目标 stat 因任何原因失败（不存在、循环、权限、网络）都为 `null`；lstat 本身失败的降级项不带 `target`，资源树按失效链接处理。
 
 **目录刷新：扫描 + 缓存（2026-11-19 起取代目录监听，设计见 `devDoc/2026-11-19-01-refresh-cache-design.md`）**：
@@ -635,6 +637,8 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
 **连接池通用策略**：懒连接、空闲 5 分钟回收、断线自动重连一次、连接状态通过 `connection.status` 推送到状态栏。
 
 ### 7.3 `pcfs://` 协议：让预览插件「像访问网页资源一样」访问任意文件
+
+> **已实现（M2，浏览器视图用的 `pch-web://`）**：`modules/web/{scope,mime,web-protocol}.ts`。地址 `pch-web://<范围编号>/<逐段 encodeURIComponent 的相对路径>`，范围编号 = `sha256(范围根 URI)` 前 16 个十六进制字符，`ScopeTable` 在内存登记 编号 → 范围根；`fromWebUrl` 逐段解码后拒绝空段、`.` / `..`、含 `/` `\` NUL 的段，并用 `isUnderUri` 复核（未登记 → 404，范围外 → 403）。`createWebProtocolHandler` 只读：GET / HEAD，单区间 `Range`（206 / 416），`Content-Type` 取内置表（`mimeOf`，不引入 `mime` 包），`Cache-Control: no-store`，目录 / 不存在 → 404，`FS_UNAVAILABLE` → 502，`FS_TIMEOUT` → 504，查询参数一律忽略；响应体取消或请求中止时销毁流。`registerPrivilegedSchemes` 登记 `pch-web`、`pch-asset`（`standard`、`secure`、`supportFetchAPI`、`corsEnabled`、`stream`）；处理器在 Task 6 注册到浏览器视图的会话。下文的 `pcfs://` 仍是目标结构。
 
 插件拿到的是一个 URL（`pcfs://res/<encodeURIComponent(uri)>`），可以直接用于 `<img>`、`<video>`、pdf.js、`fetch()`，无需关心文件在本地还是 FTP 上。
 

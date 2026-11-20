@@ -1,7 +1,8 @@
+import { PassThrough, Readable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import type { FileEntry, FileStat } from '@pch/shared'
-import type { FileSystemProvider } from './types'
 import { VfsService } from './vfs.service'
+import type { FileSystemProvider } from './types'
 
 /** list 永不完成（也不响应 signal），模拟无响应的网络共享 */
 class HangingProvider implements FileSystemProvider {
@@ -13,6 +14,9 @@ class HangingProvider implements FileSystemProvider {
     return new Promise(() => undefined)
   }
   read(): Promise<Uint8Array> {
+    return new Promise(() => undefined)
+  }
+  createReadStream(): Promise<NodeJS.ReadableStream> {
     return new Promise(() => undefined)
   }
   async dispose(): Promise<void> {
@@ -84,6 +88,7 @@ describe('VfsService', () => {
       stat: () => new Promise(() => undefined),
       list: () => new Promise(() => undefined),
       read: async (_uri, offset, length) => Uint8Array.of(offset, length),
+      createReadStream: () => new Promise(() => undefined),
       dispose: async () => undefined
     }
     const vfs = new VfsService([echo])
@@ -112,5 +117,85 @@ describe('VfsService', () => {
 
   it('cancelling an unknown id is a no-op', () => {
     expect(() => new VfsService([]).cancel('nope')).not.toThrow()
+  })
+
+  describe('createReadStream', () => {
+    function provider(open: (signal?: AbortSignal) => Promise<Readable>): FileSystemProvider {
+      return {
+        scheme: 'file',
+        stat: () => new Promise(() => undefined),
+        list: () => new Promise(() => undefined),
+        read: () => new Promise(() => undefined),
+        createReadStream: (_uri, _range, signal) => open(signal),
+        dispose: async () => undefined
+      }
+    }
+
+    it('routes to the provider with the range', async () => {
+      const seen: unknown[] = []
+      const p = provider(async () => Readable.from([Buffer.from('x')]))
+      p.createReadStream = async (uri, range) => {
+        seen.push(uri.href, range)
+        return Readable.from([Buffer.from('x')])
+      }
+      const stream = await new VfsService([p]).createReadStream('file:///C:/a.bin', {
+        start: 1,
+        end: 2
+      })
+      expect(seen).toEqual(['file:///C:/a.bin', { start: 1, end: 2 }])
+      ;(stream as Readable).destroy()
+    })
+
+    it('times out while opening (by location)', async () => {
+      const vfs = new VfsService([provider(() => new Promise(() => undefined))], { timeoutMs: 30 })
+      await expect(vfs.createReadStream('file:///C:/a.bin')).rejects.toMatchObject({
+        code: 'FS_TIMEOUT'
+      })
+    })
+
+    it('does not time out an open stream that is still being read', async () => {
+      const source = new PassThrough()
+      const vfs = new VfsService([provider(async () => source)], { timeoutMs: 30 })
+      const stream = await vfs.createReadStream('file:///C:/a.bin')
+      await new Promise((r) => setTimeout(r, 80))
+      expect((stream as Readable).destroyed).toBe(false)
+      source.destroy()
+    })
+
+    it('destroys the stream when the caller aborts after it was opened', async () => {
+      const source = new PassThrough()
+      const vfs = new VfsService([provider(async () => source)])
+      const controller = new AbortController()
+      const stream = (await vfs.createReadStream(
+        'file:///C:/a.bin',
+        undefined,
+        controller.signal
+      )) as Readable
+      stream.on('error', () => undefined)
+      controller.abort()
+      await new Promise((r) => setTimeout(r, 10))
+      expect(stream.destroyed).toBe(true)
+    })
+
+    it('destroys a stream that opens only after the call timed out', async () => {
+      const source = new PassThrough()
+      let release!: () => void
+      const gate = new Promise<void>((r) => (release = r))
+      const vfs = new VfsService(
+        [
+          provider(async () => {
+            await gate
+            return source
+          })
+        ],
+        { timeoutMs: 20 }
+      )
+      await expect(vfs.createReadStream('file:///C:/a.bin')).rejects.toMatchObject({
+        code: 'FS_TIMEOUT'
+      })
+      release()
+      await new Promise((r) => setTimeout(r, 10))
+      expect(source.destroyed).toBe(true)
+    })
   })
 })

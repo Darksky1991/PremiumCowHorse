@@ -72,6 +72,41 @@ export class LocalProvider implements FileSystemProvider {
     }
   }
 
+  /**
+   * 打开 → 返回流。句柄由流持有（autoClose）：结束、出错、destroy 时关闭；signal 中止时销毁流。
+   * 打开方式同 read（允许他人同时写入 / 删除 / 改名）。
+   */
+  async createReadStream(
+    uri: URL,
+    range?: { start: number; end: number },
+    signal?: AbortSignal
+  ): Promise<NodeJS.ReadableStream> {
+    try {
+      throwIfAborted(signal)
+      const handle = await fs.open(fileURLToPath(uri), 'r')
+      if (signal?.aborted) {
+        await handle.close()
+        throwIfAborted(signal)
+      }
+      const stream = handle.createReadStream({
+        start: range?.start,
+        end: range?.end,
+        autoClose: true,
+        emitClose: true
+      })
+      if (signal) {
+        const onAbort = (): void => {
+          stream.destroy(new DOMException('Aborted', 'AbortError'))
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        stream.once('close', () => signal.removeEventListener('abort', onAbort))
+      }
+      return stream
+    } catch (e) {
+      throw toAppError(e)
+    }
+  }
+
   async dispose(): Promise<void> {
     // 本地文件系统没有需要释放的连接或句柄
   }
