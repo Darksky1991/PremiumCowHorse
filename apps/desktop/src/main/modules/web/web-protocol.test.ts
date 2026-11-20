@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -186,6 +186,29 @@ describe('createWebProtocolHandler', () => {
       }
     })
     expect((await h(new Request(`pch-web://${id}/proto/index.html`))).status).toBe(status)
+  })
+
+  it('reads the whole file only up to the size it stated (a file appended after stat matches Content-Length)', async () => {
+    const real = new VfsService([new LocalProvider()])
+    const file = path.join(root, 'proto', 'a b#1.bin')
+    const h = createWebProtocolHandler({
+      scopes,
+      vfs: {
+        stat: async (uri) => {
+          const st = await real.stat(uri)
+          // 日志等：stat 之后、打开之前被追加
+          appendFileSync(file, Buffer.from('MORE'))
+          return st
+        },
+        createReadStream: (uri, range, signal) => real.createReadStream(uri, range, signal),
+        read: unused
+      }
+    })
+    const uri = pathToFileURL(file).href
+    const res = await h(new Request(toWebUrl(uri, rootUri)))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Length')).toBe(String(bytes.length))
+    expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true)
   })
 
   it('destroys the stream when the response body is cancelled', async () => {
@@ -377,6 +400,27 @@ describe('createAssetProtocolHandler（开发：代理到 renderer dev server）
     expect(res.headers.get('Content-Type')).toBe('text/javascript')
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
     expect(await res.text()).toBe('code')
+  })
+
+  it('不离开 dev server：解析后落到其他主机的路径（//host、反斜杠开头）→ 404，不转发', async () => {
+    const seen: string[] = []
+    const h = createAssetProtocolHandler({
+      kind: 'dev',
+      origin: 'http://localhost:5173/',
+      fetch: async (url) => {
+        seen.push(url)
+        return new Response('code')
+      }
+    })
+    for (const url of [
+      'pch-asset://viewer//evil.example/x.js',
+      'pch-asset://viewer//evil.example',
+      // http: 中反斜杠等同斜杠：/\evil.example → //evil.example
+      'pch-asset://viewer/\\evil.example/x.js'
+    ]) {
+      expect((await h(new Request(url))).status, url).toBe(404)
+    }
+    expect(seen).toEqual([])
   })
 })
 

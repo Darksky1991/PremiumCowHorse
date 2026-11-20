@@ -101,7 +101,12 @@ export function createWebProtocolHandler(deps: {
 
       if (request.method === 'HEAD' || length === 0) return new Response(null, { status, headers })
 
-      const stream = await vfs.createReadStream(target.uri, range ?? undefined, request.signal)
+      // 整个文件也按 stat 的大小读（stat 之后被追加的部分不发：响应体与 Content-Length 一致）
+      const stream = await vfs.createReadStream(
+        target.uri,
+        range ?? { start: 0, end: size - 1 },
+        request.signal
+      )
       const body = Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>
       return new Response(body, { status, headers })
     } catch (e) {
@@ -143,7 +148,7 @@ const ASSET_EXTENSIONS = new Set(['.js', '.css', '.map'])
  * pch-asset 的来源：
  * - files：生产，产物目录（out/web-assets/markdown，位于 asar 内）中白名单扩展名的文件
  * - dev：开发模式，所有路径原样代理到 renderer dev server（外壳的脚本地址为 `/@fs/<main.ts 的绝对路径>`，
- *   其中的 import 也都是 dev server 的根相对路径；台账 S9）
+ *   其中的 import 也都是 dev server 的根相对路径；台账 S9）。解析结果不在 dev server 的源上时 404
  */
 export type AssetSource =
   | { kind: 'files'; root: string }
@@ -172,7 +177,10 @@ export function createAssetProtocolHandler(
     if (u.hostname !== ASSET_HOST) return fail(404)
 
     if (source.kind === 'dev') {
-      const res = await source.fetch(new URL(u.pathname + u.search, source.origin).href)
+      // 只转发到 dev server 本身：`//host`、反斜杠开头（http: 中等同斜杠）等解析到其他源的路径 → 404
+      const target = new URL(u.pathname + u.search, source.origin)
+      if (target.origin !== new URL(source.origin).origin) return fail(404)
+      const res = await source.fetch(target.href)
       const headers = new Headers(res.headers)
       for (const [k, v] of Object.entries(ASSET_HEADERS)) headers.set(k, v)
       return new Response(res.body, { status: res.status, headers })

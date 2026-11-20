@@ -473,6 +473,41 @@ describe('WebViewManager', () => {
       expect(openExternal).toHaveBeenCalledWith('https://example.com/')
     })
 
+    it('外部链接：同一视图 2 秒内最多交给系统一次（页面脚本 / meta refresh 无手势也能触发），超出丢弃并记日志', () => {
+      const openExternal = vi.fn()
+      const warn = vi.fn()
+      let now = 10_000
+      const m = new WebViewManager({
+        createView: (ev) => {
+          const v = new FakeView(ev)
+          views.push(v)
+          return v
+        },
+        send,
+        scopes,
+        openExternal,
+        logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+        now: () => now
+      })
+      m.attach(win, input('a'))
+      const a = views.at(-1)!.events
+      m.attach(win, input('b'))
+      const b = views.at(-1)!.events
+      a.navigate('https://example.com/1', false)
+      now += 1999
+      a.navigate('https://example.com/2', true)
+      // 其他视图不受影响
+      b.navigate('https://example.com/b', false)
+      expect(openExternal.mock.calls).toEqual([
+        ['https://example.com/1'],
+        ['https://example.com/b']
+      ])
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/2'))
+      now += 1
+      a.navigate('https://example.com/3', false)
+      expect(openExternal).toHaveBeenLastCalledWith('https://example.com/3')
+    })
+
     it('应用快捷键 → web.shortcut 并返回 true；其他按键返回 false', () => {
       const base = { type: 'keyDown', shift: false, alt: false, meta: false, isComposing: false }
       expect(events.key({ ...base, key: 'w', control: true })).toBe(true)

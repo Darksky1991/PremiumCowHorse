@@ -514,7 +514,7 @@ test.describe('the browser view (html plugin)', () => {
       expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
       await placeholder(page).click()
       await expect(toast).toHaveCount(0)
-      await expect(page.getByRole('button', { name: '1 notifications' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Notifications: 1' })).toBeVisible()
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })

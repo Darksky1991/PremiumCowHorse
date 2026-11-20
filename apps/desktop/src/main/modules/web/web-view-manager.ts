@@ -16,6 +16,12 @@ import { matchShortcut, type KeyInput } from './shortcuts'
 /** 每个窗口同时存在的视图上限（需求方决定；超出时销毁最久未显示的，显示中的除外） */
 export const WEB_VIEW_LIMIT = 8
 
+/**
+ * 同一视图把外部链接交给系统的最小间隔：页面脚本（location.href = …）/ meta refresh 无需用户手势就能触发导航，
+ * 不节流时可以连续拉起系统浏览器（实现记录 Q 清单）
+ */
+export const EXTERNAL_INTERVAL_MS = 2_000
+
 /** Markdown 视图的查询参数（协议处理器见到它时返回查看脚本的外壳，Task 8） */
 const MARKDOWN_QUERY = '?pch-view=markdown'
 
@@ -116,6 +122,8 @@ interface Entry {
   lastShown: number
   state: Omit<WebViewState, 'tabId'>
   destroyed: boolean
+  /** 最近一次把外部链接交给系统的时刻（节流用；没有时为 -Infinity） */
+  lastExternal: number
 }
 
 /**
@@ -135,6 +143,8 @@ export class WebViewManager {
       /** 外部链接交给系统（shell.openExternal） */
       openExternal: (url: string) => void
       logger: Logger
+      /** 当前时刻（毫秒；外部链接节流用，测试注入） */
+      now?: () => number
     }
   ) {}
 
@@ -301,7 +311,8 @@ export class WebViewManager {
       guardFocus: true,
       lastShown: 0,
       state: { title: '', loading: false, failed: null },
-      destroyed: false
+      destroyed: false,
+      lastExternal: -Infinity
     }
     return ref.entry
   }
@@ -361,6 +372,12 @@ export class WebViewManager {
             fragment: decision.fragment
           })
         } else if (decision.kind === 'external') {
+          const now = (this.deps.now ?? Date.now)()
+          if (now - entry.lastExternal < EXTERNAL_INTERVAL_MS) {
+            this.deps.logger.warn(`[web] dropped external navigation (throttled): ${decision.url}`)
+            return
+          }
+          entry.lastExternal = now
           openExternal(decision.url)
         } else {
           this.deps.logger.info(`[web] blocked navigation (${decision.notice}): ${url}`)

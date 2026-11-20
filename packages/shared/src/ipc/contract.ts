@@ -183,7 +183,7 @@ export const ipcContract = {
    * web.attach：不存在则创建，存在则复用（URL 相同不重新加载）；放到 bounds 并显示。uri 必须在 scopeRoot 之下
    * （否则 FS_INVALID_URI）。fragment（视图内链接带的 `?查询#锚点`，web.navigate 的 fragment）加载时拼到地址后
    * （是否重新加载只看不含它的地址）。每窗口最多 8 个视图，超出时销毁最久未显示的（显示中的除外）。
-   * 其余通道对不存在的视图不做任何事（web.freeze 返回 `{ image: '', yielded: false }`）
+   * 其余通道对不存在的视图不做任何事（web.freeze 返回 `{ image: '', yielded: false }`；已在截图中时同样返回空图）
    */
   'web.attach': route<void>()(
     z.strictObject({
