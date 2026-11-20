@@ -148,7 +148,7 @@ export default function FolderView({
     if (viewStateRef.current?.selectedUri !== uri) saveViewState({ selectedUri: uri })
   }
   const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  // 卸载（导航离开）时不再保存：此时标签已在新位置，写入会落到新位置的 viewState 上
+  // 卸载时丢弃防抖中的滚动位置（宿主已按位置写入刚离开的历史项，也可以在卸载时补存，见 text 插件；未做）
   useEffect(() => () => clearTimeout(scrollSaveTimer.current), [])
   const onScroll = (): void => {
     clearTimeout(scrollSaveTimer.current)

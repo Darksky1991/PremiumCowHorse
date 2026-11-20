@@ -146,3 +146,11 @@
 - 原因：`A` 改名期间扫描进程读取 `A\B` 得到 `FS_NOT_FOUND`，`Cache.removeMissing` 把 `B` 从 `A` 的缓存列表中删除，但 `A` 的 `dir_mtime` 不变。`A` 在 50–80ms 前刚确认过（fresh），渲染端重新列出时直接用缓存、不排 P0。`A` 改回后它自身在磁盘上的修改时间根本没变（改名 `A` 只改变其父目录的修改时间），之后每次「比较修改时间」的确认都判为未变，`A` 的列表永远缺 `B`。诊断：扫描进程插桩日志 + 定向复现（在 `A` 刚确认之后立即改名），见 `devDoc/2026-11-19-11-dir-id.md`「`FS_NOT_FOUND`：重新读取父目录」。
 - 解决：`FS_NOT_FOUND` 时除了 `removeMissing`（保留：父目录 fresh 时树与搜索立即不显示已删除的目录），再对父目录排一次 `requestP0(parent, { force: true })`，由真实枚举决定父目录的列表；`removeMissing` 删除了父目录列表中的该项时把父目录的 `dir_mtime` 置为 NULL，P0 没有执行时下一次确认也完整读取。该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻）：父目录的真实列表仍列出它、它却持续报「不存在」时，再次出错不再强制父目录（否则 10 分钟内父目录完整读取 1171 次，测试实测），按远层间隔重试。
 - 预防：缓存中凡是「按推断」改动了某目录的列表（不是来自该目录自身的枚举），都要让该目录的修改时间比较失效或排一次真实读取——修改时间只证明「磁盘上没有变」，不证明「缓存与磁盘一致」。由出错的子项去强制父目录时，要像 `FS_NOT_A_DIRECTORY` 一样设限，并写「父目录持续列出它」的循环上限测试。
+
+### 在仓库根目录 `npx electron-vite build` 报 `Cannot find module 'electron/package.json'`
+
+- 日期：2026-11-20
+- 症状：在仓库根目录执行 `npx electron-vite build`，错误栈指向 `%LOCALAPPDATA%\npm-cache\_npx\...\electron-vite`。
+- 原因：electron-vite 只是 `apps/desktop` 的依赖，根目录的 `node_modules/.bin` 中没有它，npx 便从 npm 下载了一份到 npx 缓存中运行，那里找不到 electron。
+- 解决：`pnpm --filter @pch/desktop exec electron-vite build`（只构建、不做类型检查；完整构建用 `pnpm build`）。
+- 预防：工作区包的命令用 `pnpm --filter <包> exec`，不在根目录用 npx 调用只属于某个包的工具（npx 会静默下载，也绕过了锁定的版本）。
