@@ -29,6 +29,8 @@ const statusBar = (page: Page): Locator => page.locator('[data-status-bar]')
 const lineCount = (page: Page): Locator => statusBar(page).locator('[data-lines]')
 const followButton = (page: Page): Locator =>
   page.getByRole('toolbar').getByRole('button', { name: '末尾を追従' })
+/** errors:FS_NOT_FOUND（ja） */
+const NOT_FOUND = 'ファイルまたはフォルダーが見つかりません'
 
 /** 第一行（可见行中行号最小者）的行号 */
 async function firstVisibleLine(page: Page): Promise<number> {
@@ -161,16 +163,19 @@ test.describe('text and log viewer', () => {
     }
   })
 
-  test('renaming a ~50MB file while it is being indexed succeeds, and so does renaming its folder', async () => {
+  test('renaming a ~200MB file while it is being indexed succeeds, and so does renaming its folder', async () => {
     const dir = path.join(project, 'big')
     mkdirSync(dir)
     const row = Buffer.from(`${'0123456789'.repeat(9)}abcdefgh\n`)
     const chunk = Buffer.concat(Array.from({ length: 10_000 }, () => row))
     const file = path.join(dir, 'data.log')
-    writeFileSync(file, Buffer.concat(Array.from({ length: 50 }, () => chunk)))
+    // 约 200MB（本机的磁盘缓存下 50MB 的索引在状态栏显示「%」之前就可能完成，改名落在索引之后）
+    writeFileSync(file, chunk)
+    for (let i = 1; i < 200; i++) appendFileSync(file, chunk)
     const { app, page } = await launchFast(userData)
     try {
-      const tree = await setup(page)
+      // 全量模式（默认上限 50MB 以上为部分模式，只索引 4MB）
+      const tree = await setup(page, { 'preview.maxTextSizeMB': 500 })
       await toggleRow(tree.getByRole('treeitem', { name: 'big' }))
       await tree.getByRole('treeitem', { name: 'data.log' }).click()
       await expect(region(page)).toBeVisible()
@@ -179,6 +184,11 @@ test.describe('text and log viewer', () => {
       await expect(lineCount(page)).toContainText('%')
       const renamed = path.join(dir, 'data-renamed.log')
       renameSync(file, renamed)
+      // 改名确实发生在索引进行中：之后的一块读取找不到文件，状态栏显示索引失败（错误码对应的文案，不是错误码）
+      await expect(statusBar(page)).toContainText(
+        `読み込みに失敗しました（${NOT_FOUND}）。更新で再試行します`
+      )
+      await expect(lineCount(page)).toContainText('%')
       // 上级目录：没有读取进行时必须能改名（读取进行中 Windows 不允许改名上级目录，见 doc 7.1）
       const movedDir = path.join(project, 'big-moved')
       await renameWithin(dir, movedDir, 2000)
@@ -186,9 +196,60 @@ test.describe('text and log viewer', () => {
       // 放回原处：宿主的自动检查发现文件重新出现 → reset → 重新建索引直到完成
       renameSync(movedDir, dir)
       renameSync(renamed, file)
-      await expect(lineCount(page)).toHaveText('500,000 行', { timeout: 30_000 })
+      await expect(lineCount(page)).toHaveText('2,000,000 行', { timeout: 30_000 })
       // 索引完成后：上级目录一次改名成功
       renameSync(dir, path.join(project, 'big-after'))
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a read error goes away when the file comes back (reset), even with nothing to read', async () => {
+    const log = path.join(project, 'app.log')
+    writeFileSync(log, `${Array.from({ length: 10_000 }, (_, i) => logLine(i + 1)).join('\n')}\n`)
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: 'app.log' }).click()
+      await expect(line(page, 10_000)).toHaveText(logLine(10_000))
+
+      // 删除后移到开头：开头的块没有缓存，读取失败 → 状态栏显示读取错误
+      rmSync(log)
+      await region(page).focus()
+      await page.keyboard.press('Control+Home')
+      await expect(statusBar(page)).toContainText(NOT_FOUND)
+
+      // 同名的空文件出现：reset 之后没有要读的行，旧的读取错误也不再显示
+      writeFileSync(log, '')
+      await expect(page.getByText('空のファイルです')).toBeVisible({ timeout: 15_000 })
+      await expect(statusBar(page)).not.toContainText(NOT_FOUND)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a position saved right before leaving is restored on back', async () => {
+    writeFileSync(
+      path.join(project, 'a.txt'),
+      `${Array.from({ length: 1000 }, (_, i) => `A${i + 1}`).join('\n')}\n`
+    )
+    writeFileSync(path.join(project, 'b.txt'), 'B1\n')
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: 'a.txt' }).click()
+      await expect(line(page, 1)).toHaveText('A1')
+      await region(page).focus()
+      await page.keyboard.press('PageDown')
+      await page.keyboard.press('PageDown')
+      const n = await firstVisibleLine(page)
+      expect(n).toBeGreaterThan(1)
+      // 移动后立即（保存的防抖 150ms 之内）在同一标签打开另一个文件：卸载时补存位置
+      await tree.getByRole('treeitem', { name: 'b.txt' }).click()
+      await expect(line(page, 1)).toHaveText('B1')
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(line(page, n)).toHaveText(`A${n}`)
+      expect(await firstVisibleLine(page)).toBe(n)
     } finally {
       await app.close()
     }
@@ -313,6 +374,30 @@ test.describe('text and log viewer', () => {
       await region(page).focus()
       await page.keyboard.press('Control+End')
       await expect(line(page, 120_000)).toHaveText(lines[119_999]!)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('Read all from the 4MB tail window of a log goes to the end of the whole file', async () => {
+    const lines = Array.from({ length: 120_000 }, (_, i) => `T${i + 1}: ${'-'.repeat(40)}`)
+    writeFileSync(path.join(project, 'big.log'), `${lines.join('\n')}\n`)
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page, { 'preview.maxTextSizeMB': 1 })
+      await tree.getByRole('treeitem', { name: 'big.log' }).click()
+      await expect(statusBar(page)).toContainText('末尾 4 MB のみ表示')
+      // 窗口内的开头（窗口内第 0 行，不是文件的第 1 行）；跟随关闭
+      await region(page).focus()
+      await page.keyboard.press('Control+Home')
+      await expect(followButton(page)).toHaveAttribute('aria-pressed', 'false')
+      await expect(line(page, 1)).not.toHaveText(lines[0]!)
+
+      // 窗口起点在全量索引中的行号无法换算：跳到末尾（而不是停在文件的第 1 行）
+      await statusBar(page).getByRole('button', { name: 'すべて読み込む' }).click()
+      await expect(lineCount(page)).toHaveText('120,000 行', { timeout: 30_000 })
+      await expect(line(page, 120_000)).toHaveText(lines[119_999]!)
+      await expect(followButton(page)).toHaveAttribute('aria-pressed', 'true')
     } finally {
       await app.close()
     }
