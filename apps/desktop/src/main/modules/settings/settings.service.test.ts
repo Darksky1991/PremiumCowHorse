@@ -74,4 +74,13 @@ describe('SettingsService (node:sqlite :memory: + Kysely migrations)', () => {
     expect(await repo.getAll()).toEqual({})
     expect(events).toEqual([])
   })
+
+  it('ignores keys removed from the schema that linger in the database', async () => {
+    await repo.upsert('launcher.officeDefaultAction', 'edit')
+    await repo.upsert('launcher.officeExtensions', ['xlsx'])
+    await repo.upsert('general.language', 'en')
+    const service = await SettingsService.create(repo, bus)
+    expect(service.getAll()).toEqual({ ...DEFAULT_SETTINGS, 'general.language': 'en' })
+    expect(service.getAll()).not.toHaveProperty('launcher.officeDefaultAction')
+  })
 })

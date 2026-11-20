@@ -190,6 +190,7 @@ export default {
     FS_TIMEOUT: '応答がないため中断しました',
     FS_UNAVAILABLE: '場所にアクセスできません',
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
-    DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください'
+    DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
+    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください'
   }
 }

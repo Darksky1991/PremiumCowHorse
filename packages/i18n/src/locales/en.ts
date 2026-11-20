@@ -191,6 +191,7 @@ export default {
     FS_TIMEOUT: 'Stopped because there was no response',
     FS_UNAVAILABLE: 'The location is unavailable',
     INDEX_UNAVAILABLE: 'The index is unavailable',
-    DOC_NOT_FOUND: 'The document was closed. Open it again'
+    DOC_NOT_FOUND: 'The document was closed. Open it again',
+    LAUNCH_FAILED: 'Could not launch the app. Check the associated application'
   }
 } satisfies Resource

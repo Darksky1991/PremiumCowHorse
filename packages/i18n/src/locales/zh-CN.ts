@@ -183,6 +183,7 @@ export default {
     FS_TIMEOUT: '没有响应，已中止',
     FS_UNAVAILABLE: '无法访问该位置',
     INDEX_UNAVAILABLE: '索引不可用',
-    DOC_NOT_FOUND: '文档已关闭，请重新打开'
+    DOC_NOT_FOUND: '文档已关闭，请重新打开',
+    LAUNCH_FAILED: '启动失败，请检查关联的应用程序'
   }
 } satisfies Resource

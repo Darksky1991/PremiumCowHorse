@@ -167,7 +167,7 @@
 
 - 日期：2026-11-20
 - 症状：（M2 先行验证 S4，本机即点即用版 Office16）`Start-Process -Verb OpenAsReadOnly` 打开 `.xlsx` / `.docx` 后标题没有「只读」，同目录出现所有者文件 `~$…`；`-Verb Open`（或不带 verb、资源管理器双击、`shell.openPath`）弹出系统的「选择一个应用以打开此 .xlsx 文件」对话框而不是直接启动 Excel / Word。
-- 原因：注册表中 `OpenAsReadOnly` 的命令是 `EXCEL.EXE /h "%1"` / `WINWORD.EXE /h /n "%1"`，`/h` 对本地文件不起只读作用（Excel 的只读开关是 `/r`，实测有效；Word 没有对应开关）。「选择应用」对话框：本机 `.xlsx` / `.docx` 下没有 `UserChoice`（只有 `OpenWithList` / `OpenWithProgids`）——推测是系统因此要求用户选择默认应用，未深究。
+- 原因：注册表中 `OpenAsReadOnly` 的命令是 `EXCEL.EXE /h "%1"` / `WINWORD.EXE /h /n "%1"`，实测以编辑模式打开（`/h` 的语义未深究；Excel 的只读开关是 `/r`，实测有效；Word 没有对应开关）。「选择应用」对话框：本机 `.xlsx` / `.docx` 下没有 `UserChoice`（只有 `OpenWithList` / `OpenWithProgids`）——推测是系统因此要求用户选择默认应用，未深究。
 - 解决：判断打开模式用「是否出现 `~$` 所有者文件」（对照实验：编辑模式出现、只读 / 保护视图不出现）。只读需求改用 `ViewProtected`（保护视图，实测只读）；`New` verb 是「以该文件为蓝本新建」（实测两种文件都成立）。
 - 预防：verb 的名字不等于行为，Office 相关的功能要在真机上按「标题 + `~$` 文件」验证；`UserChoiceLatest` 在本机存在（`.html` / `.pdf` / `.txt` 等），`.pdf` 的 `UserChoice`（`ChromePDF`）与 `UserChoiceLatest\ProgId`（`MSEdgePDF`）不一致时，系统实际采用 `UserChoice`（`AssocQueryString(ASSOCSTR_PROGID)` 确认）。
 
@@ -178,3 +178,11 @@
 - 原因：Windows PowerShell 5.1 按系统 ANSI 代码页（cp932）读取没有 BOM 的脚本，UTF-8 的中文字节被误解码，注释行吞掉了换行，`param` 行成了注释的一部分。
 - 解决：`.ps1` 只写 ASCII（注释用英文），或保存为带 BOM 的 UTF-8；短命令直接用 `-Command` 传入。
 - 预防：由工具（Bash heredoc、Write）生成的 `.ps1` 默认无 BOM，写成 ASCII。
+
+### Windows PowerShell 5.1：`ConvertFrom-Json` 对 JSON 数组整体输出一个对象，`@()` 不会展开
+
+- 日期：2026-11-20
+- 症状：（M2 Task 9）启动脚本用 `$list = @(ConvertFrom-Json -InputObject $env:PCH_ARGS)` 再 `ForEach-Object` 给每个参数加引号，结果参数没有被加引号，Excel 把路径在空格处截断（弹出「找不到 …\sample」），而同样逻辑在 `.ps1` 文件中用 `@('/r', '…')` 数组是对的。
+- 原因：5.1 的 `ConvertFrom-Json` 把 JSON 数组作为**一个** `Object[]` 写出，`@()` 只包一层，`$list` 变成「只有一个元素（数组）」，`ForEach-Object` 的 `$_` 是整个数组。
+- 解决：`foreach ($x in (ConvertFrom-Json …)) { $list += [string]$x }`（`foreach` 会遍历数组本身，5.1 / 7 都适用）。
+- 预防：在 PowerShell 中处理 JSON 数组一律用 `foreach` 遍历；脚本逻辑要在真实 PowerShell 上跑一遍（见 `detect-script.test.ts`），不要只看字符串。另：Excel 把**加了引号的开关**（`"/r"`）当作文件名，开关不加引号、路径加引号。

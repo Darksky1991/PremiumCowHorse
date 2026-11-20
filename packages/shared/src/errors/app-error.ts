@@ -27,7 +27,9 @@ export const ERROR_CODES = [
   /** 扫描进程或其缓存库（index.db）不可用 */
   'INDEX_UNAVAILABLE',
   /** 文本文档不存在：已关闭、因每窗口上限被关闭，或其窗口已销毁 */
-  'DOC_NOT_FOUND'
+  'DOC_NOT_FOUND',
+  /** 启动本机程序（Office 等）失败 */
+  'LAUNCH_FAILED'
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

@@ -18,6 +18,8 @@ import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
+import { LauncherService } from '../modules/launcher/launcher.service'
+import { runPowerShell } from '../modules/launcher/powershell'
 import { ScopeTable } from '../modules/web/scope'
 import { markdownShell, MARKDOWN_ASSET_BASE } from '../modules/web/markdown-shell'
 import {
@@ -45,6 +47,7 @@ export interface Container {
   i18n: i18n
   windows: WindowService
   web: WebViewManager
+  launcher: LauncherService
 }
 
 /**
@@ -118,6 +121,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     logger
   })
 
+  const launcher = new LauncherService({ run: runPowerShell, vfs, logger })
+
   return {
     paths,
     logger,
@@ -130,6 +135,7 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     documents,
     i18n,
     windows,
-    web
+    web,
+    launcher
   }
 }

@@ -23,6 +23,7 @@ import {
 import type { SearchResult } from '../search/types'
 import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
+import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
@@ -207,6 +208,12 @@ export const ipcContract = {
   'web.freeze': route<{ image: string; yielded: boolean }>()(z.strictObject({ tabId: WebTabId })),
   /** 结束截图替身、恢复显示；refocus 为真时把焦点还给视图（渲染端判断用户没有在应用中操作） */
   'web.unfreeze': route<void>()(z.strictObject({ tabId: WebTabId, refocus: z.boolean() })),
+  /** Office 等文件的打开方式检测（按扩展名缓存）/ 按方式启动 / 清缓存重新检测（doc 第 10 节）。均不修改文件 */
+  'launcher.capabilities': route<LaunchCapabilities>()(z.strictObject({ uri: z.string().min(1) })),
+  'launcher.open': route<void>()(
+    z.strictObject({ uri: z.string().min(1), mode: z.enum(LAUNCH_MODES) })
+  ),
+  'launcher.redetect': route<void>()(z.void()),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),

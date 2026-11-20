@@ -982,18 +982,18 @@ Windows 资源管理器右键菜单里的「開く」「読み取り専用で開
 
 ### 10.3 打开方式与实现手段
 
-每种方式优先使用 shell verb（与资源管理器右键菜单行为完全一致，DDE、DelegateExecute 等细节由 Windows 处理），其次使用 Office 官方文档记载的命令行开关；两者都没有就不提供。
+每种方式优先使用 shell verb（与资源管理器右键菜单行为一致，DDE、DelegateExecute 等细节由 Windows 处理），其次使用 Office 官方文档记载的命令行开关；两者都没有就不提供。**verb 的名字不等于行为**，下表依据 2026-11-20 在本机（即点即用版 Office16）对 Excel / Word 的实测（台账 `devDoc/2026-11-20-24-m2-ledger.md` S4，判定标准为窗口标题与同目录是否出现所有者文件 `~$…`）：
 
-| 方式 | 首选 verb | 备选命令行开关 | 说明 |
-|---|---|---|---|
-| 编辑打开 | `Open`（默认动作） | — | 共享盘上文件被他人占用时，由 Office 自己提示只读或通知 |
-| 只读打开 | `OpenAsReadOnly` | Excel：`/r` | Word 没有只读开关（其 `/r` 是重新注册），只能依赖 verb |
-| 受保护的视图 | `ViewProtected` | — | 仅当没有只读方式时作为替代显示，并如实标注为「受保护的视图」而非「只读」 |
-| 新建打开 | `New` | Excel：`/t`；Word：`/f` | `New` verb 多见于模板类型（.xltx/.dotx/.potx）；PowerPoint 只依赖 verb |
+| 方式 | 来源 | 说明 |
+|---|---|---|
+| 编辑打开 `edit` | 默认 verb（存在于 verbs 时），否则 `Open` | 共享盘上文件被他人占用时，由 Office 自己提示只读或通知。本机 `.xlsx` / `.docx` 没有 `UserChoice` 时，`Open` 会弹出系统「选择应用」对话框（与资源管理器双击相同，系统状态，非本应用问题） |
+| 只读打开 `readOnly` | **仅当关联程序是 `EXCEL.EXE` 时**用官方文档记载的开关 `/r` | 实测：标题 `… - Read-Only - Excel`，无 `~$` 文件。**不从 `OpenAsReadOnly` 推导**：实测它（`/h`）以编辑模式打开，出现 `~$` 文件。Word / PowerPoint 没有只读开关，不提供 |
+| 受保护的视图 `protectedView` | `ViewProtected` | 实测为只读（标题 `… - Protected View - …`，无 `~$` 文件），有此 verb 就显示，标注为「受保护的视图」 |
+| 新建打开 `newFromFile` | `New` | 实测以该文件为蓝本新建未保存的文档，原文件不被占用 |
 
-命令行开关只在识别到 Microsoft Office 时使用，exe 路径从 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe>` 读取。
+开关方式的 exe 路径：优先取 `HKLM`（再 `HKCU`）`SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe 文件名>`，否则取 `open` 命令中的路径，且文件须存在。`UserChoiceLatest` 不读：本机系统实际采用的是 `UserChoice`（`.pdf` 的两者不一致，实测系统用 `UserChoice`），若以后发现不一致导致错误，再改用 `AssocQueryString`。
 
-由于检测基于文件关联而不是写死 Office，若用户的默认程序是 WPS、LibreOffice 等，同样会显示该程序在注册表中提供的方式。
+由于检测基于文件关联而不是写死 Office，若用户的默认程序是 WPS、LibreOffice 等，同样会显示该程序在注册表中提供的 verb（`readOnly` 例外：只对 `EXCEL.EXE` 提供）。
 
 ```ts
 // packages/shared/src/launcher/types.ts
@@ -1005,25 +1005,15 @@ export interface LaunchOption {
 }
 
 export interface LaunchCapabilities {
-  ext: string;
+  ext: string;                       // 不含点的小写扩展名
   appName: string | null;            // 'Microsoft Excel' 等，取自程序的文件描述
   options: LaunchOption[];           // 只包含检测到的方式
 }
 ```
 
-```ts
-// apps/desktop/src/main/modules/launcher/shell-execute.ts
-// 通过 PowerShell 的 Start-Process 调用 ShellExecute，路径与 verb 经环境变量传入，避免命令注入
-export async function shellExecuteVerb(target: string, verb: string): Promise<void> {
-  await execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -LiteralPath $env:PCH_TARGET -Verb $env:PCH_VERB'],
-    { env: { ...process.env, PCH_TARGET: target, PCH_VERB: verb }, windowsHide: true, timeout: 15_000 },
-  );
-}
-```
+启动经 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（`modules/launcher/powershell.ts`，`windowHide`、超时 15 秒），路径、verb、exe、参数只经环境变量传入，脚本是固定字符串（`detect-script.ts`，纯 ASCII、不含双引号）。**不用 `Start-Process`**：Windows PowerShell 5.1 没有 `-LiteralPath`，`-FilePath` 把 `[` `]` 当通配符（同目录有 `見積[1] 案.xlsx` 与 `見積1 案.xlsx` 时会打开错的那个）。verb 方式用 `System.Diagnostics.ProcessStartInfo`（`FileName = $env:PCH_TARGET`、`Verb = $env:PCH_VERB`、`UseShellExecute = $true`）；开关方式用 `UseShellExecute = $false`、`FileName = $env:PCH_EXE`、`Arguments` 由脚本从 JSON 数组（`$env:PCH_ARGS`）组成：形如 `/r` 的开关不加引号（Excel 把加了引号的开关当作文件名），其余加引号。
 
-PowerShell 启动约需数百毫秒，对「打开文件」可以接受。若贵司终端策略禁止 PowerShell，可改为用 koffi 直接调用 `ShellExecuteExW`（届时会作为新依赖告知），接口不变。
+PowerShell 启动约需 0.5～1 秒，相对 Office 自身数秒的启动可以接受（台账 S7）。若终端策略禁止 PowerShell，可改为用 koffi 直接调用 `ShellExecuteExW`（届时作为新依赖告知），接口不变。
 
 ### 10.4 不同资源类型的处理
 
@@ -1050,21 +1040,20 @@ FTP/SFTP 上的文件无法被 Office 直接写回，因此由本应用代理：
 ### 10.6 在界面中的体现
 
 1. 目录视图（预览窗口中的 `pch.preview.folder`）的右键菜单出现「用 {appName} 打开 ▸ 只读 / 编辑 / 新建」，子项按检测结果动态生成。资源树不提供（需求方 2026-11-19 决定：资源树只用于展示，打开动作只由将来的预览窗口提供）。
-2. 在预览窗口（目录视图）中双击 Office 文件的默认动作由设置 `launcher.officeDefaultAction` 决定（只读 / 编辑 / 每次询问），默认**只读**：保守业务中查阅设计书远多于修改，且在共享盘上以编辑方式打开会锁定文件，影响同事。
+2. 设置 `launcher.officeDefaultAction` 与 `launcher.officeExtensions` 已删除（M2）：单击 / 双击 Office 文件都先显示启动面板（`pch.preview.office`），由用户选择打开方式；Office 扩展名固定在插件 manifest。
 3. 在应用内以标签方式打开 Office 文件时，由内置的 `pch.preview.office` 插件显示一个启动面板：文件信息、三个打开按钮（只显示可用的）、该文件的远程编辑会话状态。这样标签、会话恢复等机制对 Office 文件依然成立。
 
 ### 10.7 代码位置
 
 ```
 apps/desktop/src/main/modules/launcher/
-├── association.ts            # 读取注册表，解析 ProgId、verb、exe
-├── capability.service.ts     # 按扩展名检测并缓存 LaunchCapabilities
-├── office-switches.ts        # 已核实的 Office 命令行开关表
-├── shell-execute.ts          # verb 调用（PowerShell 实现，可替换为 koffi）
-├── launcher.service.ts       # 根据资源类型与方式，准备本地路径并启动
-├── edit-session.service.ts   # 远程编辑会话：监听、上传、冲突、结束
-├── edit-session.repo.ts
-└── launcher.ipc.ts
+├── detect-script.ts          # 固定 PowerShell 脚本：能力检测、verb 启动、开关启动
+├── association.ts            # 检测输出的 zod 校验（RawAssociation）与「原始关联 → LaunchCapabilities」
+├── powershell.ts             # runPowerShell（execFile，可替换为 koffi）
+├── launcher.service.ts       # 按扩展名检测并缓存（内存）；stat → 本地路径 → 启动（已实现，M2）
+├── launcher.ipc.ts           # launcher.capabilities / launcher.open / launcher.redetect（已实现，M2）
+├── edit-session.service.ts   # （未实现）远程编辑会话：监听、上传、冲突、结束
+└── edit-session.repo.ts      # （未实现）
 plugins/preview-office/       # Office 文件的启动面板插件
 ```
 
@@ -1365,14 +1354,12 @@ export const settingsSchema = z.object({
   'cache.backgroundGapMs.network': z.number().int().min(500).default(2000),
   'vfs.timeoutSec.local':        z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network':      z.number().int().min(10).max(120).default(10),
-  'launcher.officeExtensions':   z.array(z.string()).default(['xlsx', 'xlsm', 'xls', 'xltx', 'docx', 'doc', 'dotx', 'pptx', 'ppt', 'potx']),
-  'launcher.officeDefaultAction': z.enum(['readOnly', 'edit', 'ask']).default('readOnly'),
   'launcher.autoUploadRemoteEdits': z.boolean().default(true),         // 远程编辑会话保存后自动上传
 });
 export type Settings = z.infer<typeof settingsSchema>;
 ```
 
-已实现：上面的全部键均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。
+已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。
 
 设置页本身是一个内部标签（`internal://settings`），由内部插件渲染，因此同样支持弹出与会话恢复。修改后主进程广播 `settings.changed`，所有窗口即时生效。
 
