@@ -24,8 +24,8 @@ export interface DocumentState {
 export interface DocumentHandle extends DocumentState {
   /** 手动指定编码（null = 自动判断） */
   setEncoding(label: DocEncoding | null): void
-  /** 部分模式 → 全量 */
-  buildIndex(): void
+  /** 部分模式 → 全量；成功时在新 info 生效的同一次更新中调用 onDone（调用方据此换算位置） */
+  buildIndex(onDone?: () => void): void
 }
 
 export interface OpenOptions {
@@ -109,26 +109,39 @@ export function useDocument(host: PreviewHost, uri: string, options: OpenOptions
     }
   }, [doc, uri, initial])
 
-  /** 改变行号含义的操作：结果替换 info、epoch 递增 */
-  const relayout = useCallback((op: (docId: string) => Promise<DocumentInfo>): void => {
-    const docId = docIdRef.current
-    if (docId === null) return
-    op(docId).then(
-      (info) => {
-        if (docIdRef.current !== docId) return
-        setState((s) => ({ ...s, info, indexError: null, epoch: s.epoch + 1, awaitingInfo: false }))
-      },
-      (e: unknown) => {
-        const h = hostRef.current
-        if (docIdRef.current === docId) h.ui.toast(h.i18n.describeError(e), 'error')
-      }
-    )
-  }, [])
+  /** 改变行号含义的操作：结果替换 info、epoch 递增（onDone 与之同批更新） */
+  const relayout = useCallback(
+    (op: (docId: string) => Promise<DocumentInfo>, onDone?: () => void): void => {
+      const docId = docIdRef.current
+      if (docId === null) return
+      op(docId).then(
+        (info) => {
+          if (docIdRef.current !== docId) return
+          onDone?.()
+          setState((s) => ({
+            ...s,
+            info,
+            indexError: null,
+            epoch: s.epoch + 1,
+            awaitingInfo: false
+          }))
+        },
+        (e: unknown) => {
+          const h = hostRef.current
+          if (docIdRef.current === docId) h.ui.toast(h.i18n.describeError(e), 'error')
+        }
+      )
+    },
+    []
+  )
   const setEncoding = useCallback(
     (label: DocEncoding | null) => relayout((id) => doc.setEncoding(id, label)),
     [doc, relayout]
   )
-  const buildIndex = useCallback(() => relayout((id) => doc.buildIndex(id)), [doc, relayout])
+  const buildIndex = useCallback(
+    (onDone?: () => void) => relayout((id) => doc.buildIndex(id), onDone),
+    [doc, relayout]
+  )
 
   return { ...state, setEncoding, buildIndex }
 }

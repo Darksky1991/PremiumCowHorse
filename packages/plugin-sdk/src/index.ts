@@ -169,7 +169,7 @@ export interface PreviewHost {
   }
   /**
    * t 查找插件自带的语言资源（PreviewPlugin.i18n）；language 为当前界面语言；
-   * describeError 把宿主 API 拒绝时的错误（带 code）转为应用的错误文案
+   * describeError 把宿主 API 拒绝时的错误（带 code），或错误码本身（DocProgress.error）转为应用的错误文案
    */
   i18n: {
     t(key: string, vars?: Record<string, unknown>): string
@@ -185,6 +185,10 @@ export interface PreviewProps<VS = unknown> {
   host: PreviewHost
   /** 会话恢复时传回（M1-3 只在内存中） */
   viewState: VS | undefined
+  /**
+   * 保存视图状态（属于本视图显示的位置）。卸载时（包括标签已导航离开之后）也可以调用：
+   * 宿主写入该位置刚离开时的历史项，不会落到新位置上
+   */
   onViewStateChange: (state: VS) => void
 }
 

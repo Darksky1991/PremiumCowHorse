@@ -21,6 +21,7 @@ import { Toolbar } from './toolbar'
 import { useDocument } from './use-document'
 import { useVisibleLines } from './use-visible-lines'
 import {
+  afterReadAll,
   effectiveTop,
   move,
   setFollow,
@@ -120,10 +121,12 @@ export default function TextView({
     return () => el.removeEventListener('wheel', onWheel)
   }, [go, hasLines])
 
-  // 位置与手动编码存入 viewState（停止移动后）；卸载（导航离开）后不再保存
+  // 位置与手动编码存入 viewState（停止移动后）；卸载时防抖中的状态立即保存（宿主按位置写入：
+  // 已导航离开时写入刚离开的历史项，后退时恢复）
   const manualEncoding = info?.encoding.manual ? info.encoding.label : undefined
   const savedTop = pos.follow ? top : pos.top
   const lastSaved = useRef(viewState)
+  const pendingSave = useRef<TextViewState | null>(null)
   // 宿主每次渲染传入新的回调：经 ref 取最新的，避免计时器被反复重置
   const saveRef = useRef(onViewStateChange)
   useEffect(() => {
@@ -137,14 +140,27 @@ export default function TextView({
     }
     const prev = lastSaved.current
     if (prev?.top === next.top && prev.follow === next.follow && prev.encoding === next.encoding) {
+      pendingSave.current = null
       return
     }
+    pendingSave.current = next
     const timer = setTimeout(() => {
+      pendingSave.current = null
       lastSaved.current = next
       saveRef.current(next)
     }, SAVE_DELAY)
     return () => clearTimeout(timer)
   }, [savedTop, pos.follow, manualEncoding])
+  useEffect(
+    () => () => {
+      const pending = pendingSave.current
+      if (pending === null) return
+      pendingSave.current = null
+      lastSaved.current = pending
+      saveRef.current(pending)
+    },
+    []
+  )
 
   // 在标签内导航后（旧视图连同焦点一起被移除）焦点回到文本区，键盘操作可以继续
   useEffect(() => {
@@ -247,7 +263,11 @@ export default function TextView({
         indexError={doc.indexError}
         readError={readError}
         onEncoding={doc.setEncoding}
-        onReadAll={doc.buildIndex}
+        onReadAll={() => {
+          // 部分模式的 top 是窗口内的行号：换算为全量索引中的位置（view-position.ts）
+          const window = info.window
+          doc.buildIndex(() => setPos((p) => afterReadAll(p, window)))
+        }}
       />
     </div>
   )

@@ -23,6 +23,8 @@ const NO_HISTORY: TabHistory = { back: [], forward: [] }
  *   离开的位置连同其 viewState 压入后退栈、前进栈清空。导航到当前 URI 不入栈（只更新类型与标题）。
  * - `tab/back` / `tab/forward`：浏览器式，当前位置（连同 viewState）压入另一侧的栈；
  *   恢复目标位置离开时的 viewState（像浏览器后退恢复滚动位置）。
+ * - `tab/viewState`：写入当前位置；带 `uri` 且标签已离开该位置时（视图在导航之后才卸载、补存防抖中的状态）
+ *   写入刚离开的那一项——后退栈顶（导航 / 前进离开）或前进栈顶（后退离开）中 URI 相同者，都不是时不变。
  */
 export function layoutReducer(
   state: TabsState,
@@ -83,10 +85,33 @@ export function layoutReducer(
         : { back: pushed, forward: rest }
       return moveTo(state, tab, target, history)
     }
-    case 'tab/viewState':
-      if (!state.tabs.some((t) => t.id === action.id)) return state
-      return { ...state, tabs: replace(state.tabs, action.id, { viewState: action.viewState }) }
+    case 'tab/viewState': {
+      const tab = state.tabs.find((t) => t.id === action.id)
+      if (!tab) return state
+      if (action.uri === undefined || action.uri === tab.uri) {
+        return { ...state, tabs: replace(state.tabs, tab.id, { viewState: action.viewState }) }
+      }
+      const history = withLeftViewState(tab.history, action.uri, action.viewState)
+      return history ? { ...state, tabs: replace(state.tabs, tab.id, { history }) } : state
+    }
   }
+}
+
+/** 刚离开的那一项（后退栈顶，其次前进栈顶）为 uri 时换上 viewState；都不是时为 null */
+function withLeftViewState(
+  history: TabHistory,
+  uri: string,
+  viewState: unknown
+): TabHistory | null {
+  const update = (stack: TabHistoryEntry[]): TabHistoryEntry[] | null => {
+    const top = stack.at(-1)
+    if (top?.uri !== uri) return null
+    return [...stack.slice(0, -1), { ...locationOf(top), viewState }]
+  }
+  const back = update(history.back)
+  if (back) return { ...history, back }
+  const forward = update(history.forward)
+  return forward ? { ...history, forward } : null
 }
 
 /**

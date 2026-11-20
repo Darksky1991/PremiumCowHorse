@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { effectiveTop, move, setFollow, type Frame } from './view-position'
+import { afterReadAll, effectiveTop, move, setFollow, type Frame } from './view-position'
 
 const log: Frame = { visible: 10, total: 100, logLike: true }
 const text: Frame = { ...log, logLike: false }
@@ -53,5 +53,24 @@ describe('setFollow', () => {
   it('on jumps to the end; off stays where the view is', () => {
     expect(setFollow({ top: 3, follow: false }, text, true)).toEqual({ top: 90, follow: true })
     expect(setFollow({ top: 3, follow: true }, text, false)).toEqual({ top: 90, follow: false })
+  })
+})
+
+describe('afterReadAll (partial window → full index)', () => {
+  it('a head window starts at line 0: the window line is already the absolute line', () => {
+    const pos = { top: 1234, follow: false }
+    expect(afterReadAll(pos, { start: 0 })).toBe(pos)
+  })
+
+  it('a tail window: the line of its start is unknown, so the view goes to the end (and follows)', () => {
+    expect(afterReadAll({ top: 1234, follow: false }, { start: 5_000_000 })).toEqual({
+      top: 1234,
+      follow: true
+    })
+  })
+
+  it('following stays following', () => {
+    const pos = { top: 0, follow: true }
+    expect(afterReadAll(pos, { start: 5_000_000 })).toBe(pos)
   })
 })

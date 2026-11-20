@@ -27,7 +27,8 @@ interface TabsStore {
   /** 该标签的历史中后退 / 前进（没有可去的位置时不变） */
   back: (id: string) => void
   forward: (id: string) => void
-  setViewState: (id: string, viewState: unknown) => void
+  /** uri：viewState 所属的位置（标签已离开它时写入刚离开的历史项，见 layoutReducer） */
+  setViewState: (id: string, viewState: unknown, uri?: string) => void
   /**
    * 标签 id → 刷新请求的序号（地址栏的刷新按钮 / F5 递增；不在 layoutReducer 中，不是布局状态）。
    * 标签内容（PreviewContainer）订阅其变化后刷新：目录重新确认并列出、文件重新 stat、总览重新取得条目
@@ -77,7 +78,13 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
     back: (id) => dispatchById({ type: 'tab/back', id }),
     forward: (id) => dispatchById({ type: 'tab/forward', id }),
-    setViewState: (id, viewState) => dispatchById({ type: 'tab/viewState', id, viewState }),
+    setViewState: (id, viewState, uri) =>
+      dispatchById({
+        type: 'tab/viewState',
+        id,
+        viewState,
+        ...(uri !== undefined ? { uri } : {})
+      }),
     refreshSeq: {},
     requestRefresh: (id) => {
       const { refreshSeq } = get()

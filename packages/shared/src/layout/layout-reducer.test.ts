@@ -189,6 +189,33 @@ describe('layoutReducer: 标签历史（后退 / 前进）', () => {
     })
   })
 
+  it('tab/viewState 带 uri：标签已离开该位置时写入刚离开的那一项（视图卸载时补存防抖中的状态）', () => {
+    const vs = (uri: string, viewState: unknown): TabsAction => ({
+      type: 'tab/viewState',
+      id: 't1',
+      viewState,
+      uri
+    })
+    // 导航离开 a 之后 a 的视图才卸载：写入后退栈顶，不落到新位置 b 上
+    const s = run([open('a', 'directory'), nav('b'), vs('a', { top: 5 })])
+    expect(tab1(s).uri).toBe('b')
+    expect(tab1(s).viewState).toBeUndefined()
+    expect(tab1(s).history.back.at(-1)).toEqual({
+      uri: 'a',
+      kind: 'directory',
+      title: 'a',
+      viewState: { top: 5 }
+    })
+    // 后退离开 b：写入前进栈顶；回到 a 时恢复的是补存的状态
+    const b = run([back, vs('b', { top: 9 })], s)
+    expect(tab1(b)).toMatchObject({ uri: 'a', viewState: { top: 5 } })
+    expect(tab1(b).history.forward.at(-1)).toMatchObject({ uri: 'b', viewState: { top: 9 } })
+    // 与当前位置相同：照常写入当前
+    expect(tab1(run([vs('a', { top: 7 })], b)).viewState).toEqual({ top: 7 })
+    // 都不是（已经离开更远）：不变
+    expect(layoutReducer(b, vs('zzz', { top: 1 }), () => 'x')).toBe(b)
+  })
+
   it('没有 viewState 的历史位置：后退后 viewState 为 undefined（不沿用当前位置的）', () => {
     const s = run([
       open('a', 'directory'),

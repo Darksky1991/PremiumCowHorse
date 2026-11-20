@@ -341,7 +341,7 @@ function PluginView({
             resource={resource}
             host={host}
             viewState={tab.viewState}
-            onViewStateChange={(state) => setViewState(tab.id, state)}
+            onViewStateChange={(state) => setViewState(tab.id, state, tab.uri)}
           />
         </Suspense>
       </PluginErrorBoundary>

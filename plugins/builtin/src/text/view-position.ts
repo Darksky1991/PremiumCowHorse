@@ -42,3 +42,13 @@ export function move(pos: Position, frame: Frame, m: Move): Position {
 export function setFollow(pos: Position, frame: Frame, follow: boolean): Position {
   return { top: effectiveTop(follow ? { ...pos, follow } : pos, frame), follow }
 }
+
+/**
+ * 部分模式 →「读取全部」后的位置：部分模式的 top 是窗口内的行号，全量索引中的绝对行号 = 窗口起点所在行 + top。
+ * 开头窗口起点在第 0 行，不变；末尾窗口起点所在的行要等全量索引扫到那里才知道（且接口不提供偏移 → 行号），
+ * 无法精确换算：跳到末尾（跟随；末尾窗口只用于日志类）。跟随中照旧
+ */
+export function afterReadAll(pos: Position, window: { start: number }): Position {
+  if (pos.follow || window.start === 0) return pos
+  return { top: pos.top, follow: true }
+}

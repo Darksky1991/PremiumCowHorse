@@ -56,4 +56,8 @@ export type TabsAction =
   | ({ type: 'tab/navigate'; id: string } & TabLocation)
   | { type: 'tab/back'; id: string }
   | { type: 'tab/forward'; id: string }
-  | { type: 'tab/viewState'; id: string; viewState: unknown }
+  /**
+   * uri：该 viewState 所属的位置。标签已离开它（导航 / 后退 / 前进之后视图才卸载并补存）时
+   * 写入刚离开的历史项（后退栈顶或前进栈顶中 URI 相同者）；都不是时忽略。省略时写入当前位置
+   */
+  | { type: 'tab/viewState'; id: string; viewState: unknown; uri?: string }
