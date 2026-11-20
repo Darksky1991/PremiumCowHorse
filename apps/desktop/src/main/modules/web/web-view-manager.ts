@@ -90,8 +90,6 @@ interface Entry {
   shown: boolean
   /** 截图替身中（视图本身隐藏） */
   frozen: boolean
-  /** 截图时视图持有焦点（已交回应用界面）：unfreeze 时还给视图 */
-  refocus: boolean
   /** 最近一次显示的时刻（attach / hide 时更新的单调序号；LRU 用） */
   lastShown: number
   state: Omit<WebViewState, 'tabId'>
@@ -143,7 +141,6 @@ export class WebViewManager {
     entry.view.setVisible(true)
     entry.shown = true
     entry.frozen = false
-    entry.refocus = false
     entry.lastShown = ++this.clock
     entry.scopeId = scopeId
     if (created || entry.url !== url) {
@@ -165,7 +162,6 @@ export class WebViewManager {
     if (entry.shown) entry.lastShown = ++this.clock
     entry.shown = false
     entry.frozen = false
-    entry.refocus = false
   }
 
   release(ownerId: number, tabId: string): void {
@@ -179,29 +175,35 @@ export class WebViewManager {
     this.find(ownerId, tabId)?.view.webContents.reload()
   }
 
-  /** 截图替身：返回当前画面（data:image/png；物理像素）并隐藏视图。视图不存在 → 空字符串 */
-  async freeze(ownerId: number, tabId: string): Promise<string> {
+  /**
+   * 截图替身：返回当前画面（data:image/png；物理像素）并隐藏视图。视图不存在 / 已在截图中 → 空图。
+   * 视图持有键盘焦点时交回应用界面（yielded 为真）：隐藏的视图拿不住焦点（实测 setVisible(false) 后
+   * 视图与应用的 webContents.isFocused() 都为假，按键无处可去，应用快捷键也不生效）
+   */
+  async freeze(ownerId: number, tabId: string): Promise<{ image: string; yielded: boolean }> {
     const entry = this.find(ownerId, tabId)
-    if (!entry) return ''
+    if (!entry || entry.frozen) return { image: '', yielded: false }
     const image = (await entry.view.webContents.capturePage()).toDataURL()
+    let yielded = false
     // 截图期间被隐藏 / 销毁：不改变它的状态
     if (!entry.destroyed && entry.shown) {
-      entry.refocus = this.yieldFocus(entry)
+      yielded = this.yieldFocus(entry)
       entry.view.setVisible(false)
       entry.frozen = true
     }
-    return image
+    return { image, yielded }
   }
 
-  unfreeze(ownerId: number, tabId: string): void {
+  /**
+   * 结束截图替身。refocus：把焦点还给视图（渲染端判断：截图时交回了焦点，且期间用户没有在应用中操作）
+   */
+  unfreeze(ownerId: number, tabId: string, refocus: boolean): void {
     const entry = this.find(ownerId, tabId)
     if (!entry || !entry.frozen) return
     entry.frozen = false
-    if (entry.shown) {
-      entry.view.setVisible(true)
-      if (entry.refocus) entry.view.webContents.focus()
-    }
-    entry.refocus = false
+    if (!entry.shown) return
+    entry.view.setVisible(true)
+    if (refocus) entry.view.webContents.focus()
   }
 
   /** 会话事件（下载）→ 按 webContents id 找到所属视图后发提示 */
@@ -260,7 +262,6 @@ export class WebViewManager {
       scopeId,
       shown: false,
       frozen: false,
-      refocus: false,
       lastShown: 0,
       state: { title: '', loading: false, failed: null },
       destroyed: false

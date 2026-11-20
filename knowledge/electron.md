@@ -117,5 +117,5 @@
 - 日期：2026-11-20
 - 症状（M2 Task 7 审查，系统级鼠标 / 按键实测）：点击浏览器视图（焦点进入页面）后按 Alt+←，标签回到文本文件、视图被销毁，但再按 Alt+→ / F5 没有反应，要先点一下应用界面。主进程中应用渲染端的 `webContents.isFocused()` 为 false。
 - 原因：`setVisible(false)` 或销毁视图不会把焦点交回所属窗口的渲染端；焦点留在看不见的视图（按键落进隐藏的页面）或无处可去。
-- 解决：`WebViewManager` 在 `hide` / `release` / `freeze` 时，视图 `webContents.isFocused()` 为真则调用所属窗口渲染端的 `webContents.focus()`；`freeze`（截图替身）交回的焦点在 `unfreeze` 时还给视图。
+- 解决：`WebViewManager` 在 `hide` / `release` / `freeze` 时，视图 `webContents.isFocused()` 为真则调用所属窗口渲染端的 `webContents.focus()`。`freeze`（截图替身）同样交回（隐藏的视图拿不住焦点：`setVisible(false)` 后视图与应用的 `isFocused()` 都为假，按键无处可去，页面里的输入法组字也被取消），是否在 `unfreeze` 时还给视图由渲染端判断——只在期间用户没有在应用中操作时还，否则会抢走用户刚移到资源树等处的焦点。
 - 预防：任何隐藏 / 移除原生视图的路径都要考虑焦点归属；e2e 中可用主进程 `webContents.isFocused()` 断言（Playwright 的 `page.keyboard` 直接发给页面、不经系统焦点，不能证明真实按键的去向——真实行为用系统级 `keybd_event` 确认）。

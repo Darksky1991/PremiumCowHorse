@@ -103,17 +103,23 @@ interface Setup {
   /** 让 web.freeze 挂起直到 resolveFreeze */
   holdFreeze: () => void
   resolveFreeze: (image: string) => void
+  /** web.freeze 的 yielded（视图持有焦点、主进程把焦点交回了应用界面） */
+  focus: { yielded: boolean; idle: boolean; blurs: number }
 }
 
 function setup(overrides: Partial<WebHostDeps> = {}): Setup {
   const calls: Array<[IpcChannel, unknown]> = []
   let held: ((image: string) => void) | null = null
   let hold = false
+  // idle：应用界面中没有焦点元素（document.activeElement 为 body）且文档持有焦点
+  const focus = { yielded: false, idle: true, blurs: 0 }
   const invoke = vi.fn(async (channel: IpcChannel, input: unknown) => {
     calls.push([channel, input])
     if (channel === 'web.freeze') {
-      if (hold) return { image: await new Promise<string>((r) => (held = r)) }
-      return { image: 'data:image/png;base64,AAAA' }
+      const image = hold
+        ? await new Promise<string>((r) => (held = r))
+        : 'data:image/png;base64,AAAA'
+      return { image, yielded: focus.yielded }
     }
     return undefined
   }) as unknown as WebHostDeps['invoke']
@@ -139,7 +145,12 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
         pending = pending.filter((p) => p !== cb)
       }
     },
-    dispatchKey: (init) => keys.push(init)
+    dispatchKey: (init) => keys.push(init),
+    blurActive: () => {
+      focus.blurs++
+      focus.idle = true
+    },
+    idleFocus: () => focus.idle
   }
   const existing = new Set(['tab-1', 'tab-2'])
   const views = createWebViews({
@@ -191,7 +202,8 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     holdFreeze: () => {
       hold = true
     },
-    resolveFreeze: (image) => held?.(image)
+    resolveFreeze: (image) => held?.(image),
+    focus
   }
 }
 
@@ -418,6 +430,69 @@ describe('createWebHost: screenshot stand-in', () => {
     await flush()
     expect(channels(s.calls)).toEqual(['web.attach', 'web.freeze', 'web.unfreeze'])
     expect(el.style.backgroundImage).toBe('')
+    expect(s.calls[2]).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: false }])
+  })
+
+  describe('keyboard focus of the page', () => {
+    it('toasts alone: the app element that held the focus is blurred; afterwards the page gets the focus back', async () => {
+      const s = setup()
+      s.focus.yielded = true
+      s.focus.idle = false // 应用中残留着之前的焦点元素（例如资源树的行）
+      s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+      s.host.setCovered({ overlay: false, toasts: true })
+      await flush()
+      // 页面中正在进行的输入不会落到那个元素上
+      expect(s.focus.blurs).toBe(1)
+      s.host.setCovered({ overlay: false, toasts: false })
+      await flush()
+      expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: true }])
+    })
+
+    it('toasts alone: the focus moved into the app meanwhile (e.g. the tree) stays there', async () => {
+      const s = setup()
+      s.focus.yielded = true
+      s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+      s.host.setCovered({ overlay: false, toasts: true })
+      await flush()
+      s.focus.idle = false // 用户把焦点移到了资源树
+      s.host.setCovered({ overlay: false, toasts: false })
+      await flush()
+      expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: false }])
+    })
+
+    it('a popup (from the start or opened during a toast) keeps the focus in the app', async () => {
+      for (const steps of [
+        [{ overlay: true, toasts: false }],
+        [
+          { overlay: false, toasts: true },
+          { overlay: true, toasts: true },
+          { overlay: false, toasts: true }
+        ]
+      ]) {
+        const s = setup()
+        s.focus.yielded = true
+        s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+        for (const covered of steps) {
+          s.host.setCovered(covered)
+          await flush()
+        }
+        s.host.setCovered({ overlay: false, toasts: false })
+        await flush()
+        expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: false }])
+        expect(channels(s.calls).filter((c) => c === 'web.freeze')).toHaveLength(1)
+      }
+    })
+
+    it('a page without the focus does not get it', async () => {
+      const s = setup()
+      s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+      s.host.setCovered({ overlay: false, toasts: true })
+      await flush()
+      s.host.setCovered({ overlay: false, toasts: false })
+      await flush()
+      expect(s.focus.blurs).toBe(0)
+      expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: false }])
+    })
   })
 
   it('an uncover during the capture waits for it and does not leave the image behind', async () => {

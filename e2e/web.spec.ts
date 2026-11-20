@@ -220,6 +220,17 @@ test.describe('the browser view (html plugin)', () => {
     )
   }
 
+  /** 键盘焦点移到视图中（窗口也置于前台：webContents.isFocused 以窗口持有系统焦点为前提） */
+  async function focusView(app: ElectronApplication, view: Page): Promise<void> {
+    await app.evaluate(({ BrowserWindow, webContents }, url) => {
+      BrowserWindow.getAllWindows()[0]!.focus()
+      webContents
+        .getAllWebContents()
+        .find((w) => w.getURL() === url)!
+        .focus()
+    }, view.url())
+  }
+
   /** 焦点在视图中时按键（rawKeyDown 经 before-input-event，与真实按键相同的路径） */
   async function pressIn(
     app: ElectronApplication,
@@ -360,7 +371,10 @@ test.describe('the browser view (html plugin)', () => {
       const view = await openIndex(app, page, tree)
       await expect.poll(() => visibility(app)).toEqual([true])
 
-      // 地址栏的查看器下拉：视图隐藏，占位元素显示截图；关闭后恢复
+      // 地址栏的查看器下拉：视图隐藏，占位元素显示截图；关闭后恢复。
+      // 焦点在页面中时：弹出层需要键盘，焦点交回应用界面；关闭后不还给视图
+      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
       await bar(page).getByRole('button', { name: 'View as', exact: true }).click()
       await expect(page.getByRole('menu')).toBeVisible()
       await expect(page.getByRole('menuitemradio', { name: 'Browser view' })).toHaveAttribute(
@@ -376,18 +390,26 @@ test.describe('the browser view (html plugin)', () => {
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
       await expect(view.locator('#counter')).toHaveText('1')
+      expect(await focus(app)).toEqual({ app: true, views: [false] })
 
       // toast（Ctrl+K「即将推出」）：截图态；点击预览区 → toast 收进状态栏，视图恢复（点击不转发给页面）
+      // 焦点在页面中时：隐藏的视图拿不住焦点，截图期间焦点在应用界面（应用中没有焦点元素）；
+      // 期间没有在应用中操作 → 结束后焦点回到页面
       await page.locator('body').click({ position: { x: 5, y: 5 } })
+      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
       await page.keyboard.press('Control+k')
       const toast = page.locator('[data-sonner-toast]')
       await expect(toast).toHaveCount(1)
       await expect.poll(() => visibility(app)).toEqual([false])
+      await expect.poll(() => focus(app)).toEqual({ app: true, views: [false] })
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
       await placeholder(page).click()
       await expect(toast).toHaveCount(0)
       await expect(page.getByRole('button', { name: '1 notifications' })).toBeVisible()
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
 
       // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
       await pressIn(app, view, 'W', ['control'])
@@ -409,7 +431,9 @@ test.describe('the browser view (html plugin)', () => {
       await tree.getByRole('treeitem', { name: 'index.html' }).click()
       const view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('1')
-      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus())
+      // 前提：焦点在页面中，应用界面没有焦点
+      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
 
       // 焦点在页面中按 Alt+←：回到文本文件（当前位置不再用网页查看器 → 视图销毁），焦点交回应用界面
       await pressIn(app, view, 'Left', ['alt'])

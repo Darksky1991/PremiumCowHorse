@@ -200,9 +200,13 @@ export const ipcContract = {
   'web.release': route<void>()(z.strictObject({ tabId: WebTabId })),
   /** 重新加载（地址栏刷新 / F5） */
   'web.reload': route<void>()(z.strictObject({ tabId: WebTabId })),
-  /** 截图替身：返回视图当前画面（data:image/png，物理像素）并隐藏视图；web.unfreeze 恢复显示 */
-  'web.freeze': route<{ image: string }>()(z.strictObject({ tabId: WebTabId })),
-  'web.unfreeze': route<void>()(z.strictObject({ tabId: WebTabId })),
+  /**
+   * 截图替身：返回视图当前画面（data:image/png，物理像素）并隐藏视图；视图持有键盘焦点时交回应用界面
+   * （yielded 为真）。视图不存在 / 已在截图中 → 空图
+   */
+  'web.freeze': route<{ image: string; yielded: boolean }>()(z.strictObject({ tabId: WebTabId })),
+  /** 结束截图替身、恢复显示；refocus 为真时把焦点还给视图（渲染端判断用户没有在应用中操作） */
+  'web.unfreeze': route<void>()(z.strictObject({ tabId: WebTabId, refocus: z.boolean() })),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),

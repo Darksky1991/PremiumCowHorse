@@ -193,7 +193,7 @@ describe('WebViewManager', () => {
     manager.setBounds(win.id, 't1', BOUNDS)
     manager.reload(win.id, 't1')
     manager.hide(win.id, 't1')
-    expect(await manager.freeze(win.id, 't1')).toBe('')
+    expect(await manager.freeze(win.id, 't1')).toEqual({ image: '', yielded: false })
     expect(viewOf(0).reloads).toBe(0)
   })
 
@@ -229,10 +229,10 @@ describe('WebViewManager', () => {
 
   it('freeze 返回 data URL 并隐藏视图；unfreeze 恢复显示', async () => {
     manager.attach(win, input('t1'))
-    const image = await manager.freeze(win.id, 't1')
+    const { image } = await manager.freeze(win.id, 't1')
     expect(image).toBe('data:image/png;base64,AAAA')
     expect(viewOf(0).visible).toBe(false)
-    manager.unfreeze(win.id, 't1')
+    manager.unfreeze(win.id, 't1', false)
     expect(viewOf(0).visible).toBe(true)
   })
 
@@ -255,27 +255,54 @@ describe('WebViewManager', () => {
       expect(viewOf(0).destroyed).toBe(true)
     })
 
-    it('freeze 交回焦点，unfreeze 把焦点还给视图；截图期间被隐藏则不还', async () => {
+    it('freeze：视图持有焦点时交回应用界面（隐藏的视图拿不住焦点，按键会无处可去）并报告 yielded', async () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      v.focused = true
+      expect(await manager.freeze(win.id, 't1')).toEqual({
+        image: 'data:image/png;base64,AAAA',
+        yielded: true
+      })
+      expect(win.focuses).toBe(1)
+      expect(v.visible).toBe(false)
+    })
+
+    it('unfreeze：refocus 为真时把焦点还给视图，为假时不动（渲染端判断用户是否已在应用中操作）', async () => {
       manager.attach(win, input('t1'))
       const v = viewOf(0)
       v.focused = true
       await manager.freeze(win.id, 't1')
-      expect(win.focuses).toBe(1)
-      v.focused = false // 焦点已在应用界面
-      manager.unfreeze(win.id, 't1')
-      expect(v.focused).toBe(true)
+      v.focused = false
+      manager.unfreeze(win.id, 't1', false)
+      expect(v.visible).toBe(true)
+      expect(v.focused).toBe(false)
 
       await manager.freeze(win.id, 't1')
-      v.focused = false
-      manager.hide(win.id, 't1')
-      manager.unfreeze(win.id, 't1')
-      expect(v.focused).toBe(false)
+      manager.unfreeze(win.id, 't1', true)
+      expect(v.focused).toBe(true)
     })
 
-    it('没有焦点时 freeze / unfreeze 不移动焦点', async () => {
+    it('截图期间被隐藏的视图：unfreeze 不还焦点', async () => {
       manager.attach(win, input('t1'))
       await manager.freeze(win.id, 't1')
-      manager.unfreeze(win.id, 't1')
+      manager.hide(win.id, 't1')
+      manager.unfreeze(win.id, 't1', true)
+      expect(viewOf(0).focused).toBe(false)
+    })
+
+    it('已在截图中再次 freeze：不再截图，返回空图', async () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      const capture = vi.spyOn(v.webContents, 'capturePage')
+      await manager.freeze(win.id, 't1')
+      expect(await manager.freeze(win.id, 't1')).toEqual({ image: '', yielded: false })
+      expect(capture).toHaveBeenCalledTimes(1)
+    })
+
+    it('没有焦点时 freeze 不移动焦点（yielded 为假）', async () => {
+      manager.attach(win, input('t1'))
+      expect(await manager.freeze(win.id, 't1')).toMatchObject({ yielded: false })
+      manager.unfreeze(win.id, 't1', false)
       expect(win.focuses).toBe(0)
       expect(viewOf(0).focused).toBe(false)
     })
@@ -285,7 +312,7 @@ describe('WebViewManager', () => {
     manager.attach(win, input('t1'))
     await manager.freeze(win.id, 't1')
     manager.hide(win.id, 't1')
-    manager.unfreeze(win.id, 't1')
+    manager.unfreeze(win.id, 't1', false)
     expect(viewOf(0).visible).toBe(false)
 
     manager.attach(win, input('t2'))

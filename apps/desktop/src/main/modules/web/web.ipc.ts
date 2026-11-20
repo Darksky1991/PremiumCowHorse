@@ -28,7 +28,8 @@ export function webHandlers(
     'web.hide': async ({ tabId }, ctx) => manager.hide(ctx.senderId, tabId),
     'web.release': async ({ tabId }, ctx) => manager.release(ctx.senderId, tabId),
     'web.reload': async ({ tabId }, ctx) => manager.reload(ctx.senderId, tabId),
-    'web.freeze': async ({ tabId }, ctx) => ({ image: await manager.freeze(ctx.senderId, tabId) }),
-    'web.unfreeze': async ({ tabId }, ctx) => manager.unfreeze(ctx.senderId, tabId)
+    'web.freeze': async ({ tabId }, ctx) => manager.freeze(ctx.senderId, tabId),
+    'web.unfreeze': async ({ tabId, refocus }, ctx) =>
+      manager.unfreeze(ctx.senderId, tabId, refocus)
   }
 }

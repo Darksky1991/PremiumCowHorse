@@ -90,6 +90,10 @@ export interface WebHostEnv {
   requestFrame: (callback: () => void) => () => void
   /** 在 window 上派发 keydown（复用应用现有的快捷键处理） */
   dispatchKey: (init: KeyboardEventInit) => void
+  /** 让应用界面中持有焦点的元素失去焦点（焦点落到 body） */
+  blurActive: () => void
+  /** 应用界面没有焦点元素（activeElement 为 body）且文档持有焦点：用户没有在应用中操作 */
+  idleFocus: () => boolean
 }
 
 const browserEnv: WebHostEnv = {
@@ -108,7 +112,14 @@ const browserEnv: WebHostEnv = {
   },
   dispatchKey: (init) => {
     window.dispatchEvent(new KeyboardEvent('keydown', init))
-  }
+  },
+  blurActive: () => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body) active.blur()
+  },
+  idleFocus: () =>
+    document.hasFocus() &&
+    (document.activeElement === null || document.activeElement === document.body)
 }
 
 /** 本标签内容当前显示的位置与查看器（PluginView 解析出的插件 id，不是标签状态中的原始 viewer 字段） */
@@ -144,7 +155,9 @@ export interface WebHost {
   api: PreviewWebApi
   /**
    * 视图被应用界面遮挡的情况（overlay：打开中的弹出层；toasts：显示中的 toast）。任一为真时视图换成截图：
-   * web.freeze → 占位元素背景 = 截图（主进程同时隐藏视图）；都为假时清除背景、web.unfreeze
+   * web.freeze → 占位元素背景 = 截图（主进程同时隐藏视图）；都为假时清除背景、web.unfreeze。
+   * 视图持有的键盘焦点在截图时交回应用界面（隐藏的视图拿不住焦点）；只因 toast 时结束后还给视图，
+   * 前提是期间用户没有在应用中操作（应用界面没有焦点元素）
    */
   setCovered: (covered: { overlay: boolean; toasts: boolean }) => void
   /** 换成最新的宿主能力（之后的 attach、链接、错误提示使用它们） */
@@ -223,6 +236,11 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   let covered = { overlay: false, toasts: false }
   /** 已请求截图替身（主进程中视图隐藏，或截图进行中） */
   let frozen = false
+  /**
+   * 只因 toast 截图、且主进程交回了页面持有的焦点：结束时若用户没有在应用中操作，把焦点还给视图。
+   * 弹出层不还（用户正在应用中操作，关闭时 Base UI 把焦点还给触发按钮）
+   */
+  let refocus = false
 
   const clearImage = (element: HTMLElement): void => {
     element.style.backgroundImage = ''
@@ -235,18 +253,32 @@ export function createWebHost(deps: WebHostDeps): WebHost {
       frozen = true
       const target = current
       run(async () => {
-        const { image } = await invoke('web.freeze', { tabId })
-        // 截图期间已解除遮挡 / 解除占位：不再显示这张图。空字符串 = 主进程中没有视图
-        if (current !== target || !frozen || image === '') return
+        const { image, yielded } = await invoke('web.freeze', { tabId })
+        if (current !== target) return
+        if (yielded && frozen && !covered.overlay) {
+          // 只因 toast：隐藏的视图拿不住焦点，主进程已交回应用界面。让应用中残留的焦点元素（例如资源树的行）
+          // 失去焦点，页面中正在进行的输入不会落到它上面
+          env.blurActive()
+          refocus = true
+        }
+        // 截图期间已解除遮挡：不再显示这张图。空字符串 = 主进程中没有视图
+        if (!frozen || image === '') return
         target.element.style.backgroundImage = `url("${image}")`
         // 截图为物理像素，按占位元素的 CSS 尺寸缩放
         target.element.style.backgroundSize = '100% 100%'
       })
+    } else if (want && covered.overlay) {
+      refocus = false
     } else if (!want && frozen) {
       frozen = false
       if (current !== null) {
         clearImage(current.element)
-        run(() => invoke('web.unfreeze', { tabId }))
+        // 在队列中判断（web.freeze 的结果处理之后）：截图期间用户把焦点移到了应用中则不还
+        run(() => {
+          const back = refocus && env.idleFocus()
+          refocus = false
+          return invoke('web.unfreeze', { tabId, refocus: back })
+        })
       }
     }
   }
@@ -312,6 +344,7 @@ export function createWebHost(deps: WebHostDeps): WebHost {
         for (const off of offs) off()
         // 主进程的 hide 同时结束截图替身。标签关闭时视图已由 WebViews 销毁（store 的订阅早于卸载）
         frozen = false
+        refocus = false
         clearImage(element)
         if (views.owner(tabId) !== undefined) run(() => invoke('web.hide', { tabId }))
       }
