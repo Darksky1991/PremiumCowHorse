@@ -12,6 +12,9 @@ class HangingProvider implements FileSystemProvider {
   list(): Promise<FileEntry[]> {
     return new Promise(() => undefined)
   }
+  read(): Promise<Uint8Array> {
+    return new Promise(() => undefined)
+  }
   async dispose(): Promise<void> {
     // 无资源
   }
@@ -73,6 +76,38 @@ describe('VfsService', () => {
     vfs.cancel('same')
     await expect(second).rejects.toMatchObject({ code: 'FS_CANCELLED' })
     expect(vfs.pending).toBe(0)
+  })
+
+  it('routes read to the provider with the range', async () => {
+    const echo: FileSystemProvider = {
+      scheme: 'file',
+      stat: () => new Promise(() => undefined),
+      list: () => new Promise(() => undefined),
+      read: async (_uri, offset, length) => Uint8Array.of(offset, length),
+      dispose: async () => undefined
+    }
+    const vfs = new VfsService([echo])
+    expect(await vfs.read('file:///C:/a.log', 3, 4)).toEqual(Uint8Array.of(3, 4))
+  })
+
+  it('times out a read that never completes', async () => {
+    const vfs = new VfsService([new HangingProvider()], { timeoutMs: 30 })
+    await expect(vfs.read('file:///C:/a.log', 0, 10)).rejects.toMatchObject({
+      code: 'FS_TIMEOUT'
+    })
+  })
+
+  it('cancels a read when the caller aborts its signal, passing the reason through', async () => {
+    const vfs = new VfsService([new HangingProvider()], { timeoutMs: 1000 })
+    const controller = new AbortController()
+    const pending = vfs.read('file:///C:/a.log', 0, 10, controller.signal)
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'FS_CANCELLED' })
+    const already = new AbortController()
+    already.abort()
+    await expect(vfs.read('file:///C:/a.log', 0, 10, already.signal)).rejects.toMatchObject({
+      code: 'FS_CANCELLED'
+    })
   })
 
   it('cancelling an unknown id is a no-op', () => {

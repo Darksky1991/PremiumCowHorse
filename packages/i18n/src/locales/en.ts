@@ -186,6 +186,7 @@ export default {
     FS_CANCELLED: 'The operation was canceled',
     FS_TIMEOUT: 'Stopped because there was no response',
     FS_UNAVAILABLE: 'The location is unavailable',
-    INDEX_UNAVAILABLE: 'The index is unavailable'
+    INDEX_UNAVAILABLE: 'The index is unavailable',
+    DOC_NOT_FOUND: 'The document was closed. Open it again'
   }
 } satisfies Resource

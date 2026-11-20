@@ -185,6 +185,7 @@ export default {
     FS_CANCELLED: '操作をキャンセルしました',
     FS_TIMEOUT: '応答がないため中断しました',
     FS_UNAVAILABLE: '場所にアクセスできません',
-    INDEX_UNAVAILABLE: 'インデックスを利用できません'
+    INDEX_UNAVAILABLE: 'インデックスを利用できません',
+    DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください'
   }
 }

@@ -1,4 +1,5 @@
 import { AppError, type DirectoryListing } from '@pch/shared'
+import { sniff, SNIFF_BYTES } from '@pch/text-engine'
 import type { HandlersOf } from '../ipc/router'
 import type { ScannerClient } from './scanner-client'
 import type { VfsService } from './vfs.service'
@@ -39,6 +40,7 @@ export function vfsHandlers(
   | 'vfs.offlineShares'
   | 'vfs.cacheInfo'
   | 'vfs.clearCache'
+  | 'vfs.sniff'
 > {
   const listDirectly = async (uri: string, requestId?: string): Promise<DirectoryListing> => ({
     items: await vfs.list(uri, requestId),
@@ -64,6 +66,8 @@ export function vfsHandlers(
     'vfs.refresh': async ({ uris }) => scanner.refresh(uris),
     'vfs.offlineShares': async () => scanner.offlineShares(),
     'vfs.cacheInfo': () => scanner.cacheInfo(),
-    'vfs.clearCache': () => scanner.clearCache()
+    'vfs.clearCache': () => scanner.clearCache(),
+    // 开头 8KB（开-读-关）判断文本 / 二进制；BOM 等细节由 doc.open 的 DocumentInfo 提供
+    'vfs.sniff': async ({ uri }) => ({ kind: sniff(await vfs.read(uri, 0, SNIFF_BYTES)).kind })
   }
 }

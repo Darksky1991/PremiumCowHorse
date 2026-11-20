@@ -56,6 +56,14 @@
 - 解决：~~待需求方决定~~（候选：(1) 维持现状；(2) 每个条目根只建一个递归监听（`fs.watch(root, { recursive: true })`），只阻止条目根的上级改名；(3) 不使用 `fs.watch`，改为聚焦 / 展开时刷新 + 可选轮询。）**2026-11-19 起不再使用 `fs.watch`**：需求方选择「扫描 + 缓存」（设计 `devDoc/2026-11-19-01-refresh-cache-design.md`），目录只在一次枚举期间持有句柄，监听代码已全部删除（`doc/` 7.1、8.3 节）。
 - 预防：在 Windows 上为目录建立长期打开的句柄（监听、打开的目录流等）时，先评估对用户在资源管理器中改名 / 移动上级目录的影响。回归测试：e2e `principle: renaming an ancestor of an expanded directory succeeds`（展开 `A\B\C`、经过 2 个刷新间隔后由测试进程改名 `A` 10 次）。2026-11-19 另用一次性脚本在测试进程内对照：`fs.watch(A\B\C)` 期间 `renameSync(A, A2)` 报 `EPERM`，关闭监听后成功——即该用例的做法能检出长期持有的句柄。
 
+### Node `fs.open` 在 Windows 上的共享方式：`FILE_SHARE_READ | WRITE | DELETE`；但打开期间上级目录仍不能改名
+
+- 日期：2026-11-20
+- 症状：（文本预览 Task 4 预先确认）需要「读取文件时不妨碍他人写入、删除、改名」。一次性脚本实测（Node 26.13.1 与 Electron 45.3.3 内置的 Node 24.22.3，libuv 都是 1.52.1）：`fs.promises.open(p, 'r')` 的句柄打开期间，他人**追加写入、改名该文件、删除该文件都成功**，同一句柄改名后仍能继续读；**改名其上级（祖父）目录报 `EPERM`**；关闭句柄后改名上级目录成功。
+- 原因：libuv `src/win/fs.c` 的 `fs__open`（v1.52.1，约 499–513 行）：除非传 `UV_FS_O_EXLOCK`，否则 `share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`（注释：为了与 UNIX 语义一致，打开中的文件也能删除），随后（约 612 行）`CreateFileW(req->file.pathw, access, share, NULL, disposition, attributes, NULL)`。出处：`https://raw.githubusercontent.com/libuv/libuv/v1.52.1/src/win/fs.c`；版本用 `process.versions.uv` 确认。上级目录不能改名是 Windows 本身的限制：目录之下有打开的句柄时该目录不能改名 / 移动，与句柄的共享标志无关（改用 koffi `CreateFileW` 以同样的标志打开不会有区别）。
+- 解决：`LocalProvider.read` 直接用 `fs.promises.open` + `FileHandle.read` + `finally` 中 `close`（每次读取开-读-关，不在调用之间持有句柄）；文本文档的索引按 1MB 分块，每块单独开关。上级目录只在一次读取的那一刻（本地毫秒级）不能改名，与目录枚举期间的限制相同。
+- 预防：任何读取都不要在调用之间保留 `FileHandle` / 流；需要长时间读取时分块、每块开关。回归测试：`local.provider.test.ts` 的 `closes the file right after reading: the file and its folder can be renamed`（读完立即改名文件与其上级目录，句柄泄漏时上级改名会 `EPERM`）。
+
 ### `fs.watch` 在目录仍在时异步报错：处理不当会形成「重建 → 报错 → 重列」循环（2026-11-19 起不再使用 `fs.watch`）
 
 - 日期：2026-11-19

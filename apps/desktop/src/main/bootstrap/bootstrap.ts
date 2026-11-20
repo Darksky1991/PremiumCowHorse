@@ -61,6 +61,7 @@ export async function bootstrap(): Promise<void> {
 
   wireEvents(c)
   wireScanner(c)
+  wireDocuments(c)
   registerShutdown(c, disposeIpc)
 
   c.windows.openMainWindow()
@@ -91,6 +92,14 @@ function wireEvents(c: Container): void {
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())
+}
+
+/** 文本文档归属窗口（owner = webContents id，与 IPC 的 senderId 一致）：窗口销毁时全部释放 */
+function wireDocuments(c: Container): void {
+  app.on('browser-window-created', (_event, win) => {
+    const id = win.webContents.id
+    win.webContents.once('destroyed', () => c.documents.releaseOwner(id))
+  })
 }
 
 /**

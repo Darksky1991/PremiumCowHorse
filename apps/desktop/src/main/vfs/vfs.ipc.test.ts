@@ -12,9 +12,13 @@ const cached: DirectoryListing = { items, state: 'cached', checkedAt: 100 }
 
 function setup(scanner: Partial<ScannerApi> & { available: boolean }): {
   handlers: ReturnType<typeof vfsHandlers>
-  vfs: { list: ReturnType<typeof vi.fn>; stat: ReturnType<typeof vi.fn> }
+  vfs: {
+    list: ReturnType<typeof vi.fn>
+    stat: ReturnType<typeof vi.fn>
+    read: ReturnType<typeof vi.fn>
+  }
 } {
-  const vfs = { list: vi.fn(async () => items), stat: vi.fn(), cancel: vi.fn() }
+  const vfs = { list: vi.fn(async () => items), stat: vi.fn(), cancel: vi.fn(), read: vi.fn() }
   const full: ScannerApi = {
     list: vi.fn(async () => cached),
     interest: vi.fn(),
@@ -103,5 +107,18 @@ describe('vfsHandlers 的其他通道', () => {
     const offline = [{ share: 'E:', since: 10 }]
     const { handlers } = setup({ available: true, offlineShares: vi.fn(() => offline) })
     await expect(handlers['vfs.offlineShares']({}, ctx)).resolves.toEqual(offline)
+  })
+})
+
+describe('vfsHandlers vfs.sniff', () => {
+  it('reads the first 8KB and returns only the kind', async () => {
+    const { handlers, vfs } = setup({ available: true })
+    vfs.read.mockResolvedValueOnce(new TextEncoder().encode('hello world'))
+    await expect(handlers['vfs.sniff']({ uri }, ctx)).resolves.toEqual({ kind: 'text' })
+    expect(vfs.read).toHaveBeenCalledWith(uri, 0, 8192)
+    vfs.read.mockResolvedValueOnce(Uint8Array.of(0x50, 0x4b, 0x00, 0x01))
+    await expect(handlers['vfs.sniff']({ uri }, ctx)).resolves.toEqual({ kind: 'binary' })
+    vfs.read.mockResolvedValueOnce(new Uint8Array(0))
+    await expect(handlers['vfs.sniff']({ uri }, ctx)).resolves.toEqual({ kind: 'empty' })
   })
 })

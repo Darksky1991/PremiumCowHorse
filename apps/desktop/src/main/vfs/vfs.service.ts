@@ -43,6 +43,14 @@ export class VfsService {
     return this.run(uri, requestId, (p, url, signal) => p.list(url, signal))
   }
 
+  /**
+   * 读取文件的一段（provider 的 read：开-读-关）。超时同 stat / list（按位置）；
+   * signal 由调用方持有（例如文档关闭时中止索引中的读取）
+   */
+  read(uri: string, offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
+    return this.run(uri, undefined, (p, url, s) => p.read(url, offset, length, s), signal)
+  }
+
   /** 取消进行中的请求；未知或已结束的 id 不做任何事 */
   cancel(requestId: string): void {
     this.requests.get(requestId)?.abort()
@@ -57,7 +65,8 @@ export class VfsService {
   private async run<T>(
     uri: string,
     requestId: string | undefined,
-    op: (provider: FileSystemProvider, url: URL, signal: AbortSignal) => Promise<T>
+    op: (provider: FileSystemProvider, url: URL, signal: AbortSignal) => Promise<T>,
+    external?: AbortSignal
   ): Promise<T> {
     const url = URL.canParse(uri) ? new URL(uri) : null
     if (!url) throw new AppError({ code: 'FS_INVALID_URI', detail: uri })
@@ -65,6 +74,10 @@ export class VfsService {
     if (!provider) throw new AppError({ code: 'FS_UNSUPPORTED_SCHEME', detail: url.protocol })
 
     const controller = new AbortController()
+    // 调用方的信号：中止时以同样的原因中止本次调用（已中止则立即结束）
+    const forward = (): void => controller.abort(external?.reason)
+    if (external?.aborted) forward()
+    else external?.addEventListener('abort', forward, { once: true })
     if (requestId !== undefined) {
       // 同一 id 的新请求取代旧请求（例如重新列出同一目录）
       this.requests.get(requestId)?.abort()
@@ -75,9 +88,9 @@ export class VfsService {
       this.timeoutMs(uri)
     )
     const aborted = new Promise<never>((_, reject) => {
-      controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
-        once: true
-      })
+      const signal = controller.signal
+      if (signal.aborted) reject(signal.reason)
+      else signal.addEventListener('abort', () => reject(signal.reason), { once: true })
     })
     const operation = op(provider, url, controller.signal)
     // 中止先于操作结束时，操作稍后的失败无人等待：吞掉它，避免 unhandled rejection
@@ -88,6 +101,7 @@ export class VfsService {
       throw toAppError(e)
     } finally {
       clearTimeout(timer)
+      external?.removeEventListener('abort', forward)
       if (requestId !== undefined && this.requests.get(requestId) === controller) {
         this.requests.delete(requestId)
       }

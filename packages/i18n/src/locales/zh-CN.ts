@@ -178,6 +178,7 @@ export default {
     FS_CANCELLED: '操作已取消',
     FS_TIMEOUT: '没有响应，已中止',
     FS_UNAVAILABLE: '无法访问该位置',
-    INDEX_UNAVAILABLE: '索引不可用'
+    INDEX_UNAVAILABLE: '索引不可用',
+    DOC_NOT_FOUND: '文档已关闭，请重新打开'
   }
 } satisfies Resource

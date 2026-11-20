@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -147,5 +147,74 @@ describe('LocalProvider', () => {
     })
     const names = (await provider.list(url(dir))).map((e) => e.name).sort()
     expect(names).toEqual(['.hidden', '設計書#1.xlsx'])
+  })
+
+  describe('read', () => {
+    const bytes = Uint8Array.from({ length: 1000 }, (_, i) => i % 251)
+    let file: string
+    beforeEach(() => {
+      file = path.join(dir, 'data.bin')
+      writeFileSync(file, bytes)
+    })
+
+    it('reads [offset, offset + length)', async () => {
+      expect(await provider.read(url(file), 0, 10)).toEqual(bytes.subarray(0, 10))
+      expect(await provider.read(url(file), 300, 400)).toEqual(bytes.subarray(300, 700))
+    })
+
+    it('returns fewer bytes at the end of the file and none past it', async () => {
+      expect(await provider.read(url(file), 990, 100)).toEqual(bytes.subarray(990))
+      expect(await provider.read(url(file), 1000, 10)).toEqual(new Uint8Array(0))
+      expect(await provider.read(url(file), 5000, 10)).toEqual(new Uint8Array(0))
+      expect(await provider.read(url(file), 10, 0)).toEqual(new Uint8Array(0))
+    })
+
+    it('rejects a negative or fractional range', async () => {
+      await expect(provider.read(url(file), -1, 10)).rejects.toThrow(RangeError)
+      await expect(provider.read(url(file), 0, 1.5)).rejects.toThrow(RangeError)
+    })
+
+    it('maps a missing file to FS_NOT_FOUND', async () => {
+      await expect(provider.read(url(path.join(dir, 'nope.txt')), 0, 10)).rejects.toMatchObject({
+        code: 'FS_NOT_FOUND'
+      })
+    })
+
+    it('maps an aborted signal to FS_CANCELLED', async () => {
+      const controller = new AbortController()
+      controller.abort()
+      await expect(provider.read(url(file), 0, 10, controller.signal)).rejects.toMatchObject({
+        code: 'FS_CANCELLED'
+      })
+    })
+
+    it('closes the file right after reading: the file and its folder can be renamed', async () => {
+      await provider.read(url(file), 0, 10)
+      renameSync(file, path.join(dir, 'renamed.bin'))
+      renameSync(dir, path.join(root, '案件 B'))
+      await expect(provider.read(url(file), 0, 10)).rejects.toMatchObject({
+        code: 'FS_NOT_FOUND'
+      })
+    })
+
+    it('closes the file when the read fails', async () => {
+      const close = vi.fn()
+      const realOpen = fs.open
+      vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+        const handle = await realOpen(...args)
+        const realClose = handle.close.bind(handle)
+        handle.read = (() =>
+          Promise.reject(Object.assign(new Error('io'), { code: 'EIO' }))) as never
+        handle.close = async () => {
+          close()
+          return realClose()
+        }
+        return handle
+      })
+      await expect(provider.read(url(file), 0, 10)).rejects.toMatchObject({
+        code: 'FS_UNAVAILABLE'
+      })
+      expect(close).toHaveBeenCalledOnce()
+    })
   })
 })

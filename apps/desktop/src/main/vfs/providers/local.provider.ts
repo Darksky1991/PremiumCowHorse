@@ -44,8 +44,42 @@ export class LocalProvider implements FileSystemProvider {
     }
   }
 
+  /**
+   * 读取 [offset, offset + length)：打开 → 读 → 立即关闭（不长期持有句柄）。到达文件末尾时返回更短的结果。
+   * Windows 上 fs.open 以 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE 打开（libuv 的 fs__open，
+   * 见 knowledge/windows-and-tooling.md），读取期间他人仍可写入、删除、改名该文件。
+   */
+  async read(uri: URL, offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
+    assertRange(offset, length)
+    try {
+      throwIfAborted(signal)
+      const handle = await fs.open(fileURLToPath(uri), 'r')
+      try {
+        const buffer = new Uint8Array(length)
+        let filled = 0
+        while (filled < length) {
+          throwIfAborted(signal)
+          const { bytesRead } = await handle.read(buffer, filled, length - filled, offset + filled)
+          if (bytesRead === 0) break
+          filled += bytesRead
+        }
+        return filled === length ? buffer : buffer.slice(0, filled)
+      } finally {
+        await handle.close()
+      }
+    } catch (e) {
+      throw toAppError(e)
+    }
+  }
+
   async dispose(): Promise<void> {
     // 本地文件系统没有需要释放的连接或句柄
+  }
+}
+
+function assertRange(offset: number, length: number): void {
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0) {
+    throw new RangeError(`read: invalid range offset=${offset} length=${length}`)
   }
 }
 

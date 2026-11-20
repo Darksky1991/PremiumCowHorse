@@ -11,6 +11,15 @@ import {
   WorkspaceUpdateInput
 } from '../workspace/schema'
 import type { DirectoryListing, FileStat } from '../vfs/types'
+import {
+  DOC_ENCODINGS,
+  DOC_READ_LINES_MAX,
+  type DocChangedEvent,
+  type DocLineBlock,
+  type DocProgressEvent,
+  type DocumentInfo,
+  type SniffInfo
+} from '../doc/types'
 import type { SearchResult } from '../search/types'
 import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
@@ -100,6 +109,38 @@ export const ipcContract = {
   'vfs.offlineShares': route<OfflineShare[]>()(z.strictObject({})),
   'vfs.cacheInfo': route<{ bytes: number }>()(z.strictObject({})),
   'vfs.clearCache': route<void>()(z.strictObject({})),
+  /** 文本 / 二进制判断：读开头 8KB（开-读-关）。未被任何预览插件匹配的文件先 sniff 再选插件 */
+  'vfs.sniff': route<SniffInfo>()(z.strictObject({ uri: z.string().min(1) })),
+  /**
+   * 文本文档（分页模型，doc/ 7.5 节）：文档归属调用方窗口（每窗口最多 16 个，超出时关闭最久未用的），
+   * 窗口销毁时全部释放；docId 不存在或已关闭 → DOC_NOT_FOUND。
+   * doc.open：stat + 判断编码 + 开始后台索引（进度经 doc.progress）。at 决定部分模式取开头还是末尾（默认开头）；
+   * encoding 为手动指定的编码
+   */
+  'doc.open': route<DocumentInfo>()(
+    z.strictObject({
+      uri: z.string().min(1),
+      encoding: DOC_ENCODINGS.optional(),
+      at: z.enum(['start', 'end']).optional()
+    })
+  ),
+  /** 第 start 行起的 count 行（窗口内行号；不超过已确定的行数）。行的语义见 DocLineBlock */
+  'doc.readLines': route<DocLineBlock>()(
+    z.strictObject({
+      docId: z.string().min(1),
+      start: z.number().int().min(0),
+      count: z.number().int().min(1).max(DOC_READ_LINES_MAX)
+    })
+  ),
+  /** 重新 stat：只增长 → 续扫（doc.changed appended）；截断 / 开头变化 → 重建（reset）；不存在 → missing */
+  'doc.refresh': route<DocumentInfo>()(z.strictObject({ docId: z.string().min(1) })),
+  /** 手动指定编码（null = 恢复自动判断）；切换到 / 离开 UTF-16 时重建索引 */
+  'doc.setEncoding': route<DocumentInfo>()(
+    z.strictObject({ docId: z.string().min(1), encoding: DOC_ENCODINGS.nullable() })
+  ),
+  /** 部分模式 → 全量：对整个文件建立索引（已是全量时不做任何事） */
+  'doc.buildIndex': route<DocumentInfo>()(z.strictObject({ docId: z.string().min(1) })),
+  'doc.close': route<void>()(z.strictObject({ docId: z.string().min(1) })),
   /**
    * 文件名搜索：只查缓存（不访问文件系统）。text 按空白分词（AND），含 * / ? 的词为通配；
    * 范围为该工作区的 folder 条目（固定的单个文件条目按名称匹配）。同一 requestId 的新查询取代旧查询，
@@ -161,6 +202,10 @@ export interface IpcEvents {
   'vfs.reachability': ReachabilityEvent
   /** 只发给状态发生变化的那个窗口 */
   'window.stateChanged': WindowState
+  /** 文档的索引进度（只发给文档所属的窗口） */
+  'doc.progress': DocProgressEvent
+  /** 文档对应的文件有变化（只发给文档所属的窗口） */
+  'doc.changed': DocChangedEvent
 }
 export type IpcEventName = keyof IpcEvents
 

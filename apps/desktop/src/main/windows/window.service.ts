@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, webContents } from 'electron'
 import {
   IPC_EVENT,
   resolveLanguage,
@@ -53,6 +53,14 @@ export class WindowService {
   broadcast<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void {
     const envelope: EventEnvelope = { event, payload }
     for (const win of this.all()) win.webContents.send(IPC_EVENT, envelope)
+  }
+
+  /** 只发给一个窗口（webContents id）；已销毁时不做任何事 */
+  sendTo<E extends IpcEventName>(webContentsId: number, event: E, payload: IpcEvents[E]): void {
+    const target = webContents.fromId(webContentsId)
+    if (!target || target.isDestroyed()) return
+    const envelope: EventEnvelope = { event, payload }
+    target.send(IPC_EVENT, envelope)
   }
 
   syncChrome(): void {

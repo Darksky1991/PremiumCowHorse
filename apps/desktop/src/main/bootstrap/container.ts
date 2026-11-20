@@ -16,6 +16,7 @@ import { location } from '../vfs/location'
 import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
+import { DocumentService } from '../vfs/document/document-service'
 
 export interface Container {
   paths: AppPaths
@@ -26,6 +27,7 @@ export interface Container {
   workspaces: WorkspaceService
   vfs: VfsService
   scanner: ScannerClient
+  documents: DocumentService
   i18n: i18n
   windows: WindowService
 }
@@ -65,6 +67,13 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   scanner.start()
   const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
   const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))
+  // 文本文档：读取经 VfsService（开-读-关、按位置超时）；事件只发给文档所属的窗口
+  const documents = new DocumentService({
+    source: vfs,
+    emit: (owner, event, payload) => windows.sendTo(owner, event, payload),
+    fullIndexLimitBytes: () => settings.get('preview.maxTextSizeMB') * 1024 * 1024,
+    preferredLanguage: () => resolveLanguage(settings.get('general.language'), app.getLocale())
+  })
 
-  return { paths, logger, db, bus, settings, workspaces, vfs, scanner, i18n, windows }
+  return { paths, logger, db, bus, settings, workspaces, vfs, scanner, documents, i18n, windows }
 }

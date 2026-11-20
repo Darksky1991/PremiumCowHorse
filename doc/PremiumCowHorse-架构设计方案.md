@@ -276,7 +276,8 @@ apps/desktop/src/
 │   │   ├── types.ts                  # FileSystemProvider 接口
 │   │   ├── errors.ts                 # Node 文件系统错误 → AppError（FS_*）
 │   │   ├── vfs.service.ts            # 一次性调用：按 scheme 路由到 provider；取消与超时（vfs.timeoutSec.*）
-│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list（经扫描进程，不可用时直接枚举）/ vfs.cancel / vfs.interest / vfs.refresh / vfs.offlineShares / vfs.cacheInfo / vfs.clearCache
+│   │   ├── vfs.ipc.ts                # vfs.stat / vfs.list（经扫描进程，不可用时直接枚举）/ vfs.cancel / vfs.interest / vfs.refresh / vfs.offlineShares / vfs.cacheInfo / vfs.clearCache / vfs.sniff
+│   │   ├── document/                 # 文本文档（分页模型，7.5 节）：document-service（文档表、owner、LRU 16）/ text-document（单个文档：窗口、编码、刷新）/ document-indexer（后台索引）/ document-window・document-identity・document-encoding・utf8-validator（纯判定）/ document.ipc（doc.*）
 │   │   ├── input-path.ts             # 渲染端传入的本地路径 → file URI（去引号 / 空白、拒绝相对路径）
 │   │   ├── local-path.ts             # file URI → 本地路径（系统操作 IPC 使用）
 │   │   ├── path-name.ts              # 显示名称（驱动器根 `C:`、UNC 共享根 `\\server\share`）
@@ -291,7 +292,6 @@ apps/desktop/src/
 │   │   │   └── sftp.provider.ts
 │   │   ├── connection-pool.ts        # 远程连接复用、空闲回收、重连
 │   │   ├── remote-cache.ts           # 远程文件本地缓存（LRU）
-│   │   ├── text-decoder.ts           # 编码检测与解码
 │   │   └── pcfs-protocol.ts          # pcfs:// 协议处理
 │   ├── modules/                      # 按业务领域划分，每个模块结构一致
 │   │   ├── workspace/
@@ -437,8 +437,8 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
-// vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache}、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
-// window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged
+// vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
+// window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed
 // （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
@@ -452,7 +452,13 @@ export const ipcContract = {
   'index.list':          route<string[]>()(z.object({ workspaceId: z.string() })),
   'vfs.list':            route<DirectoryListing>()(z.object({ uri: z.string(), requestId: z.string().optional() })),  // { items, state: fresh|cached|offline, checkedAt }
   'vfs.stat':            route<FileStat>()(z.object({ uri: z.string() })),
-  'vfs.readText':        route<TextContent>()(ReadTextInput),
+  'vfs.sniff':           route<SniffInfo>()(z.object({ uri: z.string() })),   // 开头 8KB → { kind: text | binary | empty }
+  'doc.open':            route<DocumentInfo>()(z.object({ uri: z.string(), encoding: DOC_ENCODINGS.optional(), at: z.enum(['start', 'end']).optional() })),
+  'doc.readLines':       route<DocLineBlock>()(z.object({ docId: z.string(), start: z.number().int().min(0), count: z.number().int().min(1).max(2000) })),
+  'doc.refresh':         route<DocumentInfo>()(z.object({ docId: z.string() })),
+  'doc.setEncoding':     route<DocumentInfo>()(z.object({ docId: z.string(), encoding: DOC_ENCODINGS.nullable() })),
+  'doc.buildIndex':      route<DocumentInfo>()(z.object({ docId: z.string() })),
+  'doc.close':           route<void>()(z.object({ docId: z.string() })),
   'vfs.cancel':          route<void>()(z.object({ requestId: z.string() })),
   'vfs.interest':        route<void>()(z.object({ focus: z.string().nullable(), visible: z.array(z.string()).max(2000), offscreen: z.array(z.string()).max(5000), tabs: z.array(z.string()).max(8) })),  // 整体替换本窗口的关注点
   'vfs.refresh':         route<void>()(z.object({ uris: z.array(z.string()).max(500) })),  // F5 / 重试：P0
@@ -497,6 +503,8 @@ export interface IpcEvents {
   'connection.status': { id: string; status: 'idle' | 'connecting' | 'online' | 'error' };
   'editSession.changed': EditSessionDto;
   'window.stateChanged': WindowState;
+  'doc.progress':      DocProgressEvent;              // 只发给文档所属的窗口
+  'doc.changed':       DocChangedEvent;               // 同上
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppErrorPayload };
@@ -553,7 +561,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -569,6 +577,7 @@ export interface FileSystemProvider {
 
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>;
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>;
+  read(uri: URL, offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array>;  // 开-读-关
   createReadStream(uri: URL, range?: ByteRange, signal?: AbortSignal): Promise<Readable>;
   dispose(): Promise<void>;
 }
@@ -584,7 +593,7 @@ export interface FileEntry {
 }
 ```
 
-已实现的是上面接口的子集（`stat`、`list`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入）。`watch` 已于 2026-11-19 删除（目录的持续刷新改由扫描进程负责，见下文），目标结构中也不再有 `watch`。`VfsService` 只负责一次性调用（`stat`、条目添加时的校验、扫描进程不可用时的直接枚举）：按 scheme 路由、统一超时（按位置取 `vfs.timeoutSec.local` / `vfs.timeoutSec.network`，整次调用的总时长，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
+已实现的是上面接口的子集（`stat`、`list`、`read`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入）。**`read(uri, offset, length, signal?)`**（2026-11-20，文本预览）：每次调用 = 打开 → 读 → 在 `finally` 中关闭，不在调用之间持有句柄；到达文件末尾时返回更短的结果（offset 在末尾之后为空），不存在 → `FS_NOT_FOUND`。本地 provider 用 `fs.promises.open(p, 'r')`：libuv 在 Windows 上以 `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE` 打开（`knowledge/windows-and-tooling.md`），读取期间他人仍可追加、改名、删除该文件；但 **读取进行中的那一刻其上级目录不能改名**（Windows 的限制，与共享标志无关），因此只在一次读取期间打开（本地 1MB 约毫秒级）。`VfsService.read(uri, offset, length, signal?)` 同样按位置超时，并接受调用方的 `AbortSignal`（文档关闭时中止索引中的读取）。`watch` 已于 2026-11-19 删除（目录的持续刷新改由扫描进程负责，见下文），目标结构中也不再有 `watch`。`VfsService` 只负责一次性调用（`stat`、条目添加时的校验、扫描进程不可用时的直接枚举）：按 scheme 路由、统一超时（按位置取 `vfs.timeoutSec.local` / `vfs.timeoutSec.network`，整次调用的总时长，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
 `FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次（计入同一并发上限），资源树据此判断能否展开（已实现，M1-2）。目标是文件以外的类型（如设备）也归为 `'file'`；目标 stat 因任何原因失败（不存在、循环、权限、网络）都为 `null`；lstat 本身失败的降级项不带 `target`，资源树按失效链接处理。
 
@@ -653,10 +662,21 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 缓存路径为 `userData/cache/remote/<sha1(uri)>/<mtime>-<size>/<原文件名>`，远端 mtime 或 size 变化即视为新版本。按设置项 `remote.cacheSizeMB` 做 LRU 淘汰。缓存同时服务于「用系统应用打开远程文件」（下载后 `shell.openPath`）——**需求方决定（2026-11-19）：资源树只用于展示，对文件的操作都放在将来的预览窗口中**，因此这一打开动作只由将来的预览窗口提供，资源树的右键菜单不提供。Office 文件的远程编辑与回传由独立的「远程编辑会话」处理（第 10.5 节），不与只读缓存混用。
 
-### 7.5 文本编码
+### 7.5 文本文档（分页模型）与编码
 
-`vfs.readText` 在主进程完成：读取前 N 字节 → BOM 判断 → jschardet 检测 → iconv-lite 解码，返回 `{ text, encoding, truncated }`。状态栏显示当前编码并允许手动切换（UTF-8 / Shift_JIS / EUC-JP / GBK），选择结果记入标签的 viewState，会话恢复后保持。
+设计：`devDoc/2026-11-20-18-text-preview-design.md`。文本 / 日志预览不一次读入整个文件：主进程对文件的一个**字节窗口**建立稀疏行索引，渲染端按行号分页读取原始字节、用 `TextDecoder` 解码（纯逻辑在 `@pch/text-engine`：行索引、按行读取、sniff、编码判断、解码）。原 `vfs.readText`（一次读入并在主进程解码）不再采用。
 
+目标结构（主进程 `vfs/document/`，渲染端调用与界面随文本插件）：
+
+- **文档**：`doc.open { uri, encoding?, at? }` → `DocumentInfo { docId, uri, size, mtime, encoding { label, confidence, bomLength, manual }, binary, mode, window, index { lines, complete, indexedTo } }`。文档归属调用方窗口（webContents id），每窗口最多 16 个（超出时关闭最久未用的），窗口销毁时全部释放；docId 不存在 / 不属于调用方 → `DOC_NOT_FOUND`。事件 `doc.progress { docId, indexedTo, lines, complete, error? }`（节流 ≥ 200ms，完成 / 出错时必发；error 为错误码）与 `doc.changed { docId, appended? | reset? | missing? }` 只发给所属窗口。
+- **模式**：文件不超过 `preview.maxTextSizeMB`（默认 50，语义为「自动建立完整行索引的上限」）或不超过 4MB → 全量（窗口 = 整个文件）；否则部分模式：窗口取开头（`at: 'start'`，默认）或末尾（`at: 'end'`）4MB，边缘对齐到行边界（64KB 内无换行时保留原边缘），末尾窗口的起点取偶数（UTF-16 单元相对文件开头对齐）。`doc.buildIndex` 部分 → 全量。
+- **索引**：后台按 1MB 分块读取（每块一次开-读-关），本地与网络相同；超时 / 取消复用 `VfsService`（按位置 `vfs.timeoutSec.*`），失败时 `index.complete` 保持 false、`doc.progress` 带错误码，刷新时重试。`doc.open` 等第一块索引完再返回（1MB 以内的文件返回时已完成；之后的进度事件晚于应答到达渲染端）。块读取只取计划的长度，扫描中文件增长不越过窗口终点。
+- **按行读取**：`doc.readLines { docId, start, count ≤ 2000 }` → `DocLineBlock`（与 text-engine 的 `LineBlock` 同构：`start` 为窗口内行号；`bytes` 为各行拼接，未截断的行含行尾，超过 64KB 的行只含前缀，因此不一定是文件中连续的一段；`starts` / `ends` 为 `bytes` 内偏移，`ends` 不含 `\n` 与其前的 `\r`；`truncated` 为被截断行的绝对行号）。
+- **刷新** `doc.refresh`（与 provider 无关的判定，`document-identity.ts`）：不存在 → `missing`（保留状态）；变小或开头 4KB 与打开时不同 → `reset`（重新决定模式、窗口、编码并重建索引）；只增长 → `appended`（全量与末尾窗口的终点随之延长，从已索引处续扫；开头窗口不受影响、不发事件）；大小相同但修改时间变了 → `reset`（原地改写）。扫描中读到的比窗口少（文件变短）→ 自动检查（通常为 `reset`）。
+- **编码**：BOM 看文件开头（certain）；否则 `detectEncoding` 的样本取窗口开头 / 中间 / 末尾各 64KB，`preferred` 取当前界面语言（平局时决定先后）。全量模式、自动判断为 UTF-8 且不是 BOM 确定的：建索引时对全部内容做流式 UTF-8 校验（`utf8-validator.ts`，规则同 `TextDecoder` fatal；末尾不完整的序列不算非法——日志可能正写到一半），发现非法字节后用「窗口开头 + 从该处所在行开始的一段」重新判断，结果改变时发 `doc.changed { reset }`。`doc.setEncoding { encoding | null }`：手动指定（`manual: true`、`certain`，BOM 与所选编码一致时保留 `bomLength`）或恢复自动判断；切换到 / 离开 UTF-16（换行单元改变）时重新对齐窗口并重建索引，其余只换标签（渲染端换解码器）。`bomLength` 只在窗口从文件开头开始时非 0。
+- `vfs.sniff { uri }` → `{ kind: 'text' | 'binary' | 'empty' }`：读开头 8KB（开-读-关），供容器为未匹配的文件选插件。
+
+已实现（2026-11-20，文本预览 Task 4）：以上主进程部分全部（`vfs/document/` 与 `vfs.sniff`、`DOC_NOT_FOUND`；`DOC_ENCODINGS` 与 text-engine 的 `ENCODING_LABELS`、`DocLineBlock` 与 `LineBlock` 由类型测试保证一致）。单元测试：`document-service.test.ts`（内存假 provider：全量 / 部分、末尾窗口的行与 UTF-16 偶数对齐、扫描中增长、追加 / 截断 / 开头变化 / 删除 / 扫描中变短、ASCII 开头 + 后部 Shift_JIS 的改判、setEncoding、LRU、owner 释放、索引失败）、`document-window` / `document-identity` / `utf8-validator` / `document.ipc` 的测试、`local.provider.test.ts`（read 之后立即可改名文件与上级目录）。渲染端调用、自动刷新与界面尚未实现。
 ---
 
 ## 8. 工作区与资源树
