@@ -16,6 +16,12 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    // 开发模式下 Markdown 查看脚本（src/web-assets/markdown，生产为单独的 vite 构建：vite.markdown.config.ts）
+    // 由本 dev server 经 /@fs 提供（pch-asset 代理，台账 S9）。把它列为依赖扫描的入口：否则首次打开 Markdown 时
+    // 才发现 unified / mermaid 等新依赖，dev server 重新预构建并重新加载整个应用窗口（实测）
+    optimizeDeps: {
+      entries: ['index.html', '../web-assets/markdown/main.ts']
+    }
   }
 })

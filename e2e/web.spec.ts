@@ -317,17 +317,22 @@ test.describe('the browser view (html plugin)', () => {
       await expect(view.locator('#session')).toHaveText('3')
       expect(await viewIds(app)).toEqual([viewId])
 
-      // Markdown 链接：标签内容切换为文本查看器（Task 8 之前），视图销毁（当前位置不再用网页查看器）
+      // Markdown 链接：在本标签以 Markdown 查看器打开。查看器不同（所有者换为 markdown 插件）→ 旧视图销毁、新建视图
       await clickIn(app, view, '#to-notes')
       await expect(tabs(page).nth(0)).toHaveText('notes.md')
-      await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText('hello')
-      await expect.poll(async () => (await mainViews(app)).length).toBe(0)
+      const notes = await viewPage(app, '/proto/notes.md?pch-view=markdown')
+      await expect(notes.locator('#content h1')).toHaveText('Notes')
+      const notesIds = await viewIds(app)
+      expect(notesIds).toHaveLength(1)
+      expect(notesIds).not.toEqual([viewId])
       await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
       view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('4')
-      // 新的视图（文本查看器期间已销毁）：sessionStorage 从头开始
+      // 回到 HTML 同样是新的视图：sessionStorage 从头开始
       await expect(view.locator('#session')).toHaveText('1')
-      expect(await viewIds(app)).not.toEqual([viewId])
+      const backIds = await viewIds(app)
+      expect(backIds).toHaveLength(1)
+      expect(backIds).not.toEqual(notesIds)
 
       // 外网链接：交给系统浏览器（已替换为记录），视图不离开
       await clickIn(app, view, '#to-external')
@@ -445,6 +450,117 @@ test.describe('the browser view (html plugin)', () => {
       const again = await viewPage(app, '/proto/index.html')
       await expect(again.locator('#counter')).toHaveText('2')
       await expect.poll(() => visibility(app)).toEqual([true])
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('Markdown renders in the browser view: GFM, footnotes, mermaid; scripts never run; links go through the app', async () => {
+    const docs = path.join(project, 'docs')
+    mkdirSync(path.join(docs, 'img'), { recursive: true })
+    writeFileSync(path.join(docs, 'img', 'a.png'), PNG)
+    writeFileSync(path.join(docs, 'spec.xlsx'), 'not a real workbook')
+    writeFileSync(path.join(docs, 'other.md'), '# Other\n\nother page\n')
+    writeFileSync(
+      path.join(docs, 'README.md'),
+      [
+        '# 設計メモ',
+        '',
+        '| 項目 | 値 |',
+        '| --- | --- |',
+        '| 版 | 1.0 |',
+        '',
+        '![図](./img/a.png)',
+        '',
+        '本文[^1]',
+        '',
+        '```mermaid',
+        'graph TD',
+        '  A[開始] --> B[終了]',
+        '```',
+        '',
+        '```mermaid',
+        'this is not a diagram',
+        '```',
+        '',
+        "<script>document.title='x'</script>",
+        '',
+        '<img id="evil" src="x" onerror="document.title=\'y\'">',
+        '',
+        '- [仕様書](./spec.xlsx)',
+        '- [その他](./other.md)',
+        '',
+        '[^1]: 注釈です',
+        ''
+      ].join('\n')
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'docs' }))
+      await tree.getByRole('treeitem', { name: 'README.md' }).click()
+      await expect(tabs(page)).toHaveText(['README.md'])
+      // 视图加载 .md 本身的地址（带 ?pch-view=markdown：协议处理器返回外壳页）
+      const view = await viewPage(app, '/docs/README.md?pch-view=markdown')
+      await expect.poll(() => visibility(app)).toEqual([true])
+
+      // GFM 表格与相对路径的图片
+      await expect(view.locator('#content table td').nth(1)).toHaveText('1.0')
+      await expect
+        .poll(() =>
+          view.evaluate(
+            () => (document.querySelector('img[alt="図"]') as HTMLImageElement).naturalWidth
+          )
+        )
+        .toBe(40)
+      // mermaid：图生成 svg；无法解析的块显示错误与源码，不影响其他内容
+      await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
+      await expect(view.locator('#content .mermaid-error pre')).toHaveText('this is not a diagram')
+
+      // Markdown 中的脚本不执行（<script> 与 onerror=）：标题是查看脚本设的第一个 h1
+      await expect
+        .poll(() =>
+          view.evaluate(() => {
+            const img = document.getElementById('evil') as HTMLImageElement | null
+            return img !== null && img.complete
+          })
+        )
+        .toBe(true)
+      expect(await view.title()).toBe('設計メモ')
+      await expect(statusLine(page).locator('[data-page-title]')).toHaveText('設計メモ')
+      // 没有「システムのブラウザーで開く」
+      await expect(statusLine(page).getByRole('button')).toHaveCount(0)
+
+      // 脚注：链接与回跳都是页内锚点，页面自己处理（不经应用：标签与视图地址不变）
+      await view.locator('a[href="#user-content-fn-1"]').click()
+      await expect.poll(() => view.evaluate(() => location.hash)).toBe('#user-content-fn-1')
+      await view.locator('a[data-footnote-backref]').click()
+      await expect.poll(() => view.evaluate(() => location.hash)).toBe('#user-content-fnref-1')
+      await expect(tabs(page)).toHaveText(['README.md'])
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/docs\/README\.md\?pch-view=markdown#user-content-fnref-1$/)
+      ])
+
+      // 到其他 .md 的链接：本标签以 Markdown 打开（同一个视图）
+      const [viewId] = await viewIds(app)
+      await clickIn(app, view, 'a[href="./other.md"]')
+      await expect(tabs(page)).toHaveText(['other.md'])
+      const other = await viewPage(app, '/docs/other.md?pch-view=markdown')
+      await expect(other.locator('#content h1')).toHaveText('Other')
+      expect(await viewIds(app)).toEqual([viewId])
+
+      // 回到 README，查看器下拉切到「Text」：显示源码，视图销毁（当前位置不再用网页查看器）
+      await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
+      await expect(tabs(page)).toHaveText(['README.md'])
+      await viewPage(app, '/docs/README.md?pch-view=markdown')
+      await bar(page).getByRole('button', { name: 'View as', exact: true }).click()
+      await expect(page.getByRole('menuitemradio')).toHaveText(['Markdown', 'Text', 'File info'])
+      await page.getByRole('menuitemradio', { name: 'Text' }).click()
+      await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText(
+        '# 設計メモ'
+      )
+      await expect.poll(async () => (await mainViews(app)).length).toBe(0)
     } finally {
       await app.close()
     }

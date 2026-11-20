@@ -1,4 +1,5 @@
-import { app, session, shell } from 'electron'
+import path from 'node:path'
+import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
 import { resolveLanguage } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
@@ -18,7 +19,12 @@ import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
 import { ScopeTable } from '../modules/web/scope'
-import { createWebProtocolHandler } from '../modules/web/web-protocol'
+import { markdownShell, MARKDOWN_ASSET_BASE } from '../modules/web/markdown-shell'
+import {
+  createAssetProtocolHandler,
+  createWebProtocolHandler,
+  type AssetSource
+} from '../modules/web/web-protocol'
 import { WebViewManager } from '../modules/web/web-view-manager'
 import {
   configureWebSession,
@@ -96,8 +102,18 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     },
     logger
   })
+  // Markdown 查看脚本（pch-asset）：生产读 out/web-assets/markdown；开发模式代理到 renderer dev server（台账 S9）
+  const devServer = /^https?:/.test(rendererUrl) ? rendererUrl : undefined
+  const viewerEntry = path.join(paths.webAssets, '../../../src/web-assets/markdown/main.ts')
+  const assetSource: AssetSource = devServer
+    ? { kind: 'dev', origin: devServer, fetch: (url) => net.fetch(url) }
+    : { kind: 'files', root: paths.webAssets }
+  const viewerShell = devServer
+    ? markdownShell({ script: `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}` })
+    : markdownShell()
   configureWebSession(webSession, {
-    handler: createWebProtocolHandler({ scopes: webScopes, vfs }),
+    handler: createWebProtocolHandler({ scopes: webScopes, vfs, markdownShell: viewerShell }),
+    assetHandler: createAssetProtocolHandler(assetSource),
     onDownload: (id) => web.notifyContents(id, 'download'),
     logger
   })

@@ -4,7 +4,10 @@ import { BrowserWindow, WebContentsView, webContents, type Session } from 'elect
 import { AppError, type WebBounds } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 import { WEB_SCHEME } from './scope'
-import { guardInitiator } from './web-protocol'
+
+/** Markdown 查看脚本的协议（设计 5.4；特权登记在 windows/app-protocol.ts） */
+const ASSET_SCHEME = 'pch-asset'
+import { guardAssetInitiator, guardInitiator } from './web-protocol'
 import type { OwnerWindow, ViewEvents, ViewLike } from './web-view-manager'
 
 /** 浏览器视图的会话分区（持久化：原型的 localStorage / IndexedDB 在重启后保留，按范围编号隔离） */
@@ -18,7 +21,8 @@ const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write'])
 
 /**
  * 配置浏览器视图的会话（设计 5.3.2 / 5.3.3）：
- * - `pch-web` 协议处理器（外包发起方检查）；`pch-asset` 在 Task 8 注册
+ * - `pch-web` 协议处理器（外包发起方检查）
+ * - `pch-asset` 协议处理器（Markdown 查看脚本；外包发起方检查：只放行来自 pch-web 页面或无发起方的请求）
  * - 权限：除剪贴板写入外一律拒绝（请求与检查）
  * - 下载一律取消，并通知发起下载的视图（web.notice download）
  */
@@ -26,11 +30,13 @@ export function configureWebSession(
   ses: Session,
   deps: {
     handler: (request: Request) => Promise<Response>
+    assetHandler: (request: Request) => Promise<Response>
     onDownload: (webContentsId: number) => void
     logger: Logger
   }
 ): void {
   ses.protocol.handle(WEB_SCHEME, guardInitiator(deps.handler))
+  ses.protocol.handle(ASSET_SCHEME, guardAssetInitiator(deps.assetHandler))
   ses.setPermissionRequestHandler((_wc, permission, callback) => {
     const granted = ALLOWED_PERMISSIONS.has(permission)
     if (!granted) deps.logger.warn(`[web] denied permission: ${permission}`)

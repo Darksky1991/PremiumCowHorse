@@ -32,6 +32,8 @@ const elements = [
   { type: 'preload', pattern: 'apps/desktop/src/preload' },
   // 扫描进程（utilityProcess；不得 import electron）
   { type: 'scanner', pattern: 'apps/desktop/src/scanner' },
+  // 浏览器视图中运行的查看脚本（设计 5.4，单独的 vite 构建）：不得引用应用渲染端 / 主进程代码
+  { type: 'web-asset', pattern: 'apps/desktop/src/web-assets/*', capture: ['name'] },
   // 渲染端（架构文档 5.3 节）
   { type: 'r-app', pattern: `${RENDERER}/app` },
   { type: 'r-feature', pattern: `${RENDERER}/features/*`, capture: ['name'] },
@@ -100,6 +102,8 @@ const policies = [
   allow('main-core', ['shared']),
   allow('preload', ['shared']),
   allow('scanner', ['shared']),
+  // 查看脚本只依赖纯逻辑包 text-engine（编码判断）与外部包（unified、mermaid）
+  allow('web-asset', ['text-engine']),
   {
     from: { element: { type: 'scanner' } },
     allow: { to: { file: { categories: 'vfs-portable' } } }
