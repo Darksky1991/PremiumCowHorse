@@ -145,6 +145,16 @@ describe('textLike plugins (sniffed text files)', () => {
     expect(pickPlugin([sftp, fallback], file('a.out', { textLike: true }))).toBe(fallback)
   })
 
+  it('a plugin declaring only textLike (no extensions / MIME) takes nothing but sniffed text', () => {
+    const only = plugin('only', manifest({ kinds: ['file'], textLike: true }))
+    const list = [only, fallback]
+    expect(scoreResource(only.manifest, file('a.out'))).toBeNull()
+    expect(scoreResource(only.manifest, file('a.out', { textLike: false }))).toBeNull()
+    expect(scoreResource(only.manifest, file('a.out', { textLike: true }))).toBe(0)
+    expect(pickPlugin(list, file('a.bin', { textLike: false }))).toBe(fallback)
+    expect(needsSniff(list, file('a.out'))).toBe(true)
+  })
+
   it('needsSniff: only an unmatched, non-empty file with a textLike plugin registered', () => {
     expect(needsSniff(all, file('app.out'))).toBe(true)
     expect(needsSniff(all, file('a.log'))).toBe(false)

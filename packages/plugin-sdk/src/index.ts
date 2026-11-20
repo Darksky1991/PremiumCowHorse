@@ -79,7 +79,7 @@ export interface PreviewPluginManifest {
     maxSize?: number
     /**
      * 也接受「没有任何插件按扩展名 / MIME 匹配、开头判为文本」的文件（ResourceInfo.textLike 为 true）。
-     * 只在未匹配时参与：扩展名 / MIME 命中的插件优先
+     * 只在未匹配时参与：扩展名 / MIME 命中的插件优先。只声明 textLike（没有 extensions / mimeTypes）时只接受判为文本的文件
      */
     textLike?: boolean
   }

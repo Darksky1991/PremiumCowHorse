@@ -78,7 +78,8 @@ function setup(): {
       }
       case 'doc.refresh': {
         const fail = refreshFails.get(input['docId'] as string)
-        if (fail) throw fail
+        // 安全阀：实现若陷入无间隔的重试，50 次之后停止失败，让测试以断言失败结束而不是卡死
+        if (fail && calls.filter(([c]) => c === 'doc.refresh').length <= 50) throw fail
         return infos.get(input['docId'] as string)
       }
       case 'doc.readLines':
@@ -310,6 +311,28 @@ describe('createDocSession: polling (the host refreshes, plugins do not keep tim
     s.refreshFails.set(docId, new AppError({ code: 'FS_TIMEOUT' }))
     await vi.advanceTimersByTimeAsync(20_000)
     expect(refreshCalls(s.calls)).toHaveLength(2)
+  })
+
+  it('a failed refresh with a pending change retries at the interval, not at once, and delivers it later', async () => {
+    const s = setup()
+    const { docId } = await s.session.open(LOCAL)
+    const changes = vi.fn()
+    s.session.onChanged(docId, changes)
+    s.refreshFails.set(docId, new AppError({ code: 'FS_TIMEOUT' }))
+    // 主进程自行发现的变化 → 宿主刷新取 info，但失败了
+    s.emitChanged({ docId, appended: true })
+    // 热循环会在微任务中不停重发（不经计时器）：先只推进微任务，确认没有立即重试
+    for (let i = 0; i < 4; i++) await settle()
+    expect(refreshCalls(s.calls)).toHaveLength(1)
+    // 非激活：不重试
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(refreshCalls(s.calls)).toHaveLength(1)
+    // 激活后按间隔重试；成功时把记下的变化连同 info 交给插件
+    s.refreshFails.delete(docId)
+    s.session.setActive(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(refreshCalls(s.calls)).toHaveLength(2)
+    expect(changes).toHaveBeenCalledWith({ docId, appended: true, info: info(docId, LOCAL) })
   })
 })
 

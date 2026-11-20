@@ -98,6 +98,7 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
     if (doc.refreshing) return
     clearTimer(doc)
     doc.refreshing = true
+    let failed = false
     invoke('doc.refresh', { docId: doc.docId })
       .then((info) => {
         if (docs.get(doc.docId) !== doc) return
@@ -108,13 +109,15 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
         for (const cb of [...(changeListeners.get(doc.docId) ?? [])]) cb(change)
       })
       .catch((e: unknown) => {
+        failed = true
         // 文档已不在主进程（因每窗口上限被关闭、页面重新加载）：不再刷新；插件之后的调用得到 DOC_NOT_FOUND
         if (e instanceof AppError && e.code === 'DOC_NOT_FOUND') untrack(doc.docId)
       })
       .finally(() => {
         doc.refreshing = false
-        // 刷新期间又收到变化（应答先于事件到达）：再取一次 info
-        if (docs.get(doc.docId) === doc && !isEmpty(doc.pending)) refresh(doc)
+        // 刷新期间又收到变化（应答先于事件到达）：立即再取一次 info。
+        // 失败时（超时等）不立即重试：记下的变化留到下一次按间隔的刷新（或 F5）成功时一起通知
+        if (!failed && docs.get(doc.docId) === doc && !isEmpty(doc.pending)) refresh(doc)
         else schedule(doc)
       })
   }

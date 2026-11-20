@@ -124,6 +124,10 @@ export interface PreviewDocApi {
   close(docId: string): void
   /** 索引进度；返回取消订阅函数 */
   onProgress(docId: string, cb: (p: DocProgress) => void): () => void
-  /** 文档的变化（见 DocChange）；返回取消订阅函数 */
+  /**
+   * 文档的变化（见 DocChange）；返回取消订阅函数。
+   * 收到 reset 时插件必须丢弃所有已缓存的行：IPC 事件与 readLines 应答的先后没有保证，
+   * 在 reset 之前到达的应答可能已是新索引的内容、也可能是旧的，DocStaleError 只覆盖 reset 之后才到达的应答
+   */
   onChanged(docId: string, cb: (c: DocChange) => void): () => void
 }

@@ -41,7 +41,7 @@ function mimeScore(patterns: readonly string[], mime: string | null): number {
  * 再加上 priority。kinds / schemes 不符、超过 maxSize、when 返回 false 时不匹配（null）；
  * 声明了 extensions 或 mimeTypes 却一项都没命中时也不匹配；都没声明时得 0 分（只按 kinds 等条件）。
  * 声明了 textLike 的插件对「判为文本」的资源（resource.textLike，只在没有插件按扩展名 / MIME 匹配时才判断）
- * 视为命中（0 分）：扩展名 / MIME 命中的插件优先。
+ * 视为命中（0 分）：扩展名 / MIME 命中的插件优先；只声明了 textLike 的插件只接受判为文本的资源。
  */
 export function scoreResource(
   manifest: PreviewPluginManifest,
@@ -60,6 +60,8 @@ export function scoreResource(
   const declared = (extensions?.length ?? 0) + (mimeTypes?.length ?? 0) > 0
   const textLike = manifest.match.textLike === true && resource.textLike === true
   if (declared && ext + mime === 0 && !textLike) return null
+  // 只声明了 textLike（没有扩展名 / MIME）：只接受判为文本的资源，不能变成「匹配一切」
+  if (!declared && manifest.match.textLike === true && !textLike) return null
 
   if (manifest.when && !manifest.when(resource)) return null
   return ext + mime + (manifest.priority ?? 0)
