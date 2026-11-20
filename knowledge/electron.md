@@ -103,3 +103,11 @@
   - `request.initiatorOrigin`（`protocol.handle`）：应用 `loadURL` 的主框架请求不存在该字段；同源子资源为 `pch-web://<主机>`；沙箱 iframe / `data:` 框架为 `"null"`；URL 中的主机名已被 Chromium 转为小写，`%2e%2e` / `..` 段已折叠，`%5c` 原样保留。
 - 解决：处理方式见 `modules/web/web-session.ts`（失败状态同时看 `did-navigate` 的状态码；导航判定中的 `file:` 分支只在 Chromium 放行时起作用）。
 - 预防：视图的失败 / 导航相关行为以实测为准，不按类型定义或文档推断。
+
+### 浏览器视图中的 PDF 查看器：下载被会话取消；打印打开系统的打印对话框（模态，期间主进程阻塞）
+
+- 日期：2026-11-20
+- 症状（M2 Task 7，核实先行验证 S3 的遗留项；Electron 45.3.3，系统级鼠标点击工具栏按钮）：① 下载按钮 → 会话的 `will-download` 被 `modules/web` 取消，状态行显示「ダウンロードには対応していません」，`Downloads` 中没有新文件。② PDF 查看器的内部页面没有被导航判定 / 全局安全策略误拦（PDF 正常渲染）。③ 打印按钮 → 打开 Windows 的系统打印对话框（「Electron - 打印」，预览区显示「此应用不支持打印预览」）。对话框打开期间**主进程阻塞**（`electronApp.evaluate` 一直等到对话框关闭）。
+- 原因：Chromium 内置 PDF 查看器的打印走 `webContents.print` 一类的系统对话框路径，Windows 上同步弹出。
+- 解决 / 现状：打印未禁用（设计 5.3.9 把打印列为推迟功能；查看器自带的打印是否放行由控制者 / 需求方决定）。e2e 不点打印按钮；手工验证时用「取消」关闭（不要点「打印」）。注意「Electron - 打印」标题中的应用名来自 Electron 默认名。
+- 预防：自动化脚本点击 PDF 查看器工具栏前确认目标按钮。对视图 `webContents.sendInputEvent` 在同一位置点击下载按钮没有任何反应（未查明是事件没有送达查看器的内部框架——扩展页、进程外 iframe——还是坐标换算有误），系统级鼠标事件（`SetCursorPos` + `mouse_event`）有效。

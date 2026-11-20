@@ -46,6 +46,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
       return () => refreshListeners.delete(listener)
     },
     doc: {} as PreviewHostDeps['doc'],
+    web: {} as PreviewHostDeps['web'],
     viewer: {
       candidates: () => [
         { id: 'pch.preview.html', name: 'HTML', current: true },

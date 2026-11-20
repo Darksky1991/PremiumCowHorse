@@ -1,7 +1,9 @@
 import type { ComponentType } from 'react'
 import type { PreviewDocApi } from './doc'
+import type { PreviewWebApi } from './web'
 
 export * from './doc'
+export * from './web'
 
 /**
  * 预览插件 SDK（架构文档第 9 节）。
@@ -163,6 +165,8 @@ export interface PreviewHost {
   }
   /** 文本文档（分页读取）；自动刷新由宿主负责 */
   doc: PreviewDocApi
+  /** 浏览器视图（本地 HTML、图片、PDF；Markdown）：占位元素 + 宿主管理的原生视图（web.ts） */
+  web: PreviewWebApi
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {
     revealInOs(uri: string): void

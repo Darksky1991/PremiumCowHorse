@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { TabsState } from '@pch/shared'
 import {
+  findTab,
   selectActiveDirectory,
   selectActiveTab,
   selectTabs,
@@ -22,6 +23,16 @@ describe('tabs-store', () => {
     const w2 = selectTabs('w2')(useTabsStore.getState())
     expect(w1.tabs.map((t) => t.uri)).toEqual(['a', 'c'])
     expect(w2.tabs.map((t) => t.uri)).toEqual(['b'])
+  })
+
+  it('findTab 在所有工作区中按 id 找标签，已关闭的为 null', () => {
+    const { open } = useTabsStore.getState()
+    open('w1', file('a'))
+    open('w2', file('b'))
+    const b = selectTabs('w2')(useTabsStore.getState()).tabs[0]!
+    expect(findTab(useTabsStore.getState(), b.id)).toMatchObject({ uri: 'b' })
+    useTabsStore.getState().close(b.id)
+    expect(findTab(useTabsStore.getState(), b.id)).toBeNull()
   })
 
   it('close / activate / navigate 只凭标签 id 找到所属工作区', () => {

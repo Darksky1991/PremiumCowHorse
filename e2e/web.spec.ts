@@ -1,0 +1,398 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
+import { data, launchFast, removeDirs, toggleRow } from './support'
+
+/** 40×30 的红色 PNG */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADRv8uKAAAAK0lEQVR4nO3NMQ0AAAgDsCmZf1GIQQYcTfo3056IWCwWi8VisVgsFov/xgsV3yDM1jw9QgAAAABJRU5ErkJggg==',
+  'base64'
+)
+
+/** 一页、一行文字的最小 PDF（xref 偏移按实际字节计算） */
+function minimalPdf(text: string): Buffer {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${`BT /F1 18 Tf 24 72 Td (${text}) Tj ET`.length} >>\nstream\nBT /F1 18 Tf 24 72 Td (${text}) Tj ET\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+  ]
+  let body = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((o, i) => {
+    offsets.push(Buffer.byteLength(body))
+    body += `${i + 1} 0 obj\n${o}\nendobj\n`
+  })
+  const xref = Buffer.byteLength(body)
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const off of offsets) body += `${String(off).padStart(10, '0')} 00000 n \n`
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(body, 'latin1')
+}
+
+/**
+ * 样本原型（proto/）：index.html 引用相对的 CSS / 图片 / 脚本（脚本把加载次数写入 localStorage 与页面），
+ * 链接到同目录的 HTML、Markdown、外网、范围外的 file:、其他范围的 pch-web:
+ */
+function writeProto(project: string): void {
+  const proto = path.join(project, 'proto')
+  mkdirSync(path.join(proto, 'img'), { recursive: true })
+  writeFileSync(
+    path.join(proto, 'index.html'),
+    `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Proto index</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<h1 id="heading">原型</h1>
+<img id="pic" src="./img/a.png" alt="">
+<p>loads: <span id="counter">0</span></p>
+<p><a id="to-second" href="./second.html">second</a></p>
+<p><a id="to-notes" href="./notes.md">notes</a></p>
+<p><a id="to-external" href="https://example.invalid/">external</a></p>
+<p><a id="to-winini" href="file:///C:/Windows/win.ini">win.ini</a></p>
+<p><a id="to-other-scope" href="pch-web://s0000000000000000/x.html">other scope</a></p>
+<script src="./app.js"></script>
+</body>
+</html>
+`
+  )
+  writeFileSync(
+    path.join(proto, 'style.css'),
+    'body { background: rgb(250, 240, 200); font: 16px sans-serif }\np { margin: 12px 0 }\n'
+  )
+  writeFileSync(
+    path.join(proto, 'app.js'),
+    `const loads = Number(localStorage.getItem('pch-e2e-loads') ?? '0') + 1
+localStorage.setItem('pch-e2e-loads', String(loads))
+document.getElementById('counter').textContent = String(loads)
+`
+  )
+  writeFileSync(path.join(proto, 'img', 'a.png'), PNG)
+  writeFileSync(
+    path.join(proto, 'second.html'),
+    '<!doctype html><title>Second page</title><p id="second">second</p>\n'
+  )
+  writeFileSync(path.join(proto, 'notes.md'), '# Notes\n\nhello\n')
+}
+
+test.describe('the browser view (html plugin)', () => {
+  let userData: string
+  let files: string
+  let project: string
+
+  test.beforeEach(() => {
+    userData = mkdtempSync(path.join(tmpdir(), 'pch-e2e-'))
+    files = mkdtempSync(path.join(tmpdir(), 'pch-e2e-files-'))
+    project = path.join(files, '案件')
+    mkdirSync(project, { recursive: true })
+    writeFileSync(path.join(project, 'memo.txt'), 'memo')
+    writeProto(project)
+  })
+  test.afterEach(() => {
+    removeDirs(userData, files)
+  })
+
+  /** 界面语言 en，添加条目「案件」，记录 shell.openExternal 的调用（不打开系统浏览器），返回资源树 */
+  async function setup(app: ElectronApplication, page: Page): Promise<Locator> {
+    await data(page, 'settings.set', { 'general.language': 'en' })
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    const { id: workspaceId } = await data(page, 'workspace.active')
+    await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as { __pchExternal?: string[] }
+      g.__pchExternal = []
+      shell.openExternal = async (url: string) => {
+        g.__pchExternal!.push(url)
+      }
+    })
+    const tree = page.getByRole('tree')
+    await expect(tree.getByRole('treeitem', { name: '案件' })).toBeVisible()
+    return tree
+  }
+
+  const tabs = (page: Page): Locator => page.getByRole('tablist').getByRole('tab')
+  const panel = (page: Page): Locator => page.getByRole('tabpanel')
+  const placeholder = (page: Page): Locator => panel(page).locator('[data-web-view]')
+  const statusLine = (page: Page): Locator => panel(page).locator('[data-status-bar]')
+  const bar = (page: Page): Locator => page.getByRole('navigation', { name: 'Address bar' })
+
+  /** 浏览器视图的页面（台账 S1：按 URL 在 electronApp.windows() 中找；已关闭的除外） */
+  async function viewPage(app: ElectronApplication, suffix: string): Promise<Page> {
+    let found: Page | undefined
+    await expect
+      .poll(() => {
+        found = app
+          .windows()
+          .find((p) => !p.isClosed() && p.url().startsWith('pch-web:') && p.url().endsWith(suffix))
+        return found !== undefined
+      })
+      .toBe(true)
+    return found!
+  }
+
+  /** 主进程中本窗口的浏览器视图（WebContentsView）：URL、是否显示、位置 */
+  const mainViews = (
+    app: ElectronApplication
+  ): Promise<
+    Array<{
+      url: string
+      visible: boolean
+      bounds: { x: number; y: number; width: number; height: number }
+    }>
+  > =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.flatMap((v) => {
+        const url = (v as { webContents?: Electron.WebContents }).webContents?.getURL() ?? ''
+        return url.startsWith('pch-web:')
+          ? [{ url, visible: v.getVisible(), bounds: v.getBounds() }]
+          : []
+      })
+    )
+  const visibility = async (app: ElectronApplication): Promise<boolean[]> =>
+    (await mainViews(app)).map((v) => v.visible)
+
+  /**
+   * 在视图页面中求值（主进程 executeJavaScript）。主进程阻止了页面的导航（外部链接等）之后，
+   * Playwright 认为该页面的导航一直未完成，之后对它的 locator / evaluate 都会等待（knowledge/testing.md），
+   * 这类点击之后改用它读取页面
+   */
+  const evalIn = <T>(app: ElectronApplication, view: Page, expression: string): Promise<T> =>
+    app.evaluate(
+      ({ webContents }, [url, js]) =>
+        webContents
+          .getAllWebContents()
+          .find((w) => w.getURL() === url)!
+          .executeJavaScript(js),
+      [view.url(), expression] as const
+    ) as Promise<T>
+
+  /** 在视图中真实点击元素中心（主进程 sendInputEvent；Playwright 的 click 在被阻止的导航上一直等待） */
+  async function clickIn(app: ElectronApplication, view: Page, selector: string): Promise<void> {
+    const point = await evalIn<{ x: number; y: number }>(
+      app,
+      view,
+      `(() => {
+        const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect()
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+      })()`
+    )
+    await app.evaluate(
+      ({ webContents }, [url, p]) => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL() === url)!
+        wc.sendInputEvent({ type: 'mouseDown', x: p.x, y: p.y, button: 'left', clickCount: 1 })
+        wc.sendInputEvent({ type: 'mouseUp', x: p.x, y: p.y, button: 'left', clickCount: 1 })
+      },
+      [view.url(), point] as const
+    )
+  }
+
+  /** 焦点在视图中时按键（rawKeyDown 经 before-input-event，与真实按键相同的路径） */
+  async function pressIn(
+    app: ElectronApplication,
+    view: Page,
+    keyCode: string,
+    modifiers: Array<'control' | 'shift' | 'alt'> = []
+  ): Promise<void> {
+    await app.evaluate(
+      ({ webContents }, [url, k, m]) => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL() === url)!
+        wc.focus()
+        wc.sendInputEvent({ type: 'rawKeyDown', keyCode: k, modifiers: m })
+        wc.sendInputEvent({ type: 'keyUp', keyCode: k, modifiers: m })
+      },
+      [view.url(), keyCode, modifiers] as const
+    )
+  }
+
+  async function openIndex(app: ElectronApplication, page: Page, tree: Locator): Promise<Page> {
+    await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+    await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+    await tree.getByRole('treeitem', { name: 'index.html' }).click()
+    await expect(tabs(page)).toHaveText(['index.html'])
+    const view = await viewPage(app, '/proto/index.html')
+    await expect(view.locator('#counter')).toHaveText('1')
+    return view
+  }
+
+  test('shows a local prototype with its CSS, image and script; links go through the app; tab switches keep the page', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      let view = await openIndex(app, page, tree)
+
+      // 相对路径的样式、图片、脚本都生效；状态行显示页面标题
+      await expect
+        .poll(() => view.evaluate(() => getComputedStyle(document.body).backgroundColor))
+        .toBe('rgb(250, 240, 200)')
+      await expect
+        .poll(() =>
+          view.evaluate(() => (document.getElementById('pic') as HTMLImageElement).naturalWidth)
+        )
+        .toBe(40)
+      expect(await view.evaluate(() => localStorage.getItem('pch-e2e-loads'))).toBe('1')
+      await expect(statusLine(page).locator('[data-page-title]')).toHaveText('Proto index')
+      // 视图贴在占位元素上（DIP = CSS 像素，取整误差 ≤ 1）
+      const box = (await placeholder(page).boundingBox())!
+      await expect.poll(() => visibility(app)).toEqual([true])
+      const [shown] = await mainViews(app)
+      expect(Math.abs(shown!.bounds.x - box.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(shown!.bounds.y - box.y)).toBeLessThanOrEqual(1)
+      expect(Math.abs(shown!.bounds.width - box.width)).toBeLessThanOrEqual(1)
+      expect(Math.abs(shown!.bounds.height - box.height)).toBeLessThanOrEqual(1)
+
+      // 切到其他标签再回来：视图只隐藏，页面不重新加载（计数器不变）
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).click({ modifiers: ['Control'] })
+      await expect(tabs(page)).toHaveText(['index.html', 'memo.txt'])
+      await expect(tabs(page).nth(1)).toHaveAttribute('aria-selected', 'true')
+      await expect.poll(() => visibility(app)).toEqual([false])
+      await tabs(page).nth(0).click()
+      await expect.poll(() => visibility(app)).toEqual([true])
+      await expect(view.locator('#counter')).toHaveText('1')
+      await expect(statusLine(page).locator('[data-page-title]')).toHaveText('Proto index')
+
+      // 焦点在页面中按 F5：应用的刷新 → 视图重新加载
+      await pressIn(app, view, 'F5')
+      await expect(view.locator('#counter')).toHaveText('2')
+
+      // 同范围的 HTML 链接：在本标签导航（进入历史），应用的「后退」回到 index
+      await clickIn(app, view, '#to-second')
+      await expect(tabs(page).nth(0)).toHaveText('second.html')
+      await expect(bar(page).getByRole('listitem').last()).toHaveText('second.html')
+      const second = await viewPage(app, '/proto/second.html')
+      await expect(second.locator('#second')).toHaveText('second')
+      await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
+      await expect(tabs(page).nth(0)).toHaveText('index.html')
+      view = await viewPage(app, '/proto/index.html')
+      await expect(view.locator('#counter')).toHaveText('3')
+
+      // Markdown 链接：标签内容切换为文本查看器（Task 8 之前），视图销毁（当前位置不再用网页查看器）
+      await clickIn(app, view, '#to-notes')
+      await expect(tabs(page).nth(0)).toHaveText('notes.md')
+      await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText('hello')
+      await expect.poll(async () => (await mainViews(app)).length).toBe(0)
+      await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
+      view = await viewPage(app, '/proto/index.html')
+      await expect(view.locator('#counter')).toHaveText('4')
+
+      // 外网链接：交给系统浏览器（已替换为记录），视图不离开
+      await clickIn(app, view, '#to-external')
+      await expect
+        .poll(() => app.evaluate(() => (globalThis as { __pchExternal?: string[] }).__pchExternal))
+        .toEqual(['https://example.invalid/'])
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/proto\/index\.html$/)
+      ])
+      await expect(tabs(page)).toHaveText(['index.html', 'memo.txt'])
+
+      // 范围外的 file: 链接：Chromium 在渲染进程拦截（不触发导航事件），视图与标签都不变、读不到 win.ini
+      await clickIn(app, view, '#to-winini')
+      await page.waitForTimeout(500)
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/proto\/index\.html$/)
+      ])
+      expect(await evalIn(app, view, 'document.getElementById("heading").textContent')).toBe('原型')
+      expect(await evalIn(app, view, 'document.body.innerText')).not.toContain('[fonts]')
+      expect(app.windows().some((p) => p.url().startsWith('file:'))).toBe(false)
+      await expect(tabs(page)).toHaveText(['index.html', 'memo.txt'])
+
+      // 其他范围的 pch-web: 链接：阻止，状态行提示数秒
+      await clickIn(app, view, '#to-other-scope')
+      await expect(statusLine(page).getByRole('status')).toHaveText(
+        "Files outside this folder can't be opened"
+      )
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/proto\/index\.html$/)
+      ])
+      await expect(tabs(page)).toHaveText(['index.html', 'memo.txt'])
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('popups and toasts swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      const view = await openIndex(app, page, tree)
+      await expect.poll(() => visibility(app)).toEqual([true])
+
+      // 地址栏的查看器下拉：视图隐藏，占位元素显示截图；关闭后恢复
+      await bar(page).getByRole('button', { name: 'View as', exact: true }).click()
+      await expect(page.getByRole('menu')).toBeVisible()
+      await expect(page.getByRole('menuitemradio', { name: 'Browser view' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      await expect.poll(() => visibility(app)).toEqual([false])
+      await expect
+        .poll(() => placeholder(page).evaluate((el) => el.style.backgroundImage))
+        .toMatch(/^url\("data:image\/png;base64,/)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('menu')).toHaveCount(0)
+      await expect.poll(() => visibility(app)).toEqual([true])
+      expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
+      await expect(view.locator('#counter')).toHaveText('1')
+
+      // toast（Ctrl+K「即将推出」）：截图态；点击预览区 → toast 收进状态栏，视图恢复（点击不转发给页面）
+      await page.locator('body').click({ position: { x: 5, y: 5 } })
+      await page.keyboard.press('Control+k')
+      const toast = page.locator('[data-sonner-toast]')
+      await expect(toast).toHaveCount(1)
+      await expect.poll(() => visibility(app)).toEqual([false])
+      await placeholder(page).click()
+      await expect(toast).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '1 notifications' })).toBeVisible()
+      await expect.poll(() => visibility(app)).toEqual([true])
+      expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
+
+      // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
+      await pressIn(app, view, 'W', ['control'])
+      await expect(tabs(page)).toHaveCount(0)
+      await expect.poll(async () => (await mainViews(app)).length).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('images and PDFs open in the browser view', async () => {
+    const media = path.join(project, 'media')
+    mkdirSync(media)
+    writeFileSync(
+      path.join(media, 'diagram.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect id="box" width="120" height="80" fill="rgb(30, 90, 200)"/></svg>\n'
+    )
+    writeFileSync(path.join(media, 'spec.pdf'), minimalPdf('PremiumCowHorse PDF'))
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'media' }))
+
+      await tree.getByRole('treeitem', { name: 'diagram.svg' }).click()
+      const svg = await viewPage(app, '/media/diagram.svg')
+      await expect.poll(() => svg.evaluate(() => document.documentElement.localName)).toBe('svg')
+      await expect(svg.locator('#box')).toHaveAttribute('fill', 'rgb(30, 90, 200)')
+
+      await tree.getByRole('treeitem', { name: 'spec.pdf' }).click()
+      const pdf = await viewPage(app, '/media/spec.pdf')
+      await expect.poll(() => pdf.evaluate(() => document.contentType)).toBe('application/pdf')
+      await expect.poll(() => visibility(app)).toEqual([true])
+      // 查看器可切换为文件信息（候选：浏览器显示 + 文本 + 文件信息）
+      await bar(page).getByRole('button', { name: 'View as', exact: true }).click()
+      await expect(page.getByRole('menuitemradio')).toHaveText([
+        'Browser view',
+        'Text',
+        'File info'
+      ])
+      await page.keyboard.press('Escape')
+    } finally {
+      await app.close()
+    }
+  })
+})

@@ -277,4 +277,12 @@
 - 日期：2026-11-20
 - 症状（M2 Task 6 实机验证）：① 浏览器视图中点链接（主进程 `will-navigate` 里 `preventDefault`）后，`page.click` 卡在 `waiting for scheduled navigations to finish` 直到超时，`noWaitAfter` 也会让下一次操作卡在 `waiting for navigation to finish`。② 工作站锁屏时 PowerShell 的 `SetCursorPos` 返回 False、`GetForegroundWindow` 为 0，`mouse_event` / `keybd_event` 不送达任何窗口（系统级侧键、按键、系统截屏都无法进行）。
 - 解决：① 视图内的点击改为主进程 `webContents.sendInputEvent` 的 `mouseDown` / `mouseUp`（坐标取元素中心，经 `electronApp.evaluate`），按键同样用 `sendInputEvent`（`rawKeyDown` 会触发 `before-input-event`）。② 系统级输入与截屏需在用户未锁屏时进行；无法进行时在报告中写「未验证」。
+- 补充（M2 Task 7 e2e）：被阻止的导航**留在视图中**时（外部链接交给 `shell.openExternal`、其他范围的链接被阻止），之后对该 `Page` 的**任何** `locator` / `evaluate` 都会卡在 `waiting for navigation to finish`，连取元素坐标也不行。这类点击之后改用主进程 `webContents.executeJavaScript(...)` 读取页面（`e2e/web.spec.ts` 的 `evalIn`），视图的 URL 用主进程 `contentView.children[i].webContents.getURL()` 断言。导航被应用接手、视图随之销毁 / 重建的点击（同范围链接）不受影响：新页面是新的 `Page`。
 - 预防：系统级验证前先用 `GetForegroundWindow` 是否为 0 判断桌面是否可用。
+
+### vitest：单元测试是 node 环境、没有 jsdom——DOM 相关的逻辑注入环境再测
+
+- 日期：2026-11-20
+- 症状（M2 Task 7）：计划要求在 jsdom 中测试弹出层追踪（`MutationObserver` + Base UI 的 `data-open`），但仓库未安装 jsdom / happy-dom（`vitest.config.ts` 的 `environment: 'node'`），M2 允许的新依赖清单里也没有。
+- 解决：把判定与 DOM 访问分开：`lib/overlay-tracker.ts` 的 `createOverlayTracker({ candidates, observe })`（真实实现为 `body.querySelectorAll` 与 `MutationObserver`）与纯函数 `isOverlayPopup`，单元测试注入最小的假 DOM；`web-host.ts` 的 `ResizeObserver` / `requestAnimationFrame` / `window` 事件同样经 `WebHostEnv` 注入。真实 DOM（Base UI 弹出层的属性、选择器）由 e2e 覆盖。
+- 预防：要引入 DOM 测试环境（jsdom 等）属于新依赖，先向需求方确认；在此之前按上面的方式写可注入的实现。

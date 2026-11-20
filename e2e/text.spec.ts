@@ -301,7 +301,7 @@ test.describe('text and log viewer', () => {
     }
   })
 
-  test('text without an extension opens as text; a PNG goes to file info and can be viewed as text', async () => {
+  test('text without an extension opens as text; a binary file goes to file info and can be viewed as text', async () => {
     writeFileSync(
       path.join(project, 'messages'),
       'Nov 20 08:00:01 host sshd: one\nNov 20 08:00:02 host sshd: two\n'
@@ -310,7 +310,8 @@ test.describe('text and log viewer', () => {
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
       0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00
     ])
-    writeFileSync(path.join(project, 'image.png'), png)
+    // PNG 的字节放在 .dat 中：.png 自 M2 Task 7 起由浏览器显示插件处理，这里只要「没有插件匹配的二进制」
+    writeFileSync(path.join(project, 'image.dat'), png)
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
@@ -320,9 +321,9 @@ test.describe('text and log viewer', () => {
       await expect(followButton(page)).toHaveAttribute('aria-pressed', 'true')
 
       // 二进制：兜底插件 →「テキストとして表示」→ 文本插件（提示按文本显示二进制）
-      await tree.getByRole('treeitem', { name: 'image.png' }).click()
+      await tree.getByRole('treeitem', { name: 'image.dat' }).click()
       const panel = page.getByRole('tabpanel')
-      await expect(panel.getByRole('heading', { name: 'image.png' })).toBeVisible()
+      await expect(panel.getByRole('heading', { name: 'image.dat' })).toBeVisible()
       await panel.getByRole('button', { name: 'テキストとして表示' }).click()
       await expect(region(page)).toBeVisible()
       await expect(region(page)).toContainText('IHDR')

@@ -2,6 +2,7 @@ import type {
   HostSettings,
   PreviewDocApi,
   PreviewHost,
+  PreviewWebApi,
   ToastType,
   ViewerCandidate
 } from '@pch/plugin-sdk'
@@ -37,6 +38,8 @@ export interface PreviewHostDeps {
   onRefresh: (listener: () => void) => () => void
   /** 文本文档 API（doc-session.ts；在标签内容存续期间是同一个对象） */
   doc: PreviewDocApi
+  /** 浏览器视图（web-host.ts；在标签内容存续期间是同一个对象） */
+  web: PreviewWebApi
   /** 本标签当前资源的查看器：候选（含当前）与选择（preview-container 注入，选择写入标签状态） */
   viewer: { candidates: () => ViewerCandidate[]; set: (pluginId: string) => void }
   tabs: {
@@ -145,6 +148,7 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
       candidates: () => deps.viewer.candidates()
     },
     doc: deps.doc,
+    web: deps.web,
     system: {
       revealInOs: (uri) => {
         invoke('system.revealInOs', { uri }).catch(reportError)

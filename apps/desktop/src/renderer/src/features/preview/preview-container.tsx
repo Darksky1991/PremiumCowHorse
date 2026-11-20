@@ -1,8 +1,16 @@
-import { Suspense, use, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import {
+  Suspense,
+  use,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type JSX,
+  type ReactNode
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { notify } from '@renderer/stores/messages-store'
 import type { i18n as I18n } from 'i18next'
 import {
   FALLBACK_PLUGIN_ID,
@@ -17,14 +25,17 @@ import { Spinner } from '@pch/ui/components/spinner'
 import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
 import { fetchDirectory, retryDirectory, useResourceStat } from '@renderer/data/vfs'
+import { webEvents } from '@renderer/data/web'
 import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
 import { isShareOffline } from '@renderer/lib/file-uri'
 import { call, subscribe } from '@renderer/lib/ipc'
 import { parentLocation } from '@renderer/lib/logical-path'
+import { useOverlayOpen } from '@renderer/lib/overlay-tracker'
 import { reportError } from '@renderer/lib/report-error'
 import { useResolvedTheme } from '@renderer/providers/theme-context'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
-import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
+import { notify, useMessagesStore } from '@renderer/stores/messages-store'
+import { findTab, onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { useViewerStore } from '@renderer/stores/viewer-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
@@ -32,6 +43,7 @@ import { PluginErrorBoundary } from './plugin-error-boundary'
 import { candidatesFor, extensionOf, needsSniff, resolvePlugin } from './registry'
 import { useDocSession } from './use-doc-session'
 import { useSniff } from './use-sniff'
+import { createWebHost, createWebViews, type WebHost, type WebViews } from './web-host'
 import { WorkspaceOverview } from './workspace-overview'
 
 export interface PreviewContainerProps {
@@ -170,6 +182,22 @@ function toResourceInfo(stat: FileStat, tab: TabState): ResourceInfo {
   return { uri: tab.uri, name: stat.name, kind, size: stat.size, mtime: stat.mtime, mime: null }
 }
 
+/**
+ * 本窗口的浏览器视图登记（首次需要时创建）：按标签串行的 web.* 调用、视图状态的回放，
+ * 以及标签关闭（含未激活的标签）时的 web.release（分层规则不允许 stores 调用 IPC，放在这里订阅 tabs-store）
+ */
+let webViews: WebViews | null = null
+function getWebViews(): WebViews {
+  webViews ??= createWebViews({
+    invoke: call,
+    events: webEvents,
+    onTabsChange: (listener) => useTabsStore.subscribe(listener),
+    tabExists: (tabId) => findTab(useTabsStore.getState(), tabId) !== null,
+    onError: (e) => reportError(e, 'web view')
+  })
+  return webViews
+}
+
 type PluginModule = Awaited<ReturnType<AnyPreviewPlugin['load']>>
 /**
  * 每个插件只加载一次（缓存 Promise，供 use() 在 Suspense 中等待）。
@@ -247,6 +275,28 @@ function PluginView({
   const setViewer = useTabsStore((s) => s.setViewer)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
   const doc = useDocSession(tab.id, settings)
+  // 浏览器视图（host.web）：每个标签内容一个，宿主重建（主题、条目变化等）时不重建——否则视图会隐藏后重新显示。
+  // 它用到的 rootOf / tabs / 错误提示在布局阶段换成最新宿主的（setLinks，早于插件 useEffect 中的 attach）
+  const tabId = tab.id
+  const webHost = useMemo(
+    () =>
+      createWebHost({
+        tabId,
+        views: getWebViews(),
+        invoke: call,
+        events: webEvents,
+        rootOf: () => null,
+        tabs: { open: () => undefined, navigate: () => undefined },
+        onError: (e) => reportError(e, 'web view'),
+        onRefresh: (listener) => onTabRefresh(tabId, listener),
+        location: () => {
+          const current = findTab(useTabsStore.getState(), tabId)
+          return current ? { uri: current.uri, viewer: current.viewer ?? null } : null
+        },
+        stashToasts: () => useMessagesStore.getState().stashVisible()
+      }),
+    [tabId]
+  )
 
   const pluginId = plugin.manifest.id
   // 候选查看器的 id（字符串：toResourceInfo 每次渲染都是新对象，宿主不能依赖 resource，只依赖候选是否变化）
@@ -292,6 +342,7 @@ function PluginView({
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
       onRefresh: (listener) => onTabRefresh(tab.id, listener),
       doc,
+      web: webHost.api,
       viewer: {
         candidates: () => candidates,
         set: (id) => setViewer(tab.id, id)
@@ -316,6 +367,7 @@ function PluginView({
     workspace?.id,
     queryClient,
     doc,
+    webHost,
     candidates,
     setViewer,
     offlineShares,
@@ -328,6 +380,14 @@ function PluginView({
     roots,
     parent
   ])
+
+  useLayoutEffect(() => {
+    webHost.setLinks({
+      rootOf: host.fs.rootOf,
+      tabs: host.tabs,
+      onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error')
+    })
+  }, [webHost, host])
 
   const settle = (confirmed: boolean): void => {
     if (!confirm || confirm.settled) return
@@ -371,6 +431,7 @@ function PluginView({
           />
         </Suspense>
       </PluginErrorBoundary>
+      <WebCover webHost={webHost} />
       <ConfirmExecutableDialog
         open={confirm !== null && !confirm.settled}
         name={confirm?.name ?? ''}
@@ -378,6 +439,19 @@ function PluginView({
       />
     </>
   )
+}
+
+/**
+ * 应用的弹出层或 toast 盖在视图区域上时，浏览器视图换成截图（设计 5.3.7 / 5.9）。
+ * 单独一个不渲染内容的组件：弹出层 / toast 的变化只让它重新渲染，不波及插件
+ */
+function WebCover({ webHost }: { webHost: WebHost }): null {
+  const overlayOpen = useOverlayOpen()
+  const toastsVisible = useMessagesStore((s) => s.visible.length > 0)
+  useEffect(() => {
+    webHost.setCovered({ overlay: overlayOpen, toasts: toastsVisible })
+  }, [webHost, overlayOpen, toastsVisible])
+  return null
 }
 
 function Centered({ children }: { children: ReactNode }): JSX.Element {

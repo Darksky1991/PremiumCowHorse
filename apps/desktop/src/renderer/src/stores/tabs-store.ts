@@ -102,6 +102,19 @@ export const selectTabs =
   (s: Pick<TabsStore, 'byWorkspace'>): TabsState =>
     (workspaceId === undefined ? undefined : s.byWorkspace[workspaceId]) ?? EMPTY
 
+/**
+ * 在所有工作区中按 id 找标签；不存在（已关闭）时为 null。
+ * 预览宿主据此在标签关闭 / 当前位置改变时销毁浏览器视图（web.release 由 features/preview 发出：
+ * 分层规则不允许 store 调用 IPC）
+ */
+export function findTab(s: Pick<TabsStore, 'byWorkspace'>, id: string): TabState | null {
+  for (const state of Object.values(s.byWorkspace)) {
+    const tab = state.tabs.find((t) => t.id === id)
+    if (tab) return tab
+  }
+  return null
+}
+
 /** 工作区的激活标签；没有工作区或没有标签时为 null（地址栏显示它的位置） */
 export const selectActiveTab =
   (workspaceId: string | undefined) =>
