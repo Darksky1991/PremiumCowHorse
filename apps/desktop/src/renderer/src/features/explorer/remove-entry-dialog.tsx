@@ -1,6 +1,6 @@
 import { useState, type JSX, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError } from '@pch/shared'
 import {
   AlertDialog,
@@ -51,7 +51,7 @@ export function RemoveEntryDialog({
         onOpenChange(false)
         return
       }
-      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
     } finally {
       setPending(false)
     }

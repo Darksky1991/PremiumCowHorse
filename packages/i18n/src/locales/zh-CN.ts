@@ -15,6 +15,8 @@ export default {
     themeDark: '深色',
     followSystem: '跟随系统',
     ready: '就绪',
+    messages: '通知 {{count}} 条',
+    messagesRestore: '显示未确认的通知',
     crashTitle: '界面显示时出现问题',
     crashHint: '如果重新加载后仍无法解决，请附上日志文件（main.log）联系负责人。',
     reload: '重新加载',

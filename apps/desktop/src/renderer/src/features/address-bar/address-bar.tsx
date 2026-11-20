@@ -9,7 +9,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError, workspaceLocation, type TabLocation } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
@@ -230,7 +230,7 @@ function WorkspaceMenu(): JSX.Element {
   const { activate } = useWorkspaceActions()
   const defaultName = t('common:defaultWorkspace')
   const fail = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
   return (
     <DropdownMenu>

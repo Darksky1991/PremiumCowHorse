@@ -9,7 +9,7 @@ import {
   RefreshCwIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
@@ -167,7 +167,7 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
       if (paths.length === 0) return
       await execute({ type: 'add', parentId: null, items: paths.map((path) => ({ path })) }, [])
     } catch (e) {
-      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
     }
   }
 

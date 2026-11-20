@@ -1,6 +1,6 @@
 import type { JSX, RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError } from '@pch/shared'
 import { useEntryActions } from '@renderer/data/entries'
 import { NameDialog } from './name-dialog'
@@ -33,7 +33,7 @@ export function RenameDialog({
       await update.mutateAsync({ id: target.entryId, label })
       return true
     } catch (e) {
-      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
       // 条目在对话框打开期间已被删除：无法重试，关闭对话框（错误已提示）
       return e instanceof AppError && e.code === 'ENTRY_NOT_FOUND'
     }

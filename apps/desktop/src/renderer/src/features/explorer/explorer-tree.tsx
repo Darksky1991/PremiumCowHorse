@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
 import { ContextMenu, ContextMenuTrigger } from '@pch/ui/components/context-menu'
 import { useSetting } from '@renderer/data/settings'
@@ -343,7 +343,7 @@ export function ExplorerTree({
       if (paths.length === 0) return
       await execute({ type: 'add', parentId: null, items: paths.map((path) => ({ path })) }, nodes)
     } catch (e) {
-      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
     }
   }
 

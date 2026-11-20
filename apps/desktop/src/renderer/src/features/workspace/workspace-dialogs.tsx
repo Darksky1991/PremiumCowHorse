@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError, type Workspace } from '@pch/shared'
 import {
   AlertDialog,
@@ -153,8 +153,8 @@ export function NewWorkspaceDialog({ open, onOpenChange }: OpenProps): JSX.Eleme
       {
         create: (n) => create.mutateAsync({ name: n }),
         activate: (id) => activate.mutateAsync(id),
-        onCreateError: (e) => toast.error(errorMessage(t, e)),
-        onActivateError: () => toast.error(t('workspace:createdNotActivated'))
+        onCreateError: (e) => notify('error', errorMessage(t, e)),
+        onActivateError: () => notify('error', t('workspace:createdNotActivated'))
       },
       name
     )
@@ -188,7 +188,7 @@ export function RenameWorkspaceDialog({
       await update.mutateAsync({ id: target.id, name })
       return true
     } catch (e) {
-      toast.error(errorMessage(t, e))
+      notify('error', errorMessage(t, e))
       // 工作区在对话框打开期间已被删除：无法重试，关闭对话框（错误已提示）
       return e instanceof AppError && e.code === 'WORKSPACE_NOT_FOUND'
     }
@@ -226,7 +226,7 @@ export function DeleteWorkspaceDialog({
         {
           activate: (id) => activate.mutateAsync(id),
           remove: (id) => remove.mutateAsync(id),
-          onError: (e) => toast.error(errorMessage(t, e))
+          onError: (e) => notify('error', errorMessage(t, e))
         },
         target.id
       )

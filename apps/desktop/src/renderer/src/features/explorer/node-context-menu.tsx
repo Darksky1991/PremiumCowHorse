@@ -14,7 +14,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError, normalizeRootUri, type CacheStrategy } from '@pch/shared'
 import {
   ContextMenuCheckboxItem,
@@ -101,14 +101,14 @@ export function NodeContextMenu({
   if (items.length === 0) return null
 
   const reportError = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
   const uri = node?.uri ?? null
 
   const copy = async (text: string, message: string): Promise<void> => {
     try {
       await call('system.copyText', { text })
-      toast.success(message)
+      notify('success', message)
     } catch (e) {
       reportError(e)
     }

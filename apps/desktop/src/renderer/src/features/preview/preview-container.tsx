@@ -2,7 +2,7 @@ import { Suspense, use, useEffect, useMemo, useState, type JSX, type ReactNode }
 import { useQueryClient } from '@tanstack/react-query'
 import { TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import type { i18n as I18n } from 'i18next'
 import {
   FALLBACK_PLUGIN_ID,
@@ -299,7 +299,7 @@ function PluginView({
       tabs: { open, navigate },
       confirmExecutable: (name) =>
         new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
-      notify: (message, type) => toast[type](message),
+      notify: (message, type) => notify(type, message),
       t: (key, vars) => t(key, vars ?? {}),
       pluginT: (key, vars) => pluginT(key, vars ?? {}),
       language,

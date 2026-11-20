@@ -18,7 +18,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { cn } from 'cn'
 import { AppError, matchRanges, type FileKind, type SearchHit, type SearchTerm } from '@pch/shared'
 import {
@@ -136,11 +136,11 @@ export function SearchResults({
   }
 
   const reportError = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
   const copy = (text: string, message: string): void => {
     call('system.copyText', { text })
-      .then(() => toast.success(message))
+      .then(() => notify('success', message))
       .catch(reportError)
   }
   const menuPath = menuHit === null ? null : fileUriToWindowsPath(menuHit.uri)

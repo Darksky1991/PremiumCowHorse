@@ -1159,6 +1159,8 @@ export interface SessionSnapshot {
 
 已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]`、`['search',workspaceId,text,kind]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），目录列表同样不按时间或聚焦重新获取（新鲜度由扫描进程负责，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。文件名搜索（`data/search.ts`）`staleTime: 0`、不随 `vfs.changed` 失效（扫描中变化频繁，结果行会不停跳动；界面标注「基于缓存」与更新时刻），每次查询用新的 requestId（`search:<页面随机前缀>:<序号>`），取消时以该 id 发送 `vfs.cancel`——各次查询若共用一个 id，旧查询的取消可能落到紧随其后的新查询上；输入变化时保留同一工作区的上一次结果直到新结果到达（8.4 节）。例外：`vfs.reachability` 由外壳（`features/shell`）订阅并写入 `stores/reachability-store.ts`（分层规则：store 只能由 feature 写入；启动时先以 `vfs.offlineShares` 初始化）；同一事件的 `online` 另由 `lib/query-client.ts` 让该共享 / 卷下的目录查询失效。
 
+已实现（M2）：应用消息——全应用的 toast 只经 `stores/messages-store.ts` 导出的 `notify(level, text)`（sonner 只在此文件与 `Toaster` 处出现；放在 stores 而非 lib，是因为分层规则不允许 lib 依赖 stores）。`Toaster` 开启四向拖拽丢弃（sonner 内置阈值 45px）。结束方式：用户拖拽 / 关闭（`onDismiss`）= 确认，不收纳；自动消失（`onAutoClose`）时 `error` / `warning` 收纳进 `tray`（新的在前，上限 50，超出丢最旧）、`info` / `success` 丢弃；`stashVisible()` 把显示中的 toast 全部收纳并 dismiss（不视为确认），`restoreTray()` 重新显示。`visible`（显示中的 toast id）供浏览器视图换截图判断。状态栏的 `MessageTrayButton` 在 `tray` 非空时显示「通知 N 件」，点击 `restoreTray()`。
+
 ### 12.2 界面布局
 
 ```

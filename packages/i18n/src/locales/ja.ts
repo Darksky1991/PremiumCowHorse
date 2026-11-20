@@ -13,6 +13,8 @@ export default {
     themeDark: 'ダーク',
     followSystem: 'システムに従う',
     ready: '準備完了',
+    messages: '通知 {{count}} 件',
+    messagesRestore: '未確認の通知を表示',
     crashTitle: '画面の表示中に問題が発生しました',
     crashHint:
       '再読み込みしても解決しない場合は、ログファイル（main.log）を添えて担当者に連絡してください。',

@@ -1,7 +1,7 @@
 import { useState, type JSX } from 'react'
 import { ChevronDownIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError, DEFAULT_WORKSPACE_ID, type Workspace } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
@@ -57,7 +57,7 @@ export function WorkspaceSwitcher(): JSX.Element {
   const isDefault = active?.id === DEFAULT_WORKSPACE_ID
 
   const fail = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
 
   return (

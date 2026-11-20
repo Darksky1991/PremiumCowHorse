@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import type { WorkspaceEntry } from '@pch/shared'
 import { confirmDirectory } from '@renderer/data/vfs'
 import { useNavigationStore, type RevealMode } from '@renderer/stores/navigation-store'
@@ -85,7 +85,7 @@ export function useRevealRequests({
         {
           select: (index) => reveal(index, current.mode),
           confirm: (uri) => void confirmDirectory(uri),
-          warn: () => toast.warning(t('explorer:revealNotFound'))
+          warn: () => notify('warning', t('explorer:revealNotFound'))
         },
         current.mode
       )
@@ -101,7 +101,7 @@ export function useRevealRequests({
       clearTimeout(timer.current)
       settleRevealTimeout(progress, current.mode, {
         select: (index) => reveal(index, current.mode),
-        warn: () => toast.warning(t('explorer:revealTimeout'))
+        warn: () => notify('warning', t('explorer:revealTimeout'))
       })
       return
     }
@@ -121,7 +121,7 @@ export function useRevealRequests({
     active.current = null
     clearTimeout(timer.current)
     if (path === null) {
-      if (mode === 'locate') toast.warning(t('explorer:revealNotInWorkspace'))
+      if (mode === 'locate') notify('warning', t('explorer:revealNotInWorkspace'))
       return
     }
     if (mode === 'sync' && latest.current.selectedUri === request.uri) return

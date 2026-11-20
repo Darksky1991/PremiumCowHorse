@@ -15,6 +15,8 @@ export default {
     themeDark: 'Dark',
     followSystem: 'System',
     ready: 'Ready',
+    messages: '{{count}} notifications',
+    messagesRestore: 'Show unread notifications',
     crashTitle: 'Something went wrong while displaying this window',
     crashHint: 'If reloading does not help, contact support and attach the log file (main.log).',
     reload: 'Reload',

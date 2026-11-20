@@ -1,6 +1,6 @@
 import type { JSX, RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError } from '@pch/shared'
 import { useEntryActions } from '@renderer/data/entries'
 import { NameDialog } from './name-dialog'
@@ -30,7 +30,7 @@ export function NewGroupDialog({
       await add.mutateAsync({ kind: 'group', workspaceId, parentId, label })
       return true
     } catch (e) {
-      toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
       return false
     }
   }
