@@ -18,7 +18,7 @@
 | `pnpm install`   | 安装依赖（会下载 Electron 二进制）                                                                                                |
 | `pnpm dev`       | 开发模式（electron-vite）：渲染端热更新，主进程 / preload 改动后自动重启                                                          |
 | `pnpm build`     | 类型检查 + 生产构建（electron-vite，再加 Markdown 查看脚本的单独 vite 构建 `vite.markdown.config.ts`），产物在 `apps/desktop/out` |
-| `pnpm start`     | 以生产构建预览运行                                                                                                                |
+| `pnpm start`     | 以生产构建预览运行（`electron-vite preview`；**不会**构建 Markdown 查看脚本，需先 `pnpm build`，否则 Markdown 无法显示）          |
 | `pnpm dist`      | 打包 zip 免安装文件夹版 `apps/desktop/release/<版本>/*.zip`                                                                       |
 | `pnpm dist:dir`  | 只生成未压缩的目录 `apps/desktop/release/<版本>/win-unpacked`（调试用）                                                           |
 | `pnpm typecheck` | 全部包类型检查                                                                                                                    |

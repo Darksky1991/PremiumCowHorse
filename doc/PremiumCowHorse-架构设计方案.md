@@ -1,6 +1,8 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.18　｜　日期：2026-11-20　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.19　｜　日期：2026-11-20　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.19 变更（M2 预览插件体系完成；设计 `devDoc/2026-11-20-22-m2-design.md`，计划 `devDoc/2026-11-20-23-m2-plan.md`，台账 `devDoc/2026-11-20-24-m2-ledger.md`，实现记录 `devDoc/2026-11-20-25-m2.md`）：查看器切换（`TabState.viewer`、`tab/viewer`、地址栏「表示」下拉与「常にこれで開く」写入 `preview.associations`）；应用消息收纳（`notify`、状态栏消息按钮、四向拖拽丢弃）；主进程 `modules/web`（每标签一个 `WebContentsView`、`pch-web://` 范围协议、`pch-asset://`、导航判定、LRU 8 个视图）与 `PreviewHost.web`；内置插件 html（含 PDF / 图片）、markdown（unified + mermaid，单独 vite 构建 `out/web-assets/markdown`）、office（启动面板）；`modules/launcher`（PowerShell 检测文件关联与 verb、`ProcessStartInfo` 经 ShellExecute 启动，删除设置 `launcher.officeDefaultAction` / `launcher.officeExtensions`）；provider `createReadStream`；第 15 节浏览器视图的安全模型。路线图 M2 标为完成；待需求方确认的决定、记录的问题与未验证项见实现记录。核对 3.4、5.1、5.2、7.1、7.3、9、10、12、14、15、16、18 节与代码一致。涉及 3.4、5、7、9、10、12、14、15、16、18 节
+>
 > v1.18 变更（M1 完成并合并到 `main`，标签 `m1`）：路线图 M1 标为完成；合并前的进度、待需求方确认的决定（D1–D35）、手动验证清单（V1–V21）与已知问题（K1–K24）见 `devDoc/2026-11-20-21-m1-summary.md`；单窗口会话保存 / 恢复暂缓到 M3。涉及 18 节
 >
 > v1.17 变更（文本 / 日志预览完成；设计 `devDoc/2026-11-20-18-text-preview-design.md`，记录 `devDoc/2026-11-20-20-text-preview.md`）：新增纯逻辑包 `@pch/text-engine`（行索引、按行读取、编码判断、解码、分页数学；不依赖任何包、不碰 Node / DOM / Electron，eslint 以 `no-restricted-imports` / `no-restricted-globals` 强制）；provider 增加 `read(uri, offset, length, signal?)`（每次开-读-关；读取进行中其上级目录无法改名，已知限制，7.1）；主进程 `vfs/document/` 文档服务（字节窗口、1MB 分块后台索引、`doc.open` / `readLines` / `refresh` / `setEncoding` / `close`、归属窗口与上限、轮转 / 消失 / 追加判定）与 `vfs.sniff`（7.5）；编码判断自写（BOM、UTF-16 无 BOM、UTF-8 校验、CJK 逐字节评分），不引入 `encoding-japanese`（对比实验与验收样本见设计第 4 节与 devDoc 记录）；插件体系：`PreviewHost.doc`、`match.textLike`、`manifest.handlesMissing`、`tabs.viewAs` / `canViewAs`、未匹配文件的 sniff（9.3）；内置文本插件 `pch.preview.text`（自绘分页视图、块缓存、编码下拉、日志跟随末尾、部分模式「读取全部」，9.4）；设置 `preview.maxTextSizeMB` 改为「自动建立完整行索引的上限」（14 节）；路线图中文本 / 日志预览标为完成。核对 3.4、5、7.1、7.5、9.1、9.3、9.4、14、18 节与代码一致。涉及 3.4、5、7.1、7.5、9、14、18 节
@@ -218,7 +220,7 @@ electron-updater（自动更新）。koffi 已作为依赖引入（3.2 节），
 ```
 premium-cow-horse/
 ├── apps/
-│   └── desktop/                  # Electron 应用：src/main · src/preload · src/renderer（electron-vite 目录约定）
+│   └── desktop/                  # Electron 应用：src/main · src/preload · src/renderer（electron-vite 目录约定）；src/web-assets/markdown（Markdown 查看脚本，浏览器入口，由 vite.markdown.config.ts 单独构建，M2）
 ├── packages/
 │   ├── shared/                   # 三端共用：IPC 契约、领域类型、zod schema、URI 工具、布局 reducer
 │   ├── i18n/                     # 语言资源（ja / zh-CN / en）与 i18next 初始化工厂
@@ -228,13 +230,14 @@ premium-cow-horse/
 ├── plugins/
 │   └── builtin/                  # 内置预览插件（单个 workspace 包，M1 创建），每个插件一个子目录
 │       └── src/
-│           ├── folder/           # M1
-│           ├── text/
-│           ├── image/
+│           ├── html/             # 浏览器显示：本地 HTML，以及 Chromium 能直接显示的 PDF / 图片（M2 已实现）
+│           ├── markdown/         # Markdown：在浏览器视图中由应用自带的查看脚本渲染（M2 已实现）
+│           ├── web-page/         # html / markdown 共用的界面（状态行、加载失败、外部打开；M2 已实现，不是插件）
+│           ├── office/           # Office 文件启动面板（调用本机 Office；M2 已实现）
+│           ├── text/             # 文本 / 日志（M1 已实现）
+│           ├── image/            # 专用图片 / PDF / 音视频插件：推迟（M2 起 html 插件代为显示）
 │           ├── pdf/
-│           ├── markdown/
 │           ├── media/
-│           ├── office/           # Office 文件启动面板（调用本机 Office）
 │           ├── folder/           # 目录视图：详细信息列表（M1-3 已实现；面包屑、「上一级」与刷新按钮 M1-3b 移到应用的地址栏）
 │           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作；M1-3 已实现）
 ├── e2e/                          # Playwright Electron 端到端测试
@@ -312,6 +315,7 @@ apps/desktop/src/
 │   │   ├── settings/
 │   │   ├── plugin/                   # 插件发现与元数据（外部插件阶段启用）
 │   │   ├── launcher/                 # 外部应用联动：Office 只读/编辑/新建打开、远程编辑会话
+│   │   ├── web/                      # 浏览器视图（M2 已实现）：WebContentsView 管理、pch-web / pch-asset 协议、范围表、导航判定、快捷键、IPC（7.3、15 节）
 │   │   ├── system/                   # 应用信息、渲染端日志写入、在资源管理器显示、剪贴板、选择路径对话框
 │   │   └── window/                   # 自绘窗口按钮：最小化 / 最大化 / 关闭发起调用的窗口
 │   ├── windows/
@@ -1423,11 +1427,11 @@ export default defineConfig({
 
 ### 16.3 开发流程
 
-根目录 `pnpm dev` 即 `electron-vite dev`：Vite dev server 提供渲染端（只监听 localhost），主进程 / preload 重新构建后自动重启 Electron，开发窗口中 F12 打开 DevTools。开发环境使用独立的 userData（`PremiumCowHorse-dev`）。
+根目录 `pnpm dev` 即 `electron-vite dev`：Vite dev server 提供渲染端（只监听 localhost），主进程 / preload 重新构建后自动重启 Electron，开发窗口中 F12 打开 DevTools。开发环境使用独立的 userData（`PremiumCowHorse-dev`）。Markdown 查看脚本在开发模式下由 `pch-asset://` 代理到 renderer dev server（`/@fs/…`），renderer 的 `optimizeDeps.entries` 包含该入口（否则首次打开 Markdown 时 vite 重新预构建并重载整个窗口）。
 
 ### 16.4 打包与分发
 
-`pnpm build` 执行类型检查与 `electron-vite build`（产出 `apps/desktop/out`）；`pnpm dist` 再调用 electron-builder 生成 **zip 免安装文件夹版**（`PremiumCowHorse-<版本>-win-x64.zip`），解压到任意目录后运行其中的 `PremiumCowHorse.exe`，不需要安装与管理员权限。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。用户数据位于 `%APPDATA%\PremiumCowHorse`，与程序所在目录无关，替换新版本时直接覆盖程序目录即可。
+`pnpm build` 执行类型检查、`electron-vite build`（产出 `apps/desktop/out`）与 Markdown 查看脚本的单独 vite 构建（`vite.markdown.config.ts`，产出 `out/web-assets/markdown`，约 5.4MB，其中 89 个分块只在含 mermaid 代码块时按需加载；`pnpm start`（`electron-vite preview`）不会构建它，未执行过 `pnpm build` 时 Markdown 查看器 404）；`pnpm dist` 再调用 electron-builder 生成 **zip 免安装文件夹版**（`PremiumCowHorse-<版本>-win-x64.zip`），解压到任意目录后运行其中的 `PremiumCowHorse.exe`，不需要安装与管理员权限。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。用户数据位于 `%APPDATA%\PremiumCowHorse`，与程序所在目录无关，替换新版本时直接覆盖程序目录即可。
 
 分发形式的选择（实测）：
 
@@ -1461,7 +1465,7 @@ export default defineConfig({
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
 | M1 工作区与本地文件（✅ 2026-11-20 完成，合并到 `main`，标签 `m1`；总结与待确认清单见 `devDoc/2026-11-20-21-m1-summary.md`） | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索**（复用 `index.db` 的 FTS5 trigram 索引：活动栏的搜索视图、`Ctrl+Shift+F`、在资源树中定位；✅ 2026-11-19 完成，设计 `devDoc/2026-11-19-02-search-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-07-search.md`）；**M1-3 标签与目录视图（✅ 2026-11-19 完成，为「最低可用原型」：单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder / fallback 插件、激活目录按关注点处理；设计 `devDoc/2026-11-19-12-m1-3-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-14-m1-3.md`；标签拖拽 / 固定 / 溢出菜单、网格视图、会话恢复均推迟）**；**M1-3b 导航、同步与资源树改进（✅ 2026-11-20 完成：标签历史与逻辑路径、浏览器式打开（取消预览标签）、应用地址栏、树与预览区双向同步、类型图标、定位 / 全部折叠与分组抽屉；设计 `devDoc/2026-11-19-15-navigation-design.md`，部分决定待需求方确认，见 `devDoc/2026-11-19-17-navigation.md`）**；**文本 / 日志预览（✅ 2026-11-20 完成：`@pch/text-engine`、provider `read`、主进程文档服务与 `vfs.sniff`、自写编码判断、文本插件（自绘分页、日志跟随、部分模式）、`PreviewHost.doc`；设计 `devDoc/2026-11-20-18-text-preview-design.md` 第 7 节的决定待需求方确认，见 `devDoc/2026-11-20-20-text-preview.md`）** |
-| M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text（M1 内已提前完成，见上）/markdown/image/pdf/media/fallback 插件；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
+| M2 预览插件体系（✅ 2026-11-20 完成；设计 `devDoc/2026-11-20-22-m2-design.md`，实现记录 `devDoc/2026-11-20-25-m2.md`，待需求方确认的决定见其第 4 节） | 插件化落地 | 查看器切换与「常にこれで開く」、应用消息收纳、浏览器视图（`WebContentsView` + `pch-web://` 范围协议，取代原计划的 `pcfs://`）与 `PreviewHost.web`、html（含 PDF / 图片）/ markdown（GFM、脚注、mermaid）/ office 启动面板插件、Office 打开方式检测与启动（本地 / SMB 文件：编辑 / 保护视图 / 新建，Excel 另有只读）；text 在 M1 内已提前完成；专用 image / pdf / media 插件与 `pcfs://` 推迟 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
 | M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |

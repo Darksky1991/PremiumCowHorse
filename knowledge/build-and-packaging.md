@@ -80,3 +80,11 @@
 - 原因：Markdown 查看脚本（`src/web-assets/markdown/main.ts`）经 renderer dev server 的 `/@fs/…` 提供（pch-asset 代理），但依赖扫描只从 renderer 的 `index.html` 出发，不知道 unified / mermaid 等依赖；第一次请求时才发现新依赖，重新预构建后 vite 让所有客户端整页重新加载。
 - 解决：`electron.vite.config.ts` 的 renderer 加 `optimizeDeps.entries: ['index.html', '../web-assets/markdown/main.ts']`（相对 renderer root，vite 用 tinyglobby、`cwd` = root）。之后启动时一次扫描出全部依赖，打开 Markdown 不再重新加载（CDP 连接 `--remote-debugging-port` 实测）。
 - 预防：经 dev server 提供、但不从 `index.html` 可达的入口，都要列进 `optimizeDeps.entries`。另：查看脚本中的 CSS import 在开发模式下会带入 vite 的 HMR 客户端，它的 websocket 被外壳的 CSP（`connect-src` 落到 `default-src`）阻止，控制台有一条报错，不影响显示。
+
+### `pnpm start` 不构建 Markdown 查看脚本，未 build 过时 Markdown 无法显示
+
+- 日期：2026-11-20
+- 症状：只运行 `pnpm start`（`electron-vite preview`）而没有先 `pnpm build` 时，打开 `.md` 文件，浏览器视图的脚本请求 `pch-asset://viewer/markdown.js` 返回 404，页面空白。
+- 原因：Markdown 查看脚本由单独的 vite 构建（`vite.markdown.config.ts`）产出 `out/web-assets/markdown`，只串在 `pnpm build` 脚本里；`electron-vite preview` 只运行已有产物，不构建任何东西。
+- 解决：先 `pnpm build` 再 `pnpm start`（README 已注明）。
+- 预防：新增的单独构建产物都要接进 `pnpm build`，并在 README 说明 `start` / `test:e2e` 依赖 build。
