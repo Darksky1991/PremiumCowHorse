@@ -256,3 +256,18 @@
 - 原因：第二次运行时文件在系统的磁盘缓存中，按 1MB 块读取 + 找换行的索引对 50MB 只要一百毫秒左右，`doc.open` 返回后到第一次断言之间就结束了。
 - 解决：文件加大到约 200MB（`preview.maxTextSizeMB: 500` 保持全量模式；默认上限 50MB 以上只索引 4MB 的窗口），并在改名后断言状态栏出现「読み込みに失敗しました（ファイルまたはフォルダーが見つかりません）…」——改名后的下一块读取找不到文件，证明改名确实发生在索引进行中。`--repeat-each 3` 稳定。
 - 预防：「某操作发生在后台处理进行中」的用例要断言能证明「进行中」的可观察结果（这里是读取失败），不要只在操作前看一眼进度；数据量按磁盘缓存命中后的速度估计。
+
+### e2e：Playwright 的 `_electron.launch` 默认模拟浅色（`colorScheme: 'light'`），`nativeTheme` 切换在页面上看不到
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S2）主进程设 `nativeTheme.themeSource = 'dark'` 后，宿主页与 `WebContentsView` 页面的 `matchMedia('(prefers-color-scheme: dark)').matches` 仍为 `false`，也没有 `change` 事件，看起来像「视图不跟随系统主题」。
+- 原因：`_electron.launch` 的 `colorScheme` 选项默认 `'light'`，Playwright 对上下文中的所有页面（包括后来创建的 `WebContentsView` 页面）模拟 `prefers-color-scheme`（`playwright-core` 类型定义：「Passing `null` resets emulation to system defaults. Defaults to `'light'`」）。
+- 解决：`_electron.launch({ …, colorScheme: null })` 后，视图与宿主页都随 `themeSource` 即时切换（不重新加载，`change` 事件正常）。
+- 预防：凡是断言深浅色、`prefers-color-scheme` 的 e2e，启动时传 `colorScheme: null`；「Playwright 下不成立」的主题类结论先排除模拟再下。
+
+### e2e：取 `WebContentsView` 的页面：按 URL 从 `electronApp.windows()` 中找
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S1）需要对主窗口中嵌入的 `WebContentsView` 页面做断言。
+- 解决：视图的页面与窗口页面一样出现在 `electronApp.windows()` / `context().pages()` 中，`Page` API（`locator`、`evaluate`、`title`）可直接使用：`app.windows().find((p) => p.url().startsWith('pch-web:'))`。Electron 模式下 `context().browser()` 为 `null`，不能开 Browser 级 CDP 会话。备选：`electronApp.evaluate` 中调 `view.webContents.executeJavaScript(...)`。
+- 预防：不要假设 `app.windows()` 的顺序，按 URL 找；视图同样受 Playwright 的各种模拟（颜色方案等）影响。

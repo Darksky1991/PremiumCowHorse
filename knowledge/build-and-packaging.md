@@ -65,3 +65,10 @@
 - 原因：警告列出的是其他平台的二进制包，本机平台的 `@koromix/koffi-win32-x64` 已打入，且 electron-builder 自动把 `.node` 放到 `resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node`（`asarUnpack` 只配置了 `resources/**`，不需要为 koffi 另加）。
 - 解决：主进程启动时按 `driveTypeStatus()` 记一条日志（`[vfs] drive type detection: native (koffi)`，失败时为警告并附原因）；扫描进程在就绪时记 `[scanner] index …, native enumeration: true`（失败时 `[enumerator] native enumeration unavailable …`）。打包实测：解压 zip 后以 `--user-data-dir=<临时目录>` 运行，main.log 中两条都为 native，资源树显示 `.dotfile`（按属性判断隐藏，回退模式会把它当作隐藏）。
 - 预防：任何原生模块的回退路径都要在日志中留下记录；打包后在 main.log 里确认每个加载它的进程都成功。
+
+### electron-vite：给 renderer 追加独立浏览器入口时，共享模块被拆进 `out/renderer/assets/`
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S9）在 `renderer.build.rolldownOptions.input`（electron-vite 6 内部用 `rolldownOptions`，写 `rollupOptions` 结果相同）追加 Markdown 查看脚本入口后，产物 `viewer/markdown.js` import 了 `../assets/shared-*.js`（与渲染端共享的模块），动态分块也在 `assets/`：专用协议只能把整个 `out/renderer` 暴露给浏览器视图。
+- 解决：查看脚本用单独的 `vite build --config <config>`（`root` = 查看脚本目录、`base: './'`、`outDir` = `out/web-assets/markdown`、`chunkFileNames: 'chunks/[name]-[hash].js'`），产物自成一体；串在 `electron-vite build` 之后（electron-vite 只清空自己的输出目录）。开发模式不需要预构建：renderer dev server 以 `/@fs/<绝对路径>` 提供该入口，协议处理器把所有路径代理到 `ELECTRON_RENDERER_URL` 即可（import 都是根相对路径）。
+- 预防：给不可信页面使用的资源要单独构建、单独目录，不与应用渲染端共享分块；新增的构建配置文件要加进 `electron-builder.yml` 的 `files` 排除列表。

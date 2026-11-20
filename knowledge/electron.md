@@ -81,3 +81,11 @@
 - 症状：（预防性，文本预览 Task 5）预览宿主的 `doc` API 要在插件第一次渲染时就可用，且子组件的 effect（插件打开文档）先于父组件的 effect 执行——在父组件 effect 里创建会晚；而开发模式的 StrictMode 会执行「effect → cleanup → effect」，cleanup 中 dispose 后对象若不能再用，第二轮 effect 中插件的调用就失效。
 - 解决：`features/preview/use-doc-session.ts` 用 `useState(() => createDocSession(...))` 惰性创建；IPC 事件订阅在第一个文档打开时建立、最后一个关闭时取消；`dispose` 只关闭现有文档并递增代号（之前发出、之后才完成的 open 关闭并拒绝），对象之后照常可用。
 - 预防：在 effect 中释放、在渲染中创建的对象，按「dispose 之后还会被再次使用」设计，并加单元测试（`doc-session.test.ts` 的 StrictMode 用例）。
+
+### `View.setBounds` 的单位是 DIP（类型定义未写明）；`capturePage()` 返回物理像素
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证）`electron.d.ts` 的 `View.setBounds(bounds: Rectangle, options?)` 没有说明单位，只写了 `Rectangle` 各字段「must be an integer」；不确定要不要乘 `devicePixelRatio`。
+- 原因 / 结论（实测）：单位是 DIP。宿主页 `getBoundingClientRect()` 的 CSS 像素（页面缩放为 1）直接传给 `setBounds`，在 125%（`--force-device-scale-factor=1.25`）与 150% 下视图都与占位元素逐像素对齐。传小数不报错，Electron 四舍五入（`{120.4, 80.6, 400.5, 300.5}` → `{120, 81, 401, 300}`）。`webContents.capturePage()` 的图是物理像素尺寸（400×300 DIP 在 150% 下为 600×450）。
+- 解决：宿主自行取整（`x = round(left)`、`width = round(right) - x`）后发送，不乘 `devicePixelRatio`；截图替身按 CSS 尺寸缩放显示。
+- 预防：宿主页面若被缩放（`zoomFactor ≠ 1`），CSS 像素不再等于 DIP，需要乘缩放系数（未验证）。视图的 `prefers-color-scheme` 跟随 `nativeTheme.themeSource`、自定义协议提供的 PDF 用内置查看器直接显示（不需要 `plugins: true`）——见 `devDoc/2026-11-20-24-m2-ledger.md`。
