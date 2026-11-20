@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseDetectOutput } from './association'
 import { DETECT_SCRIPT, LAUNCH_SWITCH_SCRIPT, LAUNCH_VERB_SCRIPT } from './detect-script'
@@ -47,5 +50,24 @@ describe.skipIf(process.platform !== 'win32')('fixed PowerShell scripts on real 
       20_000
     )
     expect(out.trim()).toBe(`/r "${target}"`)
+  }, 30_000)
+
+  it('the switch script returns without waiting for the launched program (no inherited stdout pipe)', async () => {
+    // 孙进程：wscript 运行一个睡 6 秒的 vbs（不启动 Office）；脚本应在 PowerShell 启动时间内返回
+    const dir = mkdtempSync(path.join(tmpdir(), 'pch-launch-'))
+    try {
+      const vbs = path.join(dir, 'sleep.vbs')
+      writeFileSync(vbs, 'WScript.Sleep 6000')
+      const started = Date.now()
+      await runPowerShell(
+        LAUNCH_SWITCH_SCRIPT,
+        { PCH_EXE: 'wscript.exe', PCH_ARGS: JSON.stringify([vbs]) },
+        15_000
+      )
+      expect(Date.now() - started).toBeLessThan(3000)
+    } finally {
+      // wscript 会在 6 秒后自行退出；目录可能仍被占用，忽略删除失败
+      setTimeout(() => rmSync(dir, { recursive: true, force: true }), 7000).unref()
+    }
   }, 30_000)
 })

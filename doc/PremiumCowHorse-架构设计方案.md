@@ -170,7 +170,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | pdfjs-dist | PDF 预览 | Mozilla 官方；**推迟**：M2 起 PDF 先由浏览器视图（Chromium 内置 PDF 查看器）显示 |
 Markdown 的 7 个包都放在 `apps/desktop` 的 devDependencies：查看脚本由单独的 vite 构建打包进 `out/web-assets/markdown`（`vite.markdown.config.ts`），运行时不 require，electron-builder 只打包 dependencies，不会重复进入安装包。
 
-文本 / 日志预览（设计 `devDoc/2026-11-20-18-text-preview-design.md`）的行索引、按行读取与编码判断由工作区包 `@pch/text-engine` 自写，不引入第三方依赖（检测库的取舍见该设计第 4 节）。图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 `reg.exe` 与 PowerShell，不新增依赖。
+文本 / 日志预览（设计 `devDoc/2026-11-20-18-text-preview-design.md`）的行索引、按行读取与编码判断由工作区包 `@pch/text-engine` 自写，不引入第三方依赖（检测库的取舍见该设计第 4 节）。图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 PowerShell，不新增依赖。
 
 ### 3.5 质量保障
 
@@ -972,13 +972,13 @@ Excel、Word、PowerPoint 等 Office 文件不在应用内渲染，而是交给�
 
 ### 10.2 能力检测：读取 Windows 文件关联
 
-Windows 资源管理器右键菜单里的「開く」「読み取り専用で開く」「新規」等，本质上是注册表中该文件类型 ProgID 下的 shell verb。本应用按以下顺序检测，结果按扩展名缓存（启动时及用户手动刷新时重新检测）：
+Windows 资源管理器右键菜单里的「開く」「読み取り専用で開く」「新規」等，本质上是注册表中该文件类型 ProgID 下的 shell verb。本应用按以下顺序检测，结果按扩展名缓存在内存（首次需要时检测，不阻塞启动；面板上的「再検出」清缓存重新检测）：
 
 1. 读取 `HKCU\...\Explorer\FileExts\<ext>\UserChoice` 的 ProgId（用户自己选过的默认程序优先），没有则读 `HKCR\<ext>` 的默认值。
-2. 列出 `HKCR\<ProgId>\shell` 下的所有 verb。直接读注册表而不用 .NET 的 `ProcessStartInfo.Verbs`，因为后者按设计不会列出 `New`。
-3. 读取 `open` verb 的命令行，识别目标程序（`EXCEL.EXE`、`WINWORD.EXE`、`POWERPNT.EXE` 或其他）。
+2. 列出 `HKCR\<ProgId>\shell` 下的所有 verb。直接读注册表（经 PowerShell 的注册表提供程序）而不用 .NET 的 `ProcessStartInfo.Verbs`，因为后者按设计不会列出 `New`。
+3. 读取默认 verb（没有则 `open`）的命令行，识别目标程序（`EXCEL.EXE`、`WINWORD.EXE`、`POWERPNT.EXE` 或其他）。
 
-注册表读取使用系统自带的 `reg.exe`（通过 execFile 调用）。注意 `reg query` 输出中「默认值」的标签会随系统语言变化（日文系统为「(既定)」），解析时按 `REG_SZ` 等类型标记分割，不依赖标签文字。
+注册表读取由固定的 PowerShell 脚本完成（`Registry::` 提供程序，不解析 `reg query` 的文本输出，因此不受系统语言影响），输出 JSON，主进程用 zod 校验。
 
 ### 10.3 打开方式与实现手段
 
@@ -991,7 +991,7 @@ Windows 资源管理器右键菜单里的「開く」「読み取り専用で開
 | 受保护的视图 `protectedView` | `ViewProtected` | 实测为只读（标题 `… - Protected View - …`，无 `~$` 文件），有此 verb 就显示，标注为「受保护的视图」 |
 | 新建打开 `newFromFile` | `New` | 实测以该文件为蓝本新建未保存的文档，原文件不被占用 |
 
-开关方式的 exe 路径：优先取 `HKLM`（再 `HKCU`）`SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe 文件名>`，否则取 `open` 命令中的路径，且文件须存在。`UserChoiceLatest` 不读：本机系统实际采用的是 `UserChoice`（`.pdf` 的两者不一致，实测系统用 `UserChoice`），若以后发现不一致导致错误，再改用 `AssocQueryString`。
+开关方式的 exe 路径：优先取 `HKLM`（再 `HKCU`）`SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe 文件名>`，否则取默认 verb 的命令中的路径，且文件须存在。`UserChoiceLatest` 不读：本机系统实际采用的是 `UserChoice`（`.pdf` 的两者不一致，实测系统用 `UserChoice`），若以后发现不一致导致错误，再改用 `AssocQueryString`。
 
 由于检测基于文件关联而不是写死 Office，若用户的默认程序是 WPS、LibreOffice 等，同样会显示该程序在注册表中提供的 verb（`readOnly` 例外：只对 `EXCEL.EXE` 提供）。
 
@@ -1011,7 +1011,7 @@ export interface LaunchCapabilities {
 }
 ```
 
-启动经 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（`modules/launcher/powershell.ts`，`windowHide`、超时 15 秒），路径、verb、exe、参数只经环境变量传入，脚本是固定字符串（`detect-script.ts`，纯 ASCII、不含双引号）。**不用 `Start-Process`**：Windows PowerShell 5.1 没有 `-LiteralPath`，`-FilePath` 把 `[` `]` 当通配符（同目录有 `見積[1] 案.xlsx` 与 `見積1 案.xlsx` 时会打开错的那个）。verb 方式用 `System.Diagnostics.ProcessStartInfo`（`FileName = $env:PCH_TARGET`、`Verb = $env:PCH_VERB`、`UseShellExecute = $true`）；开关方式用 `UseShellExecute = $false`、`FileName = $env:PCH_EXE`、`Arguments` 由脚本从 JSON 数组（`$env:PCH_ARGS`）组成：形如 `/r` 的开关不加引号（Excel 把加了引号的开关当作文件名），其余加引号。
+启动经 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（`modules/launcher/powershell.ts`，`windowsHide`、超时 15 秒），路径、verb、exe、参数只经环境变量传入，脚本是固定字符串（`detect-script.ts`，纯 ASCII、不含双引号）。**不用 `Start-Process`**：Windows PowerShell 5.1 没有 `-LiteralPath`，`-FilePath` 把 `[` `]` 当通配符（同目录有 `見積[1] 案.xlsx` 与 `見積1 案.xlsx` 时会打开错的那个）。verb 方式用 `System.Diagnostics.ProcessStartInfo`（`FileName = $env:PCH_TARGET`、`Verb = $env:PCH_VERB`、`UseShellExecute = $true`）；开关方式同样用 `UseShellExecute = $true`（为 `$false` 时 .NET Framework 以继承句柄创建进程，Office 会继承 Node 的 stdout 管道，`execFile` 要等 Office 退出或超时才返回）、不设 `Verb`、`FileName = $env:PCH_EXE`、`Arguments` 由脚本从 JSON 数组（`$env:PCH_ARGS`）组成：形如 `/r` 的开关不加引号（Excel 把加了引号的开关当作文件名），其余加引号。
 
 PowerShell 启动约需 0.5～1 秒，相对 Office 自身数秒的启动可以接受（台账 S7）。若终端策略禁止 PowerShell，可改为用 koffi 直接调用 `ShellExecuteExW`（届时作为新依赖告知），接口不变。
 

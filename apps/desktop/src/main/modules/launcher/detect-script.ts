@@ -76,7 +76,7 @@ $psi.UseShellExecute = $true
 `
 
 /**
- * 以命令行开关启动：PCH_EXE = exe 路径，PCH_ARGS = 参数的 JSON 数组（含目标路径）。
+ * 以命令行开关启动（UseShellExecute=$true：为 false 时子进程继承 Node 的 stdout 管道，execFile 要等 Office 退出才返回）：PCH_EXE = exe 路径，PCH_ARGS = 参数的 JSON 数组（含目标路径）。
  * .NET Framework 的 ProcessStartInfo 没有 ArgumentList，逐项组成 Arguments：开关（形如 /r）不加引号（Excel 把加了引号的 /r 当作文件名，实测），其余加引号（Windows 路径不含双引号）。
  */
 export const LAUNCH_SWITCH_SCRIPT =
@@ -87,6 +87,6 @@ $list = @()
 foreach ($x in (ConvertFrom-Json -InputObject $env:PCH_ARGS)) { $list += [string]$x }
 $q = [char]34
 $psi.Arguments = ($list | ForEach-Object { if ($_ -match '^/[A-Za-z]+$') { $_ } else { $q + $_ + $q } }) -join ' '
-$psi.UseShellExecute = $false
+$psi.UseShellExecute = $true
 [void][System.Diagnostics.Process]::Start($psi)
 `
