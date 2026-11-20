@@ -43,6 +43,9 @@ export interface ViewLike {
     loadURL(url: string): Promise<void>
     reload(): void
     capturePage(): Promise<{ toDataURL(): string }>
+    /** 键盘焦点是否在本视图中 */
+    isFocused(): boolean
+    focus(): void
   }
   setBounds(bounds: WebBounds): void
   setVisible(visible: boolean): void
@@ -56,6 +59,8 @@ export interface OwnerWindow {
   readonly id: number
   /** 把视图加入窗口内容区的最上层（已在其中时移到最上层） */
   add(view: ViewLike): void
+  /** 把键盘焦点交回窗口的渲染端（应用界面） */
+  focus(): void
 }
 
 export interface AttachInput {
@@ -76,6 +81,8 @@ export type SendToWindow = <E extends 'web.state' | 'web.navigate' | 'web.notice
 interface Entry {
   readonly tabId: string
   readonly ownerId: number
+  /** 所属窗口（最近一次 attach 时的；焦点交回用） */
+  owner: OwnerWindow
   readonly view: ViewLike
   url: string
   scopeId: string
@@ -83,6 +90,8 @@ interface Entry {
   shown: boolean
   /** 截图替身中（视图本身隐藏） */
   frozen: boolean
+  /** 截图时视图持有焦点（已交回应用界面）：unfreeze 时还给视图 */
+  refocus: boolean
   /** 最近一次显示的时刻（attach / hide 时更新的单调序号；LRU 用） */
   lastShown: number
   state: Omit<WebViewState, 'tabId'>
@@ -125,14 +134,16 @@ export class WebViewManager {
     let entry = entries.get(input.tabId)
     const created = !entry
     if (!entry) {
-      entry = this.create(owner.id, input.tabId, url, scopeId)
+      entry = this.create(owner, input.tabId, url, scopeId)
       entries.set(input.tabId, entry)
     }
+    entry.owner = owner
     owner.add(entry.view)
     entry.view.setBounds(input.bounds)
     entry.view.setVisible(true)
     entry.shown = true
     entry.frozen = false
+    entry.refocus = false
     entry.lastShown = ++this.clock
     entry.scopeId = scopeId
     if (created || entry.url !== url) {
@@ -149,15 +160,19 @@ export class WebViewManager {
   hide(ownerId: number, tabId: string): void {
     const entry = this.find(ownerId, tabId)
     if (!entry) return
+    this.yieldFocus(entry)
     entry.view.setVisible(false)
     if (entry.shown) entry.lastShown = ++this.clock
     entry.shown = false
     entry.frozen = false
+    entry.refocus = false
   }
 
   release(ownerId: number, tabId: string): void {
     const entry = this.find(ownerId, tabId)
-    if (entry) this.destroy(entry)
+    if (!entry) return
+    this.yieldFocus(entry)
+    this.destroy(entry)
   }
 
   reload(ownerId: number, tabId: string): void {
@@ -171,6 +186,7 @@ export class WebViewManager {
     const image = (await entry.view.webContents.capturePage()).toDataURL()
     // 截图期间被隐藏 / 销毁：不改变它的状态
     if (!entry.destroyed && entry.shown) {
+      entry.refocus = this.yieldFocus(entry)
       entry.view.setVisible(false)
       entry.frozen = true
     }
@@ -181,7 +197,11 @@ export class WebViewManager {
     const entry = this.find(ownerId, tabId)
     if (!entry || !entry.frozen) return
     entry.frozen = false
-    if (entry.shown) entry.view.setVisible(true)
+    if (entry.shown) {
+      entry.view.setVisible(true)
+      if (entry.refocus) entry.view.webContents.focus()
+    }
+    entry.refocus = false
   }
 
   /** 会话事件（下载）→ 按 webContents id 找到所属视图后发提示 */
@@ -208,22 +228,39 @@ export class WebViewManager {
     for (const ownerId of [...this.windows.keys()]) this.disposeWindow(ownerId)
   }
 
+  /**
+   * 视图持有键盘焦点时交回所属窗口的应用界面：隐藏 / 销毁的视图若仍持有焦点，按键会落进看不见的页面
+   * （或无处可去），应用的快捷键（Alt+← / Alt+→ / F5…）在用户点击应用之前都不生效（实测）。返回是否交回了焦点
+   */
+  private yieldFocus(entry: Entry): boolean {
+    try {
+      if (!entry.view.webContents.isFocused()) return false
+      entry.owner.focus()
+      return true
+    } catch (e) {
+      this.deps.logger.warn(`[web] cannot move the focus from the view of tab ${entry.tabId}`, e)
+      return false
+    }
+  }
+
   private find(ownerId: number, tabId: string): Entry | undefined {
     return this.windows.get(ownerId)?.get(tabId)
   }
 
-  private create(ownerId: number, tabId: string, url: string, scopeId: string): Entry {
+  private create(owner: OwnerWindow, tabId: string, url: string, scopeId: string): Entry {
     // 事件在视图创建之后才会发生：闭包读取下面填入的 entry
     const ref: { entry?: Entry } = {}
     const view = this.deps.createView(this.eventsFor(() => ref.entry))
     ref.entry = {
       tabId,
-      ownerId,
+      ownerId: owner.id,
+      owner,
       view,
       url,
       scopeId,
       shown: false,
       frozen: false,
+      refocus: false,
       lastShown: 0,
       state: { title: '', loading: false, failed: null },
       destroyed: false

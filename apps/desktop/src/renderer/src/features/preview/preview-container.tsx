@@ -67,6 +67,11 @@ export interface PreviewContainerProps {
  * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
  */
 export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
+  // 工作区总览不经插件：该标签若还有浏览器视图（从网页导航过来）则销毁
+  const overview = tab.kind === 'workspace'
+  useLayoutEffect(() => {
+    if (overview) getWebViews().release(tab.id)
+  }, [overview, tab.id])
   return (
     <div className="h-full min-h-0">
       {/* 同一标签内导航到另一位置时整体重建（sniff 结果等状态不沿用；viewer 在标签状态中，随位置变化） */}
@@ -289,10 +294,6 @@ function PluginView({
         tabs: { open: () => undefined, navigate: () => undefined },
         onError: (e) => reportError(e, 'web view'),
         onRefresh: (listener) => onTabRefresh(tabId, listener),
-        location: () => {
-          const current = findTab(useTabsStore.getState(), tabId)
-          return current ? { uri: current.uri, viewer: current.viewer ?? null } : null
-        },
         stashToasts: () => useMessagesStore.getState().stashVisible()
       }),
     [tabId]
@@ -381,6 +382,12 @@ function PluginView({
     parent
   ])
 
+  // 当前位置与实际解析出的查看器（布局阶段：早于插件 attach，插件仍在懒加载时也生效）。
+  // 该标签的视图属于另一个查看器 → 销毁（当前位置不再用那个网页查看器）
+  const resourceUri = resource.uri
+  useLayoutEffect(() => {
+    webHost.setLocation({ pluginId, uri: resourceUri })
+  }, [webHost, pluginId, resourceUri])
   useLayoutEffect(() => {
     webHost.setLinks({
       rootOf: host.fs.rootOf,

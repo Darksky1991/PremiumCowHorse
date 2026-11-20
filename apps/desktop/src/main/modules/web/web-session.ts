@@ -161,6 +161,9 @@ export function ownerWindowOf(senderId: number): OwnerWindow {
     id: senderId,
     add: (view) => {
       if (view instanceof ElectronWebView) view.mountIn(win)
+    },
+    focus: () => {
+      if (!contents.isDestroyed()) contents.focus()
     }
   }
 }

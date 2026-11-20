@@ -111,3 +111,11 @@
 - 原因：Chromium 内置 PDF 查看器的打印走 `webContents.print` 一类的系统对话框路径，Windows 上同步弹出。
 - 解决 / 现状：打印未禁用（设计 5.3.9 把打印列为推迟功能；查看器自带的打印是否放行由控制者 / 需求方决定）。e2e 不点打印按钮；手工验证时用「取消」关闭（不要点「打印」）。注意「Electron - 打印」标题中的应用名来自 Electron 默认名。
 - 预防：自动化脚本点击 PDF 查看器工具栏前确认目标按钮。对视图 `webContents.sendInputEvent` 在同一位置点击下载按钮没有任何反应（未查明是事件没有送达查看器的内部框架——扩展页、进程外 iframe——还是坐标换算有误），系统级鼠标事件（`SetCursorPos` + `mouse_event`）有效。
+
+### 隐藏 / 销毁持有键盘焦点的 `WebContentsView` 后，应用快捷键不生效（焦点没有回到窗口）
+
+- 日期：2026-11-20
+- 症状（M2 Task 7 审查，系统级鼠标 / 按键实测）：点击浏览器视图（焦点进入页面）后按 Alt+←，标签回到文本文件、视图被销毁，但再按 Alt+→ / F5 没有反应，要先点一下应用界面。主进程中应用渲染端的 `webContents.isFocused()` 为 false。
+- 原因：`setVisible(false)` 或销毁视图不会把焦点交回所属窗口的渲染端；焦点留在看不见的视图（按键落进隐藏的页面）或无处可去。
+- 解决：`WebViewManager` 在 `hide` / `release` / `freeze` 时，视图 `webContents.isFocused()` 为真则调用所属窗口渲染端的 `webContents.focus()`；`freeze`（截图替身）交回的焦点在 `unfreeze` 时还给视图。
+- 预防：任何隐藏 / 移除原生视图的路径都要考虑焦点归属；e2e 中可用主进程 `webContents.isFocused()` 断言（Playwright 的 `page.keyboard` 直接发给页面、不经系统焦点，不能证明真实按键的去向——真实行为用系统级 `keybd_event` 确认）。

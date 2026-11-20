@@ -13,6 +13,9 @@ const ROOT = 'file:///C:/%E6%A1%88%E4%BB%B6'
 const INNER = `${ROOT}/proto`
 const PAGE = `${INNER}/index.html`
 const OUTSIDE = 'file://nas/share/docs/readme.html'
+const SECOND = `${INNER}/second.html`
+const HTML = 'pch.preview.html'
+const TEXT = 'pch.preview.text'
 
 type Listener<E extends keyof IpcEvents> = (payload: IpcEvents[E]) => void
 
@@ -95,7 +98,6 @@ interface Setup {
   frames: () => void
   refresh: () => void
   keys: KeyboardEventInit[]
-  location: { current: { uri: string; viewer: string | null } | null }
   tabsChanged: () => void
   existing: Set<string>
   /** 让 web.freeze 挂起直到 resolveFreeze */
@@ -150,7 +152,6 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     tabExists: (id) => existing.has(id),
     onError: vi.fn()
   })
-  const location: Setup['location'] = { current: { uri: PAGE, viewer: null } }
   const deps: WebHostDeps = {
     tabId: 'tab-1',
     views,
@@ -162,14 +163,16 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
       refreshListeners.add(l)
       return () => refreshListeners.delete(l)
     },
-    location: () => location.current,
     stashToasts: vi.fn(),
     onError: vi.fn(),
     env,
     ...overrides
   }
+  const host = createWebHost(deps)
+  // PluginView 在布局阶段告诉宿主当前的位置与查看器
+  host.setLocation({ pluginId: HTML, uri: PAGE })
   return {
-    host: createWebHost(deps),
+    host,
     views,
     deps,
     calls,
@@ -183,7 +186,6 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     },
     refresh: () => refreshListeners.forEach((l) => l()),
     keys,
-    location,
     tabsChanged: () => tabsListeners.forEach((l) => l()),
     existing,
     holdFreeze: () => {
@@ -236,7 +238,7 @@ describe('createWebHost: attach', () => {
     expect(s.calls[0]?.[1]).toMatchObject({ scopeRoot: 'file:///D:/' })
   })
 
-  it('the returned function only hides the view while the tab stays at the location', async () => {
+  it('the returned function only hides the view', async () => {
     const s = setup()
     const el = fakeElement()
     const detach = s.host.api.attach(el.element, PAGE, { view: 'page' })
@@ -250,19 +252,50 @@ describe('createWebHost: attach', () => {
     expect(channels(s.calls)).toEqual(['web.attach', 'web.hide'])
   })
 
-  it('releases the view when the tab moved to another location, picked another viewer or was closed', async () => {
-    for (const next of [
-      { uri: `${INNER}/notes.md`, viewer: null },
-      { uri: PAGE, viewer: 'pch.preview.text' },
-      null
+  it('moving to another page with the same viewer keeps the view (hide, then attach the new uri)', async () => {
+    const s = setup()
+    s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })()
+    // 新位置的 PluginView（宿主按标签 id 新建）：同一查看器
+    const next = createWebHost(s.deps)
+    next.setLocation({ pluginId: HTML, uri: SECOND })
+    next.api.attach(fakeElement().element, SECOND, { view: 'page' })
+    await flush()
+    expect(channels(s.calls)).toEqual(['web.attach', 'web.hide', 'web.attach'])
+    expect(s.calls[2]?.[1]).toMatchObject({ uri: SECOND })
+  })
+
+  it('another viewer for the current location releases the view, even before the new plugin has loaded', async () => {
+    for (const location of [
+      { pluginId: TEXT, uri: `${INNER}/notes.md` },
+      { pluginId: TEXT, uri: PAGE }
     ]) {
       const s = setup()
-      const detach = s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
-      s.location.current = next
-      detach()
+      s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })()
+      // 新插件仍在懒加载中：宿主只收到位置（布局阶段），没有 attach
+      createWebHost(s.deps).setLocation(location)
       await flush()
-      expect(channels(s.calls)).toEqual(['web.attach', 'web.release'])
+      expect(channels(s.calls)).toEqual(['web.attach', 'web.hide', 'web.release'])
     }
+  })
+
+  it('the same viewer again (e.g. picked explicitly, or after a tab switch) does not release', async () => {
+    const s = setup()
+    s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })()
+    s.host.setLocation({ pluginId: HTML, uri: PAGE })
+    createWebHost(s.deps).setLocation({ pluginId: HTML, uri: PAGE })
+    await flush()
+    expect(channels(s.calls)).toEqual(['web.attach', 'web.hide'])
+  })
+
+  it('a view released because its tab was closed is not hidden afterwards', async () => {
+    const s = setup()
+    const detach = s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+    // tabs-store 的订阅早于卸载
+    s.existing.delete('tab-1')
+    s.tabsChanged()
+    detach()
+    await flush()
+    expect(channels(s.calls)).toEqual(['web.attach', 'web.release'])
   })
 
   it('coalesces several resizes in one frame into a single web.setBounds', async () => {
@@ -324,6 +357,7 @@ describe('createWebHost: events from the view', () => {
 
   it('onState replays the last state of the tab and maps load failures to error codes', () => {
     const s = setup()
+    s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
     s.emit('web.state', { tabId: 'tab-1', title: 'Proto', loading: false, failed: null })
     const states: unknown[] = []
     const off = s.host.api.onState((state) => states.push(state))
@@ -337,6 +371,25 @@ describe('createWebHost: events from the view', () => {
       { title: '', loading: false, failed: 'FS_NOT_FOUND' },
       { title: '', loading: false, failed: 'UNKNOWN' }
     ])
+  })
+
+  it('onState does not replay the state of another page (a failure stays with its page)', () => {
+    const s = setup()
+    s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })()
+    s.emit('web.state', { tabId: 'tab-1', title: '', loading: false, failed: 'HTTP_404' })
+    const next = createWebHost(s.deps)
+    next.setLocation({ pluginId: HTML, uri: SECOND })
+    const states: unknown[] = []
+    next.api.onState((state) => states.push(state))
+    expect(states).toEqual([])
+    // 回到失败的那一页：仍然回放（attach 之前）
+    const back = createWebHost(s.deps)
+    back.setLocation({ pluginId: HTML, uri: PAGE })
+    back.api.onState((state) => states.push(state))
+    expect(states).toEqual([{ title: '', loading: false, failed: 'FS_NOT_FOUND' }])
+    // 新页面 attach 后旧状态作废
+    next.api.attach(fakeElement().element, SECOND, { view: 'page' })
+    expect(s.views.state('tab-1', PAGE)).toBeUndefined()
   })
 
   it('onNotice only reports notices of this tab', () => {
@@ -446,8 +499,15 @@ describe('createWebViews', () => {
     const s = setup()
     s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
     s.emit('web.state', { tabId: 'tab-1', title: 'Proto', loading: false, failed: null })
-    expect(s.views.state('tab-1')).toMatchObject({ title: 'Proto' })
+    expect(s.views.state('tab-1', PAGE)).toMatchObject({ title: 'Proto' })
     s.views.release('tab-1')
-    expect(s.views.state('tab-1')).toBeUndefined()
+    expect(s.views.state('tab-1', PAGE)).toBeUndefined()
+  })
+
+  it('release without a view (e.g. the workspace overview) sends nothing', async () => {
+    const s = setup()
+    s.views.release('tab-1')
+    await flush()
+    expect(s.calls).toEqual([])
   })
 })

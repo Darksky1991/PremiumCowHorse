@@ -21,6 +21,8 @@ class FakeView implements ViewLike {
   destroyed = false
   readonly loads: string[] = []
   reloads = 0
+  /** 键盘焦点在本视图中 */
+  focused = false
   readonly webContents = {
     id: FakeView.nextId++,
     loadURL: async (url: string): Promise<void> => {
@@ -29,7 +31,11 @@ class FakeView implements ViewLike {
     reload: (): void => {
       this.reloads++
     },
-    capturePage: async () => ({ toDataURL: () => 'data:image/png;base64,AAAA' })
+    capturePage: async () => ({ toDataURL: () => 'data:image/png;base64,AAAA' }),
+    isFocused: (): boolean => this.focused,
+    focus: (): void => {
+      this.focused = true
+    }
   }
   constructor(readonly events: ViewEvents) {}
   setBounds(b: WebBounds): void {
@@ -45,7 +51,12 @@ class FakeView implements ViewLike {
 
 class FakeOwner implements OwnerWindow {
   readonly added: ViewLike[] = []
+  /** focus() 的调用次数（焦点交回应用界面） */
+  focuses = 0
   constructor(readonly id: number) {}
+  focus(): void {
+    this.focuses++
+  }
   add(view: ViewLike): void {
     this.added.push(view)
   }
@@ -223,6 +234,51 @@ describe('WebViewManager', () => {
     expect(viewOf(0).visible).toBe(false)
     manager.unfreeze(win.id, 't1')
     expect(viewOf(0).visible).toBe(true)
+  })
+
+  describe('键盘焦点：隐藏 / 截图 / 销毁持有焦点的视图时交回应用界面', () => {
+    it('hide：视图持有焦点时交回所属窗口；没有焦点时不动', () => {
+      manager.attach(win, input('t1'))
+      manager.attach(win, input('t2', 'b.html'))
+      viewOf(0).focused = true
+      manager.hide(win.id, 't1')
+      expect(win.focuses).toBe(1)
+      manager.hide(win.id, 't2')
+      expect(win.focuses).toBe(1)
+    })
+
+    it('release：视图持有焦点时先交回所属窗口', () => {
+      manager.attach(win, input('t1'))
+      viewOf(0).focused = true
+      manager.release(win.id, 't1')
+      expect(win.focuses).toBe(1)
+      expect(viewOf(0).destroyed).toBe(true)
+    })
+
+    it('freeze 交回焦点，unfreeze 把焦点还给视图；截图期间被隐藏则不还', async () => {
+      manager.attach(win, input('t1'))
+      const v = viewOf(0)
+      v.focused = true
+      await manager.freeze(win.id, 't1')
+      expect(win.focuses).toBe(1)
+      v.focused = false // 焦点已在应用界面
+      manager.unfreeze(win.id, 't1')
+      expect(v.focused).toBe(true)
+
+      await manager.freeze(win.id, 't1')
+      v.focused = false
+      manager.hide(win.id, 't1')
+      manager.unfreeze(win.id, 't1')
+      expect(v.focused).toBe(false)
+    })
+
+    it('没有焦点时 freeze / unfreeze 不移动焦点', async () => {
+      manager.attach(win, input('t1'))
+      await manager.freeze(win.id, 't1')
+      manager.unfreeze(win.id, 't1')
+      expect(win.focuses).toBe(0)
+      expect(viewOf(0).focused).toBe(false)
+    })
   })
 
   it('截图期间被隐藏的视图，unfreeze 不再显示它；截图中的视图不参与淘汰', async () => {

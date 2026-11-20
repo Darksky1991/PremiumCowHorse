@@ -52,6 +52,7 @@ function writeProto(project: string): void {
 <h1 id="heading">原型</h1>
 <img id="pic" src="./img/a.png" alt="">
 <p>loads: <span id="counter">0</span></p>
+<p>session: <span id="session">0</span></p>
 <p><a id="to-second" href="./second.html">second</a></p>
 <p><a id="to-notes" href="./notes.md">notes</a></p>
 <p><a id="to-external" href="https://example.invalid/">external</a></p>
@@ -71,12 +72,19 @@ function writeProto(project: string): void {
     `const loads = Number(localStorage.getItem('pch-e2e-loads') ?? '0') + 1
 localStorage.setItem('pch-e2e-loads', String(loads))
 document.getElementById('counter').textContent = String(loads)
+// sessionStorage 按 webContents 隔离：同一个视图中的加载次数
+const session = Number(sessionStorage.getItem('pch-e2e-session') ?? '0') + 1
+sessionStorage.setItem('pch-e2e-session', String(session))
+document.getElementById('session').textContent = String(session)
 `
   )
   writeFileSync(path.join(proto, 'img', 'a.png'), PNG)
   writeFileSync(
     path.join(proto, 'second.html'),
-    '<!doctype html><title>Second page</title><p id="second">second</p>\n'
+    `<!doctype html><title>Second page</title><p id="second">second</p>
+<p>session: <span id="session"></span></p>
+<script>document.getElementById('session').textContent = sessionStorage.getItem('pch-e2e-session')</script>
+`
   )
   writeFileSync(path.join(proto, 'notes.md'), '# Notes\n\nhello\n')
 }
@@ -156,6 +164,26 @@ test.describe('the browser view (html plugin)', () => {
     )
   const visibility = async (app: ElectronApplication): Promise<boolean[]> =>
     (await mainViews(app)).map((v) => v.visible)
+  /** 主进程中浏览器视图的 webContents id（同一个 id = 同一个视图被复用） */
+  const viewIds = (app: ElectronApplication): Promise<number[]> =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.contentView.children.flatMap((v) => {
+        const wc = (v as { webContents?: Electron.WebContents }).webContents
+        return wc?.getURL().startsWith('pch-web:') ? [wc.id] : []
+      })
+    )
+  /** 键盘焦点：应用界面的 webContents / 各浏览器视图 */
+  const focus = (app: ElectronApplication): Promise<{ app: boolean; views: boolean[] }> =>
+    app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]!
+      return {
+        app: win.webContents.isFocused(),
+        views: win.contentView.children.flatMap((v) => {
+          const wc = (v as { webContents?: Electron.WebContents }).webContents
+          return wc?.getURL().startsWith('pch-web:') ? [wc.isFocused()] : []
+        })
+      }
+    })
 
   /**
    * 在视图页面中求值（主进程 executeJavaScript）。主进程阻止了页面的导航（外部链接等）之后，
@@ -260,16 +288,23 @@ test.describe('the browser view (html plugin)', () => {
       await pressIn(app, view, 'F5')
       await expect(view.locator('#counter')).toHaveText('2')
 
-      // 同范围的 HTML 链接：在本标签导航（进入历史），应用的「后退」回到 index
+      // 同范围的 HTML 链接：在本标签导航（进入历史），应用的「后退」回到 index。
+      // 网页之间跳转复用同一个视图（同一个 webContents：sessionStorage 延续）
+      await expect(view.locator('#session')).toHaveText('2')
+      const [viewId] = await viewIds(app)
       await clickIn(app, view, '#to-second')
       await expect(tabs(page).nth(0)).toHaveText('second.html')
       await expect(bar(page).getByRole('listitem').last()).toHaveText('second.html')
       const second = await viewPage(app, '/proto/second.html')
       await expect(second.locator('#second')).toHaveText('second')
+      await expect(second.locator('#session')).toHaveText('2')
+      expect(await viewIds(app)).toEqual([viewId])
       await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
       await expect(tabs(page).nth(0)).toHaveText('index.html')
       view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('3')
+      await expect(view.locator('#session')).toHaveText('3')
+      expect(await viewIds(app)).toEqual([viewId])
 
       // Markdown 链接：标签内容切换为文本查看器（Task 8 之前），视图销毁（当前位置不再用网页查看器）
       await clickIn(app, view, '#to-notes')
@@ -279,6 +314,9 @@ test.describe('the browser view (html plugin)', () => {
       await bar(page).getByRole('button', { name: 'Back', exact: true }).click()
       view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('4')
+      // 新的视图（文本查看器期间已销毁）：sessionStorage 从头开始
+      await expect(view.locator('#session')).toHaveText('1')
+      expect(await viewIds(app)).not.toEqual([viewId])
 
       // 外网链接：交给系统浏览器（已替换为记录），视图不离开
       await clickIn(app, view, '#to-external')
@@ -355,6 +393,34 @@ test.describe('the browser view (html plugin)', () => {
       await pressIn(app, view, 'W', ['control'])
       await expect(tabs(page)).toHaveCount(0)
       await expect.poll(async () => (await mainViews(app)).length).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('when the view hides, the keyboard focus returns to the app (Alt+← from the page, then Alt+→ without a click)', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
+      await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText('memo')
+      await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+      await tree.getByRole('treeitem', { name: 'index.html' }).click()
+      const view = await viewPage(app, '/proto/index.html')
+      await expect(view.locator('#counter')).toHaveText('1')
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus())
+
+      // 焦点在页面中按 Alt+←：回到文本文件（当前位置不再用网页查看器 → 视图销毁），焦点交回应用界面
+      await pressIn(app, view, 'Left', ['alt'])
+      await expect(tabs(page)).toHaveText(['memo.txt'])
+      await expect.poll(() => focus(app)).toEqual({ app: true, views: [] })
+      // 不点击直接按 Alt+→（应用界面收到按键）：回到页面（新的视图）
+      await page.keyboard.press('Alt+ArrowRight')
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const again = await viewPage(app, '/proto/index.html')
+      await expect(again.locator('#counter')).toHaveText('2')
+      await expect.poll(() => visibility(app)).toEqual([true])
     } finally {
       await app.close()
     }

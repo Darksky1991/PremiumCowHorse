@@ -26,8 +26,10 @@ export interface WebPageState {
 export interface PreviewWebApi {
   /**
    * 让本标签的浏览器视图显示 uri（view：'page' 原样、'markdown' 渲染后），并贴在 element 的位置上
-   * （element 的大小 / 位置变化时宿主同步）。同一标签已有视图且 uri 相同时复用（切换标签回来不重新加载）。
-   * 返回解除函数（插件卸载或不再显示时调用）：只隐藏视图，不销毁；标签关闭或当前位置不再用网页查看器时宿主销毁它。
+   * （element 的大小 / 位置变化时宿主同步）。同一标签已有视图时复用：uri 相同不重新加载（切换标签回来），
+   * uri 不同则在同一视图中加载（网页之间跳转、后退：同一个页面进程，sessionStorage 等保留）。
+   * 返回解除函数（插件卸载或不再显示时调用）：只隐藏视图，不销毁；标签关闭，或标签的当前位置改用其他查看器
+   * （不再用这个网页查看器）时宿主销毁它。
    * 一个标签同时只有一个占位元素：再次 attach 时先解除之前的
    */
   attach(element: HTMLElement, uri: string, opts: { view: WebViewKind }): () => void

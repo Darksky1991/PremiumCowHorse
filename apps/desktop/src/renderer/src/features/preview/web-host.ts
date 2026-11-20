@@ -7,15 +7,20 @@ import type { WebEvents } from '@renderer/data/web'
  * 窗口级的浏览器视图登记（每个渲染端一个，preview-container 中创建）：
  * - 按标签串行执行 web.* 调用：web.freeze 要等 capturePage，期间到达的 web.unfreeze 若先执行，
  *   主进程会在截图完成后把视图隐藏而再也不显示；attach / hide / release 也必须保持顺序。
- * - 各标签视图的最近状态（attach 复用已有视图且 URL 相同时主进程不再发 web.state，插件重新挂载时由此回放）。
- * - 主进程中存在视图的标签：标签关闭（含未激活、没有挂载插件的标签）时 web.release。
+ * - 主进程中存在视图的标签及其「所有者」（最近一次 attach 的查看器插件 id）：标签关闭（含未激活、没有挂载插件的
+ *   标签）时 web.release；标签当前位置改用其他查看器时由宿主 release（WebHost.setLocation）。
+ * - 各标签视图的最近状态，连同当时 attach 的 URI（attach 复用视图且 URL 相同时主进程不再发 web.state，
+ *   插件重新挂载时回放；只回放同一 URI 的状态——导航到另一页面时不能回放上一页的失败）。
  */
 export interface WebViews {
   run: (tabId: string, task: () => Promise<unknown>) => void
-  state: (tabId: string) => WebViewState | undefined
-  /** 该标签在主进程中有视图（attach 之后） */
-  track: (tabId: string) => void
-  /** 销毁该标签的视图（排在该标签已发出的调用之后），忘记其状态 */
+  /** 该标签视图最近的状态（只在它属于 uri 时返回） */
+  state: (tabId: string, uri: string) => WebViewState | undefined
+  /** 该标签在主进程中有视图（attach 之后）：所有者（查看器插件 id）与 attach 的 URI */
+  track: (tabId: string, owner: string, uri: string) => void
+  /** 该标签视图的所有者；没有视图时为 undefined */
+  owner: (tabId: string) => string | undefined
+  /** 销毁该标签的视图（排在该标签已发出的调用之后），忘记其状态。没有视图时不做任何事 */
   release: (tabId: string) => void
 }
 
@@ -32,8 +37,8 @@ export interface WebViewsDeps {
 
 export function createWebViews(deps: WebViewsDeps): WebViews {
   const queues = new Map<string, Promise<void>>()
-  const states = new Map<string, WebViewState>()
-  const tracked = new Set<string>()
+  const states = new Map<string, { uri: string; state: WebViewState }>()
+  const tracked = new Map<string, { owner: string; uri: string }>()
 
   const run = (tabId: string, task: () => Promise<unknown>): void => {
     const next = (queues.get(tabId) ?? Promise.resolve()).then(task).then(
@@ -46,16 +51,33 @@ export function createWebViews(deps: WebViewsDeps): WebViews {
     })
   }
   const release = (tabId: string): void => {
-    tracked.delete(tabId)
+    if (!tracked.delete(tabId)) return
     states.delete(tabId)
     run(tabId, () => deps.invoke('web.release', { tabId }))
   }
-  // 窗口生命周期内一直订阅（渲染端重新加载时主进程销毁全部视图，登记随页面一起消失）
-  deps.events.onState((state) => states.set(state.tabId, state))
-  deps.onTabsChange(() => {
-    for (const tabId of [...tracked]) if (!deps.tabExists(tabId)) release(tabId)
+  // 窗口生命周期内一直订阅（渲染端重新加载时主进程销毁全部视图，登记随页面一起消失）。
+  // 状态归属于该标签当前 attach 的 URI
+  deps.events.onState((state) => {
+    const view = tracked.get(state.tabId)
+    if (view) states.set(state.tabId, { uri: view.uri, state })
   })
-  return { run, state: (tabId) => states.get(tabId), track: (tabId) => tracked.add(tabId), release }
+  deps.onTabsChange(() => {
+    for (const tabId of [...tracked.keys()]) if (!deps.tabExists(tabId)) release(tabId)
+  })
+  return {
+    run,
+    state: (tabId, uri) => {
+      const entry = states.get(tabId)
+      return entry?.uri === uri ? entry.state : undefined
+    },
+    track: (tabId, owner, uri) => {
+      tracked.set(tabId, { owner, uri })
+      const entry = states.get(tabId)
+      if (entry && entry.uri !== uri) states.delete(tabId)
+    },
+    owner: (tabId) => tracked.get(tabId)?.owner,
+    release
+  }
 }
 
 /** 宿主用到的浏览器能力（单元测试注入假实现） */
@@ -89,10 +111,10 @@ const browserEnv: WebHostEnv = {
   }
 }
 
-/** 标签的当前位置（tabs-store）：卸载时据此决定只隐藏还是销毁视图 */
-export interface WebTabLocation {
+/** 本标签内容当前显示的位置与查看器（PluginView 解析出的插件 id，不是标签状态中的原始 viewer 字段） */
+export interface WebLocation {
+  pluginId: string
   uri: string
-  viewer: string | null
 }
 
 /** 取自预览宿主（PreviewHost）的能力：宿主随主题、条目等变化重建，经 WebHost.setLinks 换成最新的 */
@@ -112,8 +134,6 @@ export interface WebHostDeps extends WebHostLinks {
   events: WebEvents
   /** 本标签的刷新请求（地址栏刷新 / F5）；返回取消订阅函数 */
   onRefresh: (listener: () => void) => () => void
-  /** 本标签的当前位置；标签已关闭时为 null */
-  location: () => WebTabLocation | null
   /** 收起显示中的全部 toast 并收纳（messages-store 的 stashVisible） */
   stashToasts: () => void
   env?: Partial<WebHostEnv>
@@ -129,6 +149,12 @@ export interface WebHost {
   setCovered: (covered: { overlay: boolean; toasts: boolean }) => void
   /** 换成最新的宿主能力（之后的 attach、链接、错误提示使用它们） */
   setLinks: (links: WebHostLinks) => void
+  /**
+   * 本标签内容当前的位置与查看器（PluginView 在布局阶段调用：早于插件 useEffect 中的 attach，
+   * 也覆盖插件仍在懒加载中的情形）。该标签已有视图且所有者是另一个查看器 → web.release
+   * （当前位置不再用这个网页查看器；同一查看器在新位置 attach 时复用视图，主进程加载新 URL）
+   */
+  setLocation: (location: WebLocation) => void
 }
 
 /** 加载失败的错误码（web.state 的 failed）→ 应用的错误码（插件交给 describeError） */
@@ -181,8 +207,9 @@ interface Attachment {
  * - attach：范围根 = 条目根（rootOf）?? 文件所在目录，发 web.attach；ResizeObserver + 窗口 resize → web.setBounds
  *   （同一帧内合并为一次，位置不变不发）；web.navigate → tabs.navigate / tabs.open（newTab）；
  *   web.shortcut → window 上的 keydown；刷新请求 → web.reload。
- * - 解除：标签仍在 attach 时的位置（URI 与查看器）→ web.hide（切换标签、工作区等，视图保活）；
- *   位置已变（导航离开、改用其他查看器）或标签已关闭 → web.release。
+ * - 解除（插件卸载）→ 只 web.hide（切换标签 / 工作区、导航离开都一样）。销毁只在：标签关闭（WebViews 订阅
+ *   tabs-store）、本标签内容改用其他查看器（setLocation）、工作区总览（preview-container）。网页之间跳转时
+ *   同一视图加载新 URL（同一个 webContents：sessionStorage 等得以保留）。
  * - 截图替身：见 WebHost.setCovered。只因 toast 而处于截图时，占位元素上的按下 → 收起 toast（不转发给页面）。
  */
 export function createWebHost(deps: WebHostDeps): WebHost {
@@ -190,6 +217,7 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const env: WebHostEnv = { ...browserEnv, ...deps.env }
   const run = (task: () => Promise<unknown>): void => views.run(tabId, task)
   let links: WebHostLinks = { rootOf: deps.rootOf, tabs: deps.tabs, onError: deps.onError }
+  let location: WebLocation | null = null
 
   let current: Attachment | null = null
   let covered = { overlay: false, toasts: false }
@@ -226,10 +254,9 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const attach: PreviewWebApi['attach'] = (element, uri, opts) => {
     current?.detach()
     const scopeRoot = links.rootOf(uri) ?? parentOf(uri)
-    const at = deps.location()
     let lastBounds = measure(element)
     const initialBounds = lastBounds
-    views.track(tabId)
+    views.track(tabId, location?.pluginId ?? '', uri)
     run(() =>
       invoke('web.attach', { tabId, uri, scopeRoot, view: opts.view, bounds: initialBounds })
     )
@@ -283,15 +310,10 @@ export function createWebHost(deps: WebHostDeps): WebHost {
         cancelFrame?.()
         cancelFrame = null
         for (const off of offs) off()
-        // 主进程的 hide / release 同时结束截图替身
+        // 主进程的 hide 同时结束截图替身。标签关闭时视图已由 WebViews 销毁（store 的订阅早于卸载）
         frozen = false
         clearImage(element)
-        const now = deps.location()
-        if (now === null || at === null || now.uri !== at.uri || now.viewer !== at.viewer) {
-          views.release(tabId)
-        } else {
-          run(() => invoke('web.hide', { tabId }))
-        }
+        if (views.owner(tabId) !== undefined) run(() => invoke('web.hide', { tabId }))
       }
     }
     current = attachment
@@ -302,7 +324,8 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const api: PreviewWebApi = {
     attach,
     onState: (cb) => {
-      const last = views.state(tabId)
+      // 只回放属于当前位置的状态（导航到另一页面时不回放上一页的失败）
+      const last = location === null ? undefined : views.state(tabId, location.uri)
       if (last !== undefined) cb(toPageState(last))
       return deps.events.onState((state) => {
         if (state.tabId === tabId) cb(toPageState(state))
@@ -330,6 +353,11 @@ export function createWebHost(deps: WebHostDeps): WebHost {
     },
     setLinks: (next) => {
       links = next
+    },
+    setLocation: (next) => {
+      location = { ...next }
+      const owner = views.owner(tabId)
+      if (owner !== undefined && owner !== next.pluginId) views.release(tabId)
     }
   }
 }
