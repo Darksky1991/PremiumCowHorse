@@ -113,7 +113,7 @@ function StatResource(props: ViewProps): JSX.Element {
   // 错误优先于数据：重新取得失败时 TanStack Query 保留旧 data（knowledge/libraries.md）
   if (stat.isError) {
     const code = stat.error instanceof AppError ? stat.error.code : 'UNKNOWN'
-    return (
+    const failure = (
       <Centered>
         <p role="alert" className="text-sm text-muted-foreground">
           {t(`errors:${code}`)}
@@ -123,6 +123,14 @@ function StatResource(props: ViewProps): JSX.Element {
         </Button>
       </Centered>
     )
+    // 显示中的文件被删除：自己处理「文件已不存在」的插件（manifest.handlesMissing）继续显示。
+    // 与下面的正常分支在同一位置渲染 SelectPlugin，插件不重新挂载（日志轮转时保留状态）
+    if (code === 'FS_NOT_FOUND' && stat.data !== undefined) {
+      return (
+        <SelectPlugin {...props} resource={toResourceInfo(stat.data, tab)} whenMissing={failure} />
+      )
+    }
+    return failure
   }
   if (stat.data === undefined) return <Loading />
   return <SelectPlugin {...props} resource={toResourceInfo(stat.data, tab)} />
@@ -132,20 +140,27 @@ function StatResource(props: ViewProps): JSX.Element {
  * 选择插件：没有插件按扩展名 / MIME 匹配的文件先 sniff（显示加载中），
  * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。查看方式覆盖时不 sniff
  */
-function SelectPlugin(props: ViewProps & { resource: ResourceInfo }): JSX.Element {
+function SelectPlugin({
+  whenMissing,
+  ...props
+}: ViewProps & {
+  resource: ResourceInfo
+  /** 文件已不存在：选中的插件不处理时显示它（manifest.handlesMissing） */
+  whenMissing?: ReactNode
+}): JSX.Element {
   const { plugins, resource, viewAs } = props
   const needed = viewAs === null && needsSniff(plugins, resource)
   const sniffed = useSniff(resource.uri, needed)
-  if (!needed) return <PluginView {...props} plugin={resolvePlugin(plugins, resource, viewAs)} />
-  if (sniffed === undefined) return <Loading />
+  const show = (view: ResourceInfo, plugin: AnyPreviewPlugin): JSX.Element =>
+    whenMissing !== undefined && plugin.manifest.handlesMissing !== true ? (
+      <>{whenMissing}</>
+    ) : (
+      <PluginView {...props} resource={view} plugin={plugin} />
+    )
+  if (!needed) return show(resource, resolvePlugin(plugins, resource, viewAs))
+  if (sniffed === undefined) return whenMissing !== undefined ? <>{whenMissing}</> : <Loading />
   const sniffedResource = { ...resource, textLike: sniffed === 'text' }
-  return (
-    <PluginView
-      {...props}
-      resource={sniffedResource}
-      plugin={resolvePlugin(plugins, sniffedResource, null)}
-    />
-  )
+  return show(sniffedResource, resolvePlugin(plugins, sniffedResource, null))
 }
 
 /** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */

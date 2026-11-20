@@ -85,6 +85,12 @@ export interface PreviewPluginManifest {
   }
   /** 声明式不够用时的补充判断：返回 false 则排除 */
   when?: (resource: ResourceInfo) => boolean
+  /**
+   * 插件自己处理「文件已不存在」（文本插件：保留已显示的内容并提示）：显示中的文件被删除、
+   * 重新 stat 得到 FS_NOT_FOUND 时，容器继续显示本插件（资源描述为删除之前的），而不是「找不到」。
+   * 同名文件重新出现时照常更新。不声明时容器显示「找不到」与「重试」
+   */
+  handlesMissing?: boolean
 }
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error'

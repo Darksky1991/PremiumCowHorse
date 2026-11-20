@@ -208,3 +208,11 @@
 - 解决：`packages/text-engine/src/utf16-guess.ts` 的纯中日文路径要求「UTF-8 不合法，且 Shift_JIS / EUC-JP / GB18030 / Big5 都不合法或常用字区打分不为正」；GB18030 的四字节在打分中计 -0.5。
 - 预防：GB18030 几乎接受任意高位字节序列，排除候选时要看打分，不能只看 fatal 解码是否成功。
 - 补充（审查第 1 轮）：windows-1252 的短英文（含 1 个重音字母或弯引号）也曾被判成纯中日文 UTF-16——小写字母两两组成的单元落在 U+6100–7AFF。windows-1252 总能解码，改为「打分为正且 ASCII 文本字符占字节 ≥ 60%」时视为字节编码解释得通（`looksWestern`）。
+
+### React：`onWheel` 是 passive 监听，`preventDefault()` 无效（自绘滚动要用原生监听）
+
+- 日期：2026-11-20
+- 症状：文本插件自绘分页（纵向不用原生滚动），在 JSX 的 `onWheel` 里调用 `e.preventDefault()` 不能阻止外层 / 默认滚动，Chromium 控制台提示 "Unable to preventDefault inside passive event listener invocation"。
+- 原因：React DOM 在根容器上以 `{ passive: true }` 注册 `wheel` / `touchstart` / `touchmove`（`react-dom-client.development.js` 的 `addTrappedEventListener`：这三个事件名且浏览器支持 passive 时 `listenerWrapper = !0`）。React 19.3 仍是如此。
+- 解决：在 `useEffect` 中对元素 `addEventListener('wheel', handler, { passive: false })`，卸载时移除（`plugins/builtin/src/text/text-view.tsx`）。`Shift` + 滚轮或横向滚动不调用 `preventDefault`，交给原生的横向滚动。
+- 预防：需要拦截滚轮 / 触摸的组件一律用原生监听；只读取 `deltaY` 而不拦截时 `onWheel` 可以照用。

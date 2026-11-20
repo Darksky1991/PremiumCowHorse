@@ -23,7 +23,8 @@ test.describe('folder view (the folder plugin)', () => {
     project = path.join(files, '案件')
     mkdirSync(path.join(project, '設計書'), { recursive: true })
     writeFileSync(path.join(project, '設計書', 'v1.txt'), 'v1')
-    writeFileSync(path.join(project, 'memo.txt'), 'x'.repeat(1536))
+    // 文本插件之外的文件（开头含 NUL → sniff 为二进制 → 文件信息）
+    writeFileSync(path.join(project, 'memo.dat'), Buffer.alloc(1536))
     writeFileSync(path.join(project, 'file2.txt'), 'x'.repeat(10))
     writeFileSync(path.join(project, 'file10.txt'), 'x'.repeat(5))
   })
@@ -60,14 +61,14 @@ test.describe('folder view (the folder plugin)', () => {
       await expect(tabs(page)).toHaveText(['案件'])
 
       // 默认按名称升序（数字按数值），目录在前
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
-      const memo = row(page, 'memo.txt').getByRole('gridcell')
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
+      const memo = row(page, 'memo.dat').getByRole('gridcell')
       const expectedTime = await page.evaluate(
         (ms) =>
           new Intl.DateTimeFormat('en', { dateStyle: 'short', timeStyle: 'short' }).format(ms),
-        statSync(path.join(project, 'memo.txt')).mtimeMs
+        statSync(path.join(project, 'memo.dat')).mtimeMs
       )
-      await expect(memo).toHaveText(['memo.txt', expectedTime, 'TXT file', '1.5 kB'])
+      await expect(memo).toHaveText(['memo.dat', expectedTime, 'DAT file', '1.5 kB'])
       // 目录不显示大小
       await expect(row(page, '設計書').getByRole('gridcell')).toHaveText([
         '設計書',
@@ -82,12 +83,12 @@ test.describe('folder view (the folder plugin)', () => {
       await expect(nameHeader).toHaveAttribute('aria-sort', 'ascending')
       await nameHeader.getByRole('button').click()
       await expect(nameHeader).toHaveAttribute('aria-sort', 'descending')
-      await expect(names(page)).toHaveText(['設計書', 'memo.txt', 'file10.txt', 'file2.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'memo.dat', 'file10.txt', 'file2.txt'])
       const sizeHeader = grid(page).getByRole('columnheader', { name: 'Size' })
       await sizeHeader.getByRole('button').click()
       await expect(sizeHeader).toHaveAttribute('aria-sort', 'ascending')
       await expect(nameHeader).toHaveAttribute('aria-sort', 'none')
-      await expect(names(page)).toHaveText(['設計書', 'file10.txt', 'file2.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file10.txt', 'file2.txt', 'memo.dat'])
     } finally {
       await app.close()
     }
@@ -98,7 +99,7 @@ test.describe('folder view (the folder plugin)', () => {
     try {
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
       // 面包屑、「上一级」与刷新按钮已移到应用的地址栏（M1-3b）：目录视图内没有
       await expect(panel(page).getByRole('navigation')).toHaveCount(0)
       await expect(panel(page).getByRole('button', { name: 'Up one level' })).toHaveCount(0)
@@ -133,27 +134,27 @@ test.describe('folder view (the folder plugin)', () => {
       await expect(tabs(page)).toHaveText(['案件'])
 
       // 双击文件：在当前标签中以 fallback 打开（进入历史，后退回到列表；设计 2.8）
-      await row(page, 'memo.txt').dblclick()
-      await expect(tabs(page)).toHaveText(['memo.txt'])
-      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await row(page, 'memo.dat').dblclick()
+      await expect(tabs(page)).toHaveText(['memo.dat'])
+      await expect(panel(page).getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await page.keyboard.press('Alt+ArrowLeft')
       await expect(tabs(page)).toHaveText(['案件'])
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
 
       // 中键 / Ctrl+单击 / Ctrl+Enter：在新标签打开（同 URI 已打开则只激活）
       const tab = (name: string): Locator =>
         page.getByRole('tablist').getByRole('tab', { name, exact: true })
-      await row(page, 'memo.txt').click({ button: 'middle' })
-      await expect(tabs(page)).toHaveText(['案件', 'memo.txt'])
+      await row(page, 'memo.dat').click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['案件', 'memo.dat'])
       await tab('案件').click()
       await row(page, '設計書').click({ modifiers: ['Control'] })
-      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.txt'])
+      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.dat'])
       await tab('案件').click()
       await grid(page).focus()
       await page.keyboard.press('End')
       await page.keyboard.press('Control+Enter')
-      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.txt'])
-      await expect(tab('memo.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(tabs(page)).toHaveText(['案件', '設計書', 'memo.dat'])
+      await expect(tab('memo.dat')).toHaveAttribute('aria-selected', 'true')
     } finally {
       await app.close()
     }
@@ -223,7 +224,7 @@ test.describe('folder view (the folder plugin)', () => {
         kind: 'file',
         workspaceId,
         parentId: group.id,
-        path: path.join(project, 'memo.txt'),
+        path: path.join(project, 'memo.dat'),
         label: 'メモ'
       })
       const tree = page.getByRole('tree')
@@ -248,13 +249,13 @@ test.describe('folder view (the folder plugin)', () => {
       const docs = panel(page).getByRole('region', { name: 'Docs' })
       await expect(docs.getByRole('button', { name: 'メモ' })).toHaveAttribute(
         'title',
-        path.join(project, 'memo.txt')
+        path.join(project, 'memo.dat')
       )
 
       // 双击 file 条目：在当前标签打开（后退回到总览）；中键在新标签打开（总览标签不变）
       await docs.getByRole('button', { name: 'メモ' }).dblclick()
       await expect(tabs(page)).toHaveText(['メモ'])
-      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await expect(panel(page).getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await page.keyboard.press('Alt+ArrowLeft')
       await expect(tabs(page)).toHaveText(['Default'])
       await docs.getByRole('button', { name: 'メモ' }).click({ button: 'middle' })
@@ -264,7 +265,7 @@ test.describe('folder view (the folder plugin)', () => {
       await page.getByRole('tablist').getByRole('tab', { name: 'Default' }).click()
       await panel(page).getByRole('button', { name: '本番' }).dblclick()
       await expect(tabs(page)).toHaveText(['本番', 'メモ'])
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
       await grid(page).focus()
       await page.keyboard.press('Backspace')
       await expect(tabs(page)).toHaveText(['Default', 'メモ'])
@@ -345,7 +346,7 @@ test.describe('folder view (the folder plugin)', () => {
       const tree = await setup(page)
       // 双击：在标签中打开并展开
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
       const status = panel(page).getByRole('status').last()
       await expect(status).not.toContainText('Disconnected')
 
@@ -355,12 +356,12 @@ test.describe('folder view (the folder plugin)', () => {
       await sendReachability(app, share, 'offline')
       // 显示中的目录视图随之显示「已断开」，列表保留
       await expect(status).toContainText('Disconnected')
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
 
       // 文件标签：不发 stat，只显示文件名与「已断开」
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
-      await expect(tabs(page)).toHaveText(['memo.txt'])
-      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await tree.getByRole('treeitem', { name: 'memo.dat' }).click()
+      await expect(tabs(page)).toHaveText(['memo.dat'])
+      await expect(panel(page).getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await expect(panel(page).getByRole('status')).toContainText('disconnected')
       expect(await stat.calls()).toBe(0)
 
@@ -375,8 +376,8 @@ test.describe('folder view (the folder plugin)', () => {
       await stat.restore()
       await sendReachability(app, share, 'online')
       await expect(panel(page).getByRole('status').last()).not.toContainText('Disconnected')
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
-      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await tree.getByRole('treeitem', { name: 'memo.dat' }).click()
+      await expect(panel(page).getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await expect(panel(page).getByText('1.5 kB', { exact: false }).first()).toBeVisible()
     } finally {
       await app.close()
@@ -394,7 +395,7 @@ test.describe('folder view (the folder plugin)', () => {
       })
       const tree = await setup(page)
       await tree.getByRole('treeitem', { name: '案件' }).dblclick()
-      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.txt'])
+      await expect(names(page)).toHaveText(['設計書', 'file2.txt', 'file10.txt', 'memo.dat'])
 
       // 刷新按钮在应用的地址栏（M1-3b）
       const addressBar = page.getByRole('navigation', { name: 'Address bar' })
@@ -405,7 +406,7 @@ test.describe('folder view (the folder plugin)', () => {
         'added.txt',
         'file2.txt',
         'file10.txt',
-        'memo.txt'
+        'memo.dat'
       ])
 
       // F5（全局）：焦点在目录视图时
@@ -418,14 +419,14 @@ test.describe('folder view (the folder plugin)', () => {
         'added.txt',
         'file2.txt',
         'file10.txt',
-        'memo.txt'
+        'memo.dat'
       ])
       await expect(grid(page)).toBeFocused()
 
       // 文件标签：F5 重新 stat（不等 5 秒的新鲜期），文件信息随之更新；焦点在地址栏的按钮上也有效
-      await row(page, 'memo.txt').dblclick()
+      await row(page, 'memo.dat').dblclick()
       await expect(panel(page).getByText('1,536 bytes', { exact: false })).toBeVisible()
-      appendFileSync(path.join(project, 'memo.txt'), 'x'.repeat(2560))
+      appendFileSync(path.join(project, 'memo.dat'), 'x'.repeat(2560))
       await addressBar.getByRole('button', { name: 'Refresh', exact: true }).focus()
       await page.keyboard.press('F5')
       await expect(panel(page).getByText('4,096 bytes', { exact: false })).toBeVisible()

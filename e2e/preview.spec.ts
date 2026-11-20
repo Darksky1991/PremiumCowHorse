@@ -35,8 +35,9 @@ test.describe('preview container and the fallback plugin', () => {
     files = mkdtempSync(path.join(tmpdir(), 'pch-e2e-files-'))
     project = path.join(files, '案件')
     mkdirSync(path.join(project, '設計書'), { recursive: true })
-    writeFileSync(path.join(project, 'memo.txt'), 'x'.repeat(1536))
-    writeFileSync(path.join(project, 'run.bat'), '@echo off')
+    // 文本插件之外的文件（开头含 NUL → sniff 为二进制 → fallback 插件）
+    writeFileSync(path.join(project, 'memo.dat'), Buffer.alloc(1536))
+    writeFileSync(path.join(project, 'run.exe'), Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00]))
     writeFileSync(path.join(project, 'boom.crash'), 'crash')
     writeFileSync(path.join(project, 'bad.crashload'), 'crash on load')
   })
@@ -52,7 +53,7 @@ test.describe('preview container and the fallback plugin', () => {
     await data(page, 'entry.add', { kind: 'folder', workspaceId, parentId: null, path: project })
     const tree = page.getByRole('tree')
     await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
-    await expect(tree.getByRole('treeitem', { name: 'memo.txt' })).toBeVisible()
+    await expect(tree.getByRole('treeitem', { name: 'memo.dat' })).toBeVisible()
     await expect(page.getByRole('tablist')).toHaveCount(0)
     return tree
   }
@@ -66,12 +67,12 @@ test.describe('preview container and the fallback plugin', () => {
     try {
       const shellCalls = await stubShell(app)
       const tree = await setup(page)
-      const memo = path.join(project, 'memo.txt')
+      const memo = path.join(project, 'memo.dat')
 
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).dblclick()
-      await expect(tab(page, 'memo.txt')).toHaveAttribute('aria-selected', 'true')
+      await tree.getByRole('treeitem', { name: 'memo.dat' }).dblclick()
+      await expect(tab(page, 'memo.dat')).toHaveAttribute('aria-selected', 'true')
       const info = panel(page)
-      await expect(info.getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await expect(info.getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await expect(info).toContainText(memo)
       await expect(info).toContainText('1.5 kB (1,536 bytes)')
       const expectedTime = await page.evaluate(
@@ -93,14 +94,14 @@ test.describe('preview container and the fallback plugin', () => {
       await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(memo)
       await expect(page.getByText('Path copied')).toBeVisible()
 
-      // 可执行类（.bat）：先确认；取消（按钮 / Esc）不调用 shell.openPath
-      const bat = path.join(project, 'run.bat')
-      await tree.getByRole('treeitem', { name: 'run.bat' }).dblclick()
-      await expect(panel(page).getByRole('heading', { name: 'run.bat' })).toBeVisible()
+      // 可执行类（.exe）：先确认；取消（按钮 / Esc）不调用 shell.openPath
+      const bat = path.join(project, 'run.exe')
+      await tree.getByRole('treeitem', { name: 'run.exe' }).dblclick()
+      await expect(panel(page).getByRole('heading', { name: 'run.exe' })).toBeVisible()
       const open = panel(page).getByRole('button', { name: 'Open with default app' })
       await open.click()
       const dialog = page.getByRole('alertdialog')
-      await expect(dialog).toContainText('Open "run.bat"?')
+      await expect(dialog).toContainText('Open "run.exe"?')
       await dialog.getByRole('button', { name: 'Cancel' }).click()
       await expect(dialog).toHaveCount(0)
       await open.click()
@@ -115,9 +116,9 @@ test.describe('preview container and the fallback plugin', () => {
       await expect(dialog).toHaveCount(0)
       await expect.poll(async () => (await shellCalls()).openPath).toEqual([memo, bat])
 
-      // 没有 PCH_E2E_CRASH_PLUGIN 时测试插件不注册：.crash 由 fallback 显示
+      // 没有 PCH_E2E_CRASH_PLUGIN 时测试插件不注册：.crash（内容为文本）经 sniff 由文本插件显示
       await tree.getByRole('treeitem', { name: 'boom.crash' }).dblclick()
-      await expect(panel(page).getByRole('heading', { name: 'boom.crash' })).toBeVisible()
+      await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText('crash')
       await expect(panel(page).getByRole('alert')).toHaveCount(0)
     } finally {
       await app.close()
@@ -129,24 +130,24 @@ test.describe('preview container and the fallback plugin', () => {
     try {
       await stubShell(app)
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
-      const memo = tab(page, 'memo.txt')
+      await tree.getByRole('treeitem', { name: 'memo.dat' }).click()
+      const memo = tab(page, 'memo.dat')
       await expect(memo).toHaveCSS('font-style', 'normal')
 
       // 点击内容、滚轮、在内容中按键、插件的动作（宿主调用）：标签不变（没有「预览 / 常驻」之分）
-      const heading = panel(page).getByRole('heading', { name: 'memo.txt' })
+      const heading = panel(page).getByRole('heading', { name: 'memo.dat' })
       await heading.click()
       await heading.hover()
       await page.mouse.wheel(0, 300)
       await panel(page).getByRole('button', { name: 'Copy path' }).focus()
       await page.keyboard.press('ArrowDown')
       await panel(page).getByRole('button', { name: 'Copy path' }).click()
-      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['memo.txt'])
+      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['memo.dat'])
       await expect(memo).toHaveCSS('font-style', 'normal')
       // 之后的单击在当前标签打开（设计 2.8）
-      await tree.getByRole('treeitem', { name: 'run.bat' }).click()
-      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['run.bat'])
-      await expect(tab(page, 'run.bat')).toHaveCSS('font-style', 'normal')
+      await tree.getByRole('treeitem', { name: 'run.exe' }).click()
+      await expect(page.getByRole('tablist').getByRole('tab')).toHaveText(['run.exe'])
+      await expect(tab(page, 'run.exe')).toHaveCSS('font-style', 'normal')
     } finally {
       await app.close()
     }
@@ -165,8 +166,8 @@ test.describe('preview container and the fallback plugin', () => {
       await expect(panel(page).getByRole('alert')).toContainText('E2E crash')
 
       // 其他标签（中键：新标签）照常显示；外壳（树、标签栏）不受影响
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).click({ button: 'middle' })
-      await expect(panel(page).getByRole('heading', { name: 'memo.txt' })).toBeVisible()
+      await tree.getByRole('treeitem', { name: 'memo.dat' }).click({ button: 'middle' })
+      await expect(panel(page).getByRole('heading', { name: 'memo.dat' })).toBeVisible()
       await expect(panel(page).getByRole('alert')).toHaveCount(0)
       await expect(tree).toBeVisible()
 
@@ -183,7 +184,7 @@ test.describe('preview container and the fallback plugin', () => {
       await expect(page.getByRole('tablist').getByRole('tab')).toHaveText([
         'boom.crash',
         'bad.crashload',
-        'memo.txt'
+        'memo.dat'
       ])
     } finally {
       await app.close()

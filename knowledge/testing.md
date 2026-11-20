@@ -241,3 +241,10 @@
 - 原因：vitest 5 的某些报告器在未指定 `silent` 时设为 `'passed-only'`（`cli-api` 中 `if (this.silent == null && !ctx.config.providedOptions.silent) this.silent = "passed-only"`），在 AI 工具等非交互终端中运行时生效。
 - 解决：需要看日志时加 `--silent=false`（如 `npx vitest run packages/text-engine/src/encoding.test.ts --silent=false`）。
 - 预防：测试中打印的汇总不要作为唯一的检查手段——关键数字用断言保证。
+
+### e2e：文本插件注册后 `.txt` / `.bat` / 无扩展名文本不再显示「文件信息」
+
+- 日期：2026-11-20
+- 症状：文本预览 Task 6 注册 `pch.preview.text` 后，preview / folder 的旧用例在 `getByRole('heading', { name: 'memo.txt' })`、「既定のアプリで開く / Open with default app」处失败：`memo.txt`、`run.bat` 由文本插件显示（扩展名表含 `txt`、`bat`），扩展名表之外的文本（`x.crash` 之外的未知扩展名、无扩展名）也会被 sniff 为文本交给它。
+- 解决：要验证 fallback（文件信息、系统动作、可执行确认框）的用例用**开头含 NUL 的文件**（sniff 为二进制）：`memo.dat` = `Buffer.alloc(1536)`、`run.exe` = `MZ` 开头的字节。只关心标签 / 导航、不看内容的用例不用改。
+- 预防：新增按扩展名或 `textLike` 匹配的插件时，搜索 e2e 中断言 fallback 内容（`heading`、文件信息、动作按钮）的用例，确认文件类型仍会落到 fallback。
