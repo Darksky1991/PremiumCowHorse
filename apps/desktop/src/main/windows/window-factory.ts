@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { BrowserWindow, nativeTheme } from 'electron'
+import { app, BrowserWindow, nativeTheme } from 'electron'
 import {
   encodeBootstrapArg,
   IPC_EVENT,
@@ -33,7 +33,9 @@ export function createAppWindow(opts: CreateWindowOptions): BrowserWindow {
     language: opts.language,
     theme,
     accent: opts.settings['appearance.accent'],
-    density: opts.settings['appearance.density']
+    density: opts.settings['appearance.density'],
+    // 测试用的崩溃插件：打包后的应用绝不启用（与 PCH_USER_DATA_DIR 相同，只在未打包时读取环境变量）
+    ...(!app.isPackaged && process.env.PCH_E2E_CRASH_PLUGIN === '1' ? { e2eCrashPlugin: true } : {})
   }
 
   const win = new BrowserWindow({

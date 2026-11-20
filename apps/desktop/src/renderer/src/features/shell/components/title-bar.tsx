@@ -1,17 +1,8 @@
-import type { JSX } from 'react'
-import { CheckIcon, ChevronDownIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import type { JSX, ReactNode } from 'react'
+import { SearchIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@pch/ui/components/dropdown-menu'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
 import { getBootstrap } from '@renderer/lib/ipc'
 import { notifyComingSoon } from '../coming-soon'
@@ -23,7 +14,7 @@ import { WindowControls } from './window-controls'
  * 自绘标题栏（隐藏系统标题栏）。整条可拖动（双击最大化 / 还原由系统处理），交互元素标记 app-no-drag。
  * Windows / Linux 在右端绘制自己的窗口按钮；macOS 使用系统红绿灯，左侧留出其位置。
  */
-export function TitleBar(): JSX.Element {
+export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }): JSX.Element {
   const { t, i18n } = useTranslation()
   const isMac = getBootstrap()?.platform === 'darwin'
 
@@ -37,37 +28,7 @@ export function TitleBar(): JSX.Element {
       <AppMark />
       <span className="mr-2 text-[13px] font-semibold tracking-tight">{t('appName')}</span>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="app-no-drag text-muted-foreground"
-              aria-label={t('workspace')}
-            />
-          }
-        >
-          {t('defaultWorkspace')}
-          <ChevronDownIcon data-icon="inline-end" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>{t('workspace')}</DropdownMenuLabel>
-            <DropdownMenuItem>
-              <CheckIcon />
-              {t('defaultWorkspace')}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => notifyComingSoon(i18n)}>
-              <PlusIcon />
-              {t('welcome:newWorkspace')}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {workspaceSwitcher}
 
       <div className="flex min-w-0 flex-1 justify-center px-4">
         <Button

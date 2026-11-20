@@ -1,0 +1,390 @@
+import { describe, expect, it } from 'vitest'
+import {
+  fsEntryKind,
+  isDraggableNode,
+  isStatusNode,
+  osDropEffect,
+  resolveDrop,
+  type DragSource
+} from './drag-drop'
+import type { NodeKind, TreeNode } from './tree-model'
+
+/** 条目节点：id = entry:<id>，父节点为分组时 parent 传分组的条目 id */
+function entryNode(id: string, kind: 'group' | 'folder' | 'file', parent?: string): TreeNode {
+  return {
+    id: `entry:${id}`,
+    parentId: parent === undefined ? null : `entry:${parent}`,
+    depth: parent === undefined ? 0 : 1,
+    label: id,
+    kind,
+    source: 'entry',
+    entryId: id,
+    uri: kind === 'group' ? null : `file:///C:/${id}`,
+    expandable: true,
+    expanded: true
+  }
+}
+
+function fsNode(name: string, kind: NodeKind, parent: string): TreeNode {
+  return {
+    id: `fs:${parent}:${name}`,
+    parentId: `entry:${parent}`,
+    depth: 1,
+    label: name,
+    kind,
+    source: 'fs',
+    entryId: parent,
+    uri: `file:///C:/${parent}/${name}`,
+    expandable: kind === 'directory',
+    expanded: false
+  }
+}
+
+function statusNode(parent: TreeNode): TreeNode {
+  return {
+    ...parent,
+    id: `${parent.id}#status`,
+    parentId: parent.id,
+    depth: parent.depth + 1,
+    label: '',
+    expandable: false,
+    expanded: false,
+    status: 'empty'
+  }
+}
+
+// 根：a、g（分组，含 c、d）、b、f（folder，已展开，含真实子目录 sub 与文件 x.txt）
+const a = entryNode('a', 'file')
+const g = entryNode('g', 'group')
+const c = entryNode('c', 'file', 'g')
+const d = entryNode('d', 'file', 'g')
+const b = entryNode('b', 'file')
+const f = entryNode('f', 'folder')
+const sub = fsNode('sub', 'directory', 'f')
+const txt = fsNode('x.txt', 'file', 'f')
+const nodes = [a, g, c, d, b, f, sub, txt]
+
+const END = Number.MAX_SAFE_INTEGER
+const POSITIONS = ['before', 'after', 'inside'] as const
+
+describe('resolveDrop：条目 → 条目', () => {
+  it('同级向后拖到某条目之前：index 按「移除自身后」的位置计算', () => {
+    // 根下顺序 a g b f：把 a 拖到 b 之前 → 移除 a 后为 g b f，b 在 1
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, b, 'before', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: null,
+      index: 1
+    })
+  })
+
+  it('同级向后拖到某条目之后', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, b, 'after', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: null,
+      index: 2
+    })
+  })
+
+  it('同级向前拖：b 拖到 a 之前 → index 0', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'b' }, a, 'before', nodes)).toEqual({
+      type: 'move',
+      entryId: 'b',
+      parentId: null,
+      index: 0
+    })
+  })
+
+  it('跨父节点：根下的 a 拖到分组内 d 之前 → 分组内 index 1', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, d, 'before', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: 'g',
+      index: 1
+    })
+  })
+
+  it('拖进分组（inside）：追加到分组末尾', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, g, 'inside', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: 'g',
+      index: END
+    })
+  })
+
+  it('inside 只允许分组：folder 与 file 条目上为 null', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, f, 'inside', nodes)).toBeNull()
+    expect(resolveDrop({ type: 'entry', entryId: 'g' }, b, 'inside', nodes)).toBeNull()
+  })
+
+  it('拖到自身或自己的后代 → null', () => {
+    const outer = entryNode('outer', 'group')
+    const inner = entryNode('inner', 'group', 'outer')
+    const leaf = { ...entryNode('leaf', 'file', 'inner'), depth: 2 }
+    const tree = [outer, inner, leaf]
+    const src: DragSource = { type: 'entry', entryId: 'outer' }
+    expect(resolveDrop(src, outer, 'inside', tree)).toBeNull()
+    expect(resolveDrop(src, outer, 'before', tree)).toBeNull()
+    expect(resolveDrop(src, inner, 'inside', tree)).toBeNull()
+    expect(resolveDrop(src, inner, 'before', tree)).toBeNull()
+    expect(resolveDrop(src, leaf, 'after', tree)).toBeNull()
+  })
+
+  it('拖到空白处 → 根末尾（index 为移除自身后的根条目数）', () => {
+    // 根条目 a g b f，拖动 a → 其余 3 个
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, null, 'after', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: null,
+      index: 3
+    })
+    // 拖动分组内的 c → 根下现有 4 个
+    expect(resolveDrop({ type: 'entry', entryId: 'c' }, null, 'after', nodes)).toEqual({
+      type: 'move',
+      entryId: 'c',
+      parentId: null,
+      index: 4
+    })
+  })
+})
+
+describe('resolveDrop：真实节点不接受放置（Review Focus 1）', () => {
+  const sources: DragSource[] = [
+    { type: 'entry', entryId: 'a' },
+    { type: 'fs', uri: 'file:///C:/f/sub' },
+    { type: 'os', paths: ['C:\\x.txt'] }
+  ]
+
+  it('任意来源、任意位置拖到真实节点上 → null', () => {
+    for (const source of sources) {
+      for (const position of POSITIONS) {
+        expect(resolveDrop(source, sub, position, nodes)).toBeNull()
+        expect(resolveDrop(source, txt, position, nodes)).toBeNull()
+      }
+    }
+  })
+})
+
+describe('resolveDrop：真实子目录 / 系统文件 → add', () => {
+  it('真实子目录拖到根（空白处）→ add，items 为 uri', () => {
+    expect(resolveDrop({ type: 'fs', uri: sub.uri as string }, null, 'after', nodes)).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ uri: sub.uri }]
+    })
+  })
+
+  it('真实子目录拖到分组上（inside）→ add 到该分组', () => {
+    expect(resolveDrop({ type: 'fs', uri: sub.uri as string }, g, 'inside', nodes)).toEqual({
+      type: 'add',
+      parentId: 'g',
+      items: [{ uri: sub.uri }]
+    })
+  })
+
+  it('系统文件拖到分组内的条目之前 → add 到该分组，items 为 path', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt', 'C:\\b'] }, c, 'before', nodes)).toEqual({
+      type: 'add',
+      parentId: 'g',
+      items: [{ path: 'C:\\a.txt' }, { path: 'C:\\b' }],
+      position: { before: 'c' },
+      rejectTemporary: true
+    })
+  })
+
+  it('系统文件拖到根条目之后 → add 到根，带 after 位置', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, b, 'after', nodes)).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ path: 'C:\\a.txt' }],
+      position: { after: 'b' },
+      rejectTemporary: true
+    })
+  })
+
+  it('真实子项拖到条目之前 / 之后 → 带 before / after 位置，且不设 rejectTemporary', () => {
+    const before = resolveDrop({ type: 'fs', uri: sub.uri as string }, b, 'before', nodes)
+    expect(before).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ uri: sub.uri }],
+      position: { before: 'b' }
+    })
+    expect(before).not.toHaveProperty('rejectTemporary')
+    expect(resolveDrop({ type: 'fs', uri: sub.uri as string }, c, 'after', nodes)).toMatchObject({
+      parentId: 'g',
+      position: { after: 'c' }
+    })
+  })
+
+  it('拖到空白处或分组内部（inside）→ 不带位置（末尾）', () => {
+    for (const action of [
+      resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, null, 'after', nodes),
+      resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, g, 'inside', nodes)
+    ]) {
+      expect(action).not.toHaveProperty('position')
+    }
+  })
+
+  it('inside 到 folder / file 条目 → null', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\a'] }, f, 'inside', nodes)).toBeNull()
+    expect(resolveDrop({ type: 'fs', uri: 'file:///x' }, a, 'inside', nodes)).toBeNull()
+  })
+})
+
+describe('状态行（决定 B）', () => {
+  it('isStatusNode 识别状态行', () => {
+    expect(isStatusNode(statusNode(f))).toBe(true)
+    expect(isStatusNode(f)).toBe(false)
+    expect(isStatusNode(sub)).toBe(false)
+  })
+
+  it('状态行不能作为放置目标：沿用父节点的 kind/uri 也不行', () => {
+    // 分组的「空」状态行：kind 为 group，若不排除会被当成可 inside 的分组
+    const status = statusNode(g)
+    const sources: DragSource[] = [
+      { type: 'entry', entryId: 'a' },
+      { type: 'fs', uri: 'file:///x' },
+      { type: 'os', paths: ['C:\\x'] }
+    ]
+    for (const source of sources) {
+      for (const position of POSITIONS) {
+        expect(resolveDrop(source, status, position, nodes)).toBeNull()
+      }
+    }
+  })
+})
+
+describe('可拖动性与固定类型', () => {
+  it('状态行与失效链接不可拖动，条目与真实子项可以', () => {
+    expect(isDraggableNode(statusNode(f))).toBe(false)
+    expect(isDraggableNode(fsNode('dead', 'link-broken', 'f'))).toBe(false)
+    expect(isDraggableNode(sub)).toBe(true)
+    expect(isDraggableNode(a)).toBe(true)
+  })
+
+  it('fsEntryKind：目录与目录链接 → folder，文件与文件链接 → file', () => {
+    expect(fsEntryKind('directory')).toBe('folder')
+    expect(fsEntryKind('link-directory')).toBe('folder')
+    expect(fsEntryKind('file')).toBe('file')
+    expect(fsEntryKind('link-file')).toBe('file')
+  })
+})
+
+describe('空树 / 空状态', () => {
+  it('空树上系统文件拖到空白处 → 根末尾 add', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\a.txt'] }, null, 'after', [])).toEqual({
+      type: 'add',
+      parentId: null,
+      items: [{ path: 'C:\\a.txt' }],
+      rejectTemporary: true
+    })
+  })
+
+  it('osDropEffect：只用 copy / link，不接受仅允许 move 的来源', () => {
+    expect(osDropEffect('uninitialized')).toBe('copy')
+    expect(osDropEffect('all')).toBe('copy')
+    expect(osDropEffect('copyMove')).toBe('copy')
+    expect(osDropEffect('linkMove')).toBe('link')
+    expect(osDropEffect('move')).toBeNull()
+    expect(osDropEffect('none')).toBeNull()
+  })
+})
+
+describe('展开分组的下缘（after）', () => {
+  const collapsed = { ...entryNode('h', 'group'), expanded: false }
+  const empty = entryNode('e', 'group')
+  const withEmptyStatus = [empty, statusNode(empty)]
+
+  it('展开且有可见子项的分组 after → 进入该分组第 0 位（等同第一个子项之前）', () => {
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, g, 'after', nodes)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: 'g',
+      index: 0
+    })
+  })
+
+  it('展开分组 after：add 来源进入该分组，插在第一个子项之前', () => {
+    expect(resolveDrop({ type: 'os', paths: ['/tmp/x'] }, g, 'after', nodes)).toEqual({
+      type: 'add',
+      parentId: 'g',
+      items: [{ path: '/tmp/x' }],
+      position: { before: 'c' },
+      rejectTemporary: true
+    })
+  })
+
+  it('折叠的分组 after → 同级之后', () => {
+    const tree = [a, collapsed, b]
+    expect(resolveDrop({ type: 'entry', entryId: 'a' }, collapsed, 'after', tree)).toEqual({
+      type: 'move',
+      entryId: 'a',
+      parentId: null,
+      index: 1
+    })
+  })
+
+  it('空分组（只有「空」状态行）after → 同级之后', () => {
+    expect(
+      resolveDrop({ type: 'entry', entryId: 'a' }, empty, 'after', [a, ...withEmptyStatus])
+    ).toEqual({ type: 'move', entryId: 'a', parentId: null, index: 1 })
+  })
+})
+
+describe('根下未分组在上、分组在下（设计 2.7）：显示顺序与 sortOrder 不同时的换算', () => {
+  // sortOrder：g1(0) a(1) g2(2) b(3)；显示：a b g1 g2（分组均折叠）
+  const ra = { ...entryNode('a', 'folder'), expanded: false, rank: 1 }
+  const rb = { ...entryNode('b', 'file'), expandable: false, expanded: false, rank: 3 }
+  const rg1 = { ...entryNode('g1', 'group'), expanded: false, rank: 0 }
+  const rg2 = { ...entryNode('g2', 'group'), expanded: false, rank: 2 }
+  const root = [ra, rb, rg1, rg2]
+  const move = (entryId: string, target: TreeNode, position: 'before' | 'after'): unknown =>
+    resolveDrop({ type: 'entry', entryId }, target, position, root)
+
+  it('同类的目标：index 按 sortOrder 中的位置（移除自身后）计算', () => {
+    // a 拖到 b 之后：移除 a 后为 g1 g2 b → b 在 2 → index 3
+    expect(move('a', rb, 'after')).toMatchObject({ parentId: null, index: 3 })
+    // b 拖到 a 之前：移除 b 后为 g1 a g2 → a 在 1
+    expect(move('b', ra, 'before')).toMatchObject({ parentId: null, index: 1 })
+    // 分组之间：g2 拖到 g1 之前 → 0；g1 拖到 g2 之后：移除 g1 后为 a g2 b → 2
+    expect(move('g2', rg1, 'before')).toMatchObject({ parentId: null, index: 0 })
+    expect(move('g1', rg2, 'after')).toMatchObject({ parentId: null, index: 2 })
+  })
+
+  it('未分组的条目落在分组的边缘：放到未分组条目的末尾（线之前最近的未分组条目之后）', () => {
+    // a 拖到 g1 之前（b 与 g1 之间的线）→ b 之后：移除 a 后 g1 g2 b → 3
+    expect(move('a', rg1, 'before')).toMatchObject({ parentId: null, index: 3 })
+    expect(move('a', rg2, 'after')).toMatchObject({ parentId: null, index: 3 })
+  })
+
+  it('分组落在未分组条目之间：放到分组的开头（线之后最近的分组之前）', () => {
+    // g2 拖到 a 之前 → g1 之前：移除 g2 后 g1 a b → 0
+    expect(move('g2', ra, 'before')).toMatchObject({ parentId: null, index: 0 })
+    // g1 拖到 b 之后（b 与 g1 之间的线）→ g2 之前：移除 g1 后 a g2 b → 1
+    expect(move('g1', rb, 'after')).toMatchObject({ parentId: null, index: 1 })
+  })
+
+  it('add：落在分组边缘时位置改为最近的未分组条目之后', () => {
+    expect(resolveDrop({ type: 'os', paths: ['C:\\x'] }, rg1, 'before', root)).toMatchObject({
+      parentId: null,
+      position: { after: 'b' }
+    })
+    expect(resolveDrop({ type: 'fs', uri: 'file:///C:/f/sub' }, rg2, 'after', root)).toMatchObject({
+      parentId: null,
+      position: { after: 'b' }
+    })
+    // 同类目标照旧引用目标自身
+    expect(resolveDrop({ type: 'os', paths: ['C:\\x'] }, ra, 'after', root)).toMatchObject({
+      position: { after: 'a' }
+    })
+  })
+
+  it('add：根下只有分组时不带位置（追加到末尾，显示在分组之上）', () => {
+    const action = resolveDrop({ type: 'os', paths: ['C:\\x'] }, rg1, 'before', [rg1, rg2])
+    expect(action).toMatchObject({ type: 'add', parentId: null })
+    expect(action).not.toHaveProperty('position')
+  })
+})

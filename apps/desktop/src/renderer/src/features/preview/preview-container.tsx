@@ -1,0 +1,370 @@
+import { Suspense, use, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { TriangleAlertIcon, UnplugIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import type { i18n as I18n } from 'i18next'
+import {
+  FALLBACK_PLUGIN_ID,
+  type AnyPreviewPlugin,
+  type PreviewProps,
+  type ResourceInfo,
+  type ViewAsMode
+} from '@pch/plugin-sdk'
+import { AppError, type FileStat, type TabState } from '@pch/shared'
+import { Button } from '@pch/ui/components/button'
+import { Spinner } from '@pch/ui/components/spinner'
+import { useEntries } from '@renderer/data/entries'
+import { useSettings } from '@renderer/data/settings'
+import { fetchDirectory, retryDirectory, useResourceStat } from '@renderer/data/vfs'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
+import { isShareOffline } from '@renderer/lib/file-uri'
+import { call, subscribe } from '@renderer/lib/ipc'
+import { parentLocation } from '@renderer/lib/logical-path'
+import { reportError } from '@renderer/lib/report-error'
+import { useResolvedTheme } from '@renderer/providers/theme-context'
+import { useReachabilityStore } from '@renderer/stores/reachability-store'
+import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
+import { ConfirmExecutableDialog } from './confirm-executable-dialog'
+import { createPreviewHost } from './host'
+import { PluginErrorBoundary } from './plugin-error-boundary'
+import { canViewAs, needsSniff, resolvePlugin } from './registry'
+import { useDocSession } from './use-doc-session'
+import { useSniff } from './use-sniff'
+import { WorkspaceOverview } from './workspace-overview'
+
+export interface PreviewContainerProps {
+  tab: TabState
+  /** 注册表中的插件（含 fallback），由 app/ 组合传入 */
+  plugins: readonly AnyPreviewPlugin[]
+}
+
+/**
+ * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview；
+ * 其余取得资源描述 → 注册表选择插件（没有插件按扩展名 / MIME 匹配的文件先 vfs.sniff，文本交给 textLike 插件）
+ * → 懒加载插件组件。
+ * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
+ * 共享断开 / 无响应时立即显示缓存与「已断开」，目录不在了显示「找不到」）；文件标签 stat 后显示，
+ * 所在共享在 reachability-store 中为断开时不发 stat（会等到超时），只显示文件名与「已断开」。
+ * 每个标签一层 ErrorBoundary + Suspense：插件抛错或懒加载失败只在该标签显示错误面板，
+ * 并提供「以文件信息显示」（fallback 插件）的出口。
+ * 查看方式覆盖（viewAs：info = 文件信息、text = 作为文本查看）是按标签、按位置的临时状态，导航离开后清除。
+ * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
+ * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
+ */
+export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
+  return (
+    <div className="h-full min-h-0">
+      {/* 同一标签内导航到另一位置时整体重建（查看方式覆盖、sniff 结果等状态不沿用） */}
+      {tab.kind === 'workspace' ? (
+        <WorkspaceOverview key={tab.uri} tab={tab} />
+      ) : (
+        <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
+      )}
+    </div>
+  )
+}
+
+function ResourcePreview({ tab, plugins }: PreviewContainerProps): JSX.Element {
+  // 查看方式覆盖：「以文件信息显示」（目录也要 stat 才有大小与时间）/「作为文本查看」
+  const [viewAs, setViewAs] = useState<ViewAsMode | null>(null)
+  const view = { tab, plugins, viewAs, onViewAs: setViewAs }
+  if (tab.kind === 'directory' && viewAs === null) {
+    return <SelectPlugin {...view} resource={directoryResource(tab)} />
+  }
+  return <StatResource {...view} />
+}
+
+/** 目录标签的资源描述：不 stat，名称取标签的标题（大小与时间为 0，folder 插件不使用） */
+function directoryResource(tab: TabState): ResourceInfo {
+  return { uri: tab.uri, name: tab.title, kind: 'directory', size: 0, mtime: 0, mime: null }
+}
+
+type ViewProps = PreviewContainerProps & {
+  viewAs: ViewAsMode | null
+  onViewAs: (mode: ViewAsMode) => void
+}
+
+function StatResource(props: ViewProps): JSX.Element {
+  const { tab } = props
+  const { t } = useTranslation()
+  const offline = useReachabilityStore((s) => isShareOffline(tab.uri, s.offlineShares))
+  const stat = useResourceStat(tab.uri, !offline)
+  // 刷新（地址栏 / F5）：重新 stat（不受新鲜期限制），插件随新的资源描述重新渲染；断开时不发
+  const { refetch } = stat
+  useEffect(
+    () =>
+      onTabRefresh(tab.id, () => {
+        if (!offline) void refetch()
+      }),
+    [tab.id, offline, refetch]
+  )
+  if (offline) {
+    return (
+      <Centered>
+        <UnplugIcon aria-hidden className="size-8 text-muted-foreground" />
+        <h2 className="text-base font-medium break-all">{tab.title}</h2>
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('preview:offline')}
+        </p>
+      </Centered>
+    )
+  }
+  // 错误优先于数据：重新取得失败时 TanStack Query 保留旧 data（knowledge/libraries.md）
+  if (stat.isError) {
+    const code = stat.error instanceof AppError ? stat.error.code : 'UNKNOWN'
+    const failure = (
+      <Centered>
+        <p role="alert" className="text-sm text-muted-foreground">
+          {t(`errors:${code}`)}
+        </p>
+        <Button variant="outline" onClick={() => void stat.refetch()}>
+          {t('preview:retry')}
+        </Button>
+      </Centered>
+    )
+    // 显示中的文件被删除：自己处理「文件已不存在」的插件（manifest.handlesMissing）继续显示。
+    // 与下面的正常分支在同一位置渲染 SelectPlugin，插件不重新挂载（日志轮转时保留状态）
+    if (code === 'FS_NOT_FOUND' && stat.data !== undefined) {
+      return (
+        <SelectPlugin {...props} resource={toResourceInfo(stat.data, tab)} whenMissing={failure} />
+      )
+    }
+    return failure
+  }
+  if (stat.data === undefined) return <Loading />
+  return <SelectPlugin {...props} resource={toResourceInfo(stat.data, tab)} />
+}
+
+/**
+ * 选择插件：没有插件按扩展名 / MIME 匹配的文件先 sniff（显示加载中），
+ * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。查看方式覆盖时不 sniff
+ */
+function SelectPlugin({
+  whenMissing,
+  ...props
+}: ViewProps & {
+  resource: ResourceInfo
+  /** 文件已不存在：选中的插件不处理时显示它（manifest.handlesMissing） */
+  whenMissing?: ReactNode
+}): JSX.Element {
+  const { plugins, resource, viewAs } = props
+  const needed = viewAs === null && needsSniff(plugins, resource)
+  const sniffed = useSniff(resource.uri, needed)
+  const show = (view: ResourceInfo, plugin: AnyPreviewPlugin): JSX.Element =>
+    whenMissing !== undefined && plugin.manifest.handlesMissing !== true ? (
+      <>{whenMissing}</>
+    ) : (
+      <PluginView {...props} resource={view} plugin={plugin} />
+    )
+  if (!needed) return show(resource, resolvePlugin(plugins, resource, viewAs))
+  if (sniffed === undefined) return whenMissing !== undefined ? <>{whenMissing}</> : <Loading />
+  const sniffedResource = { ...resource, textLike: sniffed === 'text' }
+  return show(sniffedResource, resolvePlugin(plugins, sniffedResource, null))
+}
+
+/** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */
+function toResourceInfo(stat: FileStat, tab: TabState): ResourceInfo {
+  const kind = stat.kind !== 'symlink' ? stat.kind : tab.kind === 'directory' ? 'directory' : 'file'
+  return { uri: tab.uri, name: stat.name, kind, size: stat.size, mtime: stat.mtime, mime: null }
+}
+
+type PluginModule = Awaited<ReturnType<AnyPreviewPlugin['load']>>
+/**
+ * 每个插件只加载一次（缓存 Promise，供 use() 在 Suspense 中等待）。
+ * 失败的加载直到重新加载窗口都保持失败（错误面板提供 fallback 出口）。
+ */
+const modules = new Map<string, Promise<PluginModule>>()
+function loadPlugin(plugin: AnyPreviewPlugin): Promise<PluginModule> {
+  let loading = modules.get(plugin.manifest.id)
+  if (!loading) {
+    loading = plugin.load()
+    modules.set(plugin.manifest.id, loading)
+  }
+  return loading
+}
+
+/** 等待插件模块加载（Suspense），渲染其默认导出的组件；加载失败时抛给错误边界 */
+function PluginBody({
+  plugin,
+  ...props
+}: PreviewProps & { plugin: AnyPreviewPlugin }): JSX.Element {
+  const { default: Body } = use(loadPlugin(plugin))
+  return <Body {...props} />
+}
+
+/** 把插件自带的语言资源登记为以插件 id 命名的 i18next 命名空间（已登记则跳过） */
+function registerPluginResources(i18n: I18n, plugin: AnyPreviewPlugin): void {
+  for (const [language, messages] of Object.entries(plugin.i18n ?? {})) {
+    if (!i18n.hasResourceBundle(language, plugin.manifest.id)) {
+      i18n.addResourceBundle(language, plugin.manifest.id, messages)
+    }
+  }
+}
+
+interface PendingConfirm {
+  name: string
+  resolve: (confirmed: boolean) => void
+  /** 已有结果（对话框关闭中，名称保留到动画结束） */
+  settled: boolean
+}
+
+function PluginView({
+  tab,
+  plugins,
+  onViewAs,
+  resource,
+  plugin
+}: ViewProps & { resource: ResourceInfo; plugin: AnyPreviewPlugin }): JSX.Element {
+  const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
+  const theme = useResolvedTheme()
+  const { data: settings } = useSettings()
+  const { data: workspace } = useActiveWorkspace()
+  const { data: entries } = useEntries(workspace?.id)
+  const roots = useMemo(
+    () => (entries ?? []).flatMap((e) => (e.kind === 'folder' && e.uri !== null ? [e.uri] : [])),
+    [entries]
+  )
+  // 「上一级」（host.tabs.up）：按逻辑路径，条目根之上是工作区总览
+  const workspaceName = workspace
+    ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
+    : undefined
+  const parent = useMemo(
+    () =>
+      workspace === undefined || workspaceName === undefined
+        ? null
+        : parentLocation(
+            { uri: tab.uri, kind: tab.kind, title: tab.title },
+            { workspace: { id: workspace.id, name: workspaceName }, entries: entries ?? [] }
+          ),
+    [workspace, workspaceName, entries, tab.uri, tab.kind, tab.title]
+  )
+  const offlineShares = useReachabilityStore((s) => s.offlineShares)
+  const open = useTabsStore((s) => s.open)
+  const navigate = useTabsStore((s) => s.navigate)
+  const setViewState = useTabsStore((s) => s.setViewState)
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
+  const doc = useDocSession(tab.id, settings)
+
+  const pluginId = plugin.manifest.id
+  const language = i18n.language
+  const resourceKind = resource.kind
+
+  const host = useMemo(() => {
+    registerPluginResources(i18n, plugin)
+    const pluginT = i18n.getFixedT(null, pluginId)
+    return createPreviewHost({
+      tabId: tab.id,
+      workspaceId: workspace?.id,
+      invoke: call,
+      listDirectory: (uri) => fetchDirectory(queryClient, uri),
+      refreshDirectory: (uri) => retryDirectory(queryClient, uri),
+      // 断开状态变化时宿主重建：插件随之重新列出（folder 插件的状态行切换「已断开」）
+      isOffline: (uri) => isShareOffline(uri, offlineShares),
+      onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
+      onRefresh: (listener) => onTabRefresh(tab.id, listener),
+      doc,
+      viewAs: {
+        can: (mode) => canViewAs(plugins, { kind: resourceKind }, pluginId, mode),
+        set: onViewAs
+      },
+      tabs: { open, navigate },
+      confirmExecutable: (name) =>
+        new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
+      notify: (message, type) => toast[type](message),
+      t: (key, vars) => t(key, vars ?? {}),
+      pluginT: (key, vars) => pluginT(key, vars ?? {}),
+      language,
+      theme,
+      settings,
+      roots,
+      parent
+    })
+  }, [
+    i18n,
+    plugin,
+    pluginId,
+    tab.id,
+    workspace?.id,
+    queryClient,
+    doc,
+    plugins,
+    resourceKind,
+    onViewAs,
+    offlineShares,
+    open,
+    navigate,
+    t,
+    language,
+    theme,
+    settings,
+    roots,
+    parent
+  ])
+
+  const settle = (confirmed: boolean): void => {
+    if (!confirm || confirm.settled) return
+    confirm.resolve(confirmed)
+    setConfirm({ ...confirm, settled: true })
+  }
+
+  const pluginName = i18n.getFixedT(null, pluginId)(plugin.manifest.name)
+
+  return (
+    <>
+      <PluginErrorBoundary
+        key={pluginId}
+        onError={(error, info) =>
+          reportError(error, `preview plugin ${pluginId}\n${info.componentStack ?? ''}`)
+        }
+        fallback={() => (
+          <Centered>
+            <div role="alert" className="flex max-w-md flex-col items-center gap-2 text-center">
+              <TriangleAlertIcon aria-hidden className="size-8 text-muted-foreground" />
+              <h2 className="text-base font-medium">{t('preview:errorTitle')}</h2>
+              <p className="text-sm text-muted-foreground">
+                {t('preview:errorHint', { plugin: pluginName })}
+              </p>
+            </div>
+            {pluginId === FALLBACK_PLUGIN_ID ? null : (
+              <Button variant="outline" onClick={() => onViewAs('info')}>
+                {t('preview:showInfo')}
+              </Button>
+            )}
+          </Centered>
+        )}
+      >
+        <Suspense fallback={<Loading />}>
+          <PluginBody
+            plugin={plugin}
+            resource={resource}
+            host={host}
+            viewState={tab.viewState}
+            onViewStateChange={(state) => setViewState(tab.id, state, tab.uri)}
+          />
+        </Suspense>
+      </PluginErrorBoundary>
+      <ConfirmExecutableDialog
+        open={confirm !== null && !confirm.settled}
+        name={confirm?.name ?? ''}
+        onResult={settle}
+      />
+    </>
+  )
+}
+
+function Centered({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-6">{children}</div>
+  )
+}
+
+function Loading(): JSX.Element {
+  const { t } = useTranslation('preview')
+  return (
+    <Centered>
+      <Spinner aria-label={t('loading')} />
+    </Centered>
+  )
+}

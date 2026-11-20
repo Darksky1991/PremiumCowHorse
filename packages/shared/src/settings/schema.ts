@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CACHE_STRATEGIES } from '../scanner/types'
 
 export const LANGUAGES = ['ja', 'zh-CN', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
@@ -16,13 +17,34 @@ export const settingsSchema = z.object({
   'appearance.accent': z.enum(ACCENTS).default('neutral'),
   'appearance.density': z.enum(['comfortable', 'compact']).default('comfortable'),
   'explorer.showHiddenFiles': z.boolean().default(false),
+  /**
+   * 资源树：单击 / 键盘移动选中（400ms 防抖）即在当前标签打开（M1-3b 设计 2.8；键名沿用 M1-3 以免迁移）。
+   * false 时单击与 ↑↓ 只选中，Enter / 文件双击打开
+   */
   'explorer.singleClickPreview': z.boolean().default(true),
   'preview.associations': z.record(z.string(), z.string()).default({}),
   'preview.maxTextSizeMB': z.number().int().min(1).max(500).default(50),
   'session.restoreOnStartup': z.boolean().default(true),
   'window.onDetachedClose': z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),
   'remote.cacheSizeMB': z.number().int().min(100).default(1024),
-  'remote.pollIntervalSec': z.number().int().min(0).default(0),
+  /** 缓存策略的全局默认（设计 8）：本地「积极」、网络「默认」；条目可单独设置 */
+  'cache.strategy.local': z.enum(CACHE_STRATEGIES).default('active'),
+  'cache.strategy.network': z.enum(CACHE_STRATEGIES).default('default'),
+  /** 「积极」策略以关注点为中心上下的层数 */
+  'cache.activeDepth': z.number().int().min(1).max(10).default(3),
+  /** 定期确认的间隔（秒）：关注点 / 近 / 远三层 */
+  'cache.interval.focus.local': z.number().int().min(2).default(5),
+  'cache.interval.focus.network': z.number().int().min(10).default(10),
+  'cache.interval.near.local': z.number().int().min(2).default(30),
+  'cache.interval.near.network': z.number().int().min(10).default(60),
+  'cache.interval.far.local': z.number().int().min(2).default(120),
+  'cache.interval.far.network': z.number().int().min(10).default(300),
+  /** 后台填充缓存时，每个目录完成后的休息时间（毫秒） */
+  'cache.backgroundGapMs.local': z.number().int().min(100).default(500),
+  'cache.backgroundGapMs.network': z.number().int().min(500).default(2000),
+  /** 文件系统调用的超时（秒）：扫描进程按「没有进展的时间」计，VfsService 的一次性调用按总时长计 */
+  'vfs.timeoutSec.local': z.number().int().min(1).max(60).default(5),
+  'vfs.timeoutSec.network': z.number().int().min(10).max(120).default(10),
   'launcher.officeExtensions': z
     .array(z.string())
     .default(['xlsx', 'xlsm', 'xls', 'xltx', 'docx', 'doc', 'dotx', 'pptx', 'ppt', 'potx']),

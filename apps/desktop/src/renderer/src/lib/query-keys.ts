@@ -1,6 +1,24 @@
+import type { SearchKindFilter } from '@pch/shared'
+
 /** 集中管理 query key，主进程事件到缓存失效的桥接也依赖这里 */
 export const queryKeys = {
   appInfo: ['app', 'info'] as const,
   settings: ['settings'] as const,
-  windowState: ['window', 'state'] as const
+  windowState: ['window', 'state'] as const,
+  /** 'workspace' 前缀用于一次性使工作区相关缓存失效 */
+  workspaceRoot: ['workspace'] as const,
+  workspaces: ['workspace', 'list'] as const,
+  activeWorkspace: ['workspace', 'active'] as const,
+  entries: (workspaceId: string) => ['entry', 'list', workspaceId] as const,
+  /** 工作区的「建立索引」目录（URI 列表） */
+  indexTargets: (workspaceId: string) => ['entry', 'index', workspaceId] as const,
+  /** 所有目录列表的前缀（手动刷新时一次性失效） */
+  directoryRoot: ['vfs', 'list'] as const,
+  directory: (uri: string) => ['vfs', 'list', uri] as const,
+  /** 单个资源的 stat（预览标签的文件信息）；前缀用于按父目录失效 */
+  statRoot: ['vfs', 'stat'] as const,
+  stat: (uri: string) => ['vfs', 'stat', uri] as const,
+  /** 文件名搜索（只查缓存）；kind 为类型筛选 */
+  search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
+    ['search', workspaceId, text, kind] as const
 }

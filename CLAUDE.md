@@ -1,6 +1,14 @@
 # CLAUDE.md
 
-PremiumCowHorse：面向对日 IT 保守（运维）人员的工作区式文件管理器（Electron + React，Windows 为主）。与需求方用**中文**沟通。
+PremiumCowHorse：面向对日 IT 保守（运维）人员的工作区式文件管理器（Electron + React，Windows 为主）。
+
+## 沟通语言（必须遵守）
+
+- **所有面向需求方的输出都用中文**：回复、提问、选项说明、执行过程中的进度说明（包括执行计划时每一步之间的简短说明）。
+- **委派子 agent 时**：任务说明（prompt）用中文书写，并在其中明确要求「请用中文撰写报告」；向需求方转述子 agent 的结论时也用中文。读取的英文资料（如 skill 文件）不改变输出语言。
+- **文档**：`doc/`、`devDoc/`、`knowledge/`、代码注释用中文；代码标识符、命令、报错原文保持原样。
+- 提交信息沿用 Conventional Commits 的英文格式（需求方另有要求时从其要求）。
+- 界面文案按 i18n 维护 ja / zh-CN / en 三种语言，不受本节影响。
 
 ## 事实依据（按优先级）
 
@@ -49,6 +57,7 @@ pnpm build          # 类型检查 + electron-vite build
 pnpm test:e2e       # Playwright Electron（需先 build）
 ```
 
+- **测试范围按改动判断**：每次改动只跑受影响的单元测试文件，加上 `typecheck` / `lint` / `prettier --check`；动到构建或界面时再加 `build` 与相关的 e2e 用例。全量 `pnpm test` + `pnpm test:e2e` 在多轮改动之后兜底、发生重大变更时、合并前执行；性能测量只在改动可能影响性能时做。
 - UI 改动：e2e 覆盖行为；外观用截图确认（含系统绘制部分时用 `node scripts/os-screenshot.mjs <out.png> [light|dark] [ja|zh-CN|en]`）。
 - 打包改动：`pnpm dist` 后实际解压运行，用 `--user-data-dir=<临时目录>` 避免污染正式数据。
 - 结束后检查残留进程（`Get-Process electron`、`PremiumCowHorse`）。
@@ -58,6 +67,7 @@ pnpm test:e2e       # Playwright Electron（需先 build）
 - `apps/desktop`：electron-vite 目录约定 `src/{main,preload,renderer}`；`packages/{shared,i18n,ui,plugin-sdk}`。
 - **分层由 lint 强制**（`eslint.config.mjs`）：主进程 `ipc → modules → infra/core`，模块之间不互相 import；渲染端 `app → features → providers/data/stores/lib`，feature 之间不互相 import；新目录先在 `eslint.config.mjs` 登记。
 - **IPC**：契约在 `packages/shared/src/ipc/contract.ts`（zod 校验输入），传输只有 `pch:invoke` / `pch:event` 两个通道。新增通道：契约 → 主进程 handler（漏写编译失败）→ 渲染端 `call()`。
+- **文件系统原则**：应用不变动文件和目录的数据：不写入、不新建、不删除、不移动、不改名，不长期持有句柄（不能妨碍用户改名或移动）。读取时由系统自动更新的元数据（如访问时间）不在此列。
 - **安全**：`sandbox: true`、`contextIsolation`；preload 只暴露 `window.pch`，不能用 Node API（如 `Buffer`）；CSP 不允许内联脚本；不向页面暴露 `ipcRenderer`。
 - **设置**：唯一定义在 `packages/shared/src/settings/schema.ts`；数据库只存与默认值不同的键。
 - **数据库**：node:sqlite + Kysely；改表结构 = 新增迁移文件（发布后不得修改）+ 更新 `schema.ts` 类型。

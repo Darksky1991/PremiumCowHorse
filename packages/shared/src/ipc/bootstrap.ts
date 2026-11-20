@@ -11,6 +11,11 @@ export interface BootstrapData {
   theme: 'light' | 'dark'
   accent: string
   density: 'comfortable' | 'compact'
+  /**
+   * 仅 e2e：注册一个会抛错的测试预览插件（验证插件崩溃只影响自己的标签）。
+   * 只在未打包且环境变量 PCH_E2E_CRASH_PLUGIN=1 时为 true
+   */
+  e2eCrashPlugin?: boolean
 }
 
 export const BOOTSTRAP_ARG_PREFIX = '--pch-bootstrap='

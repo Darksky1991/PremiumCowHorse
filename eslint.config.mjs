@@ -17,15 +17,21 @@ const elements = [
   { type: 'i18n', pattern: 'packages/i18n' },
   { type: 'ui', pattern: 'packages/ui' },
   { type: 'plugin-sdk', pattern: 'packages/plugin-sdk' },
-  { type: 'plugin', pattern: 'plugins/*', capture: ['name'] },
+  // 文本预览的纯逻辑（行索引、按行读取、编码判断）：不依赖任何包，主进程 vfs 与插件共用
+  { type: 'text-engine', pattern: 'packages/text-engine' },
+  // 内置插件包（doc 5.1）：每个子目录是一个插件；包入口 src/index.ts 见下方 files 的 plugin-entry
+  { type: 'plugin', pattern: 'plugins/builtin/src/*', capture: ['name'] },
   // 主进程（架构文档 5.2 节）
   { type: 'main-bootstrap', pattern: `${MAIN}/bootstrap` },
   { type: 'main-ipc', pattern: `${MAIN}/ipc` },
   { type: 'main-module', pattern: `${MAIN}/modules/*`, capture: ['name'] },
   { type: 'main-windows', pattern: `${MAIN}/windows` },
+  { type: 'main-vfs', pattern: `${MAIN}/vfs` },
   { type: 'main-infra', pattern: `${MAIN}/infra` },
   { type: 'main-core', pattern: `${MAIN}/core` },
   { type: 'preload', pattern: 'apps/desktop/src/preload' },
+  // 扫描进程（utilityProcess；不得 import electron）
+  { type: 'scanner', pattern: 'apps/desktop/src/scanner' },
   // 渲染端（架构文档 5.3 节）
   { type: 'r-app', pattern: `${RENDERER}/app` },
   { type: 'r-feature', pattern: `${RENDERER}/features/*`, capture: ['name'] },
@@ -44,7 +50,14 @@ const allow = (from, to) => ({
 /** 单个入口文件按「文件」分类（v7 中元素只描述目录） */
 const files = [
   { pattern: `${MAIN}/index.ts`, category: 'main-entry' },
-  { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' }
+  { pattern: `${RENDERER}/main.tsx`, category: 'r-entry' },
+  // 内置插件包的入口：汇总各插件子目录，导出插件列表
+  { pattern: 'plugins/builtin/src/index.ts', category: 'plugin-entry' },
+  // vfs 中不依赖 electron 的文件：扫描进程只能 import 这些
+  {
+    pattern: `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list}.ts`,
+    category: 'vfs-portable'
+  }
 ]
 
 const allowFile = (category, to) => ({
@@ -55,28 +68,50 @@ const allowFile = (category, to) => ({
 /** 依赖方向：默认禁止，只放行下面列出的方向 */
 const policies = [
   allow('i18n', ['shared']),
-  // 插件只能依赖 SDK 与 UI，与将来的第三方插件走相同接口
-  allow('plugin', ['plugin-sdk', 'ui']),
+  // 插件只能依赖 SDK、UI 与纯逻辑包 text-engine，与将来的第三方插件走相同接口；插件子目录之间不得互相 import
+  allow('plugin', ['plugin-sdk', 'ui', 'text-engine']),
+  allowFile('plugin-entry', ['plugin', 'plugin-sdk']),
   // 主进程：ipc → modules → infra / core；模块之间不得互相 import（经构造函数注入）
   allowFile('main-entry', ['main-bootstrap']),
   allow('main-bootstrap', [
     'main-ipc',
     'main-module',
     'main-windows',
+    'main-vfs',
     'main-infra',
     'main-core',
     'shared',
     'i18n'
   ]),
-  allow('main-ipc', ['main-bootstrap', 'main-module', 'main-infra', 'shared']),
-  allow('main-module', ['main-ipc', 'main-infra', 'main-core', 'shared']),
+  allow('main-ipc', ['main-bootstrap', 'main-module', 'main-vfs', 'main-infra', 'shared']),
+  allow('main-module', ['main-ipc', 'main-vfs', 'main-infra', 'main-core', 'shared']),
+  // vfs：按 scheme 路由到 provider；vfs.ipc 使用路由的类型
+  allow('main-vfs', ['main-ipc', 'main-core', 'main-infra', 'shared', 'text-engine']),
+  // main-vfs 只能以 ?modulePath 引用扫描进程入口（得到打包后的文件路径，不在主进程加载其代码）
+  {
+    from: { element: { type: 'main-vfs' } },
+    allow: {
+      to: { element: { type: 'scanner' } },
+      dependency: { source: '../../scanner/main?modulePath' }
+    }
+  },
   allow('main-windows', ['main-module', 'main-infra', 'main-core', 'shared']),
   allow('main-infra', ['main-core', 'shared', 'i18n']),
   allow('main-core', ['shared']),
   allow('preload', ['shared']),
+  allow('scanner', ['shared']),
+  {
+    from: { element: { type: 'scanner' } },
+    allow: { to: { file: { categories: 'vfs-portable' } } }
+  },
   // 渲染端：app → features → data / lib / stores；feature 之间不得互相 import
   allowFile('r-entry', ['r-app', 'r-provider', 'r-lib', 'r-style']),
   allow('r-app', ['r-feature', 'r-lib', 'ui', 'i18n', 'shared']),
+  // app 把内置插件列表交给预览 feature（feature 不直接依赖插件包）
+  {
+    from: { element: { type: 'r-app' } },
+    allow: { to: { file: { categories: 'plugin-entry' } } }
+  },
   allow('r-feature', [
     'r-provider',
     'r-data',
@@ -89,6 +124,8 @@ const policies = [
   ]),
   allow('r-provider', ['r-data', 'r-lib', 'ui', 'i18n', 'shared']),
   allow('r-data', ['r-lib', 'shared']),
+  // 跨 feature 的 store 可以使用 shared 的纯函数与类型（如标签的 layoutReducer）
+  allow('r-store', ['shared']),
   allow('r-lib', ['shared']),
   allow('r-style', ['ui'])
 ]
@@ -138,7 +175,8 @@ export default defineConfig(
           project: [
             'apps/desktop/tsconfig.node.json',
             'apps/desktop/tsconfig.web.json',
-            'packages/*/tsconfig.json'
+            'packages/*/tsconfig.json',
+            'plugins/*/tsconfig.json'
           ]
         }
       },
@@ -149,6 +187,42 @@ export default defineConfig(
       'boundaries/dependencies': [2, { default: 'disallow', policies }],
       // 新增文件必须归入某个已定义的元素，避免游离于分层之外
       'boundaries/no-unknown-files': 2
+    }
+  },
+  {
+    // 扫描进程运行在 utilityProcess 中，与它共用的 vfs 文件也一样：不得依赖 electron
+    files: [
+      'apps/desktop/src/scanner/**/*.ts',
+      `${MAIN}/vfs/{local-path,errors,location,path-name,fs-list}.ts`
+    ],
+    rules: {
+      'no-restricted-imports': [
+        2,
+        { paths: [{ name: 'electron', message: '扫描进程（utilityProcess）中不能使用 electron' }] }
+      ]
+    }
+  },
+  {
+    // text-engine 是纯逻辑包（Node / 浏览器通用）：boundaries 只管工作区内的元素，
+    // 第三方包、Node 内置模块与 electron 在这里禁止——只能 import 包内的相对路径
+    files: ['packages/text-engine/src/**/*.ts'],
+    // *.test-helper.ts 是测试辅助（读取样本文件需要 node:fs），与 *.test.ts 同样豁免
+    ignores: ['**/*.test.ts', '**/*.test-helper.ts'],
+    rules: {
+      'no-restricted-imports': [
+        2,
+        {
+          patterns: [
+            { regex: '^(?!\\.{1,2}/)', message: 'text-engine 不依赖任何包，只能引用包内的相对路径' }
+          ]
+        }
+      ],
+      'no-restricted-globals': [
+        2,
+        ...['process', 'Buffer', 'require', '__dirname', '__filename', 'window', 'document'].map(
+          (name) => ({ name, message: 'text-engine 不使用 Node / DOM 专有 API' })
+        )
+      ]
     }
   },
   eslintConfigPrettier

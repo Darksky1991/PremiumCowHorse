@@ -1,0 +1,1038 @@
+[
+  {
+    "file": "ja-sjis-short.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "short"
+  },
+  {
+    "file": "ja-sjis-short-kana.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "short"
+  },
+  {
+    "file": "ja-sjis-kanji4.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "ja-sjis-kanji6.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "ja-sjis-paragraph.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "paragraph"
+  },
+  {
+    "file": "ja-sjis-8kb.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "8kb"
+  },
+  {
+    "file": "ja-sjis-log.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "log"
+  },
+  {
+    "file": "ja-sjis-log-sparse.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "log-sparse"
+  },
+  {
+    "file": "ja-sjis-csv.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "csv"
+  },
+  {
+    "file": "ja-sjis-ext.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "cp932-ext"
+  },
+  {
+    "file": "ja-sjis-jis2.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "jis-level2"
+  },
+  {
+    "file": "ja-sjis-plain-paragraph.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "paragraph"
+  },
+  {
+    "file": "ja-sjis-plain-8kb.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "8kb"
+  },
+  {
+    "file": "ja-sjis-hw-tiny.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana"
+  },
+  {
+    "file": "ja-sjis-hw-short.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana"
+  },
+  {
+    "file": "ja-sjis-hw-log.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana-log"
+  },
+  {
+    "file": "ja-sjis-hw-mixed-log.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana-mixed"
+  },
+  {
+    "file": "ja-sjis-hw-mixed-text.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana-mixed"
+  },
+  {
+    "file": "ja-sjis-hw-only.txt",
+    "label": "shift_jis",
+    "acceptable": [
+      "shift_jis"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana"
+  },
+  {
+    "file": "ja-eucjp-short.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "short"
+  },
+  {
+    "file": "ja-eucjp-kanji4.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "ja-eucjp-paragraph.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "paragraph"
+  },
+  {
+    "file": "ja-eucjp-8kb.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "8kb"
+  },
+  {
+    "file": "ja-eucjp-log.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "log"
+  },
+  {
+    "file": "ja-eucjp-csv.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "csv"
+  },
+  {
+    "file": "ja-eucjp-jis2.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "jis-level2"
+  },
+  {
+    "file": "ja-eucjp-hw-log.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana-log"
+  },
+  {
+    "file": "ja-eucjp-hw-short.txt",
+    "label": "euc-jp",
+    "acceptable": [
+      "euc-jp"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana"
+  },
+  {
+    "file": "ja-jis-short.txt",
+    "label": "iso-2022-jp",
+    "acceptable": [
+      "iso-2022-jp"
+    ],
+    "lang": "ja",
+    "shape": "short"
+  },
+  {
+    "file": "ja-jis-paragraph.txt",
+    "label": "iso-2022-jp",
+    "acceptable": [
+      "iso-2022-jp"
+    ],
+    "lang": "ja",
+    "shape": "paragraph"
+  },
+  {
+    "file": "ja-jis-8kb.txt",
+    "label": "iso-2022-jp",
+    "acceptable": [
+      "iso-2022-jp"
+    ],
+    "lang": "ja",
+    "shape": "8kb"
+  },
+  {
+    "file": "ja-jis-log.txt",
+    "label": "iso-2022-jp",
+    "acceptable": [
+      "iso-2022-jp"
+    ],
+    "lang": "ja",
+    "shape": "log"
+  },
+  {
+    "file": "ja-utf8-short.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "short"
+  },
+  {
+    "file": "ja-utf8-kanji4.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "kanji-only"
+  },
+  {
+    "file": "ja-utf8-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "paragraph"
+  },
+  {
+    "file": "ja-utf8-8kb.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "8kb"
+  },
+  {
+    "file": "ja-utf8-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "log"
+  },
+  {
+    "file": "ja-utf8-csv.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "csv"
+  },
+  {
+    "file": "ja-utf8-hw-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "halfwidth-kana-log"
+  },
+  {
+    "file": "ja-utf8bom-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "bom"
+  },
+  {
+    "file": "ja-utf8bom-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "ja",
+    "shape": "bom-log"
+  },
+  {
+    "file": "ja-utf16le-bom-paragraph.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "ja",
+    "shape": "bom"
+  },
+  {
+    "file": "ja-utf16be-bom-paragraph.txt",
+    "label": "utf-16be",
+    "acceptable": [
+      "utf-16be"
+    ],
+    "lang": "ja",
+    "shape": "bom"
+  },
+  {
+    "file": "ja-utf16le-bom-8kb.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "ja",
+    "shape": "bom-8kb"
+  },
+  {
+    "file": "ja-utf16le-nobom-log.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "ja",
+    "shape": "no-bom-log"
+  },
+  {
+    "file": "ja-utf16be-nobom-log.txt",
+    "label": "utf-16be",
+    "acceptable": [
+      "utf-16be"
+    ],
+    "lang": "ja",
+    "shape": "no-bom-log"
+  },
+  {
+    "file": "ja-utf16le-nobom-pure.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "ja",
+    "shape": "no-bom-pure-cjk"
+  },
+  {
+    "file": "ja-utf16be-nobom-pure.txt",
+    "label": "utf-16be",
+    "acceptable": [
+      "utf-16be"
+    ],
+    "lang": "ja",
+    "shape": "no-bom-pure-cjk"
+  },
+  {
+    "file": "ja-utf16le-nobom-pure-8kb.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "ja",
+    "shape": "no-bom-pure-cjk"
+  },
+  {
+    "file": "zh-gbk-short.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "short"
+  },
+  {
+    "file": "zh-gbk-kanji4.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "zh-gbk-kanji4b.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "zh-gbk-paragraph.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "paragraph"
+  },
+  {
+    "file": "zh-gbk-8kb.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "8kb"
+  },
+  {
+    "file": "zh-gbk-log.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "log"
+  },
+  {
+    "file": "zh-gbk-log-sparse.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "log-sparse"
+  },
+  {
+    "file": "zh-gbk-csv.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "csv"
+  },
+  {
+    "file": "zh-gbk-rare.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "rare-chars"
+  },
+  {
+    "file": "zh-gb18030-4byte.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "gb18030-4byte"
+  },
+  {
+    "file": "zh-gb18030-8kb.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "8kb"
+  },
+  {
+    "file": "zh-gb18030-log.txt",
+    "label": "gb18030",
+    "acceptable": [
+      "gb18030"
+    ],
+    "lang": "zh-CN",
+    "shape": "log"
+  },
+  {
+    "file": "zh-utf8-short.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "short"
+  },
+  {
+    "file": "zh-utf8-kanji4.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "kanji-only"
+  },
+  {
+    "file": "zh-utf8-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "paragraph"
+  },
+  {
+    "file": "zh-utf8-8kb.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "8kb"
+  },
+  {
+    "file": "zh-utf8-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "log"
+  },
+  {
+    "file": "zh-utf8-csv.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-CN",
+    "shape": "csv"
+  },
+  {
+    "file": "zh-utf16le-bom-paragraph.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "zh-CN",
+    "shape": "bom"
+  },
+  {
+    "file": "zh-utf16le-nobom-pure.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "zh-CN",
+    "shape": "no-bom-pure-cjk"
+  },
+  {
+    "file": "zh-utf16be-nobom-pure.txt",
+    "label": "utf-16be",
+    "acceptable": [
+      "utf-16be"
+    ],
+    "lang": "zh-CN",
+    "shape": "no-bom-pure-cjk"
+  },
+  {
+    "file": "zh-utf16le-nobom-log.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "zh-CN",
+    "shape": "no-bom-log"
+  },
+  {
+    "file": "tw-big5-short.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "short"
+  },
+  {
+    "file": "tw-big5-kanji4.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "tw-big5-kanji4b.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "kanji-only",
+    "ambiguous": true
+  },
+  {
+    "file": "tw-big5-paragraph.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "paragraph"
+  },
+  {
+    "file": "tw-big5-8kb.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "8kb"
+  },
+  {
+    "file": "tw-big5-log.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "log"
+  },
+  {
+    "file": "tw-big5-csv.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "csv"
+  },
+  {
+    "file": "tw-big5-level2.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "big5-level2"
+  },
+  {
+    "file": "tw-big5-strict-paragraph.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "paragraph"
+  },
+  {
+    "file": "tw-big5-strict-8kb.txt",
+    "label": "big5",
+    "acceptable": [
+      "big5"
+    ],
+    "lang": "zh-TW",
+    "shape": "8kb"
+  },
+  {
+    "file": "tw-utf8-short.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-TW",
+    "shape": "short"
+  },
+  {
+    "file": "tw-utf8-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-TW",
+    "shape": "paragraph"
+  },
+  {
+    "file": "tw-utf8-8kb.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-TW",
+    "shape": "8kb"
+  },
+  {
+    "file": "tw-utf8-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "zh-TW",
+    "shape": "log"
+  },
+  {
+    "file": "tw-utf16le-bom-paragraph.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "zh-TW",
+    "shape": "bom"
+  },
+  {
+    "file": "en-ascii-short.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8",
+      "shift_jis",
+      "euc-jp",
+      "iso-2022-jp",
+      "gb18030",
+      "big5",
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "short"
+  },
+  {
+    "file": "en-ascii-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8",
+      "shift_jis",
+      "euc-jp",
+      "iso-2022-jp",
+      "gb18030",
+      "big5",
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "paragraph"
+  },
+  {
+    "file": "en-ascii-8kb.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8",
+      "shift_jis",
+      "euc-jp",
+      "iso-2022-jp",
+      "gb18030",
+      "big5",
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "8kb"
+  },
+  {
+    "file": "en-ascii-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8",
+      "shift_jis",
+      "euc-jp",
+      "iso-2022-jp",
+      "gb18030",
+      "big5",
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "log"
+  },
+  {
+    "file": "en-ascii-csv.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8",
+      "shift_jis",
+      "euc-jp",
+      "iso-2022-jp",
+      "gb18030",
+      "big5",
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "csv"
+  },
+  {
+    "file": "en-1252-short.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "short"
+  },
+  {
+    "file": "en-1252-short2.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "short"
+  },
+  {
+    "file": "en-1252-paragraph.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "paragraph"
+  },
+  {
+    "file": "en-1252-8kb.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "8kb"
+  },
+  {
+    "file": "en-1252-log.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "log"
+  },
+  {
+    "file": "en-1252-log-sparse.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "log-sparse"
+  },
+  {
+    "file": "en-1252-csv.txt",
+    "label": "windows-1252",
+    "acceptable": [
+      "windows-1252"
+    ],
+    "lang": "en",
+    "shape": "csv"
+  },
+  {
+    "file": "en-utf8-short.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "short"
+  },
+  {
+    "file": "en-utf8-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "paragraph"
+  },
+  {
+    "file": "en-utf8-8kb.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "8kb"
+  },
+  {
+    "file": "en-utf8-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "log"
+  },
+  {
+    "file": "en-utf8-csv.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "csv"
+  },
+  {
+    "file": "en-utf8bom-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "en",
+    "shape": "bom-log"
+  },
+  {
+    "file": "en-utf16le-bom-log.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "en",
+    "shape": "bom-log"
+  },
+  {
+    "file": "en-utf16le-nobom-log.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "en",
+    "shape": "no-bom-log"
+  },
+  {
+    "file": "en-utf16be-nobom-log.txt",
+    "label": "utf-16be",
+    "acceptable": [
+      "utf-16be"
+    ],
+    "lang": "en",
+    "shape": "no-bom-log"
+  },
+  {
+    "file": "en-utf16le-nobom-short.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "en",
+    "shape": "short"
+  },
+  {
+    "file": "mixed-utf8-log.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "mixed",
+    "shape": "log"
+  },
+  {
+    "file": "mixed-utf8-paragraph.txt",
+    "label": "utf-8",
+    "acceptable": [
+      "utf-8"
+    ],
+    "lang": "mixed",
+    "shape": "paragraph"
+  },
+  {
+    "file": "mixed-utf16le-bom-log.txt",
+    "label": "utf-16le",
+    "acceptable": [
+      "utf-16le"
+    ],
+    "lang": "mixed",
+    "shape": "bom-log"
+  }
+]

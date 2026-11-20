@@ -7,7 +7,27 @@ export const ERROR_CODES = [
   'IPC_FORBIDDEN',
   'IPC_BAD_INPUT',
   'IPC_UNKNOWN_CHANNEL',
-  'SETTINGS_INVALID'
+  'SETTINGS_INVALID',
+  'WORKSPACE_NOT_FOUND',
+  'WORKSPACE_DEFAULT_PROTECTED',
+  'WORKSPACE_NAME_REQUIRED',
+  'ENTRY_NOT_FOUND',
+  'ENTRY_INVALID_PARENT',
+  'ENTRY_KIND_MISMATCH',
+  /** 系统拖入的路径位于临时目录之下（压缩包内的文件等，Chromium 写出的临时副本） */
+  'ENTRY_TEMPORARY_PATH',
+  'FS_NOT_FOUND',
+  'FS_PERMISSION_DENIED',
+  'FS_NOT_A_DIRECTORY',
+  'FS_INVALID_URI',
+  'FS_UNSUPPORTED_SCHEME',
+  'FS_CANCELLED',
+  'FS_TIMEOUT',
+  'FS_UNAVAILABLE',
+  /** 扫描进程或其缓存库（index.db）不可用 */
+  'INDEX_UNAVAILABLE',
+  /** 文本文档不存在：已关闭、因每窗口上限被关闭，或其窗口已销毁 */
+  'DOC_NOT_FOUND'
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

@@ -10,7 +10,10 @@ import {
   registerPrivilegedSchemes
 } from '../windows/app-protocol'
 import { applySecurityPolicies } from '../windows/security'
+import { driveTypeStatus, location } from '../vfs/location'
 import { createContainer, type Container } from './container'
+import { bindDocumentOwner } from '../vfs/document/document-owner'
+import { buildScannerConfig } from '../vfs/scanner-config'
 import { registerShutdown } from './shutdown'
 
 export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
@@ -39,6 +42,14 @@ export async function bootstrap(): Promise<void> {
   electronApp.setAppUserModelId(APP_USER_MODEL_ID)
   const c = await createContainer(rendererUrl)
   c.logger.info(`[app] starting v${app.getVersion()} renderer=${rendererUrl}`)
+  const driveType = driveTypeStatus()
+  if (driveType.native) {
+    c.logger.info('[vfs] drive type detection: native (koffi)')
+  } else {
+    c.logger.warn(
+      `[vfs] koffi unavailable in the main process, mapped network drives are treated as local: ${driveType.error}`
+    )
+  }
 
   nativeTheme.themeSource = c.settings.get('appearance.themeMode')
   if (!devUrl) registerAppProtocol(c.paths.renderer)
@@ -50,6 +61,8 @@ export async function bootstrap(): Promise<void> {
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
   wireEvents(c)
+  wireScanner(c)
+  wireDocuments(c)
   registerShutdown(c, disposeIpc)
 
   c.windows.openMainWindow()
@@ -74,7 +87,65 @@ function wireEvents(c: Container): void {
     }
     c.windows.broadcast('settings.changed', patch)
   })
+  c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
+  c.bus.on('vfs.changed', (e) => c.windows.broadcast('vfs.changed', e))
+  c.bus.on('vfs.reachability', (e) => c.windows.broadcast('vfs.reachability', e))
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())
+}
+
+/**
+ * 文本文档归属窗口（owner = webContents id，与 IPC 的 senderId 一致）：页面重新加载 / 渲染进程崩溃时关闭，
+ * 窗口销毁时全部释放
+ */
+function wireDocuments(c: Container): void {
+  app.on('browser-window-created', (_event, win) => bindDocumentOwner(win.webContents, c.documents))
+}
+
+/**
+ * 扫描进程的接线：配置下发（启动、工作区或条目变化、切换工作区、刷新 / 超时设置变化时）、
+ * 窗口焦点（P1 在所有窗口失焦时暂停，重新获得焦点时关注点进入 P0）、窗口销毁时释放其关注点。
+ * owner = 窗口的 webContents id（与 vfs.interest 的 senderId 一致）。
+ */
+function wireScanner(c: Container): void {
+  let seq = 0
+  const push = async (): Promise<void> => {
+    const mine = ++seq
+    try {
+      const [active, all, indexTargets] = await Promise.all([
+        c.workspaces.active(),
+        c.workspaces.list(),
+        c.workspaces.listAllIndexTargets()
+      ])
+      const entries = (await Promise.all(all.map((w) => c.workspaces.listEntries(w.id)))).flat()
+      // 更晚发起的下发已在途：丢弃这次（避免旧配置后到、覆盖新配置）
+      if (mine !== seq) return
+      c.scanner.configure(
+        buildScannerConfig({
+          activeWorkspaceIds: [active.id],
+          allFolderEntries: entries.filter((e) => e.kind === 'folder'),
+          indexTargets,
+          settings: c.settings.getAll(),
+          location
+        })
+      )
+    } catch (e) {
+      c.logger.error('[scanner] cannot build the scanner config', e)
+    }
+  }
+  void push()
+  c.bus.on('workspace.changed', () => void push())
+  c.bus.on('settings.changed', (patch) => {
+    if (Object.keys(patch).some((k) => k.startsWith('cache.') || k.startsWith('vfs.'))) {
+      void push()
+    }
+  })
+
+  app.on('browser-window-created', (_event, win) => {
+    const id = win.webContents.id
+    win.on('focus', () => c.scanner.windowFocus(id, true))
+    win.on('blur', () => c.scanner.windowFocus(id, false))
+    win.webContents.once('destroyed', () => c.scanner.releaseOwner(id))
+  })
 }

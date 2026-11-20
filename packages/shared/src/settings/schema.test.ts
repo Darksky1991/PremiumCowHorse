@@ -40,6 +40,75 @@ describe('SettingsPatch', () => {
   })
 })
 
+describe('刷新与超时的设置（设计 4.9）', () => {
+  it('默认值', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      'cache.strategy.local': 'active',
+      'cache.strategy.network': 'default',
+      'cache.activeDepth': 3,
+      'cache.interval.focus.local': 5,
+      'cache.interval.focus.network': 10,
+      'cache.interval.near.local': 30,
+      'cache.interval.near.network': 60,
+      'cache.interval.far.local': 120,
+      'cache.interval.far.network': 300,
+      'cache.backgroundGapMs.local': 500,
+      'cache.backgroundGapMs.network': 2000,
+      'vfs.timeoutSec.local': 5,
+      'vfs.timeoutSec.network': 10
+    })
+    expect(Object.hasOwn(DEFAULT_SETTINGS, 'remote.pollIntervalSec')).toBe(false)
+  })
+
+  it.each([
+    ['cache.strategy.local', 'sometimes'],
+    ['cache.activeDepth', 0],
+    ['cache.activeDepth', 11],
+    ['cache.interval.focus.local', 1],
+    ['cache.interval.focus.network', 9],
+    ['cache.interval.near.local', 1],
+    ['cache.interval.near.network', 9],
+    ['cache.interval.far.local', 1],
+    ['cache.interval.far.network', 9],
+    ['cache.backgroundGapMs.local', 99],
+    ['cache.backgroundGapMs.network', 499],
+    ['vfs.timeoutSec.local', 0],
+    ['vfs.timeoutSec.local', 61],
+    ['vfs.timeoutSec.network', 9],
+    ['vfs.timeoutSec.network', 121],
+    ['remote.pollIntervalSec', 0]
+  ] as const)('拒绝 %s = %j', (key, value) => {
+    expect(SettingsPatch.safeParse({ [key]: value }).success).toBe(false)
+  })
+
+  it.each([
+    ['cache.strategy.network', 'all'],
+    ['cache.activeDepth', 10],
+    ['cache.interval.focus.local', 2],
+    ['cache.interval.focus.network', 10],
+    ['cache.interval.near.local', 2],
+    ['cache.interval.far.network', 10],
+    ['cache.backgroundGapMs.local', 100],
+    ['cache.backgroundGapMs.network', 500],
+    ['vfs.timeoutSec.local', 60],
+    ['vfs.timeoutSec.network', 120]
+  ] as const)('接受边界值 %s = %j', (key, value) => {
+    expect(SettingsPatch.safeParse({ [key]: value }).success).toBe(true)
+  })
+})
+
+describe('旧版本残留的 refresh.* 键', () => {
+  it('resolveSettings 忽略它们且不报错', () => {
+    const s = resolveSettings({
+      'refresh.defaultLevel.local': 'all',
+      'refresh.intervalSec.local': 2,
+      'cache.strategy.local': 'passive'
+    })
+    expect(s['cache.strategy.local']).toBe('passive')
+    expect(Object.keys(s).some((k) => k.startsWith('refresh.'))).toBe(false)
+  })
+})
+
 describe('resolveLanguage', () => {
   it.each([
     ['ja-JP', 'ja'],

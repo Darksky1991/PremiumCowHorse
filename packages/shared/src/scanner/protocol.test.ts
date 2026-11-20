@@ -1,0 +1,132 @@
+import { describe, expect, it } from 'vitest'
+import { MainToScanner, ScannerToMain, type ScannerConfig } from './protocol'
+
+const config: ScannerConfig = {
+  roots: [
+    {
+      entryId: 'e1',
+      workspaceId: 'default',
+      uri: 'file:///C:/a',
+      strategy: 'default',
+      location: 'local'
+    }
+  ],
+  allRootUris: ['file:///C:/a', 'file:///D:/b'],
+  indexTargets: [],
+  settings: {
+    interval: {
+      focus: { local: 5, network: 10 },
+      near: { local: 30, network: 60 },
+      far: { local: 120, network: 300 }
+    },
+    backgroundGapMs: { local: 500, network: 2000 },
+    timeoutSec: { local: 5, network: 10 },
+    activeDepth: 3
+  }
+}
+
+/** 每种消息一个合法样例、一个非法样例 */
+const mainToScanner: Array<[string, unknown, unknown]> = [
+  ['init', { type: 'init', cacheFile: 'C:\\x\\index.db' }, { type: 'init', cacheFile: '' }],
+  [
+    'configure',
+    { type: 'configure', config },
+    { type: 'configure', config: { ...config, roots: [{ ...config.roots[0], strategy: 'max' }] } }
+  ],
+  ['list', { type: 'list', id: 1, uri: 'file:///C:/a' }, { type: 'list', id: -1, uri: 'x' }],
+  [
+    'interest',
+    {
+      type: 'interest',
+      ownerId: 3,
+      focus: null,
+      visible: ['file:///C:/a'],
+      offscreen: [],
+      tabs: ['file:///C:/t']
+    },
+    { type: 'interest', ownerId: 3, focus: null, visible: ['file:///C:/a'], offscreen: [] }
+  ],
+  [
+    'windowFocus',
+    { type: 'windowFocus', ownerId: 3, focused: false },
+    { type: 'windowFocus', ownerId: 3, focused: 'no' }
+  ],
+  ['releaseOwner', { type: 'releaseOwner', ownerId: 3 }, { type: 'releaseOwner', ownerId: 1.5 }],
+  [
+    'refresh',
+    { type: 'refresh', uris: ['file:///C:/a'] },
+    { type: 'refresh', uris: 'file:///C:/a' }
+  ],
+  ['cacheInfo', { type: 'cacheInfo', id: 2 }, { type: 'cacheInfo' }],
+  ['clearCache', { type: 'clearCache', id: 2 }, { type: 'clearCache', id: '2' }],
+  [
+    'search',
+    {
+      type: 'search',
+      id: 3,
+      scopes: [{ uri: 'file:///C:/a', entryId: 'e1', label: 'A' }],
+      terms: [{ kind: 'contains', value: 'abc' }],
+      kind: 'all',
+      showHidden: false,
+      limit: 1000
+    },
+    {
+      type: 'search',
+      id: 3,
+      scopes: [],
+      terms: [{ kind: 'regex', value: 'abc' }],
+      kind: 'all',
+      showHidden: false,
+      limit: 1000
+    }
+  ],
+  ['cancel', { type: 'cancel', id: 2 }, { type: 'cancel', id: null }],
+  ['shutdown', { type: 'shutdown' }, { type: 'shutdown', now: true }]
+]
+
+const scannerToMain: Array<[string, unknown, unknown]> = [
+  [
+    'result ok',
+    { type: 'result', id: 1, ok: true, value: { items: [], state: 'fresh', checkedAt: 1 } },
+    { type: 'result', id: 1, ok: true, error: { code: 'UNKNOWN' } }
+  ],
+  [
+    'result error',
+    { type: 'result', id: 1, ok: false, error: { code: 'INDEX_UNAVAILABLE', detail: 'x' } },
+    { type: 'result', id: 1, ok: false, error: { code: 'NOT_A_CODE' } }
+  ],
+  ['changed', { type: 'changed', uri: 'file:///C:/a' }, { type: 'changed' }],
+  [
+    'reachability',
+    { type: 'reachability', share: '\\\\srv\\share', state: 'offline', since: 1 },
+    { type: 'reachability', share: '\\\\srv\\share', state: 'down', since: 1 }
+  ],
+  [
+    'log',
+    { type: 'log', level: 'warn', message: 'hello' },
+    { type: 'log', level: 'debug', message: 'hello' }
+  ],
+  ['ready', { type: 'ready' }, { type: 'ready', extra: 1 }]
+]
+
+describe('MainToScanner', () => {
+  it.each(mainToScanner)('%s: accepts a valid message and rejects an invalid one', (_, ok, bad) => {
+    expect(MainToScanner.safeParse(ok).success).toBe(true)
+    expect(MainToScanner.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects an unknown message type', () => {
+    expect(MainToScanner.safeParse({ type: 'explode' }).success).toBe(false)
+  })
+})
+
+describe('ScannerToMain', () => {
+  it.each(scannerToMain)('%s: accepts a valid message and rejects an invalid one', (_, ok, bad) => {
+    expect(ScannerToMain.safeParse(ok).success).toBe(true)
+    expect(ScannerToMain.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects a non-object', () => {
+    expect(ScannerToMain.safeParse('ready').success).toBe(false)
+  })
+})

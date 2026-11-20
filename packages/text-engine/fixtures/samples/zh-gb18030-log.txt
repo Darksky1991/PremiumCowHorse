@@ -1,0 +1,400 @@
+2026/11/20 08:00:03.002 [INFO] http.server: heartbeat ok seq=31272
+2026/11/20 08:00:08.070 [INFO] mailer: session expired user_id=37327
+2026/11/20 08:00:08.763 [DEBUG] http.server: cache miss key=user:56392 loading from db
+2026/11/20 08:00:14.868 [INFO] mailer: request completed status=200 bytes=66155 elapsed=993ms
+2026/11/20 08:00:15.835 [INFO] scheduler: TLS handshake with 192.168.1.92 completed
+2026/11/20 08:00:18.475 [INFO] http.server: connection pool size=10756 active=129 idle=3
+2026/11/20 08:00:20.220 [INFO] auth: gc pause 606ms heap=512MB
+2026/11/20 08:00:21.262 [INFO] fs.watcher: gc pause 391ms heap=512MB
+2026/11/20 08:00:29.822 [INFO] cache: GET /api/v1/orders/75718 HTTP/1.1 200
+2026/11/20 08:00:35.119 [INFO] mailer: job finished id=84858 rc=0
+2026/11/20 08:00:40.249 [INFO] scheduler: job finished id=1118 rc=0
+2026/11/20 08:00:49.655 [DEBUG] batch: job finished id=54973 rc=0
+2026/11/20 08:00:56.673 [INFO] cache: retrying connection to 10.0.85.641 attempt=2
+2026/11/20 08:00:56.954 [DEBUG] batch: queue length=77512 oldest_age=741s
+2026/11/20 08:00:56.556 [DEBUG] scheduler: gc pause 153ms heap=512MB
+2026/11/20 08:01:05.783 [INFO] fs.watcher: gc pause 592ms heap=512MB
+2026/11/20 08:01:10.730 [INFO] fs.watcher: GET /api/v1/orders/91157 HTTP/1.1 200
+2026/11/20 08:01:11.587 [ERROR] mailer: gc pause 723ms heap=512MB
+2026/11/20 08:01:15.368 [INFO] http.server: cache miss key=user:32276 loading from db
+2026/11/20 08:01:17.280 [ERROR] fs.watcher: retrying connection to 10.0.112.60 attempt=2
+2026/11/20 08:01:26.154 [INFO] scheduler: gc pause 170ms heap=512MB
+2026/11/20 08:01:29.232 [WARN] auth: cache miss key=user:80124 loading from db
+2026/11/20 08:01:34.148 [INFO] scheduler: gc pause 48ms heap=512MB
+2026/11/20 08:01:37.901 [INFO] scheduler: file rotated path=/var/log/app/app.log.139
+2026/11/20 08:01:46.736 [INFO] http.server: job finished id=3878 rc=0
+2026/11/20 08:01:52.795 [ERROR] cache: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:01:58.939 [INFO] mailer: TLS handshake with 192.168.1.67 completed
+2026/11/20 08:02:04.367 [ERROR] cache: request completed status=200 bytes=21347 elapsed=96ms
+2026/11/20 08:02:09.266 [DEBUG] http.server: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:02:13.917 [INFO] scheduler: TLS handshake with 192.168.1.25 completed
+2026/11/20 08:02:14.948 [INFO] cache: job finished id=79319 rc=0
+2026/11/20 08:02:22.585 [INFO] http.server: retrying connection to 10.0.219.886 attempt=2
+2026/11/20 08:02:28.260 [INFO] auth: job started id=5223
+2026/11/20 08:02:32.837 [WARN] batch: file rotated path=/var/log/app/app.log.50
+2026/11/20 08:02:38.101 [INFO] mailer: request completed status=200 bytes=55994 elapsed=443ms
+2026/11/20 08:02:43.585 [INFO] cache: job finished id=96794 rc=0
+2026/11/20 08:02:48.267 [INFO] batch: TLS handshake with 192.168.1.245 completed
+2026/11/20 08:02:48.333 [INFO] fs.watcher: request completed status=200 bytes=98951 elapsed=477ms
+2026/11/20 08:02:57.518 [ERROR] mailer: file rotated path=/var/log/app/app.log.48
+2026/11/20 08:03:03.338 [INFO] mailer: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:03:06.414 [DEBUG] auth: heartbeat ok seq=91640
+2026/11/20 08:03:14.452 [INFO] batch: heartbeat ok seq=25025
+2026/11/20 08:03:22.292 [INFO] mailer: GET /api/v1/orders/35147 HTTP/1.1 200
+2026/11/20 08:03:31.074 [WARN] mailer: retrying connection to 10.0.53.533 attempt=2
+2026/11/20 08:03:31.118 [INFO] fs.watcher: 𡈽𠀀𪚥是罕见的汉字，旧版数据库无法保存它们。
+2026/11/20 08:03:31.601 [INFO] mailer: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:03:32.190 [INFO] scheduler: request completed status=200 bytes=80339 elapsed=474ms
+2026/11/20 08:03:34.729 [INFO] db.pool: TLS handshake with 192.168.1.156 completed
+2026/11/20 08:03:41.515 [INFO] db.pool: job finished id=19655 rc=0
+2026/11/20 08:03:49.279 [WARN] db.pool: job finished id=35642 rc=0
+2026/11/20 08:03:50.211 [WARN] http.server: session expired user_id=11438
+2026/11/20 08:03:56.777 [ERROR] scheduler: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:03:57.522 [WARN] batch: connection pool size=15093 active=328 idle=3
+2026/11/20 08:04:05.574 [INFO] http.server: file rotated path=/var/log/app/app.log.72
+2026/11/20 08:04:11.373 [INFO] batch: connection pool size=19529 active=470 idle=3
+2026/11/20 08:04:15.253 [INFO] scheduler: TLS handshake with 192.168.1.124 completed
+2026/11/20 08:04:20.306 [ERROR] cache: retrying connection to 10.0.158.622 attempt=2
+2026/11/20 08:04:23.524 [DEBUG] scheduler: cache miss key=user:57189 loading from db
+2026/11/20 08:04:27.127 [DEBUG] cache: session expired user_id=78340
+2026/11/20 08:04:36.102 [INFO] batch: connection pool size=84161 active=811 idle=3
+2026/11/20 08:04:43.415 [WARN] cache: session expired user_id=94251
+2026/11/20 08:04:52.719 [INFO] fs.watcher: retrying connection to 10.0.212.193 attempt=2
+2026/11/20 08:04:53.272 [INFO] http.server: file rotated path=/var/log/app/app.log.251
+2026/11/20 08:04:55.835 [WARN] db.pool: job started id=73292
+2026/11/20 08:04:55.579 [ERROR] http.server: request completed status=200 bytes=91135 elapsed=681ms
+2026/11/20 08:04:58.958 [ERROR] db.pool: GET /api/v1/orders/71990 HTTP/1.1 200
+2026/11/20 08:05:06.394 [INFO] db.pool: cache miss key=user:95095 loading from db
+2026/11/20 08:05:06.646 [ERROR] batch: connection pool size=90793 active=564 idle=3
+2026/11/20 08:05:12.151 [DEBUG] scheduler: cache miss key=user:35352 loading from db
+2026/11/20 08:05:17.268 [ERROR] mailer: GET /api/v1/orders/8087 HTTP/1.1 200
+2026/11/20 08:05:18.866 [DEBUG] scheduler: cache miss key=user:7547 loading from db
+2026/11/20 08:05:19.918 [DEBUG] http.server: job finished id=71800 rc=0
+2026/11/20 08:05:22.970 [WARN] db.pool: connection pool size=23781 active=480 idle=3
+2026/11/20 08:05:26.758 [INFO] http.server: session expired user_id=92896
+2026/11/20 08:05:29.700 [INFO] scheduler: cache miss key=user:64696 loading from db
+2026/11/20 08:05:33.353 [INFO] scheduler: gc pause 654ms heap=512MB
+2026/11/20 08:05:40.043 [INFO] fs.watcher: file rotated path=/var/log/app/app.log.251
+2026/11/20 08:05:43.081 [WARN] fs.watcher: queue length=50311 oldest_age=632s
+2026/11/20 08:05:43.035 [INFO] db.pool: session expired user_id=69126
+2026/11/20 08:05:45.884 [INFO] cache: queue length=76703 oldest_age=161s
+2026/11/20 08:05:47.659 [INFO] auth: session expired user_id=21013
+2026/11/20 08:05:53.242 [INFO] scheduler: TLS handshake with 192.168.1.161 completed
+2026/11/20 08:06:01.467 [INFO] auth: connection pool size=53658 active=52 idle=3
+2026/11/20 08:06:07.933 [INFO] db.pool: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:06:08.813 [WARN] auth: queue length=9812 oldest_age=498s
+2026/11/20 08:06:12.043 [INFO] cache: file rotated path=/var/log/app/app.log.66
+2026/11/20 08:06:18.720 [WARN] db.pool: cache miss key=user:59036 loading from db
+2026/11/20 08:06:21.401 [INFO] http.server: heartbeat ok seq=23864
+2026/11/20 08:06:24.245 [DEBUG] scheduler: 检测到订单编号重复
+2026/11/20 08:06:28.574 [ERROR] cache: job started id=77316
+2026/11/20 08:06:37.092 [DEBUG] mailer: connection pool size=27867 active=802 idle=3
+2026/11/20 08:06:45.371 [ERROR] mailer: retrying connection to 10.0.37.545 attempt=2
+2026/11/20 08:06:45.225 [WARN] cache: GET /api/v1/orders/74980 HTTP/1.1 200
+2026/11/20 08:06:48.399 [DEBUG] fs.watcher: TLS handshake with 192.168.1.85 completed
+2026/11/20 08:06:49.924 [INFO] auth: retrying connection to 10.0.171.417 attempt=2
+2026/11/20 08:06:57.531 [INFO] auth: job started id=74446
+2026/11/20 08:07:06.776 [WARN] scheduler: request completed status=200 bytes=57777 elapsed=205ms
+2026/11/20 08:07:14.263 [INFO] fs.watcher: connection pool size=33954 active=581 idle=3
+2026/11/20 08:07:19.265 [DEBUG] auth: GET /api/v1/orders/25405 HTTP/1.1 200
+2026/11/20 08:07:28.079 [INFO] http.server: GET /api/v1/orders/95503 HTTP/1.1 200
+2026/11/20 08:07:28.651 [INFO] fs.watcher: request completed status=200 bytes=94296 elapsed=120ms
+2026/11/20 08:07:29.941 [WARN] fs.watcher: file rotated path=/var/log/app/app.log.118
+2026/11/20 08:07:32.280 [INFO] cache: job finished id=20049 rc=0
+2026/11/20 08:07:35.897 [ERROR] scheduler: GET /api/v1/orders/35764 HTTP/1.1 200
+2026/11/20 08:07:36.293 [INFO] http.server: cache miss key=user:84473 loading from db
+2026/11/20 08:07:43.434 [WARN] auth: connection pool size=96411 active=974 idle=3
+2026/11/20 08:07:52.027 [INFO] mailer: queue length=50283 oldest_age=309s
+2026/11/20 08:08:00.534 [INFO] db.pool: cache miss key=user:60896 loading from db
+2026/11/20 08:08:06.195 [DEBUG] fs.watcher: queue length=80540 oldest_age=925s
+2026/11/20 08:08:15.575 [DEBUG] db.pool: queue length=54544 oldest_age=707s
+2026/11/20 08:08:17.261 [INFO] cache: job finished id=99145 rc=0
+2026/11/20 08:08:20.786 [ERROR] http.server: queue length=3257 oldest_age=297s
+2026/11/20 08:08:22.444 [DEBUG] auth: connection pool size=7595 active=998 idle=3
+2026/11/20 08:08:30.282 [INFO] batch: connection pool size=34752 active=811 idle=3
+2026/11/20 08:08:38.223 [DEBUG] http.server: job started id=65253
+2026/11/20 08:08:47.768 [INFO] mailer: request completed status=200 bytes=35275 elapsed=274ms
+2026/11/20 08:08:56.604 [ERROR] auth: queue length=45304 oldest_age=770s
+2026/11/20 08:08:57.114 [INFO] cache: heartbeat ok seq=12071
+2026/11/20 08:08:59.794 [INFO] mailer: queue length=88637 oldest_age=942s
+2026/11/20 08:09:03.796 [INFO] auth: queue length=99926 oldest_age=395s
+2026/11/20 08:09:10.257 [WARN] mailer: heartbeat ok seq=78767
+2026/11/20 08:09:19.304 [INFO] mailer: queue length=50844 oldest_age=403s
+2026/11/20 08:09:28.136 [DEBUG] cache: queue length=95482 oldest_age=272s
+2026/11/20 08:09:29.761 [ERROR] batch: TLS handshake with 192.168.1.116 completed
+2026/11/20 08:09:33.612 [INFO] scheduler: gc pause 189ms heap=512MB
+2026/11/20 08:09:34.680 [INFO] http.server: job started id=83651
+2026/11/20 08:09:35.046 [INFO] db.pool: gc pause 542ms heap=512MB
+2026/11/20 08:09:36.590 [INFO] scheduler: queue length=9458 oldest_age=523s
+2026/11/20 08:09:42.801 [INFO] fs.watcher: job started id=25373
+2026/11/20 08:09:45.381 [INFO] batch: 𡈽𠀀𪚥是罕见的汉字，旧版数据库无法保存它们。
+2026/11/20 08:09:49.774 [INFO] db.pool: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:09:50.422 [ERROR] cache: queue length=99524 oldest_age=777s
+2026/11/20 08:09:54.782 [WARN] auth: cache miss key=user:54463 loading from db
+2026/11/20 08:09:59.485 [DEBUG] mailer: file rotated path=/var/log/app/app.log.31
+2026/11/20 08:10:03.666 [WARN] fs.watcher: file rotated path=/var/log/app/app.log.103
+2026/11/20 08:10:05.199 [INFO] batch: gc pause 710ms heap=512MB
+2026/11/20 08:10:10.135 [INFO] fs.watcher: TLS handshake with 192.168.1.130 completed
+2026/11/20 08:10:11.869 [WARN] scheduler: heartbeat ok seq=980
+2026/11/20 08:10:13.709 [INFO] batch: connection pool size=67763 active=254 idle=3
+2026/11/20 08:10:13.652 [INFO] db.pool: file rotated path=/var/log/app/app.log.156
+2026/11/20 08:10:18.985 [DEBUG] scheduler: file rotated path=/var/log/app/app.log.143
+2026/11/20 08:10:27.728 [DEBUG] mailer: request completed status=200 bytes=70541 elapsed=498ms
+2026/11/20 08:10:31.194 [INFO] mailer: TLS handshake with 192.168.1.51 completed
+2026/11/20 08:10:40.122 [WARN] http.server: file rotated path=/var/log/app/app.log.165
+2026/11/20 08:10:47.767 [INFO] db.pool: session expired user_id=96999
+2026/11/20 08:10:47.974 [INFO] cache: connection pool size=20536 active=940 idle=3
+2026/11/20 08:10:48.354 [ERROR] fs.watcher: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:10:48.148 [INFO] batch: heartbeat ok seq=84528
+2026/11/20 08:10:51.655 [INFO] http.server: retrying connection to 10.0.86.155 attempt=2
+2026/11/20 08:10:56.645 [INFO] fs.watcher: cache miss key=user:76374 loading from db
+2026/11/20 08:11:05.806 [INFO] db.pool: heartbeat ok seq=17927
+2026/11/20 08:11:11.662 [WARN] http.server: job started id=55751
+2026/11/20 08:11:18.138 [INFO] batch: request completed status=200 bytes=32799 elapsed=644ms
+2026/11/20 08:11:24.444 [ERROR] cache: TLS handshake with 192.168.1.199 completed
+2026/11/20 08:11:25.894 [DEBUG] http.server: file rotated path=/var/log/app/app.log.223
+2026/11/20 08:11:34.287 [INFO] fs.watcher: GET /api/v1/orders/9920 HTTP/1.1 200
+2026/11/20 08:11:38.303 [INFO] db.pool: file rotated path=/var/log/app/app.log.110
+2026/11/20 08:11:38.398 [INFO] fs.watcher: job started id=29322
+2026/11/20 08:11:47.561 [INFO] cache: connection pool size=22811 active=78 idle=3
+2026/11/20 08:11:56.719 [DEBUG] scheduler: retrying connection to 10.0.215.621 attempt=2
+2026/11/20 08:12:02.660 [INFO] auth: cache miss key=user:18682 loading from db
+2026/11/20 08:12:10.159 [INFO] fs.watcher: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:12:17.386 [INFO] auth: job finished id=91388 rc=0
+2026/11/20 08:12:19.137 [INFO] batch: gc pause 647ms heap=512MB
+2026/11/20 08:12:28.719 [DEBUG] http.server: retrying connection to 10.0.187.820 attempt=2
+2026/11/20 08:12:34.187 [INFO] batch: heartbeat ok seq=72493
+2026/11/20 08:12:40.739 [INFO] db.pool: heartbeat ok seq=54676
+2026/11/20 08:12:44.587 [INFO] fs.watcher: file rotated path=/var/log/app/app.log.234
+2026/11/20 08:12:50.920 [INFO] cache: job started id=8472
+2026/11/20 08:12:59.139 [INFO] mailer: job finished id=25328 rc=0
+2026/11/20 08:13:01.556 [INFO] scheduler: TLS handshake with 192.168.1.170 completed
+2026/11/20 08:13:06.555 [INFO] auth: job finished id=97062 rc=0
+2026/11/20 08:13:07.777 [DEBUG] auth: cache miss key=user:97531 loading from db
+2026/11/20 08:13:08.188 [INFO] cache: queue length=53669 oldest_age=844s
+2026/11/20 08:13:10.059 [ERROR] auth: 这位员工的名字里有生僻字𠮷，系统必须能够正确显示。
+2026/11/20 08:13:17.454 [ERROR] cache: job started id=88898
+2026/11/20 08:13:18.674 [ERROR] db.pool: GET /api/v1/orders/85936 HTTP/1.1 200
+2026/11/20 08:13:19.965 [DEBUG] batch: TLS handshake with 192.168.1.209 completed
+2026/11/20 08:13:24.321 [WARN] fs.watcher: job started id=76307
+2026/11/20 08:13:28.483 [INFO] auth: GET /api/v1/orders/62162 HTTP/1.1 200
+2026/11/20 08:13:34.355 [INFO] http.server: request completed status=200 bytes=92099 elapsed=996ms
+2026/11/20 08:13:40.798 [INFO] auth: connection pool size=5265 active=271 idle=3
+2026/11/20 08:13:41.683 [WARN] cache: job started id=33794
+2026/11/20 08:13:48.040 [DEBUG] scheduler: job finished id=90552 rc=0
+2026/11/20 08:13:55.600 [INFO] scheduler: TLS handshake with 192.168.1.36 completed
+2026/11/20 08:13:58.533 [INFO] mailer: gc pause 966ms heap=512MB
+2026/11/20 08:13:59.320 [INFO] batch: cache miss key=user:9525 loading from db
+2026/11/20 08:14:00.864 [DEBUG] scheduler: connection pool size=84239 active=96 idle=3
+2026/11/20 08:14:03.965 [INFO] scheduler: connection pool size=97967 active=410 idle=3
+2026/11/20 08:14:12.381 [INFO] batch: retrying connection to 10.0.23.277 attempt=2
+2026/11/20 08:14:12.694 [DEBUG] fs.watcher: retrying connection to 10.0.232.656 attempt=2
+2026/11/20 08:14:21.684 [INFO] auth: session expired user_id=94803
+2026/11/20 08:14:23.807 [INFO] auth: job started id=98427
+2026/11/20 08:14:29.155 [INFO] mailer: TLS handshake with 192.168.1.206 completed
+2026/11/20 08:14:31.294 [INFO] mailer: session expired user_id=94124
+2026/11/20 08:14:36.006 [DEBUG] auth: job started id=75534
+2026/11/20 08:14:45.635 [DEBUG] fs.watcher: cache miss key=user:20272 loading from db
+2026/11/20 08:14:46.007 [INFO] fs.watcher: queue length=54381 oldest_age=818s
+2026/11/20 08:14:51.684 [ERROR] http.server: retrying connection to 10.0.136.787 attempt=2
+2026/11/20 08:14:54.105 [DEBUG] scheduler: file rotated path=/var/log/app/app.log.170
+2026/11/20 08:15:02.413 [INFO] auth: connection pool size=90208 active=650 idle=3
+2026/11/20 08:15:11.112 [INFO] auth: retrying connection to 10.0.34.874 attempt=2
+2026/11/20 08:15:11.010 [INFO] scheduler: gc pause 645ms heap=512MB
+2026/11/20 08:15:16.074 [ERROR] fs.watcher: cache miss key=user:61101 loading from db
+2026/11/20 08:15:20.560 [INFO] cache: TLS handshake with 192.168.1.138 completed
+2026/11/20 08:15:28.355 [INFO] scheduler: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:15:37.412 [INFO] mailer: GET /api/v1/orders/4556 HTTP/1.1 200
+2026/11/20 08:15:43.129 [INFO] mailer: cache miss key=user:56648 loading from db
+2026/11/20 08:15:46.790 [INFO] scheduler: file rotated path=/var/log/app/app.log.241
+2026/11/20 08:15:48.781 [INFO] batch: TLS handshake with 192.168.1.18 completed
+2026/11/20 08:15:56.913 [ERROR] auth: 客户主数据更新失败：连接超时
+2026/11/20 08:16:05.216 [ERROR] batch: queue length=89378 oldest_age=742s
+2026/11/20 08:16:13.230 [INFO] cache: queue length=43255 oldest_age=866s
+2026/11/20 08:16:21.314 [INFO] auth: gc pause 864ms heap=512MB
+2026/11/20 08:16:26.176 [ERROR] scheduler: file rotated path=/var/log/app/app.log.122
+2026/11/20 08:16:32.834 [ERROR] batch: queue length=20312 oldest_age=869s
+2026/11/20 08:16:41.562 [INFO] mailer: file rotated path=/var/log/app/app.log.133
+2026/11/20 08:16:44.922 [INFO] fs.watcher: job finished id=79895 rc=0
+2026/11/20 08:16:51.324 [INFO] fs.watcher: job started id=61506
+2026/11/20 08:16:54.966 [INFO] mailer: file rotated path=/var/log/app/app.log.56
+2026/11/20 08:17:03.096 [INFO] fs.watcher: gc pause 242ms heap=512MB
+2026/11/20 08:17:07.313 [INFO] db.pool: TLS handshake with 192.168.1.172 completed
+2026/11/20 08:17:11.832 [DEBUG] scheduler: retrying connection to 10.0.130.983 attempt=2
+2026/11/20 08:17:17.369 [INFO] scheduler: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:17:24.491 [INFO] mailer: heartbeat ok seq=90340
+2026/11/20 08:17:24.012 [DEBUG] cache: gc pause 481ms heap=512MB
+2026/11/20 08:17:30.346 [INFO] cache: retrying connection to 10.0.74.261 attempt=2
+2026/11/20 08:17:30.102 [INFO] batch: session expired user_id=20984
+2026/11/20 08:17:34.445 [INFO] db.pool: job finished id=19568 rc=0
+2026/11/20 08:17:41.204 [INFO] fs.watcher: gc pause 26ms heap=512MB
+2026/11/20 08:17:45.058 [INFO] db.pool: file rotated path=/var/log/app/app.log.65
+2026/11/20 08:17:48.649 [INFO] auth: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:17:52.270 [DEBUG] db.pool: file rotated path=/var/log/app/app.log.6
+2026/11/20 08:17:59.714 [DEBUG] db.pool: job finished id=73052 rc=0
+2026/11/20 08:18:07.905 [ERROR] http.server: job finished id=26014 rc=0
+2026/11/20 08:18:15.711 [INFO] fs.watcher: queue length=27675 oldest_age=557s
+2026/11/20 08:18:19.010 [INFO] db.pool: gc pause 848ms heap=512MB
+2026/11/20 08:18:24.558 [INFO] http.server: GET /api/v1/orders/9272 HTTP/1.1 200
+2026/11/20 08:18:24.144 [INFO] scheduler: gc pause 542ms heap=512MB
+2026/11/20 08:18:26.340 [WARN] mailer: connection pool size=95547 active=206 idle=3
+2026/11/20 08:18:34.193 [DEBUG] db.pool: session expired user_id=68857
+2026/11/20 08:18:41.741 [INFO] http.server: cache miss key=user:93540 loading from db
+2026/11/20 08:18:45.706 [INFO] fs.watcher: file rotated path=/var/log/app/app.log.106
+2026/11/20 08:18:49.202 [INFO] auth: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:18:49.749 [INFO] mailer: cache miss key=user:27166 loading from db
+2026/11/20 08:18:49.221 [INFO] fs.watcher: gc pause 71ms heap=512MB
+2026/11/20 08:18:49.024 [WARN] batch: job started id=47636
+2026/11/20 08:18:57.887 [INFO] cache: cache miss key=user:61449 loading from db
+2026/11/20 08:19:06.046 [WARN] db.pool: retrying connection to 10.0.235.526 attempt=2
+2026/11/20 08:19:12.773 [DEBUG] http.server: connection pool size=76609 active=895 idle=3
+2026/11/20 08:19:19.931 [INFO] auth: 这位员工的名字里有生僻字𠮷，系统必须能够正确显示。
+2026/11/20 08:19:22.683 [INFO] batch: TLS handshake with 192.168.1.192 completed
+2026/11/20 08:19:26.896 [WARN] fs.watcher: session expired user_id=31679
+2026/11/20 08:19:29.617 [INFO] scheduler: gc pause 849ms heap=512MB
+2026/11/20 08:19:33.522 [INFO] auth: job started id=20930
+2026/11/20 08:19:36.763 [INFO] batch: job started id=77515
+2026/11/20 08:19:42.198 [ERROR] batch: connection pool size=85525 active=571 idle=3
+2026/11/20 08:19:48.016 [DEBUG] fs.watcher: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:19:52.531 [WARN] cache: TLS handshake with 192.168.1.172 completed
+2026/11/20 08:19:59.814 [INFO] cache: GET /api/v1/orders/4879 HTTP/1.1 200
+2026/11/20 08:20:04.087 [WARN] fs.watcher: cache miss key=user:66568 loading from db
+2026/11/20 08:20:13.258 [INFO] fs.watcher: session expired user_id=50458
+2026/11/20 08:20:16.305 [INFO] auth: request completed status=200 bytes=819 elapsed=506ms
+2026/11/20 08:20:22.649 [INFO] http.server: retrying connection to 10.0.212.18 attempt=2
+2026/11/20 08:20:27.780 [ERROR] batch: gc pause 889ms heap=512MB
+2026/11/20 08:20:27.910 [DEBUG] mailer: TLS handshake with 192.168.1.35 completed
+2026/11/20 08:20:35.401 [INFO] mailer: job finished id=10589 rc=0
+2026/11/20 08:20:37.614 [INFO] batch: GET /api/v1/orders/76907 HTTP/1.1 200
+2026/11/20 08:20:41.649 [DEBUG] auth: cache miss key=user:64489 loading from db
+2026/11/20 08:20:50.267 [INFO] cache: TLS handshake with 192.168.1.93 completed
+2026/11/20 08:20:51.660 [INFO] scheduler: connection pool size=74261 active=518 idle=3
+2026/11/20 08:20:51.746 [INFO] auth: request completed status=200 bytes=49920 elapsed=473ms
+2026/11/20 08:20:54.609 [INFO] db.pool: job finished id=37469 rc=0
+2026/11/20 08:20:56.094 [INFO] db.pool: GET /api/v1/orders/2923 HTTP/1.1 200
+2026/11/20 08:20:56.579 [INFO] auth: TLS handshake with 192.168.1.95 completed
+2026/11/20 08:20:57.015 [INFO] mailer: job finished id=34055 rc=0
+2026/11/20 08:21:05.612 [ERROR] auth: job started id=13688
+2026/11/20 08:21:10.714 [INFO] db.pool: job finished id=27968 rc=0
+2026/11/20 08:21:15.668 [ERROR] cache: queue length=79625 oldest_age=370s
+2026/11/20 08:21:20.505 [INFO] cache: session expired user_id=81824
+2026/11/20 08:21:20.645 [DEBUG] cache: session expired user_id=87489
+2026/11/20 08:21:27.404 [INFO] scheduler: retrying connection to 10.0.214.322 attempt=2
+2026/11/20 08:21:27.871 [INFO] batch: GET /api/v1/orders/77727 HTTP/1.1 200
+2026/11/20 08:21:31.260 [INFO] fs.watcher: 检测到订单编号重复
+2026/11/20 08:21:39.112 [ERROR] batch: GET /api/v1/orders/45730 HTTP/1.1 200
+2026/11/20 08:21:46.184 [INFO] mailer: session expired user_id=35858
+2026/11/20 08:21:47.360 [ERROR] http.server: cache miss key=user:27442 loading from db
+2026/11/20 08:21:47.793 [INFO] scheduler: session expired user_id=34993
+2026/11/20 08:21:55.872 [INFO] cache: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:21:58.324 [INFO] db.pool: session expired user_id=5567
+2026/11/20 08:22:04.797 [ERROR] http.server: session expired user_id=35632
+2026/11/20 08:22:08.862 [ERROR] mailer: request completed status=200 bytes=48557 elapsed=421ms
+2026/11/20 08:22:16.666 [INFO] auth: heartbeat ok seq=91399
+2026/11/20 08:22:16.610 [INFO] scheduler: TLS handshake with 192.168.1.104 completed
+2026/11/20 08:22:18.760 [INFO] db.pool: gc pause 435ms heap=512MB
+2026/11/20 08:22:22.118 [INFO] batch: cache miss key=user:66244 loading from db
+2026/11/20 08:22:27.163 [INFO] mailer: session expired user_id=14142
+2026/11/20 08:22:34.079 [INFO] cache: cache miss key=user:50222 loading from db
+2026/11/20 08:22:37.238 [WARN] http.server: TLS handshake with 192.168.1.125 completed
+2026/11/20 08:22:43.996 [INFO] http.server: queue length=94458 oldest_age=40s
+2026/11/20 08:22:45.680 [ERROR] mailer: cache miss key=user:55327 loading from db
+2026/11/20 08:22:50.633 [WARN] http.server: GET /api/v1/orders/67 HTTP/1.1 200
+2026/11/20 08:22:51.477 [WARN] http.server: GET /api/v1/orders/42169 HTTP/1.1 200
+2026/11/20 08:22:55.711 [INFO] http.server: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:23:03.530 [INFO] fs.watcher: job finished id=42204 rc=0
+2026/11/20 08:23:06.416 [ERROR] fs.watcher: retrying connection to 10.0.27.687 attempt=2
+2026/11/20 08:23:14.310 [WARN] mailer: cache miss key=user:39376 loading from db
+2026/11/20 08:23:19.736 [INFO] db.pool: file rotated path=/var/log/app/app.log.186
+2026/11/20 08:23:22.487 [WARN] fs.watcher: cache miss key=user:66976 loading from db
+2026/11/20 08:23:24.346 [WARN] batch: job started id=92598
+2026/11/20 08:23:31.625 [WARN] http.server: session expired user_id=60683
+2026/11/20 08:23:38.558 [INFO] fs.watcher: queue length=69346 oldest_age=947s
+2026/11/20 08:23:42.276 [DEBUG] db.pool: retrying connection to 10.0.227.151 attempt=2
+2026/11/20 08:23:42.153 [ERROR] http.server: cache miss key=user:63390 loading from db
+2026/11/20 08:23:44.890 [DEBUG] auth: file rotated path=/var/log/app/app.log.107
+2026/11/20 08:23:48.776 [ERROR] auth: 这位员工的名字里有生僻字𠮷，系统必须能够正确显示。
+2026/11/20 08:23:51.980 [INFO] fs.watcher: TLS handshake with 192.168.1.45 completed
+2026/11/20 08:23:51.953 [ERROR] mailer: GET /api/v1/orders/21748 HTTP/1.1 200
+2026/11/20 08:23:56.073 [WARN] mailer: connection pool size=43833 active=315 idle=3
+2026/11/20 08:23:58.493 [INFO] batch: retrying connection to 10.0.159.693 attempt=2
+2026/11/20 08:24:06.486 [INFO] http.server: job started id=11026
+2026/11/20 08:24:14.233 [INFO] fs.watcher: job started id=89452
+2026/11/20 08:24:21.008 [INFO] batch: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:24:25.200 [INFO] mailer: job finished id=61488 rc=0
+2026/11/20 08:24:28.276 [INFO] cache: session expired user_id=94085
+2026/11/20 08:24:31.169 [WARN] db.pool: cache miss key=user:93246 loading from db
+2026/11/20 08:24:39.391 [INFO] fs.watcher: connection pool size=53548 active=886 idle=3
+2026/11/20 08:24:41.232 [INFO] db.pool: file rotated path=/var/log/app/app.log.235
+2026/11/20 08:24:46.173 [INFO] http.server: file rotated path=/var/log/app/app.log.5
+2026/11/20 08:24:50.216 [INFO] http.server: job finished id=33588 rc=0
+2026/11/20 08:24:59.674 [WARN] db.pool: request completed status=200 bytes=62942 elapsed=75ms
+2026/11/20 08:25:01.524 [INFO] mailer: job finished id=19884 rc=0
+2026/11/20 08:25:02.972 [ERROR] cache: queue length=75709 oldest_age=871s
+2026/11/20 08:25:06.026 [INFO] mailer: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:25:09.393 [DEBUG] mailer: gc pause 7ms heap=512MB
+2026/11/20 08:25:12.111 [DEBUG] fs.watcher: retrying connection to 10.0.9.813 attempt=2
+2026/11/20 08:25:16.762 [INFO] fs.watcher: gc pause 791ms heap=512MB
+2026/11/20 08:25:24.409 [ERROR] batch: queue length=65311 oldest_age=112s
+2026/11/20 08:25:30.604 [DEBUG] batch: cache miss key=user:63457 loading from db
+2026/11/20 08:25:39.273 [INFO] db.pool: heartbeat ok seq=57918
+2026/11/20 08:25:44.472 [INFO] db.pool: request completed status=200 bytes=18692 elapsed=72ms
+2026/11/20 08:25:48.925 [INFO] fs.watcher: request completed status=200 bytes=88515 elapsed=14ms
+2026/11/20 08:25:50.622 [INFO] fs.watcher: file rotated path=/var/log/app/app.log.237
+2026/11/20 08:25:56.031 [INFO] http.server: heartbeat ok seq=28020
+2026/11/20 08:26:05.036 [INFO] mailer: cache miss key=user:75966 loading from db
+2026/11/20 08:26:08.612 [INFO] scheduler: 配置文件已重新加载
+2026/11/20 08:26:09.886 [INFO] scheduler: job finished id=61790 rc=0
+2026/11/20 08:26:18.089 [INFO] batch: cache miss key=user:66037 loading from db
+2026/11/20 08:26:27.906 [INFO] fs.watcher: job finished id=54733 rc=0
+2026/11/20 08:26:30.138 [INFO] auth: job finished id=54569 rc=0
+2026/11/20 08:26:34.324 [ERROR] scheduler: gc pause 603ms heap=512MB
+2026/11/20 08:26:39.028 [INFO] http.server: retrying connection to 10.0.48.863 attempt=2
+2026/11/20 08:26:43.242 [ERROR] batch: job started id=70769
+2026/11/20 08:26:48.378 [INFO] db.pool: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:26:50.205 [ERROR] auth: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:26:58.153 [INFO] batch: job finished id=54701 rc=0
+2026/11/20 08:27:02.551 [INFO] auth: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:27:08.499 [WARN] http.server: connection pool size=95938 active=786 idle=3
+2026/11/20 08:27:13.572 [INFO] db.pool: cache miss key=user:5162 loading from db
+2026/11/20 08:27:13.975 [INFO] batch: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:27:15.828 [DEBUG] db.pool: file rotated path=/var/log/app/app.log.219
+2026/11/20 08:27:16.476 [WARN] batch: queue length=35407 oldest_age=310s
+2026/11/20 08:27:25.021 [INFO] batch: job started id=62814
+2026/11/20 08:27:30.384 [WARN] fs.watcher: session expired user_id=96940
+2026/11/20 08:27:38.957 [INFO] auth: job finished id=95306 rc=0
+2026/11/20 08:27:42.944 [ERROR] cache: request completed status=200 bytes=81065 elapsed=2ms
+2026/11/20 08:27:45.915 [INFO] auth: session expired user_id=63353
+2026/11/20 08:27:46.551 [INFO] cache: GET /api/v1/orders/88110 HTTP/1.1 200
+2026/11/20 08:27:49.478 [INFO] scheduler: TLS handshake with 192.168.1.42 completed
+2026/11/20 08:27:56.668 [INFO] mailer: GET /api/v1/orders/91785 HTTP/1.1 200
+2026/11/20 08:27:57.110 [INFO] cache: gc pause 618ms heap=512MB
+2026/11/20 08:27:59.417 [ERROR] mailer: queue length=6290 oldest_age=707s
+2026/11/20 08:28:00.179 [DEBUG] scheduler: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:28:08.797 [WARN] cache: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:28:10.008 [ERROR] http.server: job started id=25809
+2026/11/20 08:28:12.331 [ERROR] db.pool: cache miss key=user:95380 loading from db
+2026/11/20 08:28:18.446 [INFO] scheduler: gc pause 738ms heap=512MB
+2026/11/20 08:28:27.726 [INFO] auth: queue length=87986 oldest_age=433s
+2026/11/20 08:28:32.743 [INFO] mailer: heartbeat ok seq=63283
+2026/11/20 08:28:37.673 [INFO] batch: connection pool size=77868 active=283 idle=3
+2026/11/20 08:28:39.520 [DEBUG] http.server: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:28:42.510 [WARN] mailer: heartbeat ok seq=9303
+2026/11/20 08:28:48.271 [INFO] db.pool: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:28:56.004 [INFO] http.server: POST /api/v1/login HTTP/1.1 302
+2026/11/20 08:29:04.699 [INFO] batch: session expired user_id=52684
+2026/11/20 08:29:10.671 [INFO] cache: 客户主数据更新失败：连接超时
+2026/11/20 08:29:15.712 [WARN] mailer: cache miss key=user:60264 loading from db
+2026/11/20 08:29:19.996 [INFO] http.server: job started id=29234
+2026/11/20 08:29:21.790 [INFO] auth: GET /api/v1/orders/62546 HTTP/1.1 200
+2026/11/20 08:29:28.614 [DEBUG] batch: TLS handshake with 192.168.1.248 completed
+2026/11/20 08:29:35.774 [INFO] cache: queue length=14581 oldest_age=687s
+2026/11/20 08:29:44.779 [INFO] scheduler: gc pause 500ms heap=512MB
+2026/11/20 08:29:50.852 [INFO] cache: TLS handshake with 192.168.1.41 completed
+2026/11/20 08:29:57.652 [WARN] auth: heartbeat ok seq=64136
+2026/11/20 08:30:01.400 [INFO] db.pool: job finished id=99830 rc=0
+2026/11/20 08:30:03.151 [ERROR] mailer: GET /api/v1/orders/51480 HTTP/1.1 200
+2026/11/20 08:30:07.911 [WARN] fs.watcher: queue length=67225 oldest_age=748s
+2026/11/20 08:30:07.922 [INFO] http.server: retrying connection to 10.0.34.169 attempt=2
+2026/11/20 08:30:13.694 [INFO] db.pool: job started id=39187
+2026/11/20 08:30:20.687 [DEBUG] scheduler: session expired user_id=8897
