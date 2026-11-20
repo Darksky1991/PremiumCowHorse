@@ -281,7 +281,7 @@ function PluginView({
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
   const doc = useDocSession(tab.id, settings)
   // 浏览器视图（host.web）：每个标签内容一个，宿主重建（主题、条目变化等）时不重建——否则视图会隐藏后重新显示。
-  // 它用到的 rootOf / tabs / 错误提示在布局阶段换成最新宿主的（setLinks，早于插件 useEffect 中的 attach）
+  // 它用到的条目根 / tabs / 错误提示在布局阶段换成最新的（setLinks，早于插件 useEffect 中的 attach）
   const tabId = tab.id
   const webHost = useMemo(
     () =>
@@ -290,7 +290,7 @@ function PluginView({
         views: getWebViews(),
         invoke: call,
         events: webEvents,
-        rootOf: () => null,
+        roots: [],
         tabs: { open: () => undefined, navigate: () => undefined },
         onError: (e) => reportError(e, 'web view'),
         onRefresh: (listener) => onTabRefresh(tabId, listener),
@@ -390,11 +390,11 @@ function PluginView({
   }, [webHost, pluginId, resourceUri])
   useLayoutEffect(() => {
     webHost.setLinks({
-      rootOf: host.fs.rootOf,
+      roots,
       tabs: host.tabs,
       onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error')
     })
-  }, [webHost, host])
+  }, [webHost, host, roots])
 
   const settle = (confirmed: boolean): void => {
     if (!confirm || confirm.settled) return

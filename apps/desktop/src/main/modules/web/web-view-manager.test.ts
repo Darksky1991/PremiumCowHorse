@@ -148,6 +148,24 @@ describe('WebViewManager', () => {
     ])
   })
 
+  it('fragment 拼到加载的地址后；是否重新加载只看不含它的地址', () => {
+    manager.attach(win, input('t1'))
+    manager.attach(win, input('t1', 'second.html', { fragment: '?q=1#sec' }))
+    const second = toWebUrl(`${ROOT}/second.html`, ROOT)
+    expect(viewOf(0).loads).toEqual([toWebUrl(`${ROOT}/index.html`, ROOT), `${second}?q=1#sec`])
+    // 之后不带片段再 attach 同一页面（切换标签回来）：不重新加载
+    manager.hide(win.id, 't1')
+    manager.attach(win, input('t1', 'second.html'))
+    expect(viewOf(0).loads).toHaveLength(2)
+  })
+
+  it('markdown 视图的 fragment：只取 #锚点（查询固定为 ?pch-view=markdown）', () => {
+    manager.attach(win, input('t1', 'README.md', { view: 'markdown', fragment: '?x=1#intro' }))
+    expect(viewOf(0).loads).toEqual([
+      `${toWebUrl(`${ROOT}/README.md`, ROOT)}?pch-view=markdown#intro`
+    ])
+  })
+
   it(`第 ${WEB_VIEW_LIMIT + 1} 个 attach 销毁最久未显示者，显示中的不销毁`, () => {
     // t0 一直显示（最早显示）；t1..t7 显示后隐藏
     manager.attach(win, input('t0'))
@@ -335,12 +353,16 @@ describe('WebViewManager', () => {
       send.mockClear()
     })
 
-    it('导航到同范围 → web.navigate（newTab 透传）', () => {
-      events.navigate(`pch-web://${scopeIdOfView()}/second.html`, false)
+    it('导航到同范围 → web.navigate（newTab 透传；查询与片段放在 fragment）', () => {
+      events.navigate(`pch-web://${scopeIdOfView()}/second.html#sec`, false)
       events.navigate(`pch-web://${scopeIdOfView()}/third.html`, true)
       expect(send.mock.calls).toEqual([
-        [1, 'web.navigate', { tabId: 't1', uri: `${ROOT}/second.html`, newTab: false }],
-        [1, 'web.navigate', { tabId: 't1', uri: `${ROOT}/third.html`, newTab: true }]
+        [
+          1,
+          'web.navigate',
+          { tabId: 't1', uri: `${ROOT}/second.html`, newTab: false, fragment: '#sec' }
+        ],
+        [1, 'web.navigate', { tabId: 't1', uri: `${ROOT}/third.html`, newTab: true, fragment: '' }]
       ])
     })
 

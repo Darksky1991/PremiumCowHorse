@@ -168,7 +168,8 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     views,
     invoke,
     events,
-    rootOf: (uri) => (uri.startsWith(`${INNER}/`) ? INNER : uri.startsWith(ROOT) ? ROOT : null),
+    // 嵌套的两个 folder 条目（ROOT 之下的 INNER）
+    roots: [ROOT, INNER],
     tabs: { open: vi.fn(), navigate: vi.fn() },
     onRefresh: (l) => {
       refreshListeners.add(l)
@@ -212,7 +213,7 @@ const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 const channels = (calls: Setup['calls']): IpcChannel[] => calls.map(([c]) => c)
 
 describe('createWebHost: attach', () => {
-  it('sends web.attach with the entry root as the scope and integer bounds', async () => {
+  it('sends web.attach with the outermost entry root as the scope and integer bounds', async () => {
     const s = setup()
     const { element } = fakeElement()
     s.host.api.attach(element, PAGE, { view: 'page' })
@@ -223,7 +224,8 @@ describe('createWebHost: attach', () => {
         {
           tabId: 'tab-1',
           uri: PAGE,
-          scopeRoot: INNER,
+          // 嵌套条目：首次打开时取包含它的最外层条目根（子条目的页面能用 ../ 回到父条目）
+          scopeRoot: ROOT,
           view: 'page',
           // x = round(left)、width = round(right) - x（相邻元素之间不留 1px 缝）
           bounds: { x: 10, y: 81, width: 601, height: 399 }
@@ -333,13 +335,98 @@ describe('createWebHost: attach', () => {
   })
 })
 
+describe('createWebHost: scope of the pages in a tab', () => {
+  const DOCS = 'file://nas/share/docs'
+  /** 在新的位置 attach（每个位置一个新的 PluginView：宿主按标签 id 新建），返回这次 web.attach 的输入 */
+  const attachAt = async (s: Setup, uri: string): Promise<{ input: unknown }> => {
+    const host = createWebHost(s.deps)
+    host.setLocation({ pluginId: HTML, uri })
+    host.api.attach(fakeElement().element, uri, { view: 'page' })
+    await flush()
+    return { input: s.calls.filter(([c]) => c === 'web.attach').at(-1)?.[1] }
+  }
+
+  it('a page reached from another page keeps the scope (a file outside every entry and its subdirectory)', async () => {
+    const s = setup({ roots: [] })
+    expect((await attachAt(s, `${DOCS}/index.html`)).input).toMatchObject({ scopeRoot: DOCS })
+    // Javadoc：index.html → pkg/Class.html。范围仍是 docs/（../stylesheet.css、../index.html 指向正确的文件）
+    expect((await attachAt(s, `${DOCS}/pkg/Class.html`)).input).toMatchObject({ scopeRoot: DOCS })
+    expect((await attachAt(s, `${DOCS}/index.html`)).input).toMatchObject({ scopeRoot: DOCS })
+  })
+
+  it('a page in a nested entry reached from the outer entry keeps the outer scope', async () => {
+    const s = setup()
+    expect((await attachAt(s, `${ROOT}/index.html`)).input).toMatchObject({ scopeRoot: ROOT })
+    expect((await attachAt(s, PAGE)).input).toMatchObject({ scopeRoot: ROOT })
+  })
+
+  it('a location outside the remembered scope gets its own scope', async () => {
+    const s = setup({ roots: [] })
+    await attachAt(s, `${DOCS}/pkg/Class.html`)
+    expect((await attachAt(s, `${DOCS}/index.html`)).input).toMatchObject({ scopeRoot: DOCS })
+    expect((await attachAt(s, 'file://nas/share/other/a.html')).input).toMatchObject({
+      scopeRoot: 'file://nas/share/other'
+    })
+  })
+
+  it('an entry root that contains the remembered scope replaces it (the entries were not loaded yet at the first attach)', async () => {
+    const s = setup({ roots: [] })
+    expect((await attachAt(s, PAGE)).input).toMatchObject({ scopeRoot: INNER })
+    s.deps.roots = [ROOT]
+    expect((await attachAt(s, `${INNER}/sub/x.html`)).input).toMatchObject({ scopeRoot: ROOT })
+  })
+
+  it('the scope is remembered across a release (another viewer in between) and forgotten when the tab closes', async () => {
+    const s = setup({ roots: [] })
+    await attachAt(s, `${DOCS}/index.html`)
+    // 中间改用文本查看器 → 视图销毁
+    createWebHost(s.deps).setLocation({ pluginId: TEXT, uri: `${DOCS}/pkg/notes.txt` })
+    expect((await attachAt(s, `${DOCS}/pkg/Class.html`)).input).toMatchObject({ scopeRoot: DOCS })
+    s.existing.delete('tab-1')
+    s.tabsChanged()
+    s.existing.add('tab-1')
+    expect((await attachAt(s, `${DOCS}/pkg/Class.html`)).input).toMatchObject({
+      scopeRoot: `${DOCS}/pkg`
+    })
+  })
+
+  it('a link with #fragment / ?query: the next attach of that uri in this tab loads it with them, only once', async () => {
+    const s = setup()
+    s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+    s.emit('web.navigate', { tabId: 'tab-1', uri: SECOND, newTab: false, fragment: '?q=1#sec' })
+    expect(s.deps.tabs.navigate).toHaveBeenCalledExactlyOnceWith(SECOND)
+    expect((await attachAt(s, SECOND)).input).toMatchObject({ uri: SECOND, fragment: '?q=1#sec' })
+    // 之后再显示（切换标签回来等）不再带
+    expect((await attachAt(s, SECOND)).input).not.toHaveProperty('fragment')
+    // 片段属于它的 uri：导航没有发生（例如 stat 失败）而显示了别的页面时丢弃
+    s.emit('web.navigate', { tabId: 'tab-1', uri: SECOND, newTab: false, fragment: '#x' })
+    expect((await attachAt(s, PAGE)).input).not.toHaveProperty('fragment')
+    expect((await attachAt(s, SECOND)).input).not.toHaveProperty('fragment')
+  })
+})
+
 describe('createWebHost: events from the view', () => {
   it('web.navigate opens in this tab, or in a new tab for newTab; other tabs are ignored', async () => {
     const s = setup()
     s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
-    s.emit('web.navigate', { tabId: 'tab-1', uri: `${INNER}/second.html`, newTab: false })
-    s.emit('web.navigate', { tabId: 'tab-1', uri: `${INNER}/third.html`, newTab: true })
-    s.emit('web.navigate', { tabId: 'tab-2', uri: `${INNER}/other.html`, newTab: false })
+    s.emit('web.navigate', {
+      tabId: 'tab-1',
+      uri: `${INNER}/second.html`,
+      newTab: false,
+      fragment: ''
+    })
+    s.emit('web.navigate', {
+      tabId: 'tab-1',
+      uri: `${INNER}/third.html`,
+      newTab: true,
+      fragment: ''
+    })
+    s.emit('web.navigate', {
+      tabId: 'tab-2',
+      uri: `${INNER}/other.html`,
+      newTab: false,
+      fragment: ''
+    })
     expect(s.deps.tabs.navigate).toHaveBeenCalledExactlyOnceWith(`${INNER}/second.html`)
     expect(s.deps.tabs.open).toHaveBeenCalledExactlyOnceWith(`${INNER}/third.html`)
   })
@@ -360,7 +447,12 @@ describe('createWebHost: events from the view', () => {
   it('stops listening after detaching', async () => {
     const s = setup()
     s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })()
-    s.emit('web.navigate', { tabId: 'tab-1', uri: `${INNER}/second.html`, newTab: false })
+    s.emit('web.navigate', {
+      tabId: 'tab-1',
+      uri: `${INNER}/second.html`,
+      newTab: false,
+      fragment: ''
+    })
     s.refresh()
     await flush()
     expect(s.deps.tabs.navigate).not.toHaveBeenCalled()

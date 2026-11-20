@@ -1,5 +1,11 @@
 import type { PreviewWebApi, WebPageState } from '@pch/plugin-sdk'
-import { normalizeRootUri, type ErrorCode, type WebBounds, type WebViewState } from '@pch/shared'
+import {
+  isUnderUri,
+  normalizeRootUri,
+  type ErrorCode,
+  type WebBounds,
+  type WebViewState
+} from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import type { WebEvents } from '@renderer/data/web'
 
@@ -11,6 +17,9 @@ import type { WebEvents } from '@renderer/data/web'
  *   标签）时 web.release；标签当前位置改用其他查看器时由宿主 release（WebHost.setLocation）。
  * - 各标签视图的最近状态，连同当时 attach 的 URI（attach 复用视图且 URL 相同时主进程不再发 web.state，
  *   插件重新挂载时回放；只回放同一 URI 的状态——导航到另一页面时不能回放上一页的失败）。
+ * - 各标签最近一次 attach 的范围根（与视图分开：视图 release 后也保留，标签关闭时忘记）：标签内跳转时沿用
+ *   （PluginView 按位置重建，WebHost 记不住；见 createWebHost 的范围规则）。
+ * - 视图内链接带的片段（`?查询#锚点`）：标签导航到该 URI 之后的下一次 attach 取走（只用一次）。
  */
 export interface WebViews {
   run: (tabId: string, task: () => Promise<unknown>) => void
@@ -22,6 +31,13 @@ export interface WebViews {
   owner: (tabId: string) => string | undefined
   /** 销毁该标签的视图（排在该标签已发出的调用之后），忘记其状态。没有视图时不做任何事 */
   release: (tabId: string) => void
+  /** 该标签最近一次 attach 的范围根；没有时为 undefined */
+  scope: (tabId: string) => string | undefined
+  setScope: (tabId: string, scopeRoot: string) => void
+  /** 视图内链接的片段：之后该标签 attach uri 时带上 */
+  setFragment: (tabId: string, uri: string, fragment: string) => void
+  /** 取走该标签待用的片段（只在它属于 uri 时返回；不属于时丢弃） */
+  takeFragment: (tabId: string, uri: string) => string | undefined
 }
 
 export interface WebViewsDeps {
@@ -39,6 +55,8 @@ export function createWebViews(deps: WebViewsDeps): WebViews {
   const queues = new Map<string, Promise<void>>()
   const states = new Map<string, { uri: string; state: WebViewState }>()
   const tracked = new Map<string, { owner: string; uri: string }>()
+  const scopes = new Map<string, string>()
+  const fragments = new Map<string, { uri: string; fragment: string }>()
 
   const run = (tabId: string, task: () => Promise<unknown>): void => {
     const next = (queues.get(tabId) ?? Promise.resolve()).then(task).then(
@@ -63,6 +81,9 @@ export function createWebViews(deps: WebViewsDeps): WebViews {
   })
   deps.onTabsChange(() => {
     for (const tabId of [...tracked.keys()]) if (!deps.tabExists(tabId)) release(tabId)
+    for (const map of [scopes, fragments]) {
+      for (const tabId of [...map.keys()]) if (!deps.tabExists(tabId)) map.delete(tabId)
+    }
   })
   return {
     run,
@@ -76,7 +97,19 @@ export function createWebViews(deps: WebViewsDeps): WebViews {
       if (entry && entry.uri !== uri) states.delete(tabId)
     },
     owner: (tabId) => tracked.get(tabId)?.owner,
-    release
+    release,
+    scope: (tabId) => scopes.get(tabId),
+    setScope: (tabId, scopeRoot) => {
+      scopes.set(tabId, scopeRoot)
+    },
+    setFragment: (tabId, uri, fragment) => {
+      fragments.set(tabId, { uri, fragment })
+    },
+    takeFragment: (tabId, uri) => {
+      const entry = fragments.get(tabId)
+      fragments.delete(tabId)
+      return entry?.uri === uri ? entry.fragment : undefined
+    }
   }
 }
 
@@ -130,8 +163,8 @@ export interface WebLocation {
 
 /** 取自预览宿主（PreviewHost）的能力：宿主随主题、条目等变化重建，经 WebHost.setLinks 换成最新的 */
 export interface WebHostLinks {
-  /** 工作区 folder 条目的根（PreviewHost.fs.rootOf） */
-  rootOf: (uri: string) => string | null
+  /** 标签所属工作区的 folder 条目的根 URI（范围根取包含页面的最外层者） */
+  roots: readonly string[]
   /** 视图内的链接（PreviewHost.tabs：宿主 stat 后按查看器规则显示） */
   tabs: { open: (uri: string) => void; navigate: (uri: string) => void }
   /** openExternal 失败（提示用户） */
@@ -191,6 +224,31 @@ function parentOf(uri: string): string {
   return normalizeRootUri(uri.slice(0, uri.lastIndexOf('/')))
 }
 
+/** 包含 uri 的最外层 folder 条目根；不在任何条目之下时为 null */
+function outermostRoot(roots: readonly string[], uri: string): string | null {
+  let best: string | null = null
+  for (const root of roots) {
+    if (isUnderUri(uri, root) && (best === null || isUnderUri(best, root))) best = root
+  }
+  return best
+}
+
+/**
+ * 范围根（设计 5.3.4 / doc 15）：本次的候选 = 包含页面的最外层 folder 条目根 ?? 文件所在目录。
+ * 该标签记住的范围仍包含页面时沿用它（标签内跳转：Javadoc 的 index.html → pkg/Class.html 后
+ * `../stylesheet.css` 仍指向正确的文件；源不变，localStorage / sessionStorage 不变），只有候选比它更宽
+ * （首次 attach 时条目尚未加载、落到了文件所在目录）时换成候选。两者都包含页面，必为包含关系
+ */
+function scopeRootFor(
+  uri: string,
+  roots: readonly string[],
+  remembered: string | undefined
+): string {
+  const candidate = outermostRoot(roots, uri) ?? parentOf(uri)
+  if (remembered === undefined || !isUnderUri(uri, remembered)) return candidate
+  return isUnderUri(remembered, candidate) ? candidate : remembered
+}
+
 /**
  * 占位元素的位置：getBoundingClientRect 的 CSS 像素即 DIP（宿主页面缩放为 1，不乘 devicePixelRatio），
  * 取整为 x = round(left)、width = round(right) - x（相邻元素之间不出现 1px 缝；台账 setBounds 一节）
@@ -217,8 +275,9 @@ interface Attachment {
 
 /**
  * 预览宿主的浏览器视图部分（设计 5.2 / 5.3.1 / 5.3.6 / 5.3.7）：每个标签内容（PluginView）一个。
- * - attach：范围根 = 条目根（rootOf）?? 文件所在目录，发 web.attach；ResizeObserver + 窗口 resize → web.setBounds
- *   （同一帧内合并为一次，位置不变不发）；web.navigate → tabs.navigate / tabs.open（newTab）；
+ * - attach：范围根见 scopeRootFor（标签内跳转沿用），发 web.attach（带上视图内链接的片段）；
+ *   ResizeObserver + 窗口 resize → web.setBounds（同一帧内合并为一次，位置不变不发）；
+ *   web.navigate → tabs.navigate（片段交给 WebViews 留给下一次 attach）/ tabs.open（newTab，片段不带）；
  *   web.shortcut → window 上的 keydown；刷新请求 → web.reload。
  * - 解除（插件卸载）→ 只 web.hide（切换标签 / 工作区、导航离开都一样）。销毁只在：标签关闭（WebViews 订阅
  *   tabs-store）、本标签内容改用其他查看器（setLocation）、工作区总览（preview-container）。网页之间跳转时
@@ -229,7 +288,7 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const { tabId, views, invoke } = deps
   const env: WebHostEnv = { ...browserEnv, ...deps.env }
   const run = (task: () => Promise<unknown>): void => views.run(tabId, task)
-  let links: WebHostLinks = { rootOf: deps.rootOf, tabs: deps.tabs, onError: deps.onError }
+  let links: WebHostLinks = { roots: deps.roots, tabs: deps.tabs, onError: deps.onError }
   let location: WebLocation | null = null
 
   let current: Attachment | null = null
@@ -285,12 +344,21 @@ export function createWebHost(deps: WebHostDeps): WebHost {
 
   const attach: PreviewWebApi['attach'] = (element, uri, opts) => {
     current?.detach()
-    const scopeRoot = links.rootOf(uri) ?? parentOf(uri)
+    const scopeRoot = scopeRootFor(uri, links.roots, views.scope(tabId))
+    views.setScope(tabId, scopeRoot)
+    const fragment = views.takeFragment(tabId, uri)
     let lastBounds = measure(element)
     const initialBounds = lastBounds
     views.track(tabId, location?.pluginId ?? '', uri)
     run(() =>
-      invoke('web.attach', { tabId, uri, scopeRoot, view: opts.view, bounds: initialBounds })
+      invoke('web.attach', {
+        tabId,
+        uri,
+        scopeRoot,
+        view: opts.view,
+        bounds: initialBounds,
+        ...(fragment ? { fragment } : {})
+      })
     )
 
     let cancelFrame: (() => void) | null = null
@@ -317,8 +385,12 @@ export function createWebHost(deps: WebHostDeps): WebHost {
       env.onWindowResize(scheduleBounds),
       deps.events.onNavigate((e) => {
         if (e.tabId !== tabId) return
-        if (e.newTab) links.tabs.open(e.uri)
-        else links.tabs.navigate(e.uri)
+        if (e.newTab) {
+          links.tabs.open(e.uri)
+          return
+        }
+        if (e.fragment !== '') views.setFragment(tabId, e.uri, e.fragment)
+        links.tabs.navigate(e.uri)
       }),
       deps.events.onShortcut((e) => {
         if (e.tabId !== tabId) return

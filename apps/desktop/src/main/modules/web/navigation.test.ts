@@ -15,24 +15,41 @@ describe('decideNavigation', () => {
 
   it('同范围的 pch-web 文件与目录 → app（uri 为工作区 URI）', () => {
     const uri = `${ROOT}/proto/second%20page.html`
-    expect(decideNavigation(toWebUrl(uri, ROOT), ctx)).toEqual({ kind: 'app', uri, newTab: false })
+    expect(decideNavigation(toWebUrl(uri, ROOT), ctx)).toEqual({
+      kind: 'app',
+      uri,
+      newTab: false,
+      fragment: ''
+    })
     expect(decideNavigation(`pch-web://${scopeId}/proto/`, ctx)).toEqual({
       kind: 'app',
       uri: `${ROOT}/proto`,
-      newTab: false
+      newTab: false,
+      fragment: ''
     })
     expect(decideNavigation(`pch-web://${scopeId}/`, ctx)).toEqual({
       kind: 'app',
       uri: ROOT,
-      newTab: false
+      newTab: false,
+      fragment: ''
     })
   })
 
-  it('查询与片段不影响判定（资源 URI 不含它们）', () => {
+  it('查询与片段不影响判定（资源 URI 不含它们），原样放在 fragment 中（pch-web 与 file:）', () => {
     expect(decideNavigation(`pch-web://${scopeId}/a.html?x=1#sec`, ctx)).toEqual({
       kind: 'app',
       uri: `${ROOT}/a.html`,
-      newTab: false
+      newTab: false,
+      fragment: '?x=1#sec'
+    })
+    expect(decideNavigation(`pch-web://${scopeId}/a.html#sec`, ctx)).toMatchObject({
+      fragment: '#sec'
+    })
+    expect(decideNavigation('file:///C:/work/案件A/a.html?q#top', ctx)).toEqual({
+      kind: 'app',
+      uri: `${ROOT}/a.html`,
+      newTab: false,
+      fragment: '?q#top'
     })
   })
 
@@ -41,12 +58,14 @@ describe('decideNavigation', () => {
     expect(decideNavigation(url, { ...ctx, newTab: true })).toEqual({
       kind: 'app',
       uri: `${ROOT}/b.html`,
-      newTab: true
+      newTab: true,
+      fragment: ''
     })
     expect(decideNavigation(`${ROOT}/b.html`, { ...ctx, newTab: true })).toEqual({
       kind: 'app',
       uri: `${ROOT}/b.html`,
-      newTab: true
+      newTab: true,
+      fragment: ''
     })
   })
 
@@ -72,7 +91,8 @@ describe('decideNavigation', () => {
     expect(decideNavigation('file:///C:/work/案件A/doc/a b.html', ctx)).toEqual({
       kind: 'app',
       uri: `${ROOT}/doc/a%20b.html`,
-      newTab: false
+      newTab: false,
+      fragment: ''
     })
   })
 
@@ -92,12 +112,14 @@ describe('decideNavigation', () => {
     expect(decideNavigation('file://nas/share/proto/sub/x.html', unc)).toEqual({
       kind: 'app',
       uri: 'file://nas/share/proto/sub/x.html',
-      newTab: false
+      newTab: false,
+      fragment: ''
     })
     expect(decideNavigation(toWebUrl(`${UNC_ROOT}/i.html`, UNC_ROOT), unc)).toEqual({
       kind: 'app',
       uri: `${UNC_ROOT}/i.html`,
-      newTab: false
+      newTab: false,
+      fragment: ''
     })
     expect(decideNavigation('file://nas/share/secret.txt', unc)).toEqual({
       kind: 'blocked',

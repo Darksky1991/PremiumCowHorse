@@ -369,6 +369,106 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
+  test('pages reached by links keep the scope (a file entry and its subdirectory); #fragments are carried; other scopes cannot be read', async () => {
+    // Javadoc 式的文件条目：index.html → pkg/Class.html，子页面用 ../ 引用上一级的样式与页面
+    const javadoc = path.join(files, 'javadoc')
+    mkdirSync(path.join(javadoc, 'pkg'), { recursive: true })
+    writeFileSync(
+      path.join(javadoc, 'index.html'),
+      `<!doctype html><html><head><meta charset="utf-8"><title>Javadoc index</title>
+<link rel="stylesheet" href="stylesheet.css"></head>
+<body><h1 id="top">Javadoc</h1>
+<p><a id="to-class" href="pkg/Class.html">Class</a></p>
+<p><a id="to-sec" href="pkg/Class.html#sec">Class#sec</a></p>
+<img id="pic" src="pic.png" alt=""></body></html>
+`
+    )
+    writeFileSync(path.join(javadoc, 'stylesheet.css'), 'body { background: rgb(200, 230, 250) }')
+    writeFileSync(path.join(javadoc, 'pic.png'), PNG)
+    writeFileSync(
+      path.join(javadoc, 'pkg', 'Class.html'),
+      `<!doctype html><html><head><meta charset="utf-8"><title>Class</title>
+<link rel="stylesheet" href="../stylesheet.css"></head>
+<body><h1 id="cls">Class</h1><p><a id="to-index" href="../index.html">index</a></p>
+<div style="height: 3000px"></div><h2 id="sec">Section</h2></body></html>
+`
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      const { id: workspaceId } = await data(page, 'workspace.active')
+      await data(page, 'entry.add', {
+        kind: 'file',
+        workspaceId,
+        parentId: null,
+        path: path.join(javadoc, 'index.html')
+      })
+      await tree.getByRole('treeitem', { name: 'index.html' }).click()
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const index = await viewPage(app, '/index.html')
+      await expect(index.locator('#top')).toHaveText('Javadoc')
+      const scope = new URL(index.url()).host
+      const background = (view: Page): Promise<string> =>
+        evalIn(app, view, 'getComputedStyle(document.body).backgroundColor')
+
+      // 子目录的页面：范围不变（同一个源），../stylesheet.css 生效
+      await clickIn(app, index, '#to-class')
+      await expect(tabs(page)).toHaveText(['Class.html'])
+      const cls = await viewPage(app, '/pkg/Class.html')
+      expect(new URL(cls.url()).host).toBe(scope)
+      await expect.poll(() => background(cls)).toBe('rgb(200, 230, 250)')
+
+      // ../index.html 回到条目的 index.html（不是 pkg/index.html）
+      await clickIn(app, cls, '#to-index')
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const back = await viewPage(app, '/index.html')
+      expect(new URL(back.url()).pathname).toBe('/index.html')
+      await expect
+        .poll(() => evalIn(app, back, 'document.getElementById("top")?.textContent'))
+        .toBe('Javadoc')
+
+      // 跨页链接的 #片段：标签的位置不含它，视图加载时带上并滚到锚点
+      await clickIn(app, back, '#to-sec')
+      await expect(tabs(page)).toHaveText(['Class.html'])
+      await expect(bar(page).getByRole('listitem').last()).toHaveText('Class.html')
+      const sec = await viewPage(app, '/pkg/Class.html#sec')
+      await expect.poll(() => evalIn(app, sec, 'location.hash')).toBe('#sec')
+      await expect
+        .poll(() =>
+          evalIn(
+            app,
+            sec,
+            '(() => { const r = document.getElementById("sec").getBoundingClientRect(); return scrollY > 0 && r.top >= 0 && r.top < innerHeight })()'
+          )
+        )
+        .toBe(true)
+
+      // 其他已登记范围（案件 条目）的资源：同范围的图片可读，其他范围的 fetch / 图片都失败（发起方检查）
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+      // 案件/proto/index.html（第 3 层；第 1 层的 index.html 是文件条目）
+      await tree
+        .locator('[role="treeitem"][aria-level="3"]', { hasText: 'index.html' })
+        .click({ modifiers: ['Control'] })
+      const proto = await viewPage(app, '/proto/index.html')
+      const other = new URL(proto.url()).host
+      expect(other).not.toBe(scope)
+      const loadImage = (src: string): string =>
+        `new Promise((r) => { const i = new Image(); i.onload = () => r('load'); i.onerror = () => r('error'); i.src = ${JSON.stringify(src)} })`
+      expect(await evalIn(app, sec, loadImage(`pch-web://${scope}/pic.png`))).toBe('load')
+      expect(await evalIn(app, sec, loadImage(`pch-web://${other}/proto/img/a.png`))).toBe('error')
+      expect(
+        await evalIn(
+          app,
+          sec,
+          `fetch('pch-web://${other}/proto/index.html').then((r) => String(r.status), () => 'failed')`
+        )
+      ).toMatch(/^(failed|403)$/)
+    } finally {
+      await app.close()
+    }
+  })
+
   test('popups and toasts swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
     const { app, page } = await launchFast(userData)
     try {

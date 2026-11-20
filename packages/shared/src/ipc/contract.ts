@@ -181,8 +181,9 @@ export const ipcContract = {
   /**
    * 浏览器视图（主进程 modules/web，doc 第 15 节）：每个（窗口, 标签）一个 WebContentsView，归属调用方窗口。
    * web.attach：不存在则创建，存在则复用（URL 相同不重新加载）；放到 bounds 并显示。uri 必须在 scopeRoot 之下
-   * （否则 FS_INVALID_URI）。每窗口最多 8 个视图，超出时销毁最久未显示的（显示中的除外）。
-   * 其余通道对不存在的视图不做任何事（web.freeze 返回空字符串）
+   * （否则 FS_INVALID_URI）。fragment（视图内链接带的 `?查询#锚点`，web.navigate 的 fragment）加载时拼到地址后
+   * （是否重新加载只看不含它的地址）。每窗口最多 8 个视图，超出时销毁最久未显示的（显示中的除外）。
+   * 其余通道对不存在的视图不做任何事（web.freeze 返回 `{ image: '', yielded: false }`）
    */
   'web.attach': route<void>()(
     z.strictObject({
@@ -190,7 +191,8 @@ export const ipcContract = {
       uri: z.string().min(1),
       scopeRoot: z.string().min(1),
       view: z.enum(['page', 'markdown']),
-      bounds: WebBoundsInput
+      bounds: WebBoundsInput,
+      fragment: z.string().max(8192).regex(/^[?#]/).optional()
     })
   ),
   /** 位置同步（高频） */
@@ -255,8 +257,11 @@ export interface IpcEvents {
   'doc.changed': DocChangedEvent
   /** 浏览器视图的页面状态（以下 web.* 只发给视图所属的窗口） */
   'web.state': WebViewState
-  /** 视图内的链接指向范围内的资源：应用在该标签（newTab 时在新标签）打开 uri */
-  'web.navigate': { tabId: string; uri: string; newTab: boolean }
+  /**
+   * 视图内的链接指向范围内的资源：应用在该标签（newTab 时在新标签）打开 uri。
+   * fragment：链接的 `?查询#锚点`（不进入标签的 uri；在该标签打开时交给下一次 web.attach），没有时为空字符串
+   */
+  'web.navigate': { tabId: string; uri: string; newTab: boolean; fragment: string }
   /** 视图内被阻止的动作（范围外 / 下载 / 不支持的协议） */
   'web.notice': { tabId: string; notice: WebNotice }
   /** 焦点在视图中时按下的应用快捷键（以及鼠标侧键 → Alt+←/→），由应用窗口执行 */

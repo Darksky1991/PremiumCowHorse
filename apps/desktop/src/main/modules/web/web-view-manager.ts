@@ -20,6 +20,16 @@ export const WEB_VIEW_LIMIT = 8
 const MARKDOWN_QUERY = '?pch-view=markdown'
 
 /**
+ * 加载地址后拼接的片段：页面视图原样（`?查询#锚点`）；Markdown 视图的查询固定为 ?pch-view=markdown，只取 `#锚点`
+ */
+function fragmentFor(view: WebViewKind, fragment: string | undefined): string {
+  if (!fragment) return ''
+  if (view === 'page') return fragment
+  const hash = fragment.indexOf('#')
+  return hash === -1 ? '' : fragment.slice(hash)
+}
+
+/**
  * 视图的 webContents 发生的事件（由真实工厂 web-session.ts 从 Electron 事件转换后调用；
  * manager 只处理判定与发送，单元测试直接调用）
  */
@@ -69,6 +79,8 @@ export interface AttachInput {
   scopeRoot: string
   view: WebViewKind
   bounds: WebBounds
+  /** 视图内链接带的 `?查询#锚点`（加载时拼到地址后） */
+  fragment?: string
 }
 
 /** 只发给一个窗口（WindowService.sendTo） */
@@ -84,6 +96,7 @@ interface Entry {
   /** 所属窗口（最近一次 attach 时的；焦点交回用） */
   owner: OwnerWindow
   readonly view: ViewLike
+  /** attach 的地址（不含 fragment；是否重新加载按它判断） */
   url: string
   scopeId: string
   /** 逻辑上显示中（attach 之后、hide 之前；截图替身期间仍算显示中） */
@@ -123,6 +136,7 @@ export class WebViewManager {
     }
     const scopeId = this.deps.scopes.register(root)
     const url = toWebUrl(input.uri, root) + (input.view === 'markdown' ? MARKDOWN_QUERY : '')
+    const loadUrl = url + fragmentFor(input.view, input.fragment)
 
     let entries = this.windows.get(owner.id)
     if (!entries) {
@@ -143,9 +157,10 @@ export class WebViewManager {
     entry.frozen = false
     entry.lastShown = ++this.clock
     entry.scopeId = scopeId
+    // 只换片段（同一页面）不重新加载：页面内的锚点跳转由页面自己处理，不经 web.navigate
     if (created || entry.url !== url) {
       entry.url = url
-      this.load(entry)
+      this.load(entry, loadUrl)
     }
     if (created) this.evict(entries)
   }
@@ -269,10 +284,10 @@ export class WebViewManager {
     return ref.entry
   }
 
-  private load(entry: Entry): void {
-    entry.view.webContents.loadURL(entry.url).catch((e: unknown) => {
+  private load(entry: Entry, url: string): void {
+    entry.view.webContents.loadURL(url).catch((e: unknown) => {
       // 加载失败经 did-fail-load / did-navigate 反映到 web.state；被新的导航中止（ERR_ABORTED）是正常的
-      this.deps.logger.debug(`[web] loadURL ${entry.url}`, e)
+      this.deps.logger.debug(`[web] loadURL ${url}`, e)
     })
   }
 
@@ -317,7 +332,12 @@ export class WebViewManager {
         if (!entry) return
         const decision = decideNavigation(url, { scopeId: entry.scopeId, scopes, newTab })
         if (decision.kind === 'app') {
-          send(entry.ownerId, 'web.navigate', { tabId: entry.tabId, uri: decision.uri, newTab })
+          send(entry.ownerId, 'web.navigate', {
+            tabId: entry.tabId,
+            uri: decision.uri,
+            newTab,
+            fragment: decision.fragment
+          })
         } else if (decision.kind === 'external') {
           openExternal(decision.url)
         } else {
