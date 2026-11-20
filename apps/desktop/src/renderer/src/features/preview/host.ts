@@ -5,7 +5,14 @@ import type {
   ToastType,
   ViewAsMode
 } from '@pch/plugin-sdk'
-import { AppError, isUnderUri, type DirectoryListing, type TabLocation } from '@pch/shared'
+import {
+  AppError,
+  ERROR_CODES,
+  isUnderUri,
+  type DirectoryListing,
+  type ErrorCode,
+  type TabLocation
+} from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
 import type { TabTarget } from '@renderer/stores/tabs-store'
@@ -76,8 +83,9 @@ function nameOfUri(uri: string): string {
  */
 export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
   const { invoke, tabId } = deps
+  // AppError，或错误码本身（DocProgress.error）
   const describeError = (e: unknown): string =>
-    deps.t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`)
+    deps.t(`errors:${e instanceof AppError ? e.code : isErrorCode(e) ? e : 'UNKNOWN'}`)
   const reportError = (e: unknown): void => deps.notify(describeError(e), 'error')
   /**
    * 标签的类型与标题：插件给出类型时直接用（标题取 URI 的最后一段），
@@ -167,3 +175,6 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
     settings: { get: (key) => (HOST_SETTING_KEYS.has(key) ? deps.settings?.[key] : undefined) }
   }
 }
+
+const isErrorCode = (e: unknown): e is ErrorCode =>
+  typeof e === 'string' && (ERROR_CODES as readonly string[]).includes(e)

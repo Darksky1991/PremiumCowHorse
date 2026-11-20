@@ -34,7 +34,7 @@ export interface StatusBarProps {
  */
 export function StatusBar(props: StatusBarProps): JSX.Element {
   const { host, info, replaced, truncated, indexError, readError } = props
-  const { t, language } = host.i18n
+  const { t, language, describeError } = host.i18n
   const { index, encoding } = info
   const span = info.window.end - info.window.start
   const percent =
@@ -51,7 +51,9 @@ export function StatusBar(props: StatusBarProps): JSX.Element {
       {replaced ? <Hint>{t('mayBeGarbled')}</Hint> : null}
       {info.binary ? <Hint>{t('binaryHint')}</Hint> : null}
       {truncated ? <Hint>{t('truncatedHint')}</Hint> : null}
-      {indexError !== null ? <Hint>{t('indexFailed', { code: indexError })}</Hint> : null}
+      {indexError !== null ? (
+        <Hint>{t('indexFailed', { reason: describeError(indexError) })}</Hint>
+      ) : null}
       {readError !== null ? <Hint>{readError}</Hint> : null}
       <span className="ms-auto" data-lines>
         {index.complete ? t('lineCount', { lines }) : t('indexing', { percent, lines })}

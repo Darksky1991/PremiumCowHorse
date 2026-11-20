@@ -260,6 +260,12 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     expect(host.i18n.describeError(new Error('x'))).toBe('errors:UNKNOWN')
   })
 
+  it('also describes a bare error code (DocProgress.error); unknown strings are UNKNOWN', () => {
+    const { host } = setup()
+    expect(host.i18n.describeError('FS_TIMEOUT')).toBe('errors:FS_TIMEOUT')
+    expect(host.i18n.describeError('not a code')).toBe('errors:UNKNOWN')
+  })
+
   it('shows Windows paths and falls back to the URI', () => {
     const { host } = setup()
     expect(host.fs.toDisplayPath(TXT)).toBe('C:\\案件\\memo.txt')
