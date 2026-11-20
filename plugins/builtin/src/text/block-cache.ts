@@ -1,6 +1,7 @@
 /**
  * 解码后的行的缓存（设计 3.5）：按 blockLines（默认 1000）行分块，块内稀疏（readLines 可能只返回一部分），
- * LRU，按字符数设上限（默认约 2000 万字符）。纯逻辑，不知道文档与请求。
+ * LRU，按字符数 + 每行固定开销（LINE_OVERHEAD）设上限（默认约 2000 万）：只按字符数计时大量空行几乎不占额度，
+ * 缓存的行数（与每行对象的内存）没有上界。纯逻辑，不知道文档与请求。
  *
  * 追加：原来的最后一行可能没有换行、追加后变长——dropFrom 丢掉它及之后的行；
  * 丢弃发生时仍在途的请求（stamp 早于丢弃）的应答不会把旧内容写回丢弃点之后。
@@ -22,9 +23,14 @@ export interface BlockRequest {
 
 export const BLOCK_LINES = 1000
 export const MAX_CACHED_CHARS = 20_000_000
+/** 每行在额度中的固定开销（行对象、Map 条目等，按字符计） */
+export const LINE_OVERHEAD = 16
+
+const costOf = (line: CachedLine): number => line.text.length + LINE_OVERHEAD
 
 interface Block {
   lines: Map<number, CachedLine>
+  /** 块内各行的额度之和（costOf） */
   chars: number
 }
 
@@ -43,7 +49,7 @@ export class BlockCache {
     this.blockLines = opts.blockLines ?? BLOCK_LINES
   }
 
-  /** 缓存的字符总数 */
+  /** 缓存占用的额度：字符总数 + 行数 × LINE_OVERHEAD */
   get chars(): number {
     return this.total
   }
@@ -81,7 +87,7 @@ export class BlockCache {
       this.blocks.delete(index)
       this.blocks.set(index, block)
       const old = block.lines.get(n)
-      const delta = line.text.length - (old?.text.length ?? 0)
+      const delta = costOf(line) - (old ? costOf(old) : 0)
       block.lines.set(n, line)
       block.chars += delta
       this.total += delta
@@ -123,8 +129,8 @@ export class BlockCache {
       for (const [n, cached] of block.lines) {
         if (n < line) continue
         block.lines.delete(n)
-        block.chars -= cached.text.length
-        this.total -= cached.text.length
+        block.chars -= costOf(cached)
+        this.total -= costOf(cached)
       }
       if (block.lines.size === 0) this.blocks.delete(index)
     }

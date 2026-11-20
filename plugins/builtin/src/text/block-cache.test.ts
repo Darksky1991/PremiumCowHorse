@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { BlockCache, type CachedLine } from './block-cache'
+import { BlockCache, LINE_OVERHEAD, type CachedLine } from './block-cache'
 
 const line = (text: string): CachedLine => ({ text, truncated: false, replaced: false })
 const lines = (start: number, count: number, width = 1): CachedLine[] =>
   Array.from({ length: count }, (_, i) => line(String(start + i).padEnd(width, '.')))
+/** count 行、共 chars 个字符占用的额度（每行另加固定开销） */
+const cost = (chars: number, count: number): number => chars + count * LINE_OVERHEAD
 
 describe('BlockCache', () => {
   it('stores and returns lines by line number across blocks', () => {
@@ -33,17 +35,18 @@ describe('BlockCache', () => {
   })
 
   it('evicts the least recently used blocks over the character limit', () => {
-    // 每块 10 行 × 10 字符 = 100 字符；上限 250 → 最多 2 块
-    const cache = new BlockCache({ maxChars: 250, blockLines: 10 })
+    // 每块 10 行 × 10 字符（+ 每行开销）；上限为 2.5 块 → 最多 2 块
+    const block = cost(100, 10)
+    const cache = new BlockCache({ maxChars: 2.5 * block, blockLines: 10 })
     cache.put(0, lines(0, 10, 10), cache.stamp())
     cache.put(10, lines(10, 10, 10), cache.stamp())
-    expect(cache.chars).toBe(200)
+    expect(cache.chars).toBe(2 * block)
     cache.get(3) // 第 0 块变为最近使用
     cache.put(20, lines(20, 10, 10), cache.stamp())
     expect(cache.get(3)).toBeDefined()
     expect(cache.get(13)).toBeUndefined()
     expect(cache.get(23)).toBeDefined()
-    expect(cache.chars).toBe(200)
+    expect(cache.chars).toBe(2 * block)
   })
 
   it('keeps the block just written even when it alone exceeds the limit', () => {
@@ -53,14 +56,30 @@ describe('BlockCache', () => {
     cache.put(10, lines(10, 1, 10), cache.stamp())
     expect(cache.get(2)).toBeUndefined()
     expect(cache.get(10)).toBeDefined()
-    expect(cache.chars).toBe(10)
+    expect(cache.chars).toBe(cost(10, 1))
   })
 
   it('replacing a line updates the character count', () => {
     const cache = new BlockCache({ maxChars: 1000, blockLines: 10 })
     cache.put(0, [line('abc')], cache.stamp())
     cache.put(0, [line('abcdef')], cache.stamp())
-    expect(cache.chars).toBe(6)
+    expect(cache.chars).toBe(cost(6, 1))
+  })
+
+  it('counts a fixed overhead per line, so many empty lines are bounded too', () => {
+    // 上限 = 1000 个空行的开销：每块 1000 行，写入第二块时淘汰第一块
+    const cache = new BlockCache({ maxChars: 1000 * LINE_OVERHEAD, blockLines: 1000 })
+    for (let b = 0; b < 10; b++) {
+      cache.put(
+        b * 1000,
+        Array.from({ length: 1000 }, () => line('')),
+        cache.stamp()
+      )
+    }
+    expect(cache.chars).toBe(cost(0, 1000))
+    expect(cache.get(9500)).toBeDefined()
+    expect(cache.get(8500)).toBeUndefined()
+    expect(cache.get(0)).toBeUndefined()
   })
 
   it('dropFrom forgets the line that may have grown (appended) and everything after it', () => {
@@ -70,7 +89,7 @@ describe('BlockCache', () => {
     expect(cache.get(8)).toBeDefined()
     expect(cache.get(9)).toBeUndefined()
     expect(cache.get(14)).toBeUndefined()
-    expect(cache.chars).toBe(9)
+    expect(cache.chars).toBe(cost(9, 9))
   })
 
   it('ignores lines at or after a drop point that happened while the request was in flight', () => {
