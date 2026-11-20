@@ -379,6 +379,39 @@ describe('createDocSession: changes', () => {
     expect(changes).toHaveBeenCalledWith({ docId, reset: true, info: sjis })
   })
 
+  it('passes a reset on at once (without info) so the plugin drops its lines, then again with the info', async () => {
+    const s = setup()
+    const { docId } = await s.session.open(LOCAL)
+    const changes = vi.fn()
+    s.session.onChanged(docId, changes)
+    const rotated = info(docId, LOCAL, { size: 3 })
+    const pending = s.hold('doc.refresh')
+    s.refresh()
+    s.emitChanged({ docId, reset: true })
+    // 不等刷新的应答：刷新失败（超时）期间插件也不会把新旧内容混在一起
+    expect(changes).toHaveBeenCalledTimes(1)
+    expect(changes).toHaveBeenCalledWith({ docId, reset: true })
+    pending.resolve(rotated)
+    await settle()
+    expect(changes).toHaveBeenCalledTimes(2)
+    expect(changes).toHaveBeenLastCalledWith({ docId, reset: true, info: rotated })
+  })
+
+  it('a reset whose refresh fails is still passed on at once; the info follows on a later refresh', async () => {
+    const s = setup()
+    const { docId } = await s.session.open(LOCAL)
+    const changes = vi.fn()
+    s.session.onChanged(docId, changes)
+    s.refreshFails.set(docId, new AppError({ code: 'FS_TIMEOUT' }))
+    s.emitChanged({ docId, reset: true })
+    await settle()
+    expect(changes.mock.calls).toEqual([[{ docId, reset: true }]])
+    s.refreshFails.delete(docId)
+    s.refresh()
+    await settle()
+    expect(changes).toHaveBeenLastCalledWith({ docId, reset: true, info: info(docId, LOCAL) })
+  })
+
   it('ignores changes of other documents', async () => {
     const s = setup()
     const { docId } = await s.session.open(LOCAL)

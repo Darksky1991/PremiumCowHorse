@@ -76,14 +76,16 @@ export interface DocProgress {
  * - appended：文件只增长，新增部分已开始索引（行数随 onProgress 增加）
  * - reset：文件被截断 / 替换 / 开头变化，或编码判断改变。行号的含义变了：清空已缓存的行，按 info 重新显示
  * - missing：文件已不存在（保留已缓存的内容）。宿主照常按间隔检查，同名文件重新出现（日志轮转）时为 reset
- * - info：变化之后的文档信息（宿主刷新取得）
+ * - info：变化之后的文档信息（宿主刷新取得）。reset 到达时宿主先不带 info 立即通知一次（插件立即丢弃已缓存的行，
+ *   在 info 到达之前不读取：行数与编码还是旧的），刷新取得 info 后再带 info 通知（仍含 reset）。
+ *   刷新失败（超时等）时 info 留到之后成功的刷新
  */
 export interface DocChange {
   docId: string
   appended?: true
   reset?: true
   missing?: true
-  info: DocumentInfo
+  info?: DocumentInfo
 }
 
 /**

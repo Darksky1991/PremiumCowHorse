@@ -53,6 +53,7 @@ const isEmpty = (flags: ChangeFlags): boolean => !flags.appended && !flags.reset
  *   不按 F5 也会以 reset 回到新文件；地址栏刷新 / F5 立即刷新全部文档。
  * - 变化通知：主进程的 doc.changed 先记下，等刷新的应答（DocumentInfo）到达后连同 info 一起交给插件；
  *   主进程自行发现的变化（建索引中重新判断编码等）没有进行中的刷新时，宿主刷新一次取得 info。
+ *   reset 另外在到达时立即（不带 info）交给插件：插件马上丢弃旧内容，刷新失败期间也不会新旧混排。
  * - 过期丢弃：reset 事件到达、setEncoding / buildIndex 完成时文档的代号递增，
  *   之前发出的 readLines 的结果以 DocStaleError 拒绝（行号的含义已经变了）。
  * IPC 事件、标签刷新请求的订阅在第一个文档打开时建立，最后一个文档关闭时取消。
@@ -131,6 +132,10 @@ export function createDocSession(deps: DocSessionDeps): DocSession {
       delete doc.pending.missing
     }
     doc.pending = { ...doc.pending, ...flags }
+    if (flags.reset) {
+      const change: DocChange = { docId, reset: true }
+      for (const cb of [...(changeListeners.get(docId) ?? [])]) cb(change)
+    }
     refresh(doc)
   }
 

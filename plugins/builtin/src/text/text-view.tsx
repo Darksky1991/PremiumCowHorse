@@ -69,7 +69,14 @@ export default function TextView({
   const total = info?.index.lines ?? 0
   const frame: Frame = { visible, total, logLike }
   const top = effectiveTop(pos, frame)
-  const { lines, error: readError } = useVisibleLines(host, info, doc.epoch, top, visible + 1)
+  const { lines, error: readError } = useVisibleLines(
+    host,
+    info,
+    doc.epoch,
+    top,
+    visible + 1,
+    doc.awaitingInfo
+  )
 
   // 键盘 / 滚轮 / 滚动条的移动按最新的行数与可见行数计算
   const frameRef = useRef(frame)

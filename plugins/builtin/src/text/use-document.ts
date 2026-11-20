@@ -14,6 +14,11 @@ export interface DocumentState {
    * 宿主同时让此前发出的 readLines 以 DocStaleError 拒绝
    */
   epoch: number
+  /**
+   * reset 已到、变化之后的 info 还没到（宿主先不带 info 通知 reset）：info 的行数与编码还是旧的，
+   * 不读取行（显示占位行），避免新旧内容混排
+   */
+  awaitingInfo: boolean
 }
 
 export interface DocumentHandle extends DocumentState {
@@ -33,12 +38,14 @@ const INITIAL: DocumentState = {
   error: null,
   missing: false,
   indexError: null,
-  epoch: 0
+  epoch: 0,
+  awaitingInfo: false
 }
 
 /**
  * 文档的打开 / 关闭 / 订阅（设计 3.5、3.6）：挂载时 host.doc.open（选项只取第一次的），卸载时 close。
- * 进度更新 info.index；变化（DocChange）带来新的 info：reset 时 epoch 递增，missing 时显示「文件已不存在」。
+ * 进度更新 info.index；变化（DocChange）带来新的 info：reset 时 epoch 递增，missing 时显示「文件已不存在」；
+ * 不带 info 的 reset（宿主立即转达）先递增 epoch 并等待 info（awaitingInfo）。
  * 消息按到达顺序处理（后到的覆盖先到的）：进度与刷新的应答都是主进程在发出时的状态。
  * 切换编码与读取全部的结果也替换 info 并递增 epoch；失败时以 toast 提示
  */
@@ -109,7 +116,7 @@ export function useDocument(host: PreviewHost, uri: string, options: OpenOptions
     op(docId).then(
       (info) => {
         if (docIdRef.current !== docId) return
-        setState((s) => ({ ...s, info, indexError: null, epoch: s.epoch + 1 }))
+        setState((s) => ({ ...s, info, indexError: null, epoch: s.epoch + 1, awaitingInfo: false }))
       },
       (e: unknown) => {
         const h = hostRef.current
@@ -126,13 +133,17 @@ export function useDocument(host: PreviewHost, uri: string, options: OpenOptions
   return { ...state, setEncoding, buildIndex }
 }
 
-/** DocChange → 状态：info 取变化之后的；reset 递增 epoch；文件又出现（reset / appended）时清除 missing */
-function applyChange(s: DocumentState, c: DocChange): DocumentState {
+/**
+ * DocChange → 状态：info 取变化之后的；reset 递增 epoch；文件又出现（reset / appended）时清除 missing。
+ * 不带 info（reset 先到）：保留旧 info、等待新的（awaitingInfo）
+ */
+export function applyChange(s: DocumentState, c: DocChange): DocumentState {
   if (s.info === null || s.info.docId !== c.docId) return s
   return {
     ...s,
-    info: c.info,
+    info: c.info ?? s.info,
     missing: c.missing === true && !c.reset,
-    epoch: c.reset ? s.epoch + 1 : s.epoch
+    epoch: c.reset ? s.epoch + 1 : s.epoch,
+    awaitingInfo: c.info === undefined
   }
 }
