@@ -107,6 +107,19 @@ describe('LauncherService.open', () => {
     expect(script).toContain('ProcessStartInfo')
   })
 
+  it('refuses a directory (only files are launched) without running anything', async () => {
+    const run = vi.fn<Run>(async () => JSON.stringify([EXCEL]))
+    const service = new LauncherService({
+      run,
+      vfs: { stat: async (uri) => ({ ...(await stat(uri)), kind: 'directory' }) },
+      logger: silent
+    })
+    await expect(service.open('file:///C:/work/folder.xlsx', 'edit')).rejects.toMatchObject({
+      code: 'LAUNCH_FAILED'
+    })
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('keeps UNC paths as they are', async () => {
     const { service, run } = setup()
     await service.open('file://server/share/dir/a.xlsx', 'edit')

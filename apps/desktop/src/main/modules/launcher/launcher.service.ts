@@ -32,9 +32,13 @@ export class LauncherService {
     return this.capabilitiesOf(extensionOf(fileUriToLocalPath(uri)))
   }
 
+  /** 只启动文件（目录 → LAUNCH_FAILED）；该方式不可用 / 启动失败 → LAUNCH_FAILED */
   async open(uri: string, mode: LaunchMode): Promise<void> {
     const target = fileUriToLocalPath(uri)
-    await this.deps.vfs.stat(uri)
+    const stat = await this.deps.vfs.stat(uri)
+    if (stat.kind !== 'file') {
+      throw new AppError({ code: 'LAUNCH_FAILED', detail: `not a file (${stat.kind})` })
+    }
     const caps = await this.capabilitiesOf(extensionOf(target))
     const option = caps.options.find((o) => o.mode === mode)
     if (!option) throw new AppError({ code: 'LAUNCH_FAILED', detail: `mode ${mode} unavailable` })

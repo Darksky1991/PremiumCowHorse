@@ -79,6 +79,11 @@ describe('toCapabilities', () => {
     ])
   })
 
+  it('an empty app name (no FriendlyAppName) is null', () => {
+    expect(toCapabilities({ ...EXCEL, appName: '' }).appName).toBeNull()
+    expect(toCapabilities({ ...EXCEL, appName: '  ' }).appName).toBeNull()
+  })
+
   it('has no options without a ProgId', () => {
     expect(toCapabilities(NONE)).toEqual({ ext: 'xyz', appName: null, options: [] })
   })

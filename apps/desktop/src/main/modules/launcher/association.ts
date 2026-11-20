@@ -35,7 +35,7 @@ export function parseDetectOutput(json: string): RawAssociation[] {
  * - readOnly：只有关联程序是 EXCEL.EXE 时经官方文档记载的 /r 开关；不从 OpenAsReadOnly 推导（实测以编辑模式打开）
  * - protectedView：ViewProtected（实测只读），无条件显示
  * - newFromFile：New（实测以原文件为蓝本新建）
- * verb 名大小写不敏感，结果沿用注册表中的拼写。
+ * verb 名大小写不敏感，结果沿用注册表中的拼写。appName 为空（没有 FriendlyAppName）时为 null。
  */
 export function toCapabilities(raw: RawAssociation): LaunchCapabilities {
   const options: LaunchOption[] = []
@@ -54,5 +54,5 @@ export function toCapabilities(raw: RawAssociation): LaunchCapabilities {
     const create = find('New')
     if (create) options.push({ mode: 'newFromFile', via: { type: 'verb', verb: create } })
   }
-  return { ext: raw.ext, appName: raw.appName, options }
+  return { ext: raw.ext, appName: raw.appName?.trim() || null, options }
 }
