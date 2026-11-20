@@ -9,7 +9,7 @@ import {
   type AnyPreviewPlugin,
   type PreviewProps,
   type ResourceInfo,
-  type ViewAsMode
+  type ViewerCandidate
 } from '@pch/plugin-sdk'
 import { AppError, type FileStat, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
@@ -28,7 +28,7 @@ import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
 import { PluginErrorBoundary } from './plugin-error-boundary'
-import { canViewAs, needsSniff, resolvePlugin } from './registry'
+import { candidatesFor, needsSniff, resolvePlugin } from './registry'
 import { useDocSession } from './use-doc-session'
 import { useSniff } from './use-sniff'
 import { WorkspaceOverview } from './workspace-overview'
@@ -48,14 +48,15 @@ export interface PreviewContainerProps {
  * 所在共享在 reachability-store 中为断开时不发 stat（会等到超时），只显示文件名与「已断开」。
  * 每个标签一层 ErrorBoundary + Suspense：插件抛错或懒加载失败只在该标签显示错误面板，
  * 并提供「以文件信息显示」（fallback 插件）的出口。
- * 查看方式覆盖（viewAs：info = 文件信息、text = 作为文本查看）是按标签、按位置的临时状态，导航离开后清除。
+ * 查看器（tab.viewer，用户为该位置选的插件 id）是标签状态、随位置进入历史：导航到新位置时清除，后退 / 前进恢复；
+ * 选了查看器时不 sniff；没选时先看设置 preview.associations，再按注册表自动选择（registry.resolvePlugin）。
  * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
  * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
  */
 export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
   return (
     <div className="h-full min-h-0">
-      {/* 同一标签内导航到另一位置时整体重建（查看方式覆盖、sniff 结果等状态不沿用） */}
+      {/* 同一标签内导航到另一位置时整体重建（sniff 结果等状态不沿用；viewer 在标签状态中，随位置变化） */}
       {tab.kind === 'workspace' ? (
         <WorkspaceOverview key={tab.uri} tab={tab} />
       ) : (
@@ -66,13 +67,11 @@ export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.E
 }
 
 function ResourcePreview({ tab, plugins }: PreviewContainerProps): JSX.Element {
-  // 查看方式覆盖：「以文件信息显示」（目录也要 stat 才有大小与时间）/「作为文本查看」
-  const [viewAs, setViewAs] = useState<ViewAsMode | null>(null)
-  const view = { tab, plugins, viewAs, onViewAs: setViewAs }
-  if (tab.kind === 'directory' && viewAs === null) {
-    return <SelectPlugin {...view} resource={directoryResource(tab)} />
+  // 目录没有选查看器时不 stat；选了（如「文件信息」）要 stat 才有大小与时间
+  if (tab.kind === 'directory' && tab.viewer === undefined) {
+    return <SelectPlugin tab={tab} plugins={plugins} resource={directoryResource(tab)} />
   }
-  return <StatResource {...view} />
+  return <StatResource tab={tab} plugins={plugins} />
 }
 
 /** 目录标签的资源描述：不 stat，名称取标签的标题（大小与时间为 0，folder 插件不使用） */
@@ -80,12 +79,10 @@ function directoryResource(tab: TabState): ResourceInfo {
   return { uri: tab.uri, name: tab.title, kind: 'directory', size: 0, mtime: 0, mime: null }
 }
 
-type ViewProps = PreviewContainerProps & {
-  viewAs: ViewAsMode | null
-  onViewAs: (mode: ViewAsMode) => void
-}
+/** 设置 preview.associations 未读到时（加载中）的空关联（引用稳定） */
+const NO_ASSOCIATIONS: Readonly<Record<string, string>> = {}
 
-function StatResource(props: ViewProps): JSX.Element {
+function StatResource(props: PreviewContainerProps): JSX.Element {
   const { tab } = props
   const { t } = useTranslation()
   const offline = useReachabilityStore((s) => isShareOffline(tab.uri, s.offlineShares))
@@ -138,18 +135,21 @@ function StatResource(props: ViewProps): JSX.Element {
 
 /**
  * 选择插件：没有插件按扩展名 / MIME 匹配的文件先 sniff（显示加载中），
- * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。查看方式覆盖时不 sniff
+ * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。选了查看器时不 sniff
  */
 function SelectPlugin({
   whenMissing,
   ...props
-}: ViewProps & {
+}: PreviewContainerProps & {
   resource: ResourceInfo
   /** 文件已不存在：选中的插件不处理时显示它（manifest.handlesMissing） */
   whenMissing?: ReactNode
 }): JSX.Element {
-  const { plugins, resource, viewAs } = props
-  const needed = viewAs === null && needsSniff(plugins, resource)
+  const { plugins, resource, tab } = props
+  const { data: settings } = useSettings()
+  const viewer = tab.viewer ?? null
+  const associations = settings?.['preview.associations'] ?? NO_ASSOCIATIONS
+  const needed = viewer === null && needsSniff(plugins, resource)
   const sniffed = useSniff(resource.uri, needed)
   const show = (view: ResourceInfo, plugin: AnyPreviewPlugin): JSX.Element =>
     whenMissing !== undefined && plugin.manifest.handlesMissing !== true ? (
@@ -157,10 +157,10 @@ function SelectPlugin({
     ) : (
       <PluginView {...props} resource={view} plugin={plugin} />
     )
-  if (!needed) return show(resource, resolvePlugin(plugins, resource, viewAs))
+  if (!needed) return show(resource, resolvePlugin(plugins, resource, { viewer, associations }))
   if (sniffed === undefined) return whenMissing !== undefined ? <>{whenMissing}</> : <Loading />
   const sniffedResource = { ...resource, textLike: sniffed === 'text' }
-  return show(sniffedResource, resolvePlugin(plugins, sniffedResource, null))
+  return show(sniffedResource, resolvePlugin(plugins, sniffedResource, { viewer, associations }))
 }
 
 /** stat → 插件看到的资源描述（链接已由 stat 跟随；kind 只有 file / directory） */
@@ -212,10 +212,9 @@ interface PendingConfirm {
 function PluginView({
   tab,
   plugins,
-  onViewAs,
   resource,
   plugin
-}: ViewProps & { resource: ResourceInfo; plugin: AnyPreviewPlugin }): JSX.Element {
+}: PreviewContainerProps & { resource: ResourceInfo; plugin: AnyPreviewPlugin }): JSX.Element {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const theme = useResolvedTheme()
@@ -244,12 +243,16 @@ function PluginView({
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
   const setViewState = useTabsStore((s) => s.setViewState)
+  const setViewer = useTabsStore((s) => s.setViewer)
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null)
   const doc = useDocSession(tab.id, settings)
 
   const pluginId = plugin.manifest.id
+  // 候选查看器的 id（字符串：toResourceInfo 每次渲染都是新对象，宿主不能依赖 resource，只依赖候选是否变化）
+  const candidateIds = candidatesFor(plugins, resource)
+    .map((p) => p.manifest.id)
+    .join(',')
   const language = i18n.language
-  const resourceKind = resource.kind
 
   const host = useMemo(() => {
     registerPluginResources(i18n, plugin)
@@ -265,9 +268,19 @@ function PluginView({
       onVfsChanged: (listener) => subscribe('vfs.changed', ({ uri }) => listener(uri)),
       onRefresh: (listener) => onTabRefresh(tab.id, listener),
       doc,
-      viewAs: {
-        can: (mode) => canViewAs(plugins, { kind: resourceKind }, pluginId, mode),
-        set: onViewAs
+      viewer: {
+        // 候选的显示名按插件自带的语言资源翻译（先登记资源）
+        candidates: () =>
+          candidateIds.split(',').map((id): ViewerCandidate => {
+            const candidate = plugins.find((p) => p.manifest.id === id)!
+            registerPluginResources(i18n, candidate)
+            return {
+              id,
+              name: i18n.getFixedT(null, id)(candidate.manifest.name),
+              current: id === pluginId
+            }
+          }),
+        set: (id) => setViewer(tab.id, id)
       },
       tabs: { open, navigate },
       confirmExecutable: (name) =>
@@ -290,8 +303,8 @@ function PluginView({
     queryClient,
     doc,
     plugins,
-    resourceKind,
-    onViewAs,
+    candidateIds,
+    setViewer,
     offlineShares,
     open,
     navigate,
@@ -328,7 +341,7 @@ function PluginView({
               </p>
             </div>
             {pluginId === FALLBACK_PLUGIN_ID ? null : (
-              <Button variant="outline" onClick={() => onViewAs('info')}>
+              <Button variant="outline" onClick={() => setViewer(tab.id, FALLBACK_PLUGIN_ID)}>
                 {t('preview:showInfo')}
               </Button>
             )}

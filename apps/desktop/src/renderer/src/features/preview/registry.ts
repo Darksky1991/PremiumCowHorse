@@ -3,8 +3,7 @@ import {
   TEXT_PLUGIN_ID,
   type AnyPreviewPlugin,
   type PreviewPluginManifest,
-  type ResourceInfo,
-  type ViewAsMode
+  type ResourceInfo
 } from '@pch/plugin-sdk'
 
 const EXTENSION_SCORE = 3
@@ -109,34 +108,66 @@ export function pluginById(
 }
 
 /**
- * 考虑按标签的查看方式覆盖（host.tabs.viewAs）的选择：info → fallback 插件；text → 文本插件（未注册时 fallback）；
- * null → 按资源选择（pickPlugin）
+ * 可用于资源的查看器（地址栏下拉、host.tabs.candidates）：按得分从高到低（同分先注册者在前）的匹配插件，
+ * 文件另加文本插件（即使不按扩展名 / MIME 匹配，已注册时），最后是 fallback（文件信息）；无重复
+ */
+export function candidatesFor(
+  plugins: readonly AnyPreviewPlugin[],
+  resource: ResourceInfo
+): AnyPreviewPlugin[] {
+  const scored: { plugin: AnyPreviewPlugin; score: number }[] = []
+  for (const plugin of plugins) {
+    if (plugin.manifest.id === FALLBACK_PLUGIN_ID) continue
+    const score = scoreResource(plugin.manifest, resource)
+    if (score !== null) scored.push({ plugin, score })
+  }
+  // Array.prototype.sort 稳定：同分保持注册顺序
+  const result = scored.sort((x, y) => y.score - x.score).map((x) => x.plugin)
+  if (resource.kind === 'file') {
+    const text = pluginById(plugins, TEXT_PLUGIN_ID)
+    if (text !== null && !result.includes(text)) result.push(text)
+  }
+  result.push(fallbackOf(plugins))
+  return result
+}
+
+/**
+ * 文件名在 preview.associations（扩展名 → 插件 id）中的关联：取最长的扩展名（tar.gz 先于 gz），
+ * 大小写不敏感；没有扩展名或没有关联时为 null
+ */
+export function associationFor(
+  name: string,
+  associations: Readonly<Record<string, string>>
+): string | null {
+  const keys = new Map<string, string>()
+  for (const [ext, id] of Object.entries(associations)) {
+    keys.set(ext.toLowerCase().replace(/^\./, ''), id)
+  }
+  const parts = name.toLowerCase().split('.')
+  // parts[0] 是第一个点之前的部分，不是扩展名；从最长的后缀开始
+  for (let i = 1; i < parts.length; i++) {
+    const id = keys.get(parts.slice(i).join('.'))
+    if (id !== undefined) return id
+  }
+  return null
+}
+
+/**
+ * 选择查看器：用户为该位置选的 viewer（在候选中时）→ 设置 preview.associations 的关联（在候选中时）
+ * → 按资源选择（pickPlugin）。不在候选中的 viewer / 关联被忽略
  */
 export function resolvePlugin(
   plugins: readonly AnyPreviewPlugin[],
   resource: ResourceInfo,
-  viewAs: ViewAsMode | null
+  opts: { viewer: string | null; associations: Readonly<Record<string, string>> }
 ): AnyPreviewPlugin {
-  if (viewAs === 'info') return fallbackOf(plugins)
-  if (viewAs === 'text') return pluginById(plugins, TEXT_PLUGIN_ID) ?? fallbackOf(plugins)
-  return pickPlugin(plugins, resource)
-}
-
-/**
- * 当前显示 currentId 的插件时能否切换到该查看方式：text 只对文件、文本插件已注册且不是当前插件；
- * info 只要当前不是 fallback 插件
- */
-export function canViewAs(
-  plugins: readonly AnyPreviewPlugin[],
-  resource: Pick<ResourceInfo, 'kind'>,
-  currentId: string,
-  mode: ViewAsMode
-): boolean {
-  if (mode === 'info') return currentId !== FALLBACK_PLUGIN_ID
+  const candidates = candidatesFor(plugins, resource)
+  const byId = (id: string | null): AnyPreviewPlugin | undefined =>
+    id === null ? undefined : candidates.find((p) => p.manifest.id === id)
   return (
-    resource.kind === 'file' &&
-    currentId !== TEXT_PLUGIN_ID &&
-    pluginById(plugins, TEXT_PLUGIN_ID) !== null
+    byId(opts.viewer) ??
+    byId(associationFor(resource.name, opts.associations)) ??
+    pickPlugin(plugins, resource)
   )
 }
 

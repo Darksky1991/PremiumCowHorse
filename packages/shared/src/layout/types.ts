@@ -23,6 +23,8 @@ export interface TabLocation {
  */
 export interface TabHistoryEntry extends TabLocation {
   viewState?: unknown
+  /** 用户为该位置选的查看器（插件 id）；没有时按注册表自动选择 */
+  viewer?: string
 }
 
 /** 标签内的导航历史（浏览器式，每个标签独立、只在内存中）：各至多 TAB_HISTORY_LIMIT 项 */
@@ -41,6 +43,8 @@ export interface TabState extends TabLocation {
   id: string
   /** 由插件定义：滚动位置、排序…（M1-3 不持久化） */
   viewState?: unknown
+  /** 用户为当前位置选的查看器（插件 id）：随位置进入历史，导航到新位置时清除 */
+  viewer?: string
   history: TabHistory
 }
 
@@ -61,3 +65,5 @@ export type TabsAction =
    * 写入刚离开的历史项（后退栈顶或前进栈顶中 URI 相同者）；都不是时忽略。省略时写入当前位置
    */
   | { type: 'tab/viewState'; id: string; viewState: unknown; uri?: string }
+  /** 为当前位置选择查看器（null = 恢复自动选择）；viewState 属于上一个查看器，同时清除 */
+  | { type: 'tab/viewer'; id: string; viewer: string | null }

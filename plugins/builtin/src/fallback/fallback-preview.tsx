@@ -7,13 +7,13 @@ import {
   FolderIcon,
   FolderOpenIcon
 } from 'lucide-react'
-import type { PreviewProps } from '@pch/plugin-sdk'
+import { TEXT_PLUGIN_ID, type PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
 import { formatBytes, formatDateTime } from './format'
 
 /**
  * 文件信息（名称、位置、类型、大小、修改时间）与三个动作；所有访问都经 host。
- * 文件且文本插件可用时另有「作为文本查看」（按标签切换查看方式，导航离开后恢复）
+ * 文件且候选查看器含文本插件时另有「作为文本查看」（host.tabs.viewWith，导航离开后恢复自动选择）
  */
 export default function FallbackPreview({ resource, host }: PreviewProps): JSX.Element {
   const { t, language } = host.i18n
@@ -64,8 +64,8 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
             <CopyIcon data-icon="inline-start" />
             {t('copyPath')}
           </Button>
-          {!isDirectory && host.tabs.canViewAs('text') ? (
-            <Button variant="outline" onClick={() => host.tabs.viewAs('text')}>
+          {!isDirectory && host.tabs.candidates().some((c) => c.id === TEXT_PLUGIN_ID) ? (
+            <Button variant="outline" onClick={() => host.tabs.viewWith(TEXT_PLUGIN_ID)}>
               <FileTextIcon data-icon="inline-start" />
               {t('viewAsText')}
             </Button>

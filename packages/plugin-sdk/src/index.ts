@@ -95,8 +95,15 @@ export interface PreviewPluginManifest {
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error'
 
-/** PreviewHost.tabs.viewAs 的查看方式 */
-export type ViewAsMode = 'text' | 'info'
+/** PreviewHost.tabs.candidates 的一项：可用于当前资源的查看器 */
+export interface ViewerCandidate {
+  /** 插件 id */
+  id: string
+  /** 显示名（已按当前语言翻译） */
+  name: string
+  /** 是否为当前显示的查看器 */
+  current: boolean
+}
 
 /** 插件可读取的应用设置（只读，键与应用设置相同） */
 export interface HostSettings {
@@ -147,12 +154,12 @@ export interface PreviewHost {
      */
     onRefresh(listener: () => void): () => void
     /**
-     * 本标签改用另一种方式查看当前资源（按标签的临时状态，导航到其他位置后恢复自动选择）：
-     * text = 文本插件（pch.preview.text），info = 文件信息（fallback 插件）
+     * 本标签改用另一个查看器查看当前资源（按标签、按位置的选择，进入历史；导航到其他位置后恢复自动选择）。
+     * pluginId 不在 candidates() 中时不做任何事
      */
-    viewAs(mode: ViewAsMode): void
-    /** 该查看方式是否可用（对应的插件已注册、资源是文件）；不可用时 viewAs 不做任何事 */
-    canViewAs(mode: ViewAsMode): boolean
+    viewWith(pluginId: string): void
+    /** 可用于当前资源的查看器（按注册表的优先顺序，最后是文件信息）；含当前查看器（current） */
+    candidates(): ViewerCandidate[]
   }
   /** 文本文档（分页读取）；自动刷新由宿主负责 */
   doc: PreviewDocApi

@@ -46,7 +46,13 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
       return () => refreshListeners.delete(listener)
     },
     doc: {} as PreviewHostDeps['doc'],
-    viewAs: { can: (mode) => mode === 'text', set: vi.fn() },
+    viewer: {
+      candidates: () => [
+        { id: 'pch.preview.html', name: 'HTML', current: true },
+        { id: 'pch.preview.text', name: 'Text', current: false }
+      ],
+      set: vi.fn()
+    },
     tabs: { open: vi.fn(), navigate: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
     notify: vi.fn(),
@@ -288,15 +294,21 @@ describe('createPreviewHost: fs, i18n and settings', () => {
   })
 })
 
-describe('createPreviewHost: viewAs / doc', () => {
-  it('switches the view only when the container allows it', () => {
+describe('createPreviewHost: viewer / doc', () => {
+  it('lists the candidates given by the container', () => {
+    const { host } = setup()
+    expect(host.tabs.candidates().map((c) => c.id)).toEqual([
+      'pch.preview.html',
+      'pch.preview.text'
+    ])
+  })
+
+  it('switches only to a candidate', () => {
     const { host, deps } = setup()
-    expect(host.tabs.canViewAs('text')).toBe(true)
-    expect(host.tabs.canViewAs('info')).toBe(false)
-    host.tabs.viewAs('info')
-    expect(deps.viewAs.set).not.toHaveBeenCalled()
-    host.tabs.viewAs('text')
-    expect(deps.viewAs.set).toHaveBeenCalledWith('text')
+    host.tabs.viewWith('pch.preview.office')
+    expect(deps.viewer.set).not.toHaveBeenCalled()
+    host.tabs.viewWith('pch.preview.text')
+    expect(deps.viewer.set).toHaveBeenCalledWith('pch.preview.text')
   })
 
   it('exposes the document API given by the container as is (stable across host rebuilds)', () => {

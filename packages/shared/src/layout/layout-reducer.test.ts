@@ -290,3 +290,78 @@ describe('layoutReducer: 标签历史（后退 / 前进）', () => {
     ])
   })
 })
+
+describe('layoutReducer: tab/viewer', () => {
+  const nav = (uri: string, kind: TabLocation['kind'] = 'file'): TabsAction => ({
+    type: 'tab/navigate',
+    id: 't1',
+    uri,
+    kind,
+    title: uri
+  })
+  const setViewer = (viewer: string | null): TabsAction => ({
+    type: 'tab/viewer',
+    id: 't1',
+    viewer
+  })
+  const tab1 = (s: TabsState): TabState => s.tabs[0]!
+
+  it('设置 viewer 并清除 viewState（viewState 属于上一个查看器）', () => {
+    const s = run([
+      open('a.html'),
+      { type: 'tab/viewState', id: 't1', viewState: { top: 5 } },
+      setViewer('pch.preview.text')
+    ])
+    expect(tab1(s).viewer).toBe('pch.preview.text')
+    expect('viewState' in tab1(s)).toBe(false)
+  })
+
+  it('viewer 为 null 时删除该键', () => {
+    const s = run([open('a.html'), setViewer('pch.preview.text'), setViewer(null)])
+    expect('viewer' in tab1(s)).toBe(false)
+  })
+
+  it('未知 id 与没有变化时返回同一个状态对象', () => {
+    const s = run([open('a.html'), setViewer('x')])
+    expect(layoutReducer(s, { type: 'tab/viewer', id: 'nope', viewer: 'y' }, () => 'z')).toBe(s)
+    expect(layoutReducer(s, setViewer('x'), () => 'z')).toBe(s)
+    const none = run([open('a.html')])
+    expect(layoutReducer(none, setViewer(null), () => 'z')).toBe(none)
+  })
+
+  it('tab/navigate 之后新位置没有 viewer，后退栈顶保留原 viewer', () => {
+    const s = run([open('a.html'), setViewer('pch.preview.text'), nav('b.html')])
+    expect('viewer' in tab1(s)).toBe(false)
+    expect(tab1(s).history.back.at(-1)).toEqual({
+      uri: 'a.html',
+      kind: 'file',
+      title: 'a.html',
+      viewer: 'pch.preview.text'
+    })
+  })
+
+  it('tab/back / tab/forward 恢复历史项的 viewer', () => {
+    const s = run([open('a.html'), setViewer('pch.preview.text'), nav('b.html')])
+    const back = run([{ type: 'tab/back', id: 't1' }], s)
+    expect(tab1(back)).toMatchObject({ uri: 'a.html', viewer: 'pch.preview.text' })
+    const fwd = run([{ type: 'tab/forward', id: 't1' }], back)
+    expect(tab1(fwd).uri).toBe('b.html')
+    expect('viewer' in tab1(fwd)).toBe(false)
+    const again = run([{ type: 'tab/back', id: 't1' }], fwd)
+    expect(tab1(again).viewer).toBe('pch.preview.text')
+  })
+
+  it('补存刚离开位置的 viewState 时保留该历史项的 viewer', () => {
+    const s = run([
+      open('a.html'),
+      setViewer('pch.preview.text'),
+      nav('b.html'),
+      { type: 'tab/viewState', id: 't1', viewState: { top: 5 }, uri: 'a.html' }
+    ])
+    expect(tab1(s).history.back.at(-1)).toMatchObject({
+      uri: 'a.html',
+      viewer: 'pch.preview.text',
+      viewState: { top: 5 }
+    })
+  })
+})

@@ -3,7 +3,7 @@ import type {
   PreviewDocApi,
   PreviewHost,
   ToastType,
-  ViewAsMode
+  ViewerCandidate
 } from '@pch/plugin-sdk'
 import {
   AppError,
@@ -37,8 +37,8 @@ export interface PreviewHostDeps {
   onRefresh: (listener: () => void) => () => void
   /** 文本文档 API（doc-session.ts；在标签内容存续期间是同一个对象） */
   doc: PreviewDocApi
-  /** 本标签的查看方式覆盖（preview-container 的按标签状态） */
-  viewAs: { can: (mode: ViewAsMode) => boolean; set: (mode: ViewAsMode) => void }
+  /** 本标签当前资源的查看器：候选（含当前）与选择（preview-container 注入，选择写入标签状态） */
+  viewer: { candidates: () => ViewerCandidate[]; set: (pluginId: string) => void }
   tabs: {
     open: (workspaceId: string, target: TabTarget) => void
     navigate: (id: string, target: TabTarget) => void
@@ -139,10 +139,10 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         deps.tabs.navigate(tabId, parent)
       },
       onRefresh: (listener) => deps.onRefresh(listener),
-      viewAs: (mode) => {
-        if (deps.viewAs.can(mode)) deps.viewAs.set(mode)
+      viewWith: (pluginId) => {
+        if (deps.viewer.candidates().some((c) => c.id === pluginId)) deps.viewer.set(pluginId)
       },
-      canViewAs: (mode) => deps.viewAs.can(mode)
+      candidates: () => deps.viewer.candidates()
     },
     doc: deps.doc,
     system: {

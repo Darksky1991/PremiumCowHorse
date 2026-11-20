@@ -126,4 +126,13 @@ describe('tabs-store', () => {
     openHere('w1', file('b'), { newTab: true })
     expect(get().activeId).toBe(id)
   })
+
+  it('setViewer 凭标签 id 设置 / 清除查看器', () => {
+    useTabsStore.getState().open('w1', file('a.html'))
+    const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
+    useTabsStore.getState().setViewer(id, 'pch.preview.text')
+    expect(selectTabs('w1')(useTabsStore.getState()).tabs[0]!.viewer).toBe('pch.preview.text')
+    useTabsStore.getState().setViewer(id, null)
+    expect(selectTabs('w1')(useTabsStore.getState()).tabs[0]!.viewer).toBeUndefined()
+  })
 })

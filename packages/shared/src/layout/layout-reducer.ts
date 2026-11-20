@@ -23,6 +23,8 @@ const NO_HISTORY: TabHistory = { back: [], forward: [] }
  *   离开的位置连同其 viewState 压入后退栈、前进栈清空。导航到当前 URI 不入栈（只更新类型与标题）。
  * - `tab/back` / `tab/forward`：浏览器式，当前位置（连同 viewState）压入另一侧的栈；
  *   恢复目标位置离开时的 viewState（像浏览器后退恢复滚动位置）。
+ * - `tab/viewer`：设置 / 清除当前位置的查看器（viewer），并清除 viewState。viewer 随位置进入历史，
+ *   导航到新位置时清除，后退 / 前进恢复历史项的 viewer。
  * - `tab/viewState`：写入当前位置；带 `uri` 且标签已离开该位置时（视图在导航之后才卸载、补存防抖中的状态）
  *   写入刚离开的那一项——后退栈顶（导航 / 前进离开）或前进栈顶（后退离开）中 URI 相同者，都不是时不变。
  */
@@ -94,6 +96,18 @@ export function layoutReducer(
       const history = withLeftViewState(tab.history, action.uri, action.viewState)
       return history ? { ...state, tabs: replace(state.tabs, tab.id, { history }) } : state
     }
+    case 'tab/viewer': {
+      const tab = state.tabs.find((t) => t.id === action.id)
+      if (!tab) return state
+      if ((tab.viewer ?? null) === action.viewer) return state
+      const next: TabState = {
+        id: tab.id,
+        ...locationOf(tab),
+        ...(action.viewer === null ? {} : { viewer: action.viewer }),
+        history: tab.history
+      }
+      return { ...state, tabs: state.tabs.map((t) => (t.id === tab.id ? next : t)) }
+    }
   }
 }
 
@@ -106,7 +120,7 @@ function withLeftViewState(
   const update = (stack: TabHistoryEntry[]): TabHistoryEntry[] | null => {
     const top = stack.at(-1)
     if (top?.uri !== uri) return null
-    return [...stack.slice(0, -1), { ...locationOf(top), viewState }]
+    return [...stack.slice(0, -1), { ...entryOf(top), viewState }]
   }
   const back = update(history.back)
   if (back) return { ...history, back }
@@ -133,9 +147,13 @@ function locationOf(l: TabLocation): TabLocation {
   return { uri: l.uri, kind: l.kind, title: l.title }
 }
 
-/** 历史项：位置与 viewState（没有时不含该键） */
+/** 历史项：位置、viewState 与 viewer（没有时不含该键） */
 function entryOf(l: TabHistoryEntry): TabHistoryEntry {
-  return l.viewState === undefined ? locationOf(l) : { ...locationOf(l), viewState: l.viewState }
+  return {
+    ...locationOf(l),
+    ...(l.viewState === undefined ? {} : { viewState: l.viewState }),
+    ...(l.viewer === undefined ? {} : { viewer: l.viewer })
+  }
 }
 
 /** 压栈；超过上限时丢弃最旧的（栈底） */
