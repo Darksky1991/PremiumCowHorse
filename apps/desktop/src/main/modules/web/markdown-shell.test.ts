@@ -23,4 +23,15 @@ describe('MARKDOWN_CSP', () => {
     expect(MARKDOWN_CSP).not.toMatch(/script-src[^;]*'unsafe-inline'/)
     expect(MARKDOWN_CSP).toContain("object-src 'none'")
   })
+
+  it('图片与外部样式允许 http:（内网系统），脚本不允许', () => {
+    const directive = (name: string): string[] =>
+      MARKDOWN_CSP.split(';')
+        .map((d) => d.trim().split(/\s+/))
+        .find(([n]) => n === name)!
+        .slice(1)
+    expect(directive('img-src')).toContain('http:')
+    expect(directive('style-src')).toContain('http:')
+    expect(directive('script-src')).toEqual(['pch-asset:'])
+  })
 })
