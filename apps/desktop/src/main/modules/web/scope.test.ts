@@ -50,23 +50,28 @@ describe('toWebUrl / fromWebUrl', () => {
     expect(fromWebUrl(`pch-web://${id}/`, scopes)?.uri).toBe('file:///C:/')
   })
 
-  it.each(['a #1.html', 'q?x.html', '100%.html', 'with space.html', '設計書.html', 'a+b&c=d.html'])(
-    'round-trips the file name %s',
-    (name) => {
-      const base = path.join(tmpdir(), 'proj')
-      const root = pathToFileURL(base).href
-      const uri = pathToFileURL(path.join(base, 'sub', name)).href
-      const { scopes } = table(root)
-      const web = toWebUrl(uri, root)
-      expect(new URL(web).search).toBe('')
-      expect(new URL(web).hash).toBe('')
-      const back = fromWebUrl(web, scopes)
-      expect(back).not.toBeNull()
-      // 文件名相同（编码写法可以不同）
-      expect(decodeURIComponent(back!.uri)).toBe(decodeURIComponent(uri))
-      expect(back!.uri.startsWith(`${root}/sub/`)).toBe(true)
-    }
-  )
+  it.each([
+    'a #1.html',
+    'q?x.html',
+    '100%.html',
+    'with space.html',
+    '設計書.html',
+    'a+b&c=d.html',
+    'a@b,c;d$e.html',
+    "(x)!'~.html"
+  ])('round-trips the file name %s', (name) => {
+    const base = path.join(tmpdir(), 'proj')
+    const root = pathToFileURL(base).href
+    const uri = pathToFileURL(path.join(base, 'sub', name)).href
+    const { scopes } = table(root)
+    const web = toWebUrl(uri, root)
+    expect(new URL(web).search).toBe('')
+    expect(new URL(web).hash).toBe('')
+    const back = fromWebUrl(web, scopes)
+    expect(back).not.toBeNull()
+    expect(back!.uri).toBe(uri)
+    expect(back!.uri.startsWith(`${root}/sub/`)).toBe(true)
+  })
 
   it('throws when the uri is not under the root', () => {
     expect(() => toWebUrl('file:///C:/other/a.html', 'file:///C:/proj')).toThrow()

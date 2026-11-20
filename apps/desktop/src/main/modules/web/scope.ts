@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { isUnderUri } from '@pch/shared'
+
+const SEGMENT_BASE = path.join(path.parse(process.cwd()).root, 'x')
 
 export const WEB_SCHEME = 'pch-web'
 
@@ -25,6 +29,16 @@ export function toWebUrl(uri: string, rootUri: string): string {
     .map((seg) => encodeURIComponent(decodeURIComponent(seg)))
     .join('/')
   return `${WEB_SCHEME}://${scopeIdOf(rootUri)}/${path}`
+}
+
+/**
+ * 把真实名称编码为 file URI 的一段：直接取 `pathToFileURL` 的结果（含 Node 自己的额外转义，如 `~`），
+ * 使 fromWebUrl 返回的 URI 与工作区条目的 URI 逐字符相同（项目按纯字符串比较 URI）。
+ * 调用方保证 seg 不含 `/`、`\`。
+ */
+function encodeFileUriSegment(seg: string): string {
+  const prefix = pathToFileURL(`${SEGMENT_BASE}${path.sep}`).href
+  return pathToFileURL(`${SEGMENT_BASE}${path.sep}${seg}`).href.slice(prefix.length)
 }
 
 /** 范围编号 → 范围根 URI（只在内存；渲染端 attach 时登记） */
@@ -72,9 +86,7 @@ export function fromWebUrl(
     segments.push(seg)
   }
   const uri =
-    segments.length === 0
-      ? root
-      : prefixOf(root) + segments.map((s) => encodeURIComponent(s)).join('/')
+    segments.length === 0 ? root : prefixOf(root) + segments.map(encodeFileUriSegment).join('/')
   if (!isUnderUri(uri, root)) return null
   return { uri, scopeId }
 }
