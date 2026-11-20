@@ -137,7 +137,9 @@ export default {
     back: '后退',
     forward: '前进',
     up: '上一级',
-    refresh: '刷新'
+    refresh: '刷新',
+    viewer: '查看方式',
+    alwaysOpenWith: '.{{ext}} 总是用此查看器打开'
   },
   tabs: {
     label: '已打开的标签',

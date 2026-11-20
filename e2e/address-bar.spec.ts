@@ -210,4 +210,67 @@ test.describe('the application address bar', () => {
       await app.close()
     }
   })
+
+  test('the viewer menu switches the viewer of a location (restored by back / forward); "always open" makes it the default for the extension', async () => {
+    writeFileSync(path.join(project, 'second.txt'), 'second')
+    const { app, page } = await launchFast(userData)
+    try {
+      const { tree } = await setup(page)
+      const viewerButton = button(page, 'View as')
+      const textView = panel(page).getByRole('region', { name: 'File content' })
+      const infoView = panel(page).getByRole('button', { name: 'Copy path' })
+
+      // 目录：候选为文件夹 + 文件信息
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await expect(viewerButton).toBeEnabled()
+      await row(page, 'memo.txt').dblclick()
+      await expect(textView).toBeVisible()
+
+      // 切到「File info」：内容为 fallback，菜单中该项选中
+      await viewerButton.click()
+      await page.getByRole('menuitemradio', { name: 'File info' }).click()
+      await expect(infoView).toBeVisible()
+      await expect(textView).toHaveCount(0)
+      await viewerButton.click()
+      await expect(page.getByRole('menuitemradio', { name: 'File info' })).toBeChecked()
+      await page.keyboard.press('Escape')
+
+      // 后退再前进恢复所选（查看器随位置进入历史）；后退到目录后按钮仍可用
+      await button(page, 'Back').click()
+      await expect(row(page, 'memo.txt')).toBeVisible()
+      await button(page, 'Forward').click()
+      await expect(infoView).toBeVisible()
+
+      // 勾选「总是用这个打开」：同扩展名的文件在新标签中直接用所选
+      await viewerButton.click()
+      await page.getByRole('menuitemcheckbox', { name: 'Always open .txt with this' }).click()
+      await expect
+        .poll(
+          async () =>
+            (await data<Record<string, string>>(page, 'settings.getAll'))['preview.associations']
+        )
+        .toEqual({ txt: 'pch.preview.fallback' })
+      // 勾选项点击后菜单保持打开
+      await page.keyboard.press('Escape')
+      await button(page, 'Back').click()
+      await row(page, 'second.txt').click({ modifiers: ['Control'] })
+      await expect(tabs(page)).toHaveCount(2)
+      await expect(infoView).toBeVisible()
+      await expect(textView).toHaveCount(0)
+
+      // 取消勾选：删除关联
+      await viewerButton.click()
+      const always = page.getByRole('menuitemcheckbox', { name: 'Always open .txt with this' })
+      await expect(always).toBeChecked()
+      await always.click()
+      await expect
+        .poll(
+          async () =>
+            (await data<Record<string, string>>(page, 'settings.getAll'))['preview.associations']
+        )
+        .toEqual({})
+    } finally {
+      await app.close()
+    }
+  })
 })

@@ -38,6 +38,7 @@ import {
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
 import type { NavCommand } from './commands'
 import { useNavigationShortcuts } from './use-navigation-shortcuts'
+import { ViewerMenu } from './viewer-menu'
 
 type SegmentEvent = 'onClick' | 'onMouseDown' | 'onAuxClick'
 
@@ -215,6 +216,8 @@ export function AddressBar(): JSX.Element {
           )
         })}
       </ol>
+
+      <ViewerMenu tabId={active?.id ?? null} />
     </nav>
   )
 }

@@ -142,7 +142,9 @@ export default {
     back: '戻る',
     forward: '進む',
     up: '1 つ上へ',
-    refresh: '最新の情報に更新'
+    refresh: '最新の情報に更新',
+    viewer: '表示',
+    alwaysOpenWith: '.{{ext}} は常にこれで開く'
   },
   tabs: {
     label: '開いているタブ',

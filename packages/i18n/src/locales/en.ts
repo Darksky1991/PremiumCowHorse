@@ -143,7 +143,9 @@ export default {
     back: 'Back',
     forward: 'Forward',
     up: 'Up one level',
-    refresh: 'Refresh'
+    refresh: 'Refresh',
+    viewer: 'View as',
+    alwaysOpenWith: 'Always open .{{ext}} with this'
   },
   tabs: {
     label: 'Open tabs',

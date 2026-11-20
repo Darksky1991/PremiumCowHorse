@@ -131,6 +131,12 @@ export function candidatesFor(
   return result
 }
 
+/** 文件名最后一段扩展名（小写，无点）；没有扩展名（含「.gitignore」这样只有前导点）时为 null */
+export function extensionOf(name: string): string | null {
+  const i = name.lastIndexOf('.')
+  return i <= 0 || i === name.length - 1 ? null : name.slice(i + 1).toLowerCase()
+}
+
 /**
  * 文件名在 preview.associations（扩展名 → 插件 id）中的关联：取最长的扩展名（tar.gz 先于 gz），
  * 大小写不敏感；没有扩展名或没有关联时为 null

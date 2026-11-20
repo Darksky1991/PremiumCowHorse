@@ -25,10 +25,11 @@ import { reportError } from '@renderer/lib/report-error'
 import { useResolvedTheme } from '@renderer/providers/theme-context'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
 import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
+import { useViewerStore } from '@renderer/stores/viewer-store'
 import { ConfirmExecutableDialog } from './confirm-executable-dialog'
 import { createPreviewHost } from './host'
 import { PluginErrorBoundary } from './plugin-error-boundary'
-import { candidatesFor, needsSniff, resolvePlugin } from './registry'
+import { candidatesFor, extensionOf, needsSniff, resolvePlugin } from './registry'
 import { useDocSession } from './use-doc-session'
 import { useSniff } from './use-sniff'
 import { WorkspaceOverview } from './workspace-overview'
@@ -254,6 +255,29 @@ function PluginView({
     .join(',')
   const language = i18n.language
 
+  // 候选的显示名按插件自带的语言资源翻译（先登记资源）；语言变化时重算
+  const candidates = useMemo(
+    () =>
+      candidateIds.split(',').map((id): ViewerCandidate => {
+        const candidate = plugins.find((p) => p.manifest.id === id)!
+        registerPluginResources(i18n, candidate)
+        return {
+          id,
+          name: i18n.getFixedT(language, id)(candidate.manifest.name),
+          current: id === pluginId
+        }
+      }),
+    [i18n, plugins, candidateIds, pluginId, language]
+  )
+  // 写入 viewer-store 供地址栏的查看器下拉使用（文件才有扩展名；卸载 / 换标签时清除）
+  const setViewers = useViewerStore((s) => s.setFor)
+  const clearViewers = useViewerStore((s) => s.clear)
+  const ext = resource.kind === 'file' ? extensionOf(resource.name) : null
+  useEffect(() => {
+    setViewers(tab.id, { candidates, ext })
+  }, [setViewers, tab.id, candidates, ext])
+  useEffect(() => () => clearViewers(tab.id), [clearViewers, tab.id])
+
   const host = useMemo(() => {
     registerPluginResources(i18n, plugin)
     const pluginT = i18n.getFixedT(null, pluginId)
@@ -269,17 +293,7 @@ function PluginView({
       onRefresh: (listener) => onTabRefresh(tab.id, listener),
       doc,
       viewer: {
-        // 候选的显示名按插件自带的语言资源翻译（先登记资源）
-        candidates: () =>
-          candidateIds.split(',').map((id): ViewerCandidate => {
-            const candidate = plugins.find((p) => p.manifest.id === id)!
-            registerPluginResources(i18n, candidate)
-            return {
-              id,
-              name: i18n.getFixedT(null, id)(candidate.manifest.name),
-              current: id === pluginId
-            }
-          }),
+        candidates: () => candidates,
         set: (id) => setViewer(tab.id, id)
       },
       tabs: { open, navigate },
@@ -302,8 +316,7 @@ function PluginView({
     workspace?.id,
     queryClient,
     doc,
-    plugins,
-    candidateIds,
+    candidates,
     setViewer,
     offlineShares,
     open,
