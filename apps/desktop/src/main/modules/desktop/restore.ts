@@ -32,7 +32,8 @@ export const RESTORABLE_EXE = new Set([
 
 export const RESTORE_GAP_MS = 500
 export const EXISTS_TIMEOUT_MS = 3000
-export const EXPLORER_SCRIPT_TIMEOUT_MS = 15_000
+/** 脚本总上限随标签数放大 */
+export const explorerScriptTimeoutMs = (tabs: number): number => 15_000 + 5_000 * (tabs - 1)
 
 /** 真实的 spawnDetached：不经 shell；spawn 的 error 事件转为拒绝 */
 export function spawnDetached(exe: string, args: string[]): Promise<void> {
@@ -54,7 +55,7 @@ class SkipError extends Error {
   }
 }
 
-const isClsid = (p: string): boolean => p.startsWith('::{')
+const isClsid = (p: string): boolean => /^::\{[0-9A-Fa-f-]{36}\}$/.test(p)
 const explorerExe = (): string =>
   path.win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'explorer.exe')
 const explorerArg = (p: string): string => (isClsid(p) ? `shell:${p}` : p)
@@ -81,38 +82,49 @@ async function launchExplorer(
   item: Extract<DesktopItem, { kind: 'explorer' }>,
   deps: RestoreDeps
 ): Promise<void> {
-  const tabs: string[] = []
-  let unreachable = false
-  for (const tab of item.tabs) {
-    if (isClsid(tab)) {
-      tabs.push(tab)
-      continue
-    }
-    const r = await deps.exists(tab, EXISTS_TIMEOUT_MS)
-    if (r === 'yes') tabs.push(tab)
-    else if (r === 'unreachable') unreachable = true
-  }
-  if (tabs.length === 0) throw new SkipError(unreachable ? 'unreachable' : 'missing')
+  for (const tab of item.tabs) requireAbsoluteOrClsid(tab, deps)
+  const results = await Promise.all(
+    item.tabs.map((tab) =>
+      isClsid(tab) ? Promise.resolve('yes' as const) : deps.exists(tab, EXISTS_TIMEOUT_MS)
+    )
+  )
+  const tabs = item.tabs.filter((_, i) => results[i] === 'yes')
+  if (tabs.length === 0)
+    throw new SkipError(results.includes('unreachable') ? 'unreachable' : 'missing')
 
   const exe = explorerExe()
   let restored = 0
   if (tabs.length > 1) {
+    // 脚本每完成一步输出一行 OK：成功与失败（超时 / 退出码）两条路径都按已输出的行数确定已恢复的标签
+    let out = ''
     try {
-      const out = await deps.runPowerShell(
+      out = await deps.runPowerShell(
         EXPLORER_RESTORE_SCRIPT,
         { PCH_TABS: JSON.stringify(tabs) },
-        EXPLORER_SCRIPT_TIMEOUT_MS
+        explorerScriptTimeoutMs(tabs.length)
       )
-      const n = Number.parseInt(out.trim(), 10)
-      restored = Number.isFinite(n) ? Math.min(Math.max(n, 0), tabs.length) : 0
     } catch (e) {
       deps.logger?.warn(`desktop: explorer tab restore script failed: ${firstLine(e)}`)
+      const partial = (e as { stdout?: unknown }).stdout
+      if (typeof partial === 'string') out = partial
     }
+    restored = Math.min(countOk(out), tabs.length)
   }
-  // 单标签直接启动；脚本失败 / 只完成一部分时，剩余标签逐个开成独立窗口
+  // 单标签直接启动；脚本没做完时，只对尚未恢复的标签逐个开成独立窗口
   for (const tab of tabs.slice(restored)) {
     await deps.spawnDetached(exe, [explorerArg(tab)])
   }
+}
+
+function countOk(out: string): number {
+  return out.split(String.fromCharCode(10)).filter((l) => l.trim() === 'OK').length
+}
+
+/** 非 CLSID、非 vscode-remote:// 的路径必须是绝对路径 */
+function requireAbsoluteOrClsid(p: string, deps: RestoreDeps): void {
+  if (isClsid(p) || path.win32.isAbsolute(p)) return
+  deps.logger?.warn(`desktop: refusing non-absolute path: ${p}`)
+  throw new SkipError('failed')
 }
 
 async function launchOne(item: DesktopItem, deps: RestoreDeps): Promise<void> {
@@ -121,6 +133,7 @@ async function launchOne(item: DesktopItem, deps: RestoreDeps): Promise<void> {
       return launchExplorer(item, deps)
     case 'office': {
       requireAllowed(item.exe, deps)
+      requireAbsoluteOrClsid(item.path, deps)
       await requireExists(deps, item.path)
       const args = item.app === 'excel' && item.readOnly ? ['/r', item.path] : [item.path]
       return deps.spawnDetached(item.exe, args)
@@ -130,11 +143,17 @@ async function launchOne(item: DesktopItem, deps: RestoreDeps): Promise<void> {
       if (item.target.startsWith('vscode-remote://')) {
         return deps.spawnDetached(item.exe, ['--folder-uri', item.target])
       }
+      if (item.target.startsWith('-')) {
+        deps.logger?.warn(`desktop: refusing option-like vscode target: ${item.target}`)
+        throw new SkipError('failed')
+      }
+      requireAbsoluteOrClsid(item.target, deps)
       await requireExists(deps, item.target)
       return deps.spawnDetached(item.exe, [item.target])
     }
     case 'eclipse':
       requireAllowed(item.exe, deps)
+      requireAbsoluteOrClsid(item.workspace, deps)
       await requireExists(deps, item.workspace)
       return deps.spawnDetached(item.exe, ['-data', item.workspace])
   }

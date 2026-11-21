@@ -126,7 +126,8 @@ if ($p -and $p.CommandLine) { $p.CommandLine }
  * 资源管理器多标签恢复：输入 PCH_TABS（路径的 JSON 数组；`::{CLSID}` 为原样）。
  * 记下现有 Shell 窗口 → 打开第一个路径（CLSID 写成 shell:::{CLSID}）→ 找到新出现的窗口 →
  * 对其余路径逐个点「添加新标签页」（UIA AutomationId = AddButton），对新标签 Navigate2。
- * 输出已恢复的标签数（含第一个）；中途出错时输出已完成的数量，不抛错。
+ * 每完成一步输出一行 OK（新窗口建好 1 行，每加好一个标签 1 行），因此即便超时被终止，
+ * 调用方也能按已收到的行数得知已恢复的标签数；中途出错时停止，不抛错。
  */
 export const EXPLORER_RESTORE_SCRIPT = `
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -135,25 +136,24 @@ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 $tabs = @(ConvertFrom-Json $env:PCH_TABS | ForEach-Object { $_ })
 $sh = New-Object -ComObject Shell.Application
 function Get-Shell { foreach ($w in $sh.Windows()) { try { [pscustomobject]@{ Hwnd = [int64]$w.HWND; Obj = $w; Path = [string]$w.Document.Folder.Self.Path } } catch {} } }
-$done = 0
 try {
   $before = @(Get-Shell | ForEach-Object { $_.Hwnd })
   $first = [string]$tabs[0]
   if ($first.StartsWith('::{')) { $first = 'shell:' + $first }
-  Start-Process -FilePath explorer.exe -ArgumentList $first
+  Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('"' + $first + '"')
   $hwnd = $null
   for ($i = 0; $i -lt 60 -and -not $hwnd; $i++) {
     Start-Sleep -Milliseconds 250
     $n = Get-Shell | Where-Object { $before -notcontains $_.Hwnd } | Select-Object -First 1
     if ($n) { $hwnd = $n.Hwnd }
   }
-  if (-not $hwnd) { Write-Output 0; exit 0 }
-  $done = 1
+  if (-not $hwnd) { exit 0 }
+  Write-Output 'OK'
   if ($tabs.Count -gt 1) {
     $AE = [System.Windows.Automation.AutomationElement]
     $root = $AE::FromHandle([IntPtr]$hwnd)
     $add = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition($AE::AutomationIdProperty, 'AddButton')))
-    if (-not $add) { Write-Output $done; exit 0 }
+    if (-not $add) { exit 0 }
     for ($k = 1; $k -lt $tabs.Count; $k++) {
       $known = @(Get-Shell | Where-Object { $_.Hwnd -eq $hwnd })
       $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -168,10 +168,9 @@ try {
       }
       if (-not $new) { break }
       if ($new.Path -ne [string]$tabs[$k]) { $new.Obj.Navigate2([string]$tabs[$k]) }
-      $done++
+      Write-Output 'OK'
       Start-Sleep -Milliseconds 300
     }
   }
 } catch {}
-Write-Output $done
 `

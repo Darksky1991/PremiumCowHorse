@@ -20,8 +20,11 @@ export function runPowerShell(
         env: { ...process.env, ...env }
       },
       (error, stdout, stderr) => {
-        if (error) reject(new Error(`${error.message}${stderr ? `\n${stderr}` : ''}`))
-        else resolve(stdout)
+        if (error) {
+          // 被终止（超时）时已输出的部分也交给调用方，分步输出进度的脚本据此续做
+          const err = new Error(`${error.message}${stderr ? `\n${stderr}` : ''}`)
+          reject(Object.assign(err, { stdout }))
+        } else resolve(stdout)
       }
     )
   })

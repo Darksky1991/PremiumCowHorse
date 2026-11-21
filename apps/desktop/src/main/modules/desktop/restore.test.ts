@@ -56,6 +56,7 @@ const eclipse = (workspace: string, exe = 'C:\\E\\eclipse.exe'): DesktopItem => 
   bounds: null
 })
 const none = new Set<string>()
+const okLines = (n: number): string => 'OK'.concat(String.fromCharCode(10)).repeat(n)
 const WORD = 'C:\\O\\WINWORD.EXE'
 const CLSID = '::{645FF040-5081-101B-9F08-00AA002F954E}'
 
@@ -214,19 +215,19 @@ describe('restoreItems', () => {
     expect(r.skipped).toEqual([{ itemId: 1, reason: 'unreachable' }])
   })
 
-  it('Explorer 多标签：整体交给脚本（路径经 PCH_TABS），上限 15 秒，不再 spawn', async () => {
-    const { deps, rec } = makeDeps({ ps: async () => '3\n' })
+  it('Explorer 多标签：整体交给脚本（路径经 PCH_TABS），上限 15 + 5×(n-1) 秒，不再 spawn', async () => {
+    const { deps, rec } = makeDeps({ ps: async () => okLines(3) })
     const tabs = ['C:\\a', CLSID, 'C:\\c']
     const r = await restoreItems([si(1, explorer(...tabs))], none, deps)
     expect(r).toEqual({ launched: 1, skipped: [] })
     expect(rec.calls).toHaveLength(0)
     expect(rec.ps).toHaveLength(1)
-    expect(rec.ps[0]?.timeout).toBe(15_000)
+    expect(rec.ps[0]?.timeout).toBe(25_000)
     expect(JSON.parse(rec.ps[0]?.env.PCH_TABS ?? '')).toEqual(tabs)
   })
 
   it('Explorer 脚本只恢复了部分标签 → 其余逐个 explorer.exe', async () => {
-    const { deps, rec } = makeDeps({ ps: async () => '1' })
+    const { deps, rec } = makeDeps({ ps: async () => okLines(1) })
     const clsid2 = '::{20D04FE0-3AEA-1069-A2D8-08002B30309D}'
     await restoreItems([si(1, explorer('C:\\a', 'C:\\b', clsid2))], none, deps)
     expect(rec.calls).toEqual([
@@ -248,6 +249,76 @@ describe('restoreItems', () => {
       { exe: EXPLORER, args: ['C:\\b'] }
     ])
     expect(warn).toHaveBeenCalled()
+  })
+
+  it('Explorer 脚本超时但已输出进度 → 只续开剩余标签', async () => {
+    const { deps, rec } = makeDeps({
+      ps: async () => {
+        throw Object.assign(new Error('timeout'), { stdout: 'OK\r\nOK\r\n' })
+      }
+    })
+    const r = await restoreItems([si(1, explorer('C:\\a', 'C:\\b', 'C:\\c', 'C:\\d'))], none, deps)
+    expect(r).toEqual({ launched: 1, skipped: [] })
+    expect(rec.calls).toEqual([
+      { exe: EXPLORER, args: ['C:\\c'] },
+      { exe: EXPLORER, args: ['C:\\d'] }
+    ])
+  })
+
+  it('Explorer 脚本全部完成后才失败（stdout 有全部进度）→ 不再启动任何东西', async () => {
+    const { deps, rec } = makeDeps({
+      ps: async () => {
+        throw Object.assign(new Error('exit 1'), { stdout: 'OK\nOK\n' })
+      }
+    })
+    await restoreItems([si(1, explorer('C:\\a', 'C:\\b'))], none, deps)
+    expect(rec.calls).toHaveLength(0)
+  })
+
+  it('Explorer 脚本输出为空或乱码 → 视为 0 个，全部逐个 explorer.exe', async () => {
+    for (const out of ['', '###\n??', '3']) {
+      const { deps, rec } = makeDeps({ ps: async () => out })
+      await restoreItems([si(1, explorer('C:\\a', 'C:\\b'))], none, deps)
+      expect(rec.calls).toHaveLength(2)
+    }
+  })
+
+  it('非绝对路径、以 - 开头的 VS Code target、非严格 CLSID 一律 failed', async () => {
+    const { deps, rec } = makeDeps()
+    const r = await restoreItems(
+      [
+        si(1, office('word', 'a.docx', WORD)),
+        si(2, {
+          kind: 'vscode',
+          target: '--user-data-dir=x',
+          exe: 'C:\\V\\Code.exe',
+          bounds: null
+        }),
+        si(3, { kind: 'vscode', target: 'rel\\dir', exe: 'C:\\V\\Code.exe', bounds: null }),
+        si(4, eclipse('ws')),
+        si(5, explorer('::{not-a-clsid}')),
+        si(6, explorer('docs'))
+      ],
+      none,
+      deps
+    )
+    expect(r.launched).toBe(0)
+    expect(r.skipped.map((s) => s.reason)).toEqual(Array(6).fill('failed'))
+    expect(rec.calls).toHaveLength(0)
+  })
+
+  it('Explorer 多标签的存在性检查并行进行', async () => {
+    vi.useFakeTimers()
+    try {
+      const { deps } = makeDeps({ ps: async () => okLines(3) })
+      deps.exists = (_p, t) => new Promise((resolve) => setTimeout(() => resolve('yes'), t))
+      const unc = (n: string): string => `\\\\${n}\\x`
+      const run = restoreItems([si(1, explorer(unc('a'), unc('b'), unc('c')))], none, deps)
+      await vi.advanceTimersByTimeAsync(3000 + 10)
+      expect(await run).toEqual({ launched: 1, skipped: [] })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('启动抛错计入 failed，后续继续', async () => {
