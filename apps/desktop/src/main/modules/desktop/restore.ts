@@ -94,12 +94,17 @@ class SkipError extends Error {
 }
 
 const isClsid = (p: string): boolean => /^::\{[0-9A-Fa-f-]{36}\}$/.test(p)
+/**
+ * 只接受盘符绝对路径（`C:\…`）与 UNC（`\\server\…`）：采集结果都是这两种形式；
+ * `path.win32.isAbsolute` 还接受 `\foo`（当前盘的根）、`C:/foo` 等，不放行
+ */
+const isDriveOrUnc = (p: string): boolean => /^[A-Za-z]:\\/.test(p) || p.startsWith('\\\\')
 const explorerExe = (): string =>
   path.win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'explorer.exe')
 const explorerArg = (p: string): string => (isClsid(p) ? `shell:${p}` : p)
 
 function isAllowedExe(exe: string): boolean {
-  return path.win32.isAbsolute(exe) && RESTORABLE_EXE.has(path.win32.basename(exe).toLowerCase())
+  return isDriveOrUnc(exe) && RESTORABLE_EXE.has(path.win32.basename(exe).toLowerCase())
 }
 
 function isOpen(item: DesktopItem, openTargets: Set<string>): boolean {
@@ -158,9 +163,9 @@ function countOk(out: string): number {
   return out.split(String.fromCharCode(10)).filter((l) => l.trim() === 'OK').length
 }
 
-/** 非 CLSID、非 vscode-remote:// 的路径必须是绝对路径 */
+/** 非 CLSID、非 vscode-remote://（调用方先行处理）的路径必须是盘符绝对路径或 UNC */
 function requireAbsoluteOrClsid(p: string, deps: RestoreDeps): void {
-  if (isClsid(p) || path.win32.isAbsolute(p)) return
+  if (isClsid(p) || isDriveOrUnc(p)) return
   deps.logger?.warn(`desktop: refusing non-absolute path: ${p}`)
   throw new SkipError('failed')
 }

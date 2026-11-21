@@ -87,7 +87,10 @@ export function createEclipseCollector(deps: {
           }
           workspace = parseEclipseWorkspace(null, prefs)
         }
-        if (workspace === null || seen.has(workspace.toLowerCase())) continue
+        if (workspace === null) continue
+        // `-data C:/ws` 等正斜杠写法统一成反斜杠：恢复时只接受 `X:\…` 与 UNC（restore.ts）
+        if (win32.isAbsolute(workspace)) workspace = win32.normalize(workspace)
+        if (seen.has(workspace.toLowerCase())) continue
         seen.add(workspace.toLowerCase())
         items.push({ kind: 'eclipse', workspace, exe: w.exe, bounds: w.bounds })
       }

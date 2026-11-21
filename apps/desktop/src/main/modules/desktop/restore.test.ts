@@ -313,6 +313,37 @@ describe('restoreItems', () => {
     expect(rec.calls).toHaveLength(0)
   })
 
+  it('只接受盘符绝对路径与 UNC：\\foo（当前盘的根）、C:/foo、C:foo 的路径或 exe 一律 failed', async () => {
+    const { deps, rec } = makeDeps()
+    const r = await restoreItems(
+      [
+        si(1, office('word', '\\work\\a.docx', WORD)),
+        si(2, office('word', 'C:/work/a.docx', WORD)),
+        si(3, office('word', 'C:work\\a.docx', WORD)),
+        si(4, office('word', 'C:\\work\\a.docx', 'C:/O/WINWORD.EXE')),
+        si(5, office('word', 'C:\\work\\a.docx', '\\O\\WINWORD.EXE')),
+        si(6, explorer('C:/work')),
+        si(7, eclipse('\\ws'))
+      ],
+      none,
+      deps
+    )
+    expect(r.skipped.map((s) => s.reason)).toEqual(Array(7).fill('failed'))
+    expect(rec.calls).toHaveLength(0)
+
+    const ok = makeDeps()
+    const r2 = await restoreItems(
+      [
+        si(1, office('word', '\\\\nas\\share\\a.docx', '\\\\nas\\apps\\WINWORD.EXE')),
+        si(2, office('word', 'd:\\work\\a.docx', WORD)),
+        si(3, explorer(CLSID))
+      ],
+      none,
+      ok.deps
+    )
+    expect(r2).toEqual({ launched: 3, skipped: [] })
+  })
+
   it('Explorer 多标签的存在性检查并行进行', async () => {
     vi.useFakeTimers()
     try {

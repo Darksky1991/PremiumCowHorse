@@ -87,6 +87,18 @@ describe('createEclipseCollector', () => {
     expect(r).toHaveLength(1)
   })
 
+  it('-data 的正斜杠绝对路径统一成反斜杠（恢复只接受 X:\\ 与 UNC）；相对路径原样', async () => {
+    const c = createEclipseCollector({
+      readFile: async () => '',
+      commandLineOf: async (pid) => (pid === 1 ? 'e -data C:/work/ws' : 'e -data rel/ws')
+    })
+    const r = await c.collect([win(1, 1, 'C:\\e\\eclipse.exe'), win(2, 2, 'C:\\e\\eclipse.exe')])
+    expect(r.map((i) => (i.kind === 'eclipse' ? i.workspace : ''))).toEqual([
+      'C:\\work\\ws',
+      'rel/ws'
+    ])
+  })
+
   it('commandLineOf 失败时 reject；没有窗口返回空', async () => {
     const c = createEclipseCollector({
       readFile: async () => '',
