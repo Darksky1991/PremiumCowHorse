@@ -1,6 +1,8 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.22　｜　日期：2026-11-21　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.23　｜　日期：2026-11-22　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.23 变更（M3 桌面记录完成；设计 `devDoc/2026-11-21-31-m3-desktop-snapshot-design.md`（含第 9 节需求方试用反馈），计划 `devDoc/2026-11-21-32-m3-desktop-snapshot-plan.md`，先行验证台账 `devDoc/2026-11-21-33-m3-ledger.md`，实现记录 `devDoc/2026-11-22-34-m3.md`）：**M3 的内容改为「桌面记录」**（需求方 2026-11-21：不恢复本应用的标签、不弹出标签；原 M3「多窗口与会话」移到路线图「后续」，是否还做以后再定）——记录并恢复本应用之外的资源管理器（含标签）、Word / Excel / PowerPoint 打开的文件、VS Code 的文件夹 / workspace、Eclipse 的 workspace。主进程新增 `modules/desktop`（koffi 每 5 秒枚举窗口 + 有变化时经固定 PowerShell 脚本 / 只读状态文件取详情、当前现场与消失 60 秒后才移除、每次登录一份原地更新的自动快照、手动 / 退出时快照、可见快照最多 3 个、`query-session-end` 冻结、退出时的保存询问与「确认已显示」保护、恢复的 exe 白名单与逐项存在性检查、恢复后清空并在 10 秒后重新扫描）；`infra/powershell.ts`（由 launcher 移来，launcher 与 desktop 共用）；迁移 0006（`desktop_snapshots` / `desktop_items`）；IPC `desktop.*` 11 个通道与 `desktop.changed` / `exitRequested` / `exitCancelled` 事件；错误码 `DESKTOP_SNAPSHOT_NOT_FOUND`（并补登记 M2 起已有的 `LAUNCH_FAILED`）；设置 `desktop.askOnExit`；渲染端 `features/desktop`（活动栏「桌面记录」视图、快照页 `pch-desktop:<id>` / `pch-desktop:current`、卡片式清单、恢复对话框与退出对话框）、`LocationKind` 增加 `desktop`。11.3 节「会话快照」标为被取代，新增 11.4 节「桌面记录」。原 M3 设想的设置键 `session.restoreOnStartup` / `window.onDetachedClose` 暂无用途，保留待确认（实现记录）。涉及 5.2、5.3、6.1、6.2、6.3、6.6、11.3、11.4、13、14.1、15、18 节
+>
 > v1.22 变更（M2 完成并合并到 `main`，标签 `m2`）：路线图 M2 标为合并完成；合并前的进度、待需求方确认的决定（Q3–Q25、F1–F7）、手动验证清单（V1–V11）与已知问题（K1–K9）见 `devDoc/2026-11-21-29-m2-summary.md`；Q2 / Q13（`pch-web` 范围与符号链接）需求方决定维持现状。涉及 18 节
 >
 > v1.21 变更（地址栏与工作区一览的追加修改，记录 `devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`）：工作区图标改为 lucide `GalleryVerticalIcon`（地址框的工作区按钮、工作区一览的标签；资源树 / 总览的分组仍为 Layers）；地址框中工作区部分（按钮 + 工作区段）成为地址框左端底色不同、以分隔线隔开、固定在左端的区域（不是框中的框）；单击当前位置（最后一段）或其后的空白处复制路径；工作区一览改为卡片网格（不显示图标，重命名 / 删除直接以按钮显示，各行等高），新建也是一张卡片（12.2、11.1 节）。
@@ -53,7 +55,7 @@
 7. 好看、有面子。
 8. 所以起名「高级牛马」（PremiumCowHorse）。
 
-对应关系（2026-11-19 时点）：1 → 工作区条目、资源树、扫描缓存与文件名搜索（M1，已实现）；2 → 标签页与预览插件（M1-3 目录视图已实现，文本 / 日志预览随后，其余 M2）；3、6 → 会话快照与恢复（单窗口版先行，多窗口 M3）；4 → 命令面板、最近使用（M5）；5 → 工作区导出 / 导入（后续）。
+对应关系（2026-11-19 时点）：1 → 工作区条目、资源树、扫描缓存与文件名搜索（M1，已实现）；2 → 标签页与预览插件（M1-3 目录视图已实现，文本 / 日志预览随后，其余 M2）；3、6 → 会话快照与恢复（单窗口版先行，多窗口原定 M3；2026-11-21 起 6 改由 M3「桌面记录」回应：重启后恢复本应用之外的程序与资源管理器，应用内会话与多窗口移到「后续」，11.3 / 11.4 节）；4 → 命令面板、最近使用（M5）；5 → 工作区导出 / 导入（后续）。
 
 
 | 需求 | 设计回应 |
@@ -112,7 +114,7 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 
 ### 2.5 主进程是「窗口与标签」状态的唯一事实来源
 
-多窗口下如果每个渲染进程各自保存标签状态，移动标签、弹出窗口、会话保存都会出现一致性问题。因此布局状态（Layout）由主进程持有，渲染进程只发送「意图」（打开、关闭、移动、弹出），主进程用一个**纯函数 reducer** 计算新状态并广播给相关窗口。reducer 放在 `packages/shared`，可单元测试。M1 即按此实现（先只支持单窗口），M3 在其上增加弹出窗口与会话持久化，不需要返工。
+多窗口下如果每个渲染进程各自保存标签状态，移动标签、弹出窗口、会话保存都会出现一致性问题。因此布局状态（Layout）由主进程持有，渲染进程只发送「意图」（打开、关闭、移动、弹出），主进程用一个**纯函数 reducer** 计算新状态并广播给相关窗口。reducer 放在 `packages/shared`，可单元测试。M1 即按此实现（先只支持单窗口），原计划 M3 在其上增加弹出窗口与会话持久化（2026-11-21 起移到路线图「后续」，M3 改为桌面记录）。
 
 ### 2.6 IPC：类型化契约 + zod 校验 + 单通道传输（自研薄封装）
 
@@ -287,6 +289,7 @@ apps/desktop/src/
 │   │   ├── logger.ts
 │   │   ├── secret-store.ts           # safeStorage 加解密
 │   │   ├── paths.ts                  # userData / cache（index.db）/ logs 路径
+│   │   ├── powershell.ts             # runPowerShell(script, env, timeoutMs)：固定脚本、输入只经环境变量（M3 由 launcher 移来，launcher 与 desktop 共用）
 │   │   └── i18n.ts                   # 主进程 i18next 实例
 │   ├── vfs/
 │   │   ├── types.ts                  # FileSystemProvider 接口
@@ -316,8 +319,9 @@ apps/desktop/src/
 │   │   │   ├── workspace.service.ts  # 业务规则
 │   │   │   └── workspace.ipc.ts      # IPC handler：参数已校验，只转发给 service
 │   │   ├── connection/
-│   │   ├── layout/                   # 窗口与标签（持有布局状态）
-│   │   ├── session/                  # 会话快照保存与恢复
+│   │   ├── layout/                   # 窗口与标签（持有布局状态；原 M3，已移到路线图「后续」）
+│   │   ├── session/                  # 会话快照保存与恢复（原 M3，已移到「后续」，11.3 节）
+│   │   ├── desktop/                  # 桌面记录（M3 已实现，11.4 节）：window-list（koffi 枚举）、logon（登录时刻）、collectors/（explorer・office・vscode・eclipse 与固定 PowerShell 脚本 scripts.ts）、monitor（扫描与采集编排）、live-state（当前现场与延迟移除）、restore-candidate、snapshot.repo、restore（白名单与启动）、exit-guard（退出询问状态机）、desktop.service、desktop.ipc、fake（仅 e2e）
 │   │   ├── settings/
 │   │   ├── plugin/                   # 插件发现与元数据（外部插件阶段启用）
 │   │   ├── launcher/                 # 外部应用联动：Office 只读/编辑/新建打开、远程编辑会话
@@ -326,7 +330,7 @@ apps/desktop/src/
 │   │   └── window/                   # 自绘窗口按钮：最小化 / 最大化 / 关闭发起调用的窗口
 │   ├── windows/
 │   │   ├── window-factory.ts         # 统一的 BrowserWindow 创建（安全选项集中在此）
-│   │   ├── window.service.ts         # 窗口管理与事件广播（M3 起由 LayoutService 驱动）
+│   │   ├── window.service.ts         # 窗口管理与事件广播（M3 起提供主窗口的 close / query-session-end / session-end 钩子；多窗口时由 LayoutService 驱动，已移到「后续」）
 │   │   ├── app-protocol.ts           # app:// 协议：提供渲染端静态文件（CSP 由 index.html meta 声明）
 │   │   └── security.ts               # 导航拦截、新窗口拦截、权限请求拦截
 │   ├── menu/                         # 托盘等（M5；无边框窗口不使用原生应用菜单）
@@ -354,6 +358,8 @@ apps/desktop/src/
 
 已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `cache.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；队列查询 `nextUnlisted` / `oldestChecked(scopes: Scope[], limit, exclude?)`：`Scope = {uri, maxDepth}`；「从未尝试读取」= `checked_at IS NULL`（`nextUnlisted`，深度浅的优先、同深度按 uri），尝试过的（含读取失败的：`applyListing` / `markChecked` / `setState` 都写 `checked_at`）进入 `oldestChecked`（按 `checked_at` 升序）；范围走 `subtreeCondition`，层数用生成列 `dirs.depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；多范围合并去重、limit 为合并后总数；范围小（< 2000 个目录）走主键范围 + 排序，范围大用 `INDEXED BY` 按部分索引 `dirs_unlisted (depth, uri)` / `dirs_checked (checked_at, uri, depth)` 的顺序扫描 + LIMIT（30 万行合成数据、整卷且层数不限：内存库 / 文件库约 0.2–0.3ms；层数上限很小（`maxDepth` 1）时 `oldestChecked` 要沿 `checked_at` 顺序扫很多行，内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊，见 8.3 节）；`CACHE_VERSION` = 5；热点 `hot(k)` 走覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`，不扫描整张表（30 万行合成数据、其中 30 个访问过：约 6.8ms → 0.04ms）；`removeMissing(uri)`：目录不存在时删除它与子树，并从父目录的缓存列表中删除该项（同名的是符号链接时保留），删除了该项时把父目录的 `dir_mtime` 置为 NULL（这是推断，父目录下一次确认必须完整读取），一个事务）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`，设计 8.2：输出定期确认的对象 `periodic: {uri, tier: 'focus'|'near'|'far', full}[]`（关注点 / 近 / 远，同一 URI 取更近的层，只有关注点 `full`；近层、远层各至多 `TIER_LIMIT` = 100 个：按目录树上离关注点的距离取，同等距离时热点优先、再按 URI，近层中视口内可见的已展开目录最优先）与后台队列的范围 `background: {indexTargets: Scope[], hot: string[], ranges: Scope[]}`；目录的策略取包含它的根中最高者，「消极」只有关注点一层；`RootConfig` / `CacheStrategy`（`CACHE_STRATEGIES`）在 `shared/scanner/types.ts`）；`scanner/schedule/background-queue.ts`（后台队列的候选 `BackgroundQueue`：按位置组分别从缓存批量取候选、在内存中逐个消费，见 8.3 节）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / 定期确认按层与位置的间隔 / 后台队列每个位置组同时 1 个、完成后休息 `backgroundGapMs`（用户正在操作时加倍），各窗口的范围分别计算后合并、全部失焦时定期确认暂停（后台队列照常）；缓存不设过期（没有「超过 1 小时强制完整读取」）；并发：每个位置组（本地卷 / 网络主机）「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）——`FS_UNAVAILABLE` 只来自确定的网络 / 设备类错误（win32 枚举器的 `UNAVAILABLE_ERRORS`：15、21、51、53、55、59、64、67、121、1167、1201、1222、1225、1231、1232、1236、1256、2250），因此枚举中途（已有批次）收到时同样判为断开；其他错误码为 `UNKNOWN`，只把该目录记为 `unreachable`（出错的目录在定期确认中按远层的间隔重试，在后台队列中以失败时刻为确认时刻排到后面）；`listNow` 在 2 秒内检查过（任何优先级）时直接返回 `fresh`、不再排 P0（确认时刻在「未来」即系统时钟回拨后，不算 fresh；P0 去重同理，差为负不算重复）；读取得到「不是目录」（`FS_NOT_A_DIRECTORY`，目录被同名文件替换）时删除该目录自身的子树缓存、该行保留为 `unreachable` / `FS_NOT_A_DIRECTORY`（带确认时刻），并对父目录排一次确认（P0，不与刚完成 / 正在执行的 P0 合并），由确认更正该项的类型，不从父目录的缓存列表中删除它；该目录已是此状态时再次出错不再强制父目录（父目录仍列为目录的情形，避免循环），按远层间隔重试（「不存在」才连同父目录列表中的该项一起删除）；读取得到「不存在」（`FS_NOT_FOUND`）时 `removeMissing`，并同样对父目录排一次确认（P0，`force`），由真实列表决定父目录的内容（上级目录改名期间读取、随即改回时，父目录的修改时间不变，只靠推断删除会永远缺少该项）；该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻，父目录的确认不再列出它时删除这一行），已是此状态时再次出错（父目录仍列出它）不再强制父目录、不再从父目录列表中删除，按远层间隔重试；父目录的确认再次列出一个 `not-found` 子目录时把它的 `checked_at` 置 NULL（状态保持 `not-found`），使它作为「从未尝试过」尽快被重读（上级目录改走又改回后即可恢复，防循环的判断看的是状态，不受影响）；根没有父目录，只删除缓存并通知根；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`scanner/search/search.ts`（文件名搜索后端，Task 11：只读缓存、绝不访问文件系统；`parseQuery` / `matchesName` 在 `packages/shared/src/search/query.ts`，扫描进程与主进程共用；3 字符以上的包含词走 `entries_fts MATCH`，短词与通配词用 `LIKE ... ESCAPE` / `lower() GLOB`；范围用 URI 前缀的范围比较（`scanner/cache/cache.ts` 的 `subtreeCondition`，缓存的子树删除也用它，都走主键索引）；IPC `search.query` 由 `main/ipc/search.ipc.ts` 组装 scopes 并合并固定的单个文件条目，`ScannerClient.search` 以同一 requestId 的新查询 / `vfs.cancel` 丢弃旧结果；见 `devDoc/2026-11-19-07-search.md`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主经用户点击调用：先经 `VfsService.stat` 确认存在（带超时与错误码映射），再 `shell.openPath`，失败时以 `UNKNOWN` 拒绝、detail 为系统返回的描述）。主进程至今**没有任何写文件、移动、删除文件的 API**。
 
+已实现（M3 桌面记录，2026-11-22）：`modules/desktop/`（各文件见上面的目录树，设计与行为见 11.4 节）与 `infra/powershell.ts`（M2 的 `modules/launcher/powershell.ts` 原样移来，launcher 改为从 infra 引用）。`modules/desktop` 与其他模块一样只依赖 `main-ipc` / `main-vfs` / `main-infra` / `main-core` / `shared`（`modules/*` 通配登记，不 import `modules/launcher`：PowerShell 执行在 infra、存在性检查经注入的 `VfsService`）；组合根 `createDesktop()` 按平台与假模式装配依赖。
+
 模块内的分层约定：`*.ipc.ts → *.service.ts → *.repo.ts / vfs / infra`。service 之间可以相互调用，但必须通过构造函数注入，禁止模块间直接 import 对方的 repo。
 
 ### 5.3 渲染进程 `apps/desktop/src/renderer`
@@ -373,6 +379,7 @@ apps/desktop/src/renderer/
     │   ├── tabs/                     # 标签栏、拖拽、弹出
     │   ├── preview/                  # 插件注册表、PreviewHost 实现、PreviewContainer
     │   ├── connections/              # 远程连接管理
+    │   ├── desktop/                  # 桌面记录（M3）：活动栏视图、快照页、卡片式清单、恢复 / 退出对话框
     │   └── settings/                 # 设置页（作为 internal://settings 标签打开）
     ├── data/                         # 跨功能的主进程数据查询（TanStack Query hooks，如 settings、window）
     ├── lib/                          # ipc.ts、query-client.ts、query-keys.ts、report-error.ts
@@ -389,6 +396,7 @@ apps/desktop/src/renderer/
 - M1-3 标签与预览（✅ 2026-11-19 完成，11 节「已实现」）；`plugins/builtin`（folder / fallback 插件，9.4 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。`features/preview/`（9.3 节「已实现」）：`registry.ts`（`scoreResource` / `pickPlugin` / `fallbackOf`，纯函数）、`executable.ts`（`isExecutableExtension`）、`host.ts`（`createPreviewHost(deps)`：PreviewHost 的实现，依赖注入便于单元测试）、`preview-container.tsx`、`plugin-error-boundary.tsx`、`confirm-executable-dialog.tsx`、`plugins.ts`（`previewPlugins(builtin)`：e2e 时追加测试插件）；`data/vfs.ts` 增加 `useResourceStat`（预览标签的 stat，`staleTime` 0）与 `fetchDirectory`（与资源树共用目录查询的缓存）；`vfs.interest` 的发送改为本窗口唯一的合并器 `createInterestHub`（资源树的 `useVfsInterest` 与标签区的 `useVfsTabsInterest` 各管一部分，合并后经同一个 300ms 防抖发送；一个来源卸载只清空自己的部分）；`stores/tabs-store.ts` 增加 `selectActiveDirectory`（激活标签显示目录时为其 URI），标签区据此发送 `tabs`；`lib/query-keys.ts` 增加 `stat` / `statRoot`，`vfs.changed` 同时让该目录自身与其直接子项的 stat 失效。
 - M1-3b 导航：`lib/logical-path.ts`（逻辑路径）、`features/preview/workspace-overview.tsx`（工作区总览）；`features/address-bar/`（应用级地址栏 `address-bar.tsx`、全局快捷键 `use-navigation-shortcuts.ts`、按键 / 侧键 → 命令的纯函数 `commands.ts`，12.2 节）；`stores/tabs-store.ts` 增加 `selectActiveTab`、刷新请求 `refreshSeq` / `requestRefresh` 与订阅函数 `onTabRefresh`（地址栏发出，标签内容订阅）。
 - M2 反馈第 6–8 项（2026-11-21）：`features/workspace/workspaces-page.tsx`（工作区一览，11.1 节「已实现」）；`features/address-bar/address-bar.tsx` 的地址框与前置的工作区按钮（12.2 节）；`stores/tabs-store.ts` 增加 `backFrom`
+- M3 桌面记录（2026-11-22，11.4 节）：`features/desktop/`（侧栏视图 `desktop-view.tsx`、快照页 `snapshot-page.tsx`（「現在」与各快照）、卡片式清单 `item-checklist.tsx`（快照页与两个对话框共用）、恢复对话框 `restore-dialog.tsx`、退出对话框 `exit-dialog.tsx`、两者的组合 `desktop-prompts.tsx` 与 `use-desktop-dialogs.ts`、改名 / 删除对话框、显示名与标签文字的纯函数 `item-label.ts` / `snapshot-label.ts`）；`data/desktop.ts`（`desktop.*` 的查询与操作，`lib/query-client.ts` 把 `desktop.changed` 桥接为查询失效）；`stores/ui-store.ts` 的 `SidebarView` 增加 `desktop`（活动栏「搜索」之后，lucide `MonitorIcon`）；`features/preview/preview-container.tsx` 对 `kind: 'desktop'` 渲染快照页（应用内置视图，不是插件）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
@@ -438,11 +446,13 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
 
 所有依赖关系在这一个文件里一目了然，测试时可以替换任意依赖。
 
+已实现（M3）：组合根另装配 `desktop`（`DesktopService`）与 `exitGuard`（`ExitGuard`），由 `createDesktop()` 按平台与 e2e 假模式（`PCH_E2E_FAKE_DESKTOP=1`，只在未打包时读取）选择窗口枚举、采集器与恢复的依赖；窗口枚举不可用（非 Windows、koffi 加载失败）时 `monitor` 为 null、不监控，IPC 照常返回空结果。上面代码中的 `layout` / `sessions`（原 M3 的多窗口与会话）已移到路线图「后续」，尚未实现。
+
 ### 6.2 启动与退出流程
 
-启动：开发环境的独立 userData → 单实例锁 → `protocol.registerSchemesAsPrivileged`（必须在 ready 之前）→ `app.whenReady()` → 创建容器（日志、DB 迁移、设置）→ 应用主题（`nativeTheme.themeSource`）→ 注册 `app://` 协议（M2 起加 `pcfs://`）→ 安全策略 → 注册 IPC → 去掉原生应用菜单（自绘标题栏）→ 联动主进程事件 → 注册退出处理 → 创建主窗口（M3 起改为 `SessionService.restoreLastWorkspace()`）。远程连接全部懒连接，不阻塞启动。
+启动：开发环境的独立 userData → 单实例锁 → `protocol.registerSchemesAsPrivileged`（必须在 ready 之前）→ `app.whenReady()` → 创建容器（日志、DB 迁移、设置）→ 应用主题（`nativeTheme.themeSource`）→ 注册 `app://` 协议（M2 起加 `pcfs://`）→ 安全策略 → 注册 IPC → 去掉原生应用菜单（自绘标题栏）→ 联动主进程事件 → 注册退出处理 → 创建主窗口（多窗口与会话恢复时改为 `SessionService.restoreLastWorkspace()`，已移到「后续」）。远程连接全部懒连接，不阻塞启动。M3 起在创建主窗口之前 `desktop.start()`（取登录时刻 → 选出恢复候选 → 开始监控并完整读取一次 → 写本次登录的自动快照，11.4 节），并在主窗口上挂 `close`（交给 `ExitGuard` 决定是否拦截、询问保存）、`query-session-end`（冻结现场并立即写自动快照，不阻止关机）与 `session-end`（停止监控）钩子。
 
-退出：`before-quit` 时先阻止退出，按顺序异步释放资源（M3 起先保存会话快照 → 关闭连接池 → 关闭监听器 → 注销 IPC → 关闭数据库）后再真正退出。会话平时也会在变化后防抖保存，即使异常断电，最多丢失约 1 秒的状态。
+退出：`before-quit` 时先阻止退出，按顺序异步释放资源（目标：先保存会话快照 → 关闭连接池 → 关闭监听器 → 注销 IPC → 关闭数据库）后再真正退出。会话平时也会在变化后防抖保存，即使异常断电，最多丢失约 1 秒的状态（会话快照已移到「后续」）。已实现（M3）：用户关闭主窗口时先经 `ExitGuard`（11.4 节「退出与关机」）询问保存哪些桌面项目，`before-quit` 开始后不再拦截；`shutdown` 中 `desktop.stop()` 后等待桌面记录已排队的写入（`desktop.idle()`）结束，再关闭数据库。
 
 ### 6.3 IPC 契约（共享）
 
@@ -456,9 +466,10 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
 // vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
-// window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）；
+// window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）、
+// desktop.{list,get,current,save,rename,delete,restore,restorePrompt,exit,cancelExit,exitShown}（M3 桌面记录，11.4 节）；
 // 事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
-// web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）
+// web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）、desktop.changed（广播）、desktop.{exitRequested,exitCancelled}（只发给主窗口）
 // （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
@@ -494,6 +505,18 @@ export const ipcContract = {
   'settings.set':        route<void>()(SettingsPatch),
   'launcher.capabilities': route<LaunchCapabilities>()(z.object({ uri: z.string() })),
   'launcher.open':       route<void>()(z.object({ uri: z.string(), mode: LaunchModeSchema })),
+  // 桌面记录（M3）：快照只含本机的；id 不存在 → DESKTOP_SNAPSHOT_NOT_FOUND。恢复只传快照 id 与项目 id（15 节第 10 项）
+  'desktop.list':        route<DesktopSnapshotSummary[]>()(z.void()),
+  'desktop.get':         route<DesktopSnapshot>()(z.strictObject({ id: z.number().int().positive() })),
+  'desktop.current':     route<DesktopCurrent>()(z.void()),             // { logonAt, items: { key, item }[], unreadable }；非 Windows 为空
+  'desktop.save':        route<number>()(z.strictObject({ keys: z.array(z.string().max(4096)).max(500), name: z.string().max(100).nullable() })),  // 手动快照：现场中 key 在列表里的项目
+  'desktop.rename':      route<void>()(z.strictObject({ id: z.number().int().positive(), name: z.string().max(100).nullable() })),
+  'desktop.delete':      route<void>()(z.strictObject({ id: z.number().int().positive() })),
+  'desktop.restore':     route<DesktopRestoreResult>()(z.strictObject({ snapshotId: z.number().int().positive(), itemIds: z.array(z.number().int().positive()).max(500) })),  // { launched, skipped: { itemId, reason: open|missing|unreachable|failed }[] }
+  'desktop.restorePrompt': route<DesktopSnapshot | null>()(z.void()),  // 启动时的恢复候选（已滤掉开着的项目），每次启动只返回一次
+  'desktop.exit':        route<void>()(z.strictObject({ save: z.boolean(), keys: z.array(z.string().max(4096)).max(500), dontAskAgain: z.boolean() })),  // 回应 desktop.exitRequested
+  'desktop.cancelExit':  route<void>()(z.void()),
+  'desktop.exitShown':   route<void>()(z.void()),                       // 渲染端已显示退出对话框（之后主进程不再超时）
   'editSession.list':    route<EditSessionDto[]>()(z.void()),
   'editSession.finish':  route<void>()(z.object({ id: z.string() })),
   'editSession.resolve': route<void>()(z.object({ id: z.string(), action: z.enum(['overwrite', 'uploadAsCopy', 'skip']) })),
@@ -534,6 +557,9 @@ export interface IpcEvents {
   'web.navigate':      { tabId: string; uri: string; newTab: boolean; fragment: string };  // 视图内的链接指向范围内的资源；fragment = 链接的 ?查询#锚点（没有时为空串）
   'web.notice':        { tabId: string; notice: 'outOfScope' | 'download' | 'unsupported' };
   'web.shortcut':      { tabId: string; key: string; ctrl: boolean; shift: boolean; alt: boolean };  // 焦点在视图中的应用快捷键 / 鼠标侧键
+  'desktop.changed':   { scope: 'current' | 'snapshots' };   // 桌面记录：现场 / 快照列表有变化
+  'desktop.exitRequested': Record<string, never>;          // 用户关闭主窗口、需要询问保存（只发给主窗口）
+  'desktop.exitCancelled': Record<string, never>;          // 主进程取消了挂起的询问（关机开始等）
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppErrorPayload };
@@ -590,7 +616,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）、`LAUNCH_FAILED`（启动本机程序失败：Office 等的打开方式不可用、启动失败、对象不是文件，M2 `modules/launcher`，10 节）、`DESKTOP_SNAPSHOT_NOT_FOUND`（桌面记录的快照不存在：已删除、恢复后已清空，或属于别的机器，M3，11.4 节）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -1126,7 +1152,7 @@ export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutS
 
 **同步**：主进程每次 reduce 后，只向受影响的窗口推送 `layout.changed`（该窗口自己的 WindowView），渲染端 zustand store 整体替换。`tab/viewState` 属于高频更新，渲染端防抖 500ms 后发送，主进程不广播此类变化。
 
-**已实现（M1-3，单窗口子集）**：上面的 `LayoutState` / `LayoutAction` 是 M3 的目标结构。M1-3 只实现单窗口的子集，状态由**渲染端**持有（`stores/tabs-store.ts`，按工作区各保存一份、只在内存中；切换工作区时显示该工作区的标签），M3 多窗口时移到主进程 `LayoutService`（2.5 节届时落实）。类型与 reducer 在 `packages/shared/src/layout/`：
+**已实现（M1-3，单窗口子集）**：上面的 `LayoutState` / `LayoutAction` 是多窗口的目标结构（原 M3，已移到「后续」）。M1-3 只实现单窗口的子集，状态由**渲染端**持有（`stores/tabs-store.ts`，按工作区各保存一份、只在内存中；切换工作区时显示该工作区的标签），将来做多窗口时移到主进程 `LayoutService`（2.5 节届时落实）。类型与 reducer 在 `packages/shared/src/layout/`：
 
 ```ts
 // M1-3b：标签显示「位置」；workspace 的 uri 为 'pch-workspace:<工作区 id>'（location.ts：workspaceUri / workspaceIdOfUri）
@@ -1163,7 +1189,9 @@ export function layoutReducer(state: TabsState, action: TabsAction, newId: () =>
 - 标签栏（`features/tabs`）：`role="tablist"` / `tab`；单击激活、× / 中键关闭（M1-3b 起没有斜体的预览标签与「双击转常驻」）、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`；工作区总览 / 一览为标题），图标按位置种类（总览 / 一览〔GalleryVertical〕/ 目录 / 文件）；工作区一览的标题按当前语言显示（其他标签的标题是打开时的快照）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
 - ~~预览转常驻~~：M1-3b 取消预览标签（设计 2.8，需求方 2026-11-20 确认），所有标签都是普通标签。
 
-### 11.3 会话快照
+### 11.3 会话快照（被取代：已移到路线图「后续」）
+
+> **2026-11-21 起被取代**（需求方：不需要恢复本应用中的标签，也不需要弹出标签）。M3 的「中断恢复」改为 11.4 节的「桌面记录」（恢复本应用之外的程序与资源管理器）；本节的应用内会话快照与 11.1 / 11.2 节的多窗口一起移到路线图「后续」，是否还做以后再定。以下为原设想，**未实现**；对应的设置键 `session.restoreOnStartup` / `window.onDetachedClose` 仍在 schema 中但没有用途（14.1 节，是否删除待需求方确认）。
 
 ```ts
 export interface SessionSnapshot {
@@ -1177,6 +1205,37 @@ export interface SessionSnapshot {
 保存时机：布局或资源树状态变化后防抖 1 秒；切换工作区前；退出前。恢复时机：启动时恢复上次的工作区（设置项 `session.restoreOnStartup` 可关闭）；切换工作区时，先保存当前工作区的快照、关闭弹出窗口，再按目标工作区的快照重建。
 
 恢复时的容错：窗口坐标若落在已不存在的显示器上，移回主显示器；远程资源不在启动时连接，标签先以占位状态显示，激活时再加载；文件已不存在则标签显示「找不到资源」并提供关闭或重新定位。快照带 `version` 字段，将来结构变更时做迁移。
+
+### 11.4 桌面记录（M3）
+
+设计 `devDoc/2026-11-21-31-m3-desktop-snapshot-design.md`（需求方 2026-11-21 定稿，第 9 节为 2026-11-22 试用反馈），先行验证与实机结果 `devDoc/2026-11-21-33-m3-ledger.md`，实现记录（控制者决定、未验证项、已知问题）`devDoc/2026-11-22-34-m3.md`。
+
+**目标结构**（需求方定稿的意图）：
+
+- 记录对象：资源管理器（含 Windows 11 的标签）、Word / Excel / PowerPoint 打开的文件（含只读）、VS Code 打开的文件夹 / `.code-workspace`、Eclipse 的 workspace；**以监控取得**，不要求程序经本应用启动。整台桌面一份记录，不按工作区区分；入口在活动栏。
+- 保存：定时自动 + 手动 + 退出本应用时选择保存哪些；恢复：重启后打开本应用时提示，可全部或挑选恢复。
+- **关机时程序被逐个关掉不能把记录冲掉**：消失的项目持续消失 1 分钟才从当前现场移除；`query-session-end` 时冻结现场并立即写一份；每份记录带「登录时刻」，据此找出「上一次登录」的最后一份记录。
+- 安全边界：恢复只启动主进程采集、存在数据库中的项目，渲染端只传 id（15 节第 10 项）；读取其他程序的状态只读、读完即关（文件系统原则）；不保存整串命令行。
+- 非目标（本次不做）：恢复窗口位置与大小（位置只记录）、开机自启 / 托盘、其他程序（樱花编辑器、Tera Term、WinSCP 等）、云端（`https://`）与临时目录中的 Office 文件、未保存过的新文档、本应用自己的标签（11.3 节）。
+
+**已实现**（主进程 `modules/desktop/`，渲染端 `features/desktop/`，共享类型 `packages/shared/src/desktop/`）：
+
+- **数据**：`DesktopItem` = `explorer { tabs, bounds }`（路径或 `::{CLSID}`，按标签顺序）/ `office { app: word|excel|powerpoint, path, readOnly, exe }` / `vscode { target, exe, bounds }`（本地路径、`.code-workspace` 或 `vscode-remote://` URI）/ `eclipse { workspace, exe, bounds }`。`desktopItemKey`（路径小写；Explorer 含标签顺序）用于「已开着」比较与勾选；`openTargetsOf` 把 Explorer 的每个标签拆成 `explorer-tab:<路径>`，恢复时「第一个标签已开着」即视为整个窗口已开着。
+- **窗口枚举**（`window-list.ts`，koffi，`user32` 的 `EnumWindows` 等 + `QueryFullProcessImageNameW`，pid → exe 缓存）：只取可见顶层窗口中按「exe 文件名 + 窗口类」判定的六类（`explorer.exe` / `CabinetWClass`、`WINWORD.EXE` / `OpusApp`、`EXCEL.EXE` / `XLMAIN`、`POWERPNT.EXE` / `PPTFrameClass`、`Code.exe` / `Chrome_WidgetWin_1`（且标题非空）、`eclipse.exe` / `SWT_Window0`）；每类一个签名（按 hwnd 排序的「hwnd + 标题」）。原生声明在进程内只做一次（koffi 同名重复定义会抛错）。登录时刻（`logon.ts`）= `WTSQuerySessionInformationW(WTSSessionInfo).LogonTime`，失败时退回 shell 进程的创建时刻，再失败用应用启动时刻并记 warn。
+- **采集器**（`collectors/`，每类一个；Explorer / Office / Eclipse 命令行为 `scripts.ts` 中的**固定 PowerShell 脚本**，输入只经环境变量 `PCH_HWNDS` / `PCH_PIDS` / `PCH_PID`，经 `infra/powershell.ts`，超时 10 秒）：
+  - 资源管理器：`Shell.Application.Windows()` 按 HWND 分组（每个标签一项），标签顺序按 UI Automation 的 `TabItem` 顺序；bounds 取窗口矩形。
+  - Office：对可见顶层窗口的**子窗口**（`EXCEL7` / `_WwG` / `mdiClass`）`AccessibleObjectFromWindow(OBJID_NATIVEOM)` → `.Application`（多个 Excel 进程逐个取），枚举文档的 `FullName` / `ReadOnly`；找到子窗口但取不到对象或 `FullName` 为空（弹着模态对话框）→ 本轮失败（`busy`）；没有子窗口（程序开着但没有文档）→ 空；`https://` 与临时目录中的文档丢弃。
+  - VS Code：可见 `Code.exe` 窗口标题中的根名与 `%APPDATA%\Code\User\globalStorage\storage.json` 的 `windowsState`（`lastActiveWindow` + `openedWindows` 的 `folder` / `workspaceIdentifier.configURIPath` / `remoteAuthority`）匹配，只输出匹配上的项（`storage.json` 只在打开窗口后写、关闭时不写，不能单独表示「现在开着什么」）；文件只读读取、读完即关；最小化窗口的矩形在屏幕外（≤ -20000）时 bounds 退回 `uiState`。
+  - Eclipse：进程命令行中的 `-data <路径>`（只取这一个参数），没有时取 `org.eclipse.ui.ide.prefs` 的 `RECENT_WORKSPACES` 第一项。
+- **监控**（`monitor.ts`，数值集中在 `constants.ts` 的 `DESKTOP_TIMINGS`）：每 `5000` ms 枚举；某类签名变化后从**第一次变化起**防抖 `2000` ms（VS Code `10_000` ms，等 `storage.json` 写入）再采集该类；每 `300_000` ms 全部类别完整读取兜底；同类别单飞（进行中再变化则结束后补一次），超时 `10_000` ms 后迟到的结果丢弃。采集失败 / 超时 → **保留该类上一次结果、不开始计时移除**，连续失败只记一次 warn，并在 `desktop.current.unreadable` 中报告（侧栏显示「无法读取：<类别>」）；枚举抛错时本轮跳过，不把全部项当作消失。
+- **当前现场**（`live-state.ts`）：新项目立即加入；消失的项目持续 `60_000` ms 才移除；`freeze(untilMs, now)` 期间不移除（冻结前已过期的项先清掉）。
+- **快照与保留**（迁移 0006，`snapshot.repo.ts`，13 节）：种类 `auto` / `manual` / `exit` / `exit-none`（退出时选「不保存」的内部标记，0 项）。**每次登录只有一份 `auto`，原地更新**：每 `300_000` ms 现场内容（与顺序无关的签名）与上次不同才更新它的内容与时间（用户删除或被清理后下次新建）；第一次完整读取之前不写（避免缩水的记录）。**可见快照（auto / manual / exit）最多 `3` 个**，每次写入后删除最旧的；启动时选出的恢复候选在本次运行期间受保护（计入 3 个）；`exit-none` 不计入、只留最新一个。所有读写限定本机 `machine`（`os.hostname()`）。写入经同一条 promise 链串行。
+- **启动时的恢复提示**（`restore-candidate.ts`，`desktop.restorePrompt`，每次启动只返回一次）：当前登录已有任何快照 → 不提示；否则取上一次登录（`logon_at` 小于当前的最大者）中最后一份非 `manual` 快照：`exit` / `auto` → 提示它（只列当前没开着的项目，没有则不提示），`exit-none` → 不提示。候选在写本次第一份快照之前计算。
+- **恢复**（`restore.ts`，`desktop.restore`）：主进程按快照 id 取出项目、只取属于该快照的项目 id、按快照中的顺序逐个启动，项目之间 `500` ms；已开着 → `open`；exe 不在白名单（文件名不区分大小写：`explorer.exe`、`WINWORD.EXE`、`EXCEL.EXE`、`POWERPNT.EXE`、`Code.exe`、`eclipse.exe`，且须为绝对路径）或路径不是绝对路径 → `failed`；存在性检查经 `VfsService.stat`，每项最多 `3000` ms（`no` → `missing`，超时 / 不可达 → `unreachable`），同一 Explorer 窗口的各标签并行检查。启动不经 shell（`spawn` detached）：Office `<exe> <path>`（只读的 Excel 加 `/r`），VS Code `<exe> <目录>` / `--folder-uri <vscode-remote URI>`（以 `-` 开头的目标拒绝），Eclipse `<exe> -data <workspace>`；Explorer 用 `%SystemRoot%\explorer.exe`：单标签直接打开，多标签交给固定脚本 `EXPLORER_RESTORE_SCRIPT`（路径列表经 `PCH_TABS`：记下现有窗口 → 打开第一个路径（CLSID 加 `shell:` 前缀）→ 找到新窗口 → 逐个点 UIA `AddButton` 并 `Navigate2`，每完成一步输出一行 `OK`），脚本失败或超时时只对未恢复的标签逐个开独立窗口。结果 `{ launched, skipped }` 由渲染端汇总为一条应用消息。**恢复完成后删除本机全部快照**（含 `exit-none`），`10_000` ms 后完整读取一次并写一份新的 `auto`（设计第 9 节）。
+- **退出与关机**（`exit-guard.ts` 状态机，`window.service.ts` 的主窗口钩子）：用户关闭主窗口且设置 `desktop.askOnExit` 为真 → 阻止关闭、还原最小化的窗口并发 `desktop.exitRequested`；渲染端显示退出对话框后调 `desktop.exitShown`，`10_000` ms 内没有确认按「全部保存并退出」处理，确认后无限等待；回答 `desktop.exit`（「保存して終了」写 `exit`，内容为勾选的项目；「保存しないで終了」写 `exit-none`；「次回から確認しない」写 `desktop.askOnExit = false`，之后退出时直接全部保存）或 `desktop.cancelExit`。保存失败也关闭窗口（记 error）。渲染端已崩溃 / 重新加载、`before-quit` 已开始、会话结束中 → 不拦截。`query-session-end`：记 info（含 `reasons`），冻结现场与自动保存 `300_000` ms 并立即写 auto，取消挂起的询问（`desktop.exitCancelled`），不阻止关机；到期仍在运行视为关机被取消、恢复正常。`session-end`：停止监控、之后不再拦截。
+- **界面**：活动栏「搜索」之后的「桌面记录」（`MonitorIcon`）；侧栏顶部「今すぐ保存」，固定一行「現在」，下面是快照列表（新到旧，种类、项目数、`logonAt` 不是本次登录的标「重启前」；行内按钮与右键菜单改名 / 删除，删除打开中的快照有提示）。快照页在标签中打开（`pch-desktop:<id>` / `pch-desktop:current`，`LocationKind` 的 `desktop`，地址栏只显示一段）。清单为**卡片式**（设计第 9 节）：按软件分组，分组标题带图标与「已选 x / y」、不可勾选；每个项目一张卡片（`<button role="checkbox">`，单击 / Space / Enter 切换，选中时强调色边框与勾），路径两行省略、悬停显示全文，只读标记；快照页、恢复对话框（「復元」「後で」）、退出对话框（「保存して終了」「保存しないで終了」「キャンセル」「次回から確認しない」）共用。两个对话框不同时出现（退出请求到达时撤下恢复对话框）。文案 ja / zh-CN / en 三语（`desktop` 命名空间）。
+- **非 Windows / koffi 不可用**：`DesktopService` 不监控，IPC 返回空结果；退出不拦截。
+- **e2e**（`e2e/desktop.spec.ts`，假模式 `PCH_E2E_FAKE_DESKTOP=1`：采集结果取 `PCH_E2E_DESKTOP_ITEMS`，恢复只记日志不启动程序，只在未打包时生效）：现场与「今すぐ保存」、退出时只保存一项 → 下次启动提示并只恢复它、不保存 → 不提示、「次回から確認しない」、取消、对话框开着时等待、恢复后只剩一份新的自动快照等。真实环境的采集与恢复只做了实机验证（实现记录「已验证 / 未验证」）。
 
 ---
 
@@ -1248,7 +1307,7 @@ createRoot(document.getElementById('root')!).render(
 
 ## 13. 数据库设计
 
-位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留）、`launch_capabilities`（迁移 0005））。
+位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留）、`launch_capabilities`（迁移 0005）、`desktop_snapshots` 与 `desktop_items`（迁移 0006，M3 桌面记录））。
 
 ```sql
 -- 时间戳一律为 UNIX 毫秒（INTEGER）；JSON 列以 TEXT 存储
@@ -1294,6 +1353,24 @@ CREATE TABLE launch_capabilities (                    -- 迁移 0005 已实现�
   PRIMARY KEY (machine, ext)
 );
 
+CREATE TABLE desktop_snapshots (                      -- 迁移 0006 已实现（M3 桌面记录，11.4 节）
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  machine    TEXT NOT NULL,                           -- 主机名（os.hostname()）；只读写本机的行（数据库可能随漫游配置到别的机器）
+  kind       TEXT NOT NULL,                           -- auto / manual / exit / exit-none（不加 CHECK，读出时未知种类按 manual 处理）
+  created_at INTEGER NOT NULL,                        -- auto 原地更新时同时更新
+  logon_at   INTEGER NOT NULL,                        -- 所在 Windows 登录会话的开始时刻（「上一次登录」的判断依据）
+  name       TEXT                                     -- 用户改的名称；NULL 显示种类与时间
+);
+CREATE INDEX idx_desktop_snapshots_machine_created ON desktop_snapshots (machine, created_at);
+
+CREATE TABLE desktop_items (                          -- 迁移 0006 已实现
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,      -- 恢复时渲染端只传这个 id
+  snapshot_id INTEGER NOT NULL REFERENCES desktop_snapshots(id) ON DELETE CASCADE,
+  sort        INTEGER NOT NULL,                       -- 快照内的顺序（恢复按此顺序启动）
+  data        TEXT NOT NULL                           -- DesktopItem 的 JSON（含 exe、路径、只读、bounds；不含整串命令行）；读出时 zod 校验，非法项丢弃
+);
+CREATE INDEX idx_desktop_items_snapshot ON desktop_items (snapshot_id);
+
 CREATE TABLE connections (
   id         TEXT PRIMARY KEY,
   kind       TEXT NOT NULL CHECK (kind IN ('smb', 'ftp', 'sftp')),
@@ -1308,7 +1385,7 @@ CREATE TABLE connections (
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE sessions (
+CREATE TABLE sessions (                               -- 原 M3 的应用内会话，已移到「后续」（11.3 节）
   workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
   snapshot     TEXT NOT NULL,                         -- JSON：SessionSnapshot
   updated_at   INTEGER NOT NULL
@@ -1363,8 +1440,8 @@ export const settingsSchema = z.object({
   'explorer.singleClickPreview': z.boolean().default(true),   // M1-3b：「单击 / 键盘移动选中即在当前标签打开」（键名沿用）
   'preview.associations':        z.record(z.string(), z.string()).default({}),
   'preview.maxTextSizeMB':       z.number().int().min(1).max(500).default(50),   // 自动建立完整行索引的上限（超过时只显示开头 / 末尾 4MB 的部分模式，7.5 节）
-  'session.restoreOnStartup':    z.boolean().default(true),
-  'window.onDetachedClose':      z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),
+  'session.restoreOnStartup':    z.boolean().default(true),   // 原 M3 的应用内会话（11.3 节，已移到「后续」）：暂无用途，是否删除待确认
+  'window.onDetachedClose':      z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),   // 同上（多窗口）
   'remote.cacheSizeMB':          z.number().int().min(100).default(1024),
   'cache.strategy.local':        z.enum(['passive', 'default', 'active', 'all']).default('active'),
   'cache.strategy.network':      z.enum(['passive', 'default', 'active', 'all']).default('default'),
@@ -1380,11 +1457,12 @@ export const settingsSchema = z.object({
   'vfs.timeoutSec.local':        z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network':      z.number().int().min(10).max(120).default(10),
   'launcher.autoUploadRemoteEdits': z.boolean().default(true),         // 远程编辑会话保存后自动上传
+  'desktop.askOnExit':           z.boolean().default(true),   // M3：退出本应用时是否询问保存哪些桌面项目；false = 不询问、全部保存（「次回から確認しない」写入）
 });
 export type Settings = z.infer<typeof settingsSchema>;
 ```
 
-已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。
+已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。`desktop.askOnExit` 由退出对话框的「次回から確認しない」写为 `false`，重新打开要到设置页（M5）或手动改库；`session.restoreOnStartup` / `window.onDetachedClose` 是原 M3（多窗口与应用内会话）设想的键，M3 改为桌面记录后没有任何代码读取，保留在 schema 中、是否删除待需求方确认（实现记录 `devDoc/2026-11-22-34-m3.md`）。
 
 设置页本身是一个内部标签（`internal://settings`），由内部插件渲染，因此同样支持弹出与会话恢复。修改后主进程广播 `settings.changed`，所有窗口即时生效。
 
@@ -1417,6 +1495,14 @@ shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通
      - 生命周期：每窗口最多 8 个视图（LRU，显示中的除外）；窗口关闭、渲染端提交新文档（重新加载）或崩溃时销毁该窗口的全部视图；退出时全部销毁。
      - 焦点（M2 Task 7 审查修复）：`hide` / `release` / `freeze` 时视图若持有键盘焦点，交回所属窗口的渲染端（`OwnerWindow.focus()`）；`freeze` 交回焦点时报告 `yielded`；`unfreeze({ refocus })` 只在渲染端判断「只因 toast 截图、截图时交回了焦点、期间用户没有在应用中操作（`document.hasFocus()` 且 `activeElement` 为 body）」时把焦点还给视图（审查第 2 轮：无条件还回会抢走用户在资源树等处的焦点）。否则隐藏 / 销毁的视图留着焦点，应用快捷键（Alt+→、F5…）在用户点击之前都不生效（系统级按键实测）。**加载时不抢焦点**（最终修复 I3，Q18）：视图新建 / `loadURL` 时会拿走键盘焦点（实测），资源树 ↑↓ 经过 html / pdf / 图片 / md 时方向键随之进入页面；`attach` 时视图没有焦点（用户在应用界面中操作）则此后视图自己拿到的焦点（webContents `focus` 事件，`setImmediate` 之后处理——在事件中同步交回不生效）交回应用界面，直到用户在视图内按下鼠标（`before-mouse-event` 的 mouseDown；焦点已被交回时按下鼠标把焦点给视图）或 `unfreeze` 还焦点；`attach` 时视图已持有焦点则不干预。**焦点在页面中导航时留在新页面**（试用反馈第 1 项）：在页面中点同范围链接 / 按 Alt+←→（`shortcuts.ts` 转发）时，渲染端先 `web.hide`（同一查看器，复用视图）或 `web.release`（查看器不同，例如 html → md）再 `web.attach`，hide / release 已把焦点交回应用，按上一条规则新页面拿到的焦点会被交回。为此 `hide` / `release` 交回了焦点时按窗口记下「焦点交接」（`WebViewManager.handoffs`：窗口 → 标签）；紧接着的 `attach` 若是同一标签则取走它：不设 guard 并主动 `webContents.focus()` 视图（复用的或新建的）。交接只给紧接着的一次 `attach`（任一标签的 attach 都作废它），用户在应用界面中按下键盘 / 鼠标（应用渲染端 webContents 的 `before-input-event` 非 keyUp / `before-mouse-event` 的 mouseDown，`bindWebViewOwner` 接到 `WebViewManager.appInput`）或窗口的视图全部销毁时也作废——例如页面中 Alt+← 回到文本文件后，在应用中按 Alt+→ 回到网页：焦点留在应用。只看按下：交回焦点后键的抬起落到应用界面，不算用户操作。
    - 渲染端（宿主 `PreviewHost.web` 与截图替身）：M2 Task 7 已实现，见 12.1 节。
+10. **桌面记录（M3，主进程 `modules/desktop`，11.4 节）**：恢复功能会启动外部程序，安全边界如下（均已实现）：
+   - **渲染端不能指定要启动什么**：`desktop.restore` 只接受快照 id 与项目 id（zod：正整数、至多 500 个），主进程从数据库取出采集时记录的 exe 与参数；不属于该快照的项目 id 忽略。`desktop.save` / `desktop.exit` 只传现场中项目的 key，主进程以 key 在自己的现场里取项目，对不上的 key 被忽略（渲染端不能借此写入任意项目）。快照中的项目全部由主进程的采集器产生。
+   - **exe 白名单**（`restore.ts` 的 `RESTORABLE_EXE`）：只启动文件名（不区分大小写）为 `explorer.exe`、`WINWORD.EXE`、`EXCEL.EXE`、`POWERPNT.EXE`、`Code.exe`、`eclipse.exe` 且为绝对路径的 exe；资源管理器不用记录中的 exe，固定为 `%SystemRoot%\explorer.exe`。文件 / 目录参数必须是绝对路径（Explorer 另允许 `::{CLSID}`，严格匹配 GUID 格式）；VS Code 的目标以 `-` 开头（像选项）时拒绝。启动用 `child_process.spawn`（不经 shell，参数数组），不拼接命令行。已知限制：只比较 exe 文件名，不核对与采集时的进程是否为同一文件（数据库被改写时可借白名单内的文件名启动同名程序；数据库在用户自己的 `%APPDATA%` 中，与改写本应用设置同一信任级别）。
+   - **PowerShell 脚本固定**：采集与多标签恢复的脚本是 `collectors/scripts.ts` 中的常量字符串，数据（hwnd、pid、路径列表的 JSON）只经环境变量传入，脚本内不 `Invoke-Expression`；pid / hwnd 在脚本中按纯数字过滤。
+   - **只读与不持有句柄**：读取 VS Code 的 `storage.json`、Eclipse 的 prefs 只读打开、读完即关；不写入、不修改其他程序的状态文件（文件系统原则）。
+   - **不保存整串命令行**（设计 5.6）：Eclipse 只取 `-data` 的值；其余类别只保存路径、只读标记、exe 路径与窗口矩形。日志中只写各类的个数，不写路径。
+   - **按机器隔离**：快照只读写本机（`machine` = 主机名）的行，数据库随漫游配置到别的机器时不列出、不提示、不恢复那台机器的快照。
+   - **e2e 假模式**（`PCH_E2E_FAKE_DESKTOP`）只在未打包时读取，打包后的应用不受环境变量影响（同 `PCH_E2E_FAKE_LAUNCHER`）。
 
 ---
 
@@ -1485,12 +1571,12 @@ export default defineConfig({
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
 | M1 工作区与本地文件（✅ 2026-11-20 完成，合并到 `main`，标签 `m1`；总结与待确认清单见 `devDoc/2026-11-20-21-m1-summary.md`） | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索**（复用 `index.db` 的 FTS5 trigram 索引：活动栏的搜索视图、`Ctrl+Shift+F`、在资源树中定位；✅ 2026-11-19 完成，设计 `devDoc/2026-11-19-02-search-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-07-search.md`）；**M1-3 标签与目录视图（✅ 2026-11-19 完成，为「最低可用原型」：单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder / fallback 插件、激活目录按关注点处理；设计 `devDoc/2026-11-19-12-m1-3-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-14-m1-3.md`；标签拖拽 / 固定 / 溢出菜单、网格视图、会话恢复均推迟）**；**M1-3b 导航、同步与资源树改进（✅ 2026-11-20 完成：标签历史与逻辑路径、浏览器式打开（取消预览标签）、应用地址栏、树与预览区双向同步、类型图标、定位 / 全部折叠与分组抽屉；设计 `devDoc/2026-11-19-15-navigation-design.md`，部分决定待需求方确认，见 `devDoc/2026-11-19-17-navigation.md`）**；**文本 / 日志预览（✅ 2026-11-20 完成：`@pch/text-engine`、provider `read`、主进程文档服务与 `vfs.sniff`、自写编码判断、文本插件（自绘分页、日志跟随、部分模式）、`PreviewHost.doc`；设计 `devDoc/2026-11-20-18-text-preview-design.md` 第 7 节的决定待需求方确认，见 `devDoc/2026-11-20-20-text-preview.md`）** |
 | M2 预览插件体系（✅ 2026-11-21 完成，合并到 `main`，标签 `m2`；总结与待确认清单见 `devDoc/2026-11-21-29-m2-summary.md`；设计 `devDoc/2026-11-20-22-m2-design.md`，实现记录 `devDoc/2026-11-20-25-m2.md`，待需求方确认的决定见其第 4 节；试用反馈的修改 `devDoc/2026-11-21-26-m2-feedback.md`、`devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`） | 插件化落地 | 查看器切换与「常にこれで開く」、应用消息收纳、浏览器视图（`WebContentsView` + `pch-web://` 范围协议，取代原计划的 `pcfs://`）与 `PreviewHost.web`、html（含 PDF / 图片）/ markdown（GFM、脚注、mermaid）/ office 启动面板插件、Office 打开方式检测与启动（本地 / SMB 文件：编辑 / 保护视图 / 新建，Excel 另有只读）；text 在 M1 内已提前完成；专用 image / pdf / media 插件与 `pcfs://` 推迟 |
-| M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
+| M3 桌面记录（✅ 2026-11-22 实现完成，分支 `feat/m3-desktop-snapshot`，尚未合并；设计 `devDoc/2026-11-21-31-m3-desktop-snapshot-design.md`，实现记录 `devDoc/2026-11-22-34-m3.md`；Eclipse 实机与真实重启 / 关机场景未验证，见实现记录） | 重启后恢复现场 | 需求方 2026-11-21 改定（取代原「多窗口与会话」）：监控资源管理器（含标签）/ Office 三件套 / VS Code / Eclipse，自动（每次登录一份、原地更新）/ 手动 / 退出时快照（可见快照最多 3 个），关机时不冲掉记录（消失 1 分钟后才移除、会话结束冻结、登录标识），重启后的恢复提示与挑选恢复（exe 白名单、恢复后清空并重新扫描），活动栏视图、快照页与卡片式清单（11.4 节） |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
 | M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |
-| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构） |
+| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构）；**多窗口与应用内会话**（原 M3：LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换，11.1–11.3 节；需求方 2026-11-21 决定移出 M3，是否还做以后再定）；桌面记录的扩展（恢复窗口位置、更多程序、从本应用启动 VS Code / Eclipse 并与监控结合） |
 
-M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewState 的数据结构，越早定型，后续返工越少。
+原计划把「多窗口与会话」放在 M4 之前，理由是它决定标签和插件 viewState 的数据结构，越早定型返工越少；该项移到「后续」后，标签状态仍按 M1-3 的单窗口子集由渲染端持有（11.2 节「已实现」），将来再做多窗口时需重新评估这部分返工。
 
 ---
 
