@@ -40,7 +40,7 @@ export interface ItemChecklistProps {
 /**
  * 项目清单（设计第 9 节）：按软件分组（资源管理器 / Word / Excel / PowerPoint / VS Code / Eclipse），
  * 分组只是带图标的标题（不可聚焦、不可勾选，显示「已选 x / y」）；每个项目是一张卡片
- * （主标题 + 完整路径 + 只读等标记），整张卡片是一个 checkbox（单击 / Space / Enter 切换）。
+ * （主标题 + 标签数等附注 + 完整路径 + 只读等标记），整张卡片是一个 checkbox（单击 / Space / Enter 切换）。
  * 选中：强调色边框 + 右上角实心勾选标记；未选中：右上角空心圆（不只靠颜色区分）。
  * 卡片排成响应式网格（窄宽度单列）。快照页与退出 / 恢复对话框共用
  */
@@ -111,13 +111,13 @@ function ItemCard({
   checked: boolean
   onToggle: () => void
 }): JSX.Element {
-  const { title, detail } = itemLabel(item, text)
+  const { title, badge, detail } = itemLabel(item, text)
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
-      title={[title, detail].filter((s) => s !== '').join('\n')}
+      title={[`${title}${badge}`, detail].filter((s) => s !== '').join('\n')}
       onClick={onToggle}
       className={cn(
         'relative flex h-full min-w-0 cursor-default flex-col items-start gap-1 rounded-lg border bg-card p-3 pr-9 text-left text-card-foreground shadow-xs outline-none select-none hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50',
@@ -134,7 +134,11 @@ function ItemCard({
         {checked ? <CheckIcon className="size-3.5" /> : null}
       </span>
       <span className="flex w-full min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-[13px] font-medium">{title}</span>
+        {/* 标签数单独放：主标题（长路径）省略时也看得到 */}
+        <span className="flex min-w-0 text-[13px] font-medium">
+          <span className="min-w-0 truncate">{title}</span>
+          {badge === '' ? null : <span className="shrink-0 whitespace-pre">{badge}</span>}
+        </span>
         {item.kind === 'office' && item.readOnly ? (
           <span className="shrink-0 rounded-sm border px-1 text-[11px] text-muted-foreground">
             {readOnlyLabel}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { desktopIdOfUri, type DesktopItem, type TabState } from '@pch/shared'
+import { desktopIdOfUri, desktopLocation, type DesktopItem, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import {
@@ -11,7 +11,7 @@ import {
   useDesktopSnapshot
 } from '@renderer/data/desktop'
 import { notify } from '@renderer/stores/messages-store'
-import { onTabRefresh } from '@renderer/stores/tabs-store'
+import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { errorCode, errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
 import { formatSnapshotTime, kindKey, restoreSummary, snapshotTitle } from './snapshot-label'
@@ -85,6 +85,7 @@ function SavedPage({ tab, id }: SnapshotPageProps & { id: number }): JSX.Element
   const { t, i18n } = useTranslation()
   const query = useDesktopSnapshot(id)
   const { refetch } = query
+  const navigate = useTabsStore((s) => s.navigate)
   useEffect(() => onTabRefresh(tab.id, () => void refetch()), [tab.id, refetch])
   const language = i18n.language
   const data = useMemo<PageData | undefined>(
@@ -113,6 +114,10 @@ function SavedPage({ tab, id }: SnapshotPageProps & { id: number }): JSX.Element
         const result = await restoreDesktop(id, ids.map(Number))
         const { level, message } = restoreSummary(result, t, language)
         notify(level, message)
+        // 恢复后快照已被清空：本页的快照不存在了，把这个标签带到「現在」页（Ruling 17）；
+        // 有连不上 / 启动失败的项目时快照保留（Ruling 14），留在本页并重新取得
+        if (result.cleared) navigate(tab.id, desktopLocation('current', t('desktop:current')))
+        else void refetch()
       }}
     />
   )

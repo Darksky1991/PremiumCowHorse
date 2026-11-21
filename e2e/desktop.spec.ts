@@ -10,14 +10,14 @@ const EXCEL = {
   app: 'excel',
   path: 'C:\\work\\a.xlsx',
   readOnly: false,
-  exe: 'C:/Program Files/Microsoft Office/root/Office16/EXCEL.EXE'
+  exe: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE'
 }
 const WORD = {
   kind: 'office',
   app: 'word',
   path: 'C:\\work\\b.docx',
   readOnly: false,
-  exe: 'C:/Program Files/Microsoft Office/root/Office16/WINWORD.EXE'
+  exe: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE'
 }
 
 test.describe('desktop snapshots', () => {
@@ -151,6 +151,81 @@ test.describe('desktop snapshots', () => {
       await expect(list.getByRole('listitem')).toHaveCount(2)
     } finally {
       await second.app.close().catch(() => undefined)
+    }
+  })
+
+  test('restoring from a snapshot page clears it and moves the tab to the Now page', async () => {
+    const { app, page } = await start(1000, [EXCEL])
+    try {
+      await page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      const list = page.getByRole('list', { name: 'Desktop snapshots' })
+      await page.getByRole('button', { name: 'Save now' }).click()
+      await list.getByRole('button', { name: /Manual save/ }).click()
+      await expect(page.getByRole('checkbox', { name: /a\.xlsx/ })).toBeChecked()
+      // a.xlsx 已开着 = open（视为已处理）→ 清空快照，标签改为「Now」页
+      await page.getByRole('button', { name: 'Restore selected items' }).click()
+      await expect(page.getByRole('heading', { name: 'Now' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+      await expect(list).toContainText('No snapshots yet')
+      await expect(page.getByText('This snapshot no longer exists')).toHaveCount(0)
+      // 快照被清空后页面的重新获取不按 error 记日志
+      expect(mainLog()).not.toMatch(/\[error\][^\n]*DESKTOP_SNAPSHOT_NOT_FOUND/)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a restore with a failed item keeps the snapshot and stays on its page', async () => {
+    // 白名单外的 exe → failed：快照不清空（Ruling 14）
+    const notepad = { ...WORD, path: 'C:\\work\\c.docx', exe: 'C:\\Windows\\notepad.exe' }
+    const first = await start(1000, [notepad])
+    try {
+      await closeWindow(first.page)
+      await dialog(first.page).getByRole('button', { name: 'Save and exit' }).click()
+      await first.app.waitForEvent('close')
+    } finally {
+      await first.app.close().catch(() => undefined)
+    }
+
+    // 下一次登录：c.docx 没开着；启动时的恢复对话框选「Later」，再从快照页恢复
+    const { app, page } = await start(2000, [])
+    try {
+      await dialog(page).getByRole('button', { name: 'Later' }).click()
+      await page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      const list = page.getByRole('list', { name: 'Desktop snapshots' })
+      await list.getByRole('button', { name: /Saved on exit/ }).click()
+      await page.getByRole('button', { name: 'Restore selected items' }).click()
+      await expect(page.getByText(/failed to start/i)).toBeVisible()
+      await expect(page.getByRole('checkbox', { name: /c\.docx/ })).toBeVisible()
+      await expect(list.getByRole('button', { name: /Saved on exit/ })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Now' })).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('the sidebar menu turns asking on exit back on', async () => {
+    const { app, page } = await start(1000, [EXCEL])
+    try {
+      await data(page, 'settings.set', { 'desktop.askOnExit': false })
+      await page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      await page.getByRole('button', { name: 'More actions' }).click()
+      const item = page.getByRole('menuitemcheckbox', { name: 'Ask before exiting' })
+      await expect(item).not.toBeChecked()
+      await item.click()
+      await expect
+        .poll(
+          async () =>
+            (await data<Record<string, unknown>>(page, 'settings.getAll'))['desktop.askOnExit']
+        )
+        .toBe(true)
+      await page.keyboard.press('Escape')
+      await closeWindow(page)
+      await expect(dialog(page)).toBeVisible()
+      await dialog(page).getByRole('button', { name: 'Cancel' }).click()
+      await expect(dialog(page)).toBeHidden()
+    } finally {
+      await app.close()
     }
   })
 

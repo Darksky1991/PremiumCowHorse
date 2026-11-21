@@ -1,7 +1,7 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type {
   DesktopCurrent,
-  DesktopRestoreResult,
+  DesktopRestoreOutcome,
   DesktopSnapshot,
   DesktopSnapshotSummary
 } from '@pch/shared'
@@ -42,11 +42,11 @@ export function saveDesktop(keys: string[], name: string | null): Promise<number
   return call('desktop.save', { keys, name })
 }
 
-/** 按快照恢复所选项目（项目 id 来自快照） */
+/** 按快照恢复所选项目（项目 id 来自快照）；cleared = 恢复后快照已全部清空 */
 export function restoreDesktop(
   snapshotId: number,
   itemIds: number[]
-): Promise<DesktopRestoreResult> {
+): Promise<DesktopRestoreOutcome> {
   return call('desktop.restore', { snapshotId, itemIds })
 }
 

@@ -63,6 +63,9 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
     () => (query.data?.items ?? []).map((i) => ({ id: i.key, item: i.item })),
     [query.data]
   )
+  // 读取中：现场尚未取得，或主进程第一次完整读取还没完成（此时保存会被主进程忽略）。
+  // 与「没有项目」区分显示，并禁用「保存して終了」；就绪时主进程广播 desktop.changed（current）
+  const loading = query.data === undefined || !query.data.ready
   // 记「不勾选」的项目：之后出现的新项目默认勾选
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set())
   const [dontAskAgain, setDontAskAgain] = useState(false)
@@ -96,7 +99,12 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
           <DialogDescription>{t('desktop:exitDescription')}</DialogDescription>
         </DialogHeader>
         <div className="max-h-[50vh] overflow-y-auto">
-          {items.length === 0 ? (
+          {loading ? (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner />
+              {t('desktop:exitLoading')}
+            </p>
+          ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('desktop:exitNoItems')}</p>
           ) : (
             <ItemChecklist
@@ -119,7 +127,7 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
           <Button variant="outline" disabled={busy} onClick={() => void exit(false)}>
             {t('desktop:exitNoSave')}
           </Button>
-          <Button disabled={busy} onClick={() => void exit(true)}>
+          <Button disabled={busy || loading} onClick={() => void exit(true)}>
             {busy ? <Spinner data-icon="inline-start" /> : null}
             {t('desktop:exitSave')}
           </Button>

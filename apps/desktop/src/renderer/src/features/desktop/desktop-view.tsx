@@ -1,5 +1,12 @@
 import { useState, type JSX } from 'react'
-import { CircleAlertIcon, MonitorIcon, PencilIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import {
+  CircleAlertIcon,
+  EllipsisIcon,
+  MonitorIcon,
+  PencilIcon,
+  SaveIcon,
+  Trash2Icon
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { desktopLocation, desktopIdOfUri, type DesktopSnapshotSummary } from '@pch/shared'
@@ -10,8 +17,15 @@ import {
   ContextMenuItem,
   ContextMenuTrigger
 } from '@pch/ui/components/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from '@pch/ui/components/dropdown-menu'
 import { Spinner } from '@pch/ui/components/spinner'
 import { saveDesktop, useDesktopCurrent, useDesktopSnapshots } from '@renderer/data/desktop'
+import { useSetting, useUpdateSettings } from '@renderer/data/settings'
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { notify } from '@renderer/stores/messages-store'
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
@@ -22,7 +36,8 @@ import { formatSnapshotTime, isBeforeRestart, kindKey, snapshotTitle } from './s
 type Pending = { type: 'rename' | 'delete'; snapshot: DesktopSnapshotSummary }
 
 /**
- * 侧栏「桌面记录」视图（设计 5.7）：标题行（「今すぐ保存」保存当前现场的全部项目）、
+ * 侧栏「桌面记录」视图（设计 5.7）：标题行（「今すぐ保存」保存当前现场的全部项目；
+ * 「…」菜单中的「終了時に確認する」开关 = 设置 desktop.askOnExit，「次回から確認しない」之后在这里重新打开）、
  * 固定的「現在」行、快照列表（时间倒序，标注种类、「重启前」与项目数）。
  * 单击在当前标签打开快照页；改名 / 删除（确认）在行内按钮与右键菜单中
  */
@@ -88,6 +103,7 @@ export function DesktopView(): JSX.Element {
           {saving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
           {t('desktop:saveNow')}
         </Button>
+        <DesktopMenu />
       </div>
       <ul aria-label={t('desktop:listLabel')} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <li>
@@ -149,6 +165,44 @@ export function DesktopView(): JSX.Element {
         <DeleteSnapshotDialog open={open} onOpenChange={setOpen} id={pending.snapshot.id} />
       )}
     </div>
+  )
+}
+
+/** 标题行的「…」菜单：退出时是否询问（设置 desktop.askOnExit，读写经设置数据层） */
+function DesktopMenu(): JSX.Element {
+  const { t } = useTranslation()
+  const askOnExit = useSetting('desktop.askOnExit')
+  const update = useUpdateSettings()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="shrink-0"
+            aria-label={t('desktop:moreActions')}
+            title={t('desktop:moreActions')}
+          />
+        }
+      >
+        <EllipsisIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuCheckboxItem
+          checked={askOnExit ?? true}
+          disabled={askOnExit === undefined}
+          onCheckedChange={(checked) =>
+            update.mutate(
+              { 'desktop.askOnExit': checked },
+              { onError: (e) => notify('error', errorText(t, e)) }
+            )
+          }
+        >
+          {t('desktop:askOnExit')}
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

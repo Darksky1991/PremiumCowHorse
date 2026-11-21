@@ -10,17 +10,18 @@ const text: LabelText = {
 describe('itemLabel', () => {
   it('Explorer 单标签：标题为路径，无附加说明', () => {
     const item: DesktopItem = { kind: 'explorer', tabs: ['C:\\work\\案件A'], bounds: null }
-    expect(itemLabel(item, text)).toEqual({ title: 'C:\\work\\案件A', detail: '' })
+    expect(itemLabel(item, text)).toEqual({ title: 'C:\\work\\案件A', badge: '', detail: '' })
   })
 
-  it('Explorer 多标签：第一个标签 + 标签数，详情列出其余标签', () => {
+  it('Explorer 多标签：第一个标签 + 单独的标签数附注（不随标题省略），详情列出其余标签', () => {
     const item: DesktopItem = {
       kind: 'explorer',
       tabs: ['C:\\a', '\\\\nas\\share\\b', 'D:\\c'],
       bounds: null
     }
     expect(itemLabel(item, text)).toEqual({
-      title: 'C:\\a（3 个标签）',
+      title: 'C:\\a',
+      badge: '（3 个标签）',
       detail: '\\\\nas\\share\\b | D:\\c'
     })
   })
@@ -32,7 +33,8 @@ describe('itemLabel', () => {
       bounds: null
     }
     expect(itemLabel(item, text)).toEqual({
-      title: '特殊位置（2 个标签）',
+      title: '特殊位置',
+      badge: '（2 个标签）',
       detail: 'D:\\x'
     })
   })
@@ -47,6 +49,7 @@ describe('itemLabel', () => {
     }
     expect(itemLabel(item, text)).toEqual({
       title: '一覧.xlsx',
+      badge: '',
       detail: '\\\\nas\\share\\一覧.xlsx'
     })
   })
@@ -58,7 +61,7 @@ describe('itemLabel', () => {
       exe: 'Code.exe',
       bounds: null
     }
-    expect(itemLabel(local, text)).toEqual({ title: 'tool', detail: 'C:\\src\\tool' })
+    expect(itemLabel(local, text)).toEqual({ title: 'tool', badge: '', detail: 'C:\\src\\tool' })
     const remote: DesktopItem = {
       kind: 'vscode',
       target: 'vscode-remote://ssh-remote+host/home/u/proj/',
@@ -75,7 +78,7 @@ describe('itemLabel', () => {
       exe: 'eclipse.exe',
       bounds: null
     }
-    expect(itemLabel(item, text)).toEqual({ title: 'main', detail: 'C:\\ws\\main\\' })
+    expect(itemLabel(item, text)).toEqual({ title: 'main', badge: '', detail: 'C:\\ws\\main\\' })
     const root: DesktopItem = {
       kind: 'eclipse',
       workspace: 'C:\\',
