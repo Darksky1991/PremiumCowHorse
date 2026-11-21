@@ -169,6 +169,12 @@ test.describe('first screen', () => {
 
       const closed = app.waitForEvent('close')
       await page.getByRole('button', { name: /^(閉じる|关闭|Close)$/ }).click()
+      // M3 桌面记录：关闭主窗口时先询问保存哪些桌面项目（desktop.askOnExit 默认为 true）
+      const exitDialog = page.getByRole('dialog')
+      await expect(exitDialog).toBeVisible()
+      await exitDialog
+        .getByRole('button', { name: /^(保存しないで終了|不保存并退出|Exit without saving)$/ })
+        .click()
       await closed
     } finally {
       await app.close().catch(() => undefined)
