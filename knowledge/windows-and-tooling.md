@@ -48,6 +48,7 @@
 - 解决：**含反斜杠的文件一律用 Write / Edit 工具写**（包括由脚本生成的文件：把脚本本身用 Write 写到临时目录再执行）。不要用 Bash heredoc 写含 `\\` 的内容，加引号也不行。
 - 预防：写完后 `grep` / `od -c` 检查一次关键的转义序列；用 heredoc 写的补丁脚本只在确认内容不含 `\\` 时使用。
 - 再次踩到（2026-11-21，M3 Task 2 / Task 11）：用 heredoc 写测试文件，路径字面量 `'C:\\work\\a.xlsx'` 落盘成 `'C:\work\a.xlsx'`（运行时成了控制字符），`keys.test.ts` / `item-label.test.ts` 因此失败，改用 Write 工具后通过。2026-11-22 在命令行里直接 `node -e '…`^\\d+$`…'` 也被折叠成 `^\d+$`：**不只是 heredoc，Bash 工具命令文本中的 `\\` 都可能被折叠**，验证转义的实验要把脚本写成文件再运行。
+- 再次踩到（2026-11-22，M3 合并前修正波）：在 heredoc 里写 Python 补丁脚本，Python 源码中的 `'C:\\x'`、`r"""…\\…"""` 落盘前已被折叠成一个反斜杠（TS 测试报 `Invalid escape sequence`）；`git commit -F - <<'EOF'` 的提交信息里 `\\` 同样变成 `\`。含反斜杠的补丁脚本、提交信息改用 Write 工具写成文件再执行 / `git commit -F <文件>`。
 
 ### `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（2026-11-19 起不再使用 `fs.watch`）
 
@@ -244,3 +245,5 @@
 - 原因：① 采集到的特殊位置路径是 `::{CLSID}`，`Navigate2` 只接受 `shell:::{CLSID}` 或 `shell:RecycleBinFolder` 之类的 shell 名。② 每次枚举 `Windows()` 得到的 COM 包装对象都是新的，引用比较永远不相等。③ 原因未查清。
 - 解决：恢复时 CLSID 加 `shell:` 前缀（`explorer.exe shell:::{CLSID}` 开新窗口同理）；新标签按初始路径 `::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}`（主文件夹页）取最后一个，退路取同 hwnd 的最后一项；当前路径已等于目标时跳过 `Navigate2`（`EXPLORER_RESTORE_SCRIPT`）。
 - 预防：同一窗口的各标签在 `Windows()` 中各是一项、HWND 相同；UIA 的 `TabItem` 还包含主文件夹页内的「お気に入り」「最近使った」等子标签，按 `Shell.Application` 的项过滤。
+- 再次踩到（2026-11-22，M3 合并前审查 I1）：`EXPLORER_RESTORE_SCRIPT` 只给**第一个**标签（`explorer.exe` 的参数）加了 `shell:`，第 2 个及以后的标签直接 `Navigate2('::{CLSID}')`，必定失败：窗口里留下一个停在主文件夹的空标签，其余标签被逐个开成独立窗口。改为每个 `Navigate2` 的目标都加前缀（与当前路径比较仍用原值），实机 `[folder-a, 此电脑, folder-b]` 恢复为 1 个窗口 3 个标签（台账 33「合并前修正波」）。预防：同一种转换（这里是 CLSID → `shell:`）在脚本中出现两处时，实机用例要覆盖「特殊位置不在第一个」的情况。
+- 观察（2026-11-22）：脚本整体包在 `try { … } catch {}` 里、异常被吞掉时，`powershell.exe -Command` 的退出码仍为 1（stderr 为空）。`runPowerShell` 因此以拒绝返回（带已输出的 `stdout`），`restore.ts` 按已输出的 `OK` 行数续开——依赖的是 stdout 而不是退出码。原因推测为最后一条语句失败后 `$?` 为假，未查证。
