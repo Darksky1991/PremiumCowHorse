@@ -4,6 +4,7 @@ import * as m0002 from './0002-workspaces'
 import * as m0003 from './0003-refresh'
 import * as m0004 from './0004-cache-strategy'
 import * as m0005 from './0005-launch-capabilities'
+import * as m0006 from './0006-desktop-snapshots'
 
 /**
  * 迁移按键名的字典序执行，键名一旦发布不得修改。
@@ -14,5 +15,6 @@ export const migrations: Record<string, Migration> = {
   '0002-workspaces': m0002,
   '0003-refresh': m0003,
   '0004-cache-strategy': m0004,
-  '0005-launch-capabilities': m0005
+  '0005-launch-capabilities': m0005,
+  '0006-desktop-snapshots': m0006
 }
