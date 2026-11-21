@@ -258,4 +258,76 @@ describe('DesktopMonitor', () => {
     for (const id of IDS) expect(t.calls[id]).toHaveLength(0)
     expect(t.onChange).not.toHaveBeenCalled()
   })
+
+  it('vscode 标题每 5 秒变一次：从第一次变化起 10 秒后采集，之后的变化再排一次', async () => {
+    const t = setup()
+    t.setWindows([code(2, 'a')])
+    t.m.start()
+    await vi.advanceTimersByTimeAsync(5000) // 发现，防抖开始（到 15000）
+    t.setWindows([code(2, 'b')])
+    await vi.advanceTimersByTimeAsync(5000) // t=10000，变化不重置
+    t.setWindows([code(2, 'c')])
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(t.calls.vscode).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1) // t=15000
+    expect(t.calls.vscode).toHaveLength(1)
+    expect(t.calls.vscode[0]![0]!.title).toBe('b') // 最近一次枚举的结果
+    t.setWindows([code(2, 'd')])
+    await vi.advanceTimersByTimeAsync(5000 + 10_000)
+    expect(t.calls.vscode).toHaveLength(2)
+    t.m.stop()
+  })
+
+  it('refreshAll 时枚举抛错：不调用任何采集器，已有项目不受影响', async () => {
+    const t = setup()
+    t.handlers.office = () => Promise.resolve([doc('C:\\a.docx')])
+    await t.m.refreshAll()
+    t.setListError(new Error('koffi boom'))
+    t.handlers.office = () => Promise.resolve([])
+    await t.m.refreshAll()
+    expect(t.calls.office).toHaveLength(1)
+    expect(t.m.unreadable()).toEqual([])
+    expect(t.live.current()).toHaveLength(1)
+  })
+
+  it('fullRefresh 取消已排队的防抖，不重复采集', async () => {
+    const t = setup()
+    t.setWindows([code(2, 'a')])
+    t.m.start()
+    await vi.advanceTimersByTimeAsync(294_000)
+    expect(t.calls.vscode).toHaveLength(1)
+    t.setWindows([code(2, 'b')])
+    await vi.advanceTimersByTimeAsync(2000) // 295000 发现变化，防抖排到 305000
+    await vi.advanceTimersByTimeAsync(4000) // 300000 fullRefresh 取消防抖并采集
+    expect(t.calls.vscode).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(t.calls.vscode).toHaveLength(2)
+    t.m.stop()
+  })
+
+  it('超时后同类别下次仍会采集', async () => {
+    const t = setup()
+    t.handlers.office = () => new Promise(() => {})
+    const p = t.m.refreshAll()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await p
+    t.handlers.office = () => Promise.resolve([doc('C:\\a.docx')])
+    await t.m.refreshAll()
+    expect(t.calls.office).toHaveLength(2)
+    expect(t.m.unreadable()).toEqual([])
+    expect(t.live.current()).toHaveLength(1)
+  })
+
+  it('stop 时进行中的采集完成后不 apply、不回调', async () => {
+    const t = setup()
+    let finish!: (v: DesktopItem[]) => void
+    t.handlers.office = () => new Promise((r) => (finish = r))
+    void t.m.refreshAll()
+    await vi.advanceTimersByTimeAsync(0)
+    t.m.stop()
+    finish([doc('C:\\a.docx')])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.live.current()).toHaveLength(0)
+    expect(t.onChange).not.toHaveBeenCalled()
+  })
 })

@@ -61,7 +61,10 @@ export class DesktopMonitor {
     this.stopped = false
     this.pollTimer = setInterval(() => this.poll(), this.d.timings.pollMs)
     this.fullTimer = setInterval(() => {
-      for (const c of this.d.collectors) void this.collect(c.id)
+      for (const c of this.d.collectors) {
+        this.cancelDebounce(c.id)
+        void this.collect(c.id)
+      }
     }, this.d.timings.fullRefreshMs)
   }
 
@@ -77,13 +80,10 @@ export class DesktopMonitor {
   /** 立即对全部类别完整读取一次并等待完成（含失败），不抛错 */
   async refreshAll(): Promise<void> {
     if (this.stopped) return
-    this.enumerate()
-    for (const c of this.d.collectors) {
-      // 马上要采集，不必再等已排队的防抖
-      const t = this.debounce.get(c.id)
-      if (t) clearTimeout(t)
-      this.debounce.delete(c.id)
-    }
+    // 枚举失败时窗口列表不可信：不采集（不 apply、不 markFailed），各类视同本轮未采集
+    if (this.enumerate() === null) return
+    // 马上要采集，不必再等已排队的防抖
+    for (const c of this.d.collectors) this.cancelDebounce(c.id)
     await Promise.all(this.d.collectors.map((c) => this.collect(c.id)))
   }
 
@@ -121,8 +121,9 @@ export class DesktopMonitor {
     const changed = this.enumerate()
     if (!changed) return
     for (const id of changed) {
-      const old = this.debounce.get(id)
-      if (old) clearTimeout(old)
+      // 从第一次变化起计时，不重置：持续变化的类别（VS Code 标题）也能按时采集；
+      // 到期时用当时最新的窗口列表
+      if (this.debounce.has(id)) continue
       const ms = this.d.timings.debounceOverrides[id] ?? this.d.timings.debounceMs
       this.debounce.set(
         id,
@@ -132,6 +133,12 @@ export class DesktopMonitor {
         }, ms)
       )
     }
+  }
+
+  private cancelDebounce(id: DesktopCollector): void {
+    const t = this.debounce.get(id)
+    if (t) clearTimeout(t)
+    this.debounce.delete(id)
   }
 
   /** 同一类别同时只有一个采集；进行中又有请求时，结束后再补一次 */
