@@ -10,8 +10,18 @@ import {
 const appDir = path.resolve(__dirname, '../apps/desktop')
 
 /**
+ * 桌面记录默认用假模式、现场为空：其他套件不读取 / 不受真实桌面（本机开着的资源管理器、Office 等）影响，
+ * 也不在 PowerShell 采集上花时间。desktop.spec 经 env 覆盖
+ */
+const DESKTOP_DEFAULTS: Record<string, string> = {
+  PCH_E2E_FAKE_DESKTOP: '1',
+  PCH_E2E_DESKTOP_ITEMS: '[]',
+  PCH_E2E_LOGON_AT: '1'
+}
+
+/**
  * 启动已构建的应用（经 app:// 加载 out/ 中的生产构建）；userData 必须是临时目录。
- * env 追加测试用的环境变量（例如 PCH_E2E_CRASH_PLUGIN）
+ * env 追加测试用的环境变量（例如 PCH_E2E_CRASH_PLUGIN），可覆盖 DESKTOP_DEFAULTS
  */
 export async function launch(
   userDataDir: string,
@@ -19,7 +29,13 @@ export async function launch(
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
     args: [appDir],
-    env: { ...process.env, PCH_USER_DATA_DIR: userDataDir, ELECTRON_RENDERER_URL: '', ...env }
+    env: {
+      ...process.env,
+      ...DESKTOP_DEFAULTS,
+      PCH_USER_DATA_DIR: userDataDir,
+      ELECTRON_RENDERER_URL: '',
+      ...env
+    }
   })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
