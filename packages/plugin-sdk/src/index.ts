@@ -185,6 +185,11 @@ export interface PreviewHost {
     viewWith(pluginId: string): void
     /** 可用于当前资源的查看器（按注册表的优先顺序，最后是文件信息）；含当前查看器（current） */
     candidates(): ViewerCandidate[]
+    /**
+     * 本标签当前位置由用户选定的查看器（地址栏的查看器菜单、viewWith、资源树单击打开的「文件信息」等）；
+     * 自动选择时为 null。调用时读取最新状态
+     */
+    selectedViewer(): string | null
   }
   /** 文本文档（分页读取）；自动刷新由宿主负责 */
   doc: PreviewDocApi

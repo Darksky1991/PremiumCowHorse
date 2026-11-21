@@ -23,10 +23,11 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key('W', { control: true }))?.key).toBe('w')
   })
 
-  it('F5、Alt+←/→、Ctrl+Shift+F、Ctrl+B 命中', () => {
+  it('F5、Alt+←/→/↑、Ctrl+Shift+F、Ctrl+B 命中', () => {
     expect(matchShortcut(key('F5'))?.key).toBe('F5')
     expect(matchShortcut(key('ArrowLeft', { alt: true }))?.key).toBe('ArrowLeft')
     expect(matchShortcut(key('ArrowRight', { alt: true }))?.key).toBe('ArrowRight')
+    expect(matchShortcut(key('ArrowUp', { alt: true }))?.key).toBe('ArrowUp')
     expect(matchShortcut(key('F', { control: true, shift: true }))).toEqual({
       key: 'f',
       ctrl: true,
@@ -41,6 +42,7 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key('w', { control: true, shift: true }))).toBeNull()
     expect(matchShortcut(key('F5', { shift: true }))).toBeNull()
     expect(matchShortcut(key('ArrowLeft'))).toBeNull()
+    expect(matchShortcut(key('ArrowUp'))).toBeNull()
     expect(matchShortcut(key('w', { control: true, meta: true }))).toBeNull()
   })
 
@@ -54,6 +56,7 @@ describe('matchShortcut', () => {
       'F5',
       'ArrowLeft',
       'ArrowRight',
+      'ArrowUp',
       'w',
       'f',
       'b'

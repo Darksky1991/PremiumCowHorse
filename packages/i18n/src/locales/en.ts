@@ -121,7 +121,13 @@ export default {
     deleteDescription:
       'Only the workspace and its entries are deleted. This does not delete any files or folders on disk.',
     delete: 'Delete',
-    createdNotActivated: 'Workspace created, but switching to it failed'
+    createdNotActivated: 'Workspace created, but switching to it failed',
+    manage: 'Manage workspaces…',
+    listPage: 'Workspaces',
+    current: 'Current',
+    lastOpened: 'Last opened {{time}}',
+    renameMenu: 'Rename…',
+    deleteMenu: 'Delete…'
   },
   connections: {
     emptyTitle: 'No remote connections yet',
@@ -147,7 +153,8 @@ export default {
     up: 'Up one level',
     refresh: 'Refresh',
     viewer: 'View as',
-    alwaysOpenWith: 'Always open .{{ext}} with this'
+    alwaysOpenWith: 'Always open .{{ext}} with this',
+    copyHint: 'Click to copy the path'
   },
   tabs: {
     label: 'Open tabs',

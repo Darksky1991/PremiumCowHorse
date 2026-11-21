@@ -1,5 +1,12 @@
 import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
-import { FileIcon, FolderIcon, LayoutGridIcon, XIcon, type LucideIcon } from 'lucide-react'
+import {
+  FileIcon,
+  FolderIcon,
+  GalleryVerticalIcon,
+  LayoutGridIcon,
+  XIcon,
+  type LucideIcon
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import type { TabState, TabsState } from '@pch/shared'
@@ -10,6 +17,7 @@ import { panelDomId, tabDomId } from './dom-ids'
 
 const KIND_ICON: Record<TabState['kind'], LucideIcon> = {
   workspace: LayoutGridIcon,
+  workspaces: GalleryVerticalIcon,
   directory: FolderIcon,
   file: FileIcon
 }
@@ -25,7 +33,7 @@ export interface TabBarProps {
  * 键盘：标签栏只有一个 Tab 停靠点（激活标签），←→ / Home / End 切换激活标签。
  */
 export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
-  const { t } = useTranslation('tabs')
+  const { t } = useTranslation()
   const listRef = useRef<HTMLDivElement>(null)
   const activate = useTabsStore((s) => s.activate)
   const close = useTabsStore((s) => s.close)
@@ -75,7 +83,7 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
     <div
       ref={listRef}
       role="tablist"
-      aria-label={t('label')}
+      aria-label={t('tabs:label')}
       onKeyDown={onKeyDown}
       onWheel={onWheel}
       className="flex h-9 shrink-0 overflow-x-auto overflow-y-hidden border-b bg-sidebar [scrollbar-width:thin]"
@@ -84,6 +92,8 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
         const active = tab.id === activeId
         const Icon = KIND_ICON[tab.kind]
         const domId = tabDomId(baseId, tab.id)
+        // 工作区一览的标题按当前语言显示（标签标题是打开时的快照）
+        const title = tab.kind === 'workspaces' ? t('workspace:listPage') : tab.title
         return (
           <div
             key={tab.id}
@@ -93,9 +103,11 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             aria-controls={active ? panelDomId(baseId) : undefined}
             aria-labelledby={`${domId}-title`}
             tabIndex={active ? 0 : -1}
-            // 悬停提示为完整路径；工作区总览（不是文件系统）为标题
+            // 悬停提示为完整路径；工作区总览 / 一览（不是文件系统）为标题
             title={
-              tab.kind === 'workspace' ? tab.title : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
+              tab.kind === 'workspace' || tab.kind === 'workspaces'
+                ? title
+                : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
             }
             onClick={() => activate(tab.id)}
             // 中键：按下时阻止自动滚动，auxclick 时关闭
@@ -116,14 +128,14 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
           >
             <Icon aria-hidden className="size-4 shrink-0" />
             <span id={`${domId}-title`} className="min-w-0 truncate">
-              {tab.title}
+              {title}
             </span>
             <Button
               variant="ghost"
               size="icon-xs"
               className="shrink-0"
-              aria-label={t('close')}
-              title={t('close')}
+              aria-label={t('tabs:close')}
+              title={t('tabs:close')}
               // 标签栏只保留一个 Tab 停靠点；按下时不夺取焦点
               tabIndex={-1}
               onMouseDown={(e) => e.preventDefault()}

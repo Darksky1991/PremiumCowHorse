@@ -186,12 +186,21 @@ export function ownerWindowOf(senderId: number): OwnerWindow {
  *   否则显示中的视图会盖在重新加载后的界面上）。不用 did-start-navigation：被 will-navigate 阻止的导航
  *   （应用窗口里点外部链接）也会先发出它（实测），会误销毁全部视图
  * - webContents 销毁（窗口关闭）：全部销毁
+ * - 用户在应用界面中按下键盘 / 鼠标（只在应用渲染端持有焦点时发生；焦点在视图中的按键不经这里）→ appInput
+ *   （作废焦点在页面中导航的交接，见 WebViewManager.handoffs）。只看按下：页面中 Alt+← 交回焦点后，
+ *   键的抬起落到应用界面，不能算用户在应用中操作
  */
 export function bindWebViewOwner(
   contents: Pick<Electron.WebContents, 'id' | 'on' | 'once'>,
-  manager: { disposeWindow(ownerId: number): void }
+  manager: { disposeWindow(ownerId: number): void; appInput(ownerId: number): void }
 ): void {
   const id = contents.id
+  contents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyUp') manager.appInput(id)
+  })
+  contents.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type === 'mouseDown') manager.appInput(id)
+  })
   contents.on('did-navigate', () => manager.disposeWindow(id))
   contents.on('render-process-gone', () => manager.disposeWindow(id))
   contents.once('destroyed', () => manager.disposeWindow(id))

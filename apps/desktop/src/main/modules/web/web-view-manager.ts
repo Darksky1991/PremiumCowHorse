@@ -114,8 +114,8 @@ interface Entry {
   /** 截图替身中（视图本身隐藏） */
   frozen: boolean
   /**
-   * 不让视图自己拿走焦点：attach 时视图没有焦点（用户在应用界面中操作，例如资源树的 ↑↓）即为真，
-   * 用户在视图内按下鼠标 / 应用把焦点还给视图（unfreeze）时为假
+   * 不让视图自己拿走焦点：attach 时视图没有焦点（用户在应用界面中操作，例如资源树的 ↑↓）即为真；
+   * 焦点在页面中导航（见 WebViewManager.handoffs）的 attach、用户在视图内按下鼠标、应用把焦点还给视图（unfreeze）时为假
    */
   guardFocus: boolean
   /** 最近一次显示的时刻（attach / hide 时更新的单调序号；LRU 用） */
@@ -133,6 +133,13 @@ interface Entry {
  */
 export class WebViewManager {
   private readonly windows = new Map<number, Map<string, Entry>>()
+  /**
+   * 焦点在页面中导航的交接（窗口 id → 标签 id）：hide / release 时该标签的视图持有键盘焦点（交回了应用界面）即记下。
+   * 用户在页面中点链接 / 按 Alt+←→ 时，渲染端先 hide（或查看器不同时 release）再 attach 新页面；
+   * 同一标签紧接着的 attach 取走它，把焦点给视图（复用的或新建的）。下一次 attach（任一标签）、
+   * 用户在应用界面中按键 / 按下鼠标（appInput）、窗口的视图全部销毁时作废——焦点原本在应用界面时维持 guardFocus 的规则
+   */
+  private readonly handoffs = new Map<number, string>()
   private clock = 0
 
   constructor(
@@ -162,6 +169,9 @@ export class WebViewManager {
       entries = new Map()
       this.windows.set(owner.id, entries)
     }
+    // 只给紧接着的 attach（任一标签）一次机会
+    const handoff = this.handoffs.get(owner.id) === input.tabId
+    this.handoffs.delete(owner.id)
     let entry = entries.get(input.tabId)
     const created = !entry
     if (!entry) {
@@ -174,7 +184,8 @@ export class WebViewManager {
     entry.view.setVisible(true)
     entry.shown = true
     entry.frozen = false
-    entry.guardFocus = !this.hasFocus(entry)
+    entry.guardFocus = !handoff && !this.hasFocus(entry)
+    if (handoff) this.giveFocus(entry)
     entry.lastShown = ++this.clock
     entry.scopeId = scopeId
     // 只换片段（同一页面）不重新加载：页面内的锚点跳转由页面自己处理，不经 web.navigate
@@ -192,7 +203,7 @@ export class WebViewManager {
   hide(ownerId: number, tabId: string): void {
     const entry = this.find(ownerId, tabId)
     if (!entry) return
-    this.yieldFocus(entry)
+    if (this.yieldFocus(entry)) this.handoffs.set(ownerId, tabId)
     entry.view.setVisible(false)
     if (entry.shown) entry.lastShown = ++this.clock
     entry.shown = false
@@ -202,8 +213,17 @@ export class WebViewManager {
   release(ownerId: number, tabId: string): void {
     const entry = this.find(ownerId, tabId)
     if (!entry) return
-    this.yieldFocus(entry)
+    if (this.yieldFocus(entry)) this.handoffs.set(ownerId, tabId)
     this.destroy(entry)
+  }
+
+  /**
+   * 用户在应用界面中按下键盘 / 鼠标（窗口渲染端的 before-input-event / before-mouse-event；web-session.ts 的
+   * bindWebViewOwner）：焦点已由用户移到应用中，作废焦点交接（例如页面中 Alt+← 回到文本文件后，在应用中按 Alt+→
+   * 回到网页：焦点留在应用）
+   */
+  appInput(ownerId: number): void {
+    this.handoffs.delete(ownerId)
   }
 
   reload(ownerId: number, tabId: string): void {
@@ -258,6 +278,7 @@ export class WebViewManager {
 
   /** 窗口关闭 / 渲染端重新加载或崩溃：销毁该窗口的全部视图 */
   disposeWindow(ownerId: number): void {
+    this.handoffs.delete(ownerId)
     const entries = this.windows.get(ownerId)
     if (!entries) return
     for (const entry of [...entries.values()]) this.destroy(entry)
@@ -280,6 +301,15 @@ export class WebViewManager {
     } catch (e) {
       this.deps.logger.warn(`[web] cannot move the focus from the view of tab ${entry.tabId}`, e)
       return false
+    }
+  }
+
+  /** 把键盘焦点给视图（焦点在页面中导航时） */
+  private giveFocus(entry: Entry): void {
+    try {
+      entry.view.webContents.focus()
+    } catch (e) {
+      this.deps.logger.warn(`[web] cannot focus the view of tab ${entry.tabId}`, e)
     }
   }
 

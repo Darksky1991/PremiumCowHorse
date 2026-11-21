@@ -25,8 +25,8 @@ import {
 import { Field, FieldError, FieldLabel } from '@pch/ui/components/field'
 import { Input } from '@pch/ui/components/input'
 import { Spinner } from '@pch/ui/components/spinner'
-import { useWorkspaceActions } from '@renderer/data/workspace'
-import { createAndActivate, switchToDefaultThenRemove } from './workspace-flows'
+import { useActiveWorkspace, useWorkspaceActions } from '@renderer/data/workspace'
+import { createAndActivate, removeWorkspace } from './workspace-flows'
 
 /** 与 workspace.create / update 的 name 校验一致（trim 后最长 100 个字符） */
 const MAX_NAME_LENGTH = 100
@@ -207,7 +207,10 @@ export function RenameWorkspaceDialog({
   )
 }
 
-/** 删除工作区的确认框：只删除工作区及其条目，绝不删除磁盘上的文件或文件夹 */
+/**
+ * 删除工作区的确认框：只删除工作区及其条目，绝不删除磁盘上的文件或文件夹。
+ * 目标是当前工作区（或当前工作区尚未知）时先切到默认工作区（removeWorkspace）；工作区一览中删除其他工作区时不切换
+ */
 export function DeleteWorkspaceDialog({
   open,
   onOpenChange,
@@ -216,19 +219,21 @@ export function DeleteWorkspaceDialog({
 }: OpenProps & { target: Workspace; displayName: string }): JSX.Element {
   const { t } = useTranslation()
   const { remove, activate } = useWorkspaceActions()
+  const { data: active } = useActiveWorkspace()
   const [pending, setPending] = useState(false)
 
   const confirm = async (): Promise<void> => {
     setPending(true)
     try {
-      // 先切到默认工作区再删除；target.id 在点击时锁定
-      const closed = await switchToDefaultThenRemove(
+      // 当前工作区先切到默认工作区再删除；target.id 与当前工作区在点击时锁定
+      const closed = await removeWorkspace(
         {
           activate: (id) => activate.mutateAsync(id),
           remove: (id) => remove.mutateAsync(id),
           onError: (e) => notify('error', errorMessage(t, e))
         },
-        target.id
+        target.id,
+        active?.id
       )
       if (closed) onOpenChange(false)
     } finally {

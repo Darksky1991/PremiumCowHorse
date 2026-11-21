@@ -1,4 +1,4 @@
-import { AppError, DEFAULT_WORKSPACE_ID } from '@pch/shared'
+import { AppError, DEFAULT_WORKSPACE_ID, WORKSPACES_URI, type TabsState } from '@pch/shared'
 
 /** 新建流程的依赖（可注入，便于单元测试步骤编排） */
 export interface CreateAndActivateDeps {
@@ -34,26 +34,31 @@ export async function createAndActivate(
   return true
 }
 
-export interface SwitchToDefaultThenRemoveDeps {
+export interface RemoveWorkspaceDeps {
   activate: (id: string) => Promise<void>
   remove: (id: string) => Promise<void>
   onError: (e: unknown) => void
 }
 
 /**
- * 删除当前工作区：先切到默认工作区，成功后再删除目标（id 由调用方在开始时锁定）。
- * 先删再切会让主进程按 last_opened_at 落到别的工作区，界面出现错误的中间状态。
- * 返回 true = 关闭对话框；切换失败 → 什么都不删；删除失败 → 已在默认工作区，数据无损。
+ * 删除工作区（targetId 由调用方在开始时锁定）。目标是当前工作区（activeId）时先切到默认工作区，
+ * 成功后再删除：先删再切会让主进程按 last_opened_at 落到别的工作区，界面出现错误的中间状态。
+ * 当前工作区未知（activeId 为 undefined：查询出错 / 尚无数据）时同样先切到默认工作区——无法排除目标就是当前工作区。
+ * 目标不是当前工作区（工作区一览中删除其他工作区）时直接删除、不切换。
+ * 返回 true = 关闭对话框；切换失败 → 什么都不删；删除失败 → 数据无损（已在默认工作区或未切换）。
  */
-export async function switchToDefaultThenRemove(
-  deps: SwitchToDefaultThenRemoveDeps,
-  targetId: string
+export async function removeWorkspace(
+  deps: RemoveWorkspaceDeps,
+  targetId: string,
+  activeId: string | undefined
 ): Promise<boolean> {
-  try {
-    await deps.activate(DEFAULT_WORKSPACE_ID)
-  } catch (e) {
-    deps.onError(e)
-    return false
+  if (activeId === undefined || targetId === activeId) {
+    try {
+      await deps.activate(DEFAULT_WORKSPACE_ID)
+    } catch (e) {
+      deps.onError(e)
+      return false
+    }
   }
   try {
     await deps.remove(targetId)
@@ -64,4 +69,28 @@ export async function switchToDefaultThenRemove(
     return false
   }
   return true
+}
+
+/**
+ * 工作区一览卸载之后（React 已提交新的界面），显示它的标签是否应离开一览（后退一步）：
+ * 该标签仍存在、仍是其工作区的激活标签、仍在一览，且显示中的工作区（displayedWorkspaceId，
+ * 取自 useActiveWorkspace 的查询缓存）已不是该标签所属的工作区——即一览是因为切换工作区而卸载的。
+ * 不论从哪里切换（一览中双击 / 新建、地址框的 Layers 菜单、标题栏的切换器）规则都相同；
+ * 标签内导航走、关闭标签、切到同一工作区的另一个标签而卸载时不后退。显示中的工作区未知时不后退。
+ * 以后切回旧工作区时不停在一览页。后退本身由调用方经 tabs-store 的 backFrom 执行（没有后退历史时不变）
+ */
+export function listTabToLeave(
+  byWorkspace: Readonly<Record<string, TabsState>>,
+  tabId: string,
+  displayedWorkspaceId: string | undefined
+): boolean {
+  if (displayedWorkspaceId === undefined) return false
+  for (const [workspaceId, state] of Object.entries(byWorkspace)) {
+    const tab = state.tabs.find((t) => t.id === tabId)
+    if (tab === undefined) continue
+    return (
+      workspaceId !== displayedWorkspaceId && state.activeId === tabId && tab.uri === WORKSPACES_URI
+    )
+  }
+  return false
 }

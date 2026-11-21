@@ -3,12 +3,15 @@
  * M1-3 由渲染端 store 持有；M3 多窗口时移到主进程 LayoutService，并扩展为 LayoutState / LayoutAction。
  */
 
-/** 标签显示的位置的种类：工作区总览（内部 URI，不是文件系统）、目录、文件 */
-export type LocationKind = 'workspace' | 'directory' | 'file'
+/**
+ * 标签显示的位置的种类：工作区总览 / 工作区一览（内部 URI，不是文件系统）、目录、文件
+ */
+export type LocationKind = 'workspace' | 'workspaces' | 'directory' | 'file'
 
 /**
  * 标签显示的「位置」（M1-3b，设计 devDoc/2026-11-19-15 第 2.1 节）。
  * workspace：uri 为 `pch-workspace:<工作区 id>`（见 location.ts），不发给扫描进程；
+ * workspaces：工作区一览，uri 固定为 `pch-workspaces:`（总览的上一级，同样不发给扫描进程）；
  * directory / file：真实资源 URI。title 为标签标题（条目根时为条目标签，即别名）
  */
 export interface TabLocation {
@@ -54,10 +57,15 @@ export interface TabsState {
 }
 
 export type TabsAction =
-  | ({ type: 'tab/open' } & TabLocation)
+  /** viewer：新标签以该查看器显示（省略时自动选择）；同 URI 已打开时只激活，不改其查看器 */
+  | ({ type: 'tab/open'; viewer?: string } & TabLocation)
   | { type: 'tab/close'; id: string }
   | { type: 'tab/activate'; id: string }
-  | ({ type: 'tab/navigate'; id: string } & TabLocation)
+  /**
+   * viewer：新位置以该查看器显示（null / 省略 = 自动选择）。导航到当前 URI 时，
+   * 指定了 viewer（含 null）则同一位置换查看器（与 tab/viewer 相同，不入栈）；省略时保留当前查看器
+   */
+  | ({ type: 'tab/navigate'; id: string; viewer?: string | null } & TabLocation)
   | { type: 'tab/back'; id: string }
   | { type: 'tab/forward'; id: string }
   /**

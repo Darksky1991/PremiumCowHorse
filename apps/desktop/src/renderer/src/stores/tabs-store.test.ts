@@ -92,6 +92,31 @@ describe('tabs-store', () => {
     useTabsStore.getState().forward(id)
     expect(current()).toBe('file:///C:/a/b')
   })
+  it('backFrom：标签仍在该位置且有后退历史时后退一步；已离开该位置或没有历史时不变', () => {
+    const LIST = { uri: 'pch-workspaces:', kind: 'workspaces', title: '一覧' } as const
+    const { open } = useTabsStore.getState()
+    open('w1', { uri: 'pch-workspace:w1', kind: 'workspace', title: 'w1' })
+    open('w1', LIST)
+    const [withHistory, noHistory] = selectTabs('w1')(useTabsStore.getState()).tabs
+    useTabsStore.getState().navigate(withHistory!.id, LIST)
+    const uris = (): string[] => selectTabs('w1')(useTabsStore.getState()).tabs.map((t) => t.uri)
+    expect(uris()).toEqual(['pch-workspaces:', 'pch-workspaces:'])
+
+    // 没有后退历史：不变（不更新 store）
+    const before = useTabsStore.getState().byWorkspace
+    useTabsStore.getState().backFrom(noHistory!.id, LIST.uri)
+    expect(useTabsStore.getState().byWorkspace).toBe(before)
+    // 不在该位置：不后退
+    useTabsStore.getState().backFrom(withHistory!.id, 'file:///C:/other')
+    expect(uris()).toEqual(['pch-workspaces:', 'pch-workspaces:'])
+    // 在该位置且有历史：后退一步
+    useTabsStore.getState().backFrom(withHistory!.id, LIST.uri)
+    expect(uris()).toEqual(['pch-workspace:w1', 'pch-workspaces:'])
+    // 不存在的标签：什么都不做
+    useTabsStore.getState().backFrom('tab-none', LIST.uri)
+    expect(uris()).toEqual(['pch-workspace:w1', 'pch-workspaces:'])
+  })
+
   it('激活标签的选择器：没有工作区 / 没有标签时为 null', () => {
     const active = (w: string | undefined): string | null =>
       selectActiveTab(w)(useTabsStore.getState())?.uri ?? null
@@ -136,6 +161,24 @@ describe('tabs-store', () => {
     expect(get().tabs.map((t) => t.uri)).toEqual(['b', 'c'])
     openHere('w1', file('b'), { newTab: true })
     expect(get().activeId).toBe(id)
+  })
+
+  it('openHere 的 viewer：当前标签导航与新建标签都以指定查看器打开；同一位置只换查看器', () => {
+    const { openHere } = useTabsStore.getState()
+    const get = (): TabsState => selectTabs('w1')(useTabsStore.getState())
+    openHere('w1', file('a'), { viewer: 'pch.preview.fallback' })
+    expect(get().tabs).toMatchObject([{ uri: 'a', viewer: 'pch.preview.fallback' }])
+    openHere('w1', file('b'), { viewer: 'pch.preview.fallback' })
+    expect(get().tabs).toMatchObject([{ uri: 'b', viewer: 'pch.preview.fallback' }])
+    // 同一位置 viewer: null → 恢复自动选择，不入栈
+    openHere('w1', file('b'), { viewer: null })
+    expect(get().tabs[0]!.viewer).toBeUndefined()
+    expect(get().tabs[0]!.history.back.map((l) => l.uri)).toEqual(['a'])
+    openHere('w1', file('c'), { newTab: true, viewer: 'pch.preview.text' })
+    expect(get().tabs.map((t) => [t.uri, t.viewer])).toEqual([
+      ['b', undefined],
+      ['c', 'pch.preview.text']
+    ])
   })
 
   it('setViewer 凭标签 id 设置 / 清除查看器', () => {

@@ -41,7 +41,12 @@ export interface PreviewHostDeps {
   /** 浏览器视图（web-host.ts；在标签内容存续期间是同一个对象） */
   web: PreviewWebApi
   /** 本标签当前资源的查看器：候选（含当前）与选择（preview-container 注入，选择写入标签状态） */
-  viewer: { candidates: () => ViewerCandidate[]; set: (pluginId: string) => void }
+  viewer: {
+    candidates: () => ViewerCandidate[]
+    set: (pluginId: string) => void
+    /** 本标签当前位置选定的查看器；自动选择时为 null */
+    selected: () => string | null
+  }
   tabs: {
     open: (workspaceId: string, target: TabTarget) => void
     navigate: (id: string, target: TabTarget) => void
@@ -145,7 +150,8 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
       viewWith: (pluginId) => {
         if (deps.viewer.candidates().some((c) => c.id === pluginId)) deps.viewer.set(pluginId)
       },
-      candidates: () => deps.viewer.candidates()
+      candidates: () => deps.viewer.candidates(),
+      selectedViewer: () => deps.viewer.selected()
     },
     doc: deps.doc,
     web: deps.web,

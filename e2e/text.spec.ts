@@ -73,7 +73,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'app.log' }).click()
+      await tree.getByRole('treeitem', { name: 'app.log' }).dblclick()
 
       // 日志类：打开在末尾并跟随；最后一行与行号正确
       await expect(line(page, LOG_LINES)).toHaveText(logLine(LOG_LINES))
@@ -129,7 +129,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'app.log' }).click()
+      await tree.getByRole('treeitem', { name: 'app.log' }).dblclick()
       await expect(line(page, 10)).toHaveText(logLine(10))
       await expect(followButton(page)).toHaveAttribute('aria-pressed', 'true')
 
@@ -177,7 +177,7 @@ test.describe('text and log viewer', () => {
       // 全量模式（默认上限 50MB 以上为部分模式，只索引 4MB）
       const tree = await setup(page, { 'preview.maxTextSizeMB': 500 })
       await toggleRow(tree.getByRole('treeitem', { name: 'big' }))
-      await tree.getByRole('treeitem', { name: 'data.log' }).click()
+      await tree.getByRole('treeitem', { name: 'data.log' }).dblclick()
       await expect(region(page)).toBeVisible()
 
       // 索引进行中（状态栏显示百分比）改名该文件本身：必须成功（读取时不独占、不长期持有句柄）
@@ -210,7 +210,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'app.log' }).click()
+      await tree.getByRole('treeitem', { name: 'app.log' }).dblclick()
       await expect(line(page, 10_000)).toHaveText(logLine(10_000))
 
       // 删除后移到开头：开头的块没有缓存，读取失败 → 状态栏显示读取错误
@@ -237,7 +237,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'a.txt' }).click()
+      await tree.getByRole('treeitem', { name: 'a.txt' }).dblclick()
       await expect(line(page, 1)).toHaveText('A1')
       await region(page).focus()
       await page.keyboard.press('PageDown')
@@ -245,7 +245,7 @@ test.describe('text and log viewer', () => {
       const n = await firstVisibleLine(page)
       expect(n).toBeGreaterThan(1)
       // 移动后立即（保存的防抖 150ms 之内）在同一标签打开另一个文件：卸载时补存位置
-      await tree.getByRole('treeitem', { name: 'b.txt' }).click()
+      await tree.getByRole('treeitem', { name: 'b.txt' }).dblclick()
       await expect(line(page, 1)).toHaveText('B1')
       await page.keyboard.press('Alt+ArrowLeft')
       await expect(line(page, n)).toHaveText(`A${n}`)
@@ -277,7 +277,7 @@ test.describe('text and log viewer', () => {
       const tree = await setup(page)
       const encodingButton = statusBar(page).getByRole('button', { name: /^文字コード:/ })
       for (const s of samples) {
-        await tree.getByRole('treeitem', { name: s.file }).click()
+        await tree.getByRole('treeitem', { name: s.file }).dblclick()
         await expect(line(page, 1)).toHaveText(expected(s.file))
         await expect(encodingButton).toHaveAccessibleName(`文字コード: ${s.name}`)
         await expect(statusBar(page)).not.toContainText('文字化け')
@@ -285,7 +285,7 @@ test.describe('text and log viewer', () => {
 
       // 手动切换：Shift_JIS 的样本按 EUC-JP 解码 → 内容改变；回到「自動判別」→ 恢复
       const sjis = samples[0]!.file
-      await tree.getByRole('treeitem', { name: sjis }).click()
+      await tree.getByRole('treeitem', { name: sjis }).dblclick()
       await expect(line(page, 1)).toHaveText(expected(sjis))
       await encodingButton.click()
       await page.getByRole('menuitemradio', { name: 'EUC-JP' }).click()
@@ -316,14 +316,16 @@ test.describe('text and log viewer', () => {
     try {
       const tree = await setup(page)
       // 无扩展名：容器 sniff 为文本 → 文本插件（日志类：在末尾并跟随）
-      await tree.getByRole('treeitem', { name: 'messages' }).click()
+      await tree.getByRole('treeitem', { name: 'messages' }).dblclick()
       await expect(line(page, 2)).toHaveText('Nov 20 08:00:02 host sshd: two')
       await expect(followButton(page)).toHaveAttribute('aria-pressed', 'true')
 
       // 二进制：兜底插件 →「テキストとして表示」→ 文本插件（提示按文本显示二进制）
-      await tree.getByRole('treeitem', { name: 'image.dat' }).click()
+      await tree.getByRole('treeitem', { name: 'image.dat' }).dblclick()
       const panel = page.getByRole('tabpanel')
       await expect(panel.getByRole('heading', { name: 'image.dat' })).toBeVisible()
+      // 自动选择到兜底插件时显示「无法预览」
+      await expect(panel).toContainText('この種類のファイルはプレビューできません。')
       await panel.getByRole('button', { name: 'テキストとして表示' }).click()
       await expect(region(page)).toBeVisible()
       await expect(region(page)).toContainText('IHDR')
@@ -338,7 +340,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page)
-      await tree.getByRole('treeitem', { name: 'oneline.txt' }).click()
+      await tree.getByRole('treeitem', { name: 'oneline.txt' }).dblclick()
       await expect(lineCount(page)).toHaveText('1 行', { timeout: 30_000 })
       await expect(line(page, 1)).toContainText('…（行が長すぎるため省略）')
       await expect(statusBar(page)).toContainText('長すぎる行は途中までしか表示していません')
@@ -361,7 +363,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page, { 'preview.maxTextSizeMB': 1 })
-      await tree.getByRole('treeitem', { name: 'big.txt' }).click()
+      await tree.getByRole('treeitem', { name: 'big.txt' }).dblclick()
       // 部分模式（.txt：开头的窗口）：不显示行号
       await expect(line(page, 1)).toHaveText(lines[0]!)
       await expect(statusBar(page)).toContainText('先頭 4 MB のみ表示')
@@ -386,7 +388,7 @@ test.describe('text and log viewer', () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(page, { 'preview.maxTextSizeMB': 1 })
-      await tree.getByRole('treeitem', { name: 'big.log' }).click()
+      await tree.getByRole('treeitem', { name: 'big.log' }).dblclick()
       await expect(statusBar(page)).toContainText('末尾 4 MB のみ表示')
       // 窗口内的开头（窗口内第 0 行，不是文件的第 1 行）；跟随关闭
       await region(page).focus()

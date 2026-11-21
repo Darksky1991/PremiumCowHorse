@@ -52,7 +52,8 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
         { id: 'pch.preview.html', name: 'HTML', current: true },
         { id: 'pch.preview.text', name: 'Text', current: false }
       ],
-      set: vi.fn()
+      set: vi.fn(),
+      selected: vi.fn(() => null)
     },
     tabs: { open: vi.fn(), navigate: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
@@ -341,6 +342,16 @@ describe('createPreviewHost: viewer / doc', () => {
       'pch.preview.html',
       'pch.preview.text'
     ])
+  })
+
+  it('reports the viewer chosen for the tab at call time (null while automatic)', () => {
+    let chosen: string | null = null
+    const { host } = setup({
+      viewer: { candidates: () => [], set: vi.fn(), selected: () => chosen }
+    })
+    expect(host.tabs.selectedViewer()).toBeNull()
+    chosen = 'pch.preview.fallback'
+    expect(host.tabs.selectedViewer()).toBe('pch.preview.fallback')
   })
 
   it('switches only to a candidate', () => {

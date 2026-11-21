@@ -365,3 +365,73 @@ describe('layoutReducer: tab/viewer', () => {
     })
   })
 })
+
+describe('layoutReducer: 打开 / 导航时指定查看器（viewer 选项）', () => {
+  const nav = (uri: string, viewer?: string | null): TabsAction => ({
+    type: 'tab/navigate',
+    id: 't1',
+    uri,
+    kind: 'file',
+    title: uri,
+    ...(viewer === undefined ? {} : { viewer })
+  })
+  const openWith = (uri: string, viewer: string): TabsAction => ({
+    type: 'tab/open',
+    uri,
+    kind: 'file',
+    title: uri,
+    viewer
+  })
+  const tab1 = (s: TabsState): TabState => s.tabs[0]!
+
+  it('tab/open 带 viewer：新标签以该查看器显示，历史为空', () => {
+    const s = run([openWith('a.txt', 'pch.preview.fallback')])
+    expect(tab1(s)).toEqual({
+      id: 't1',
+      uri: 'a.txt',
+      kind: 'file',
+      title: 'a.txt',
+      viewer: 'pch.preview.fallback',
+      history: NO_HISTORY
+    })
+  })
+
+  it('tab/open 带 viewer、同 URI 已打开：只激活，已有标签的查看器不变', () => {
+    const s = run([open('a.txt'), open('b.txt'), openWith('a.txt', 'x')])
+    expect(s.activeId).toBe('t1')
+    expect('viewer' in tab1(s)).toBe(false)
+  })
+
+  it('tab/navigate 到新位置带 viewer：新位置以该查看器显示，离开的位置照常进入后退栈', () => {
+    const s = run([open('a.txt'), nav('b.txt', 'pch.preview.fallback')])
+    expect(tab1(s)).toMatchObject({ uri: 'b.txt', viewer: 'pch.preview.fallback' })
+    expect(tab1(s).history.back).toEqual([{ uri: 'a.txt', kind: 'file', title: 'a.txt' }])
+    // viewer 为 null 与省略相同：自动选择
+    const auto = run([open('a.txt'), nav('b.txt', null)])
+    expect('viewer' in tab1(auto)).toBe(false)
+  })
+
+  it('tab/navigate 到当前位置带 viewer：同一位置换查看器（清除 viewState），不入栈', () => {
+    const s = run([
+      open('a.txt'),
+      nav('b.txt', 'pch.preview.fallback'),
+      { type: 'tab/viewState', id: 't1', viewState: { top: 5 } },
+      nav('b.txt', null)
+    ])
+    expect(tab1(s).uri).toBe('b.txt')
+    expect('viewer' in tab1(s)).toBe(false)
+    expect('viewState' in tab1(s)).toBe(false)
+    expect(tab1(s).history.back.map((l) => l.uri)).toEqual(['a.txt'])
+    const text = run([nav('b.txt', 'pch.preview.text')], s)
+    expect(tab1(text).viewer).toBe('pch.preview.text')
+    expect(tab1(text).history.back.map((l) => l.uri)).toEqual(['a.txt'])
+  })
+
+  it('tab/navigate 到当前位置、查看器相同：返回同一个状态对象；省略 viewer 时保留当前查看器', () => {
+    const s = run([open('a.txt'), nav('b.txt', 'x')])
+    expect(layoutReducer(s, nav('b.txt', 'x'), () => 'z')).toBe(s)
+    expect(layoutReducer(s, nav('b.txt'), () => 'z')).toBe(s)
+    const auto = run([open('a.txt')])
+    expect(layoutReducer(auto, nav('a.txt', null), () => 'z')).toBe(auto)
+  })
+})

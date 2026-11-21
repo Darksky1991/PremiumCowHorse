@@ -115,7 +115,13 @@ export default {
     deleteTitle: '删除“{{name}}”？',
     deleteDescription: '只删除工作区及其条目，不会删除磁盘上的文件或文件夹。',
     delete: '删除',
-    createdNotActivated: '已创建，但未能切换到该工作区'
+    createdNotActivated: '已创建，但未能切换到该工作区',
+    manage: '管理工作区…',
+    listPage: '工作区一览',
+    current: '当前',
+    lastOpened: '上次使用：{{time}}',
+    renameMenu: '重命名…',
+    deleteMenu: '删除…'
   },
   connections: {
     emptyTitle: '还没有远程连接',
@@ -141,7 +147,8 @@ export default {
     up: '上一级',
     refresh: '刷新',
     viewer: '查看方式',
-    alwaysOpenWith: '.{{ext}} 总是用此查看器打开'
+    alwaysOpenWith: '.{{ext}} 总是用此查看器打开',
+    copyHint: '单击复制路径'
   },
   tabs: {
     label: '已打开的标签',

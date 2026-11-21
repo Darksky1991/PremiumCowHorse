@@ -125,5 +125,5 @@
 - 日期：2026-11-20
 - 症状（M2 最终审查 I3 / Q18）：在资源树中用 ↑↓ 浏览，选中 html / pdf / 图片 / md 时在当前标签打开浏览器视图，视图加载后键盘焦点进入页面，之后方向键滚动页面而不是继续移动树的选中。e2e 中主进程 `webContents.isFocused()`：应用 false、视图 true。
 - 原因：新建视图并 `loadURL`（以及复用视图加载新地址）时，Chromium 在加载开始后约 50 ms 把焦点给视图（应用 `blur`、视图 `focus`，早于 `dom-ready`）。在视图 `focus` 事件的处理函数中**同步**调用应用 `webContents.focus()` 不生效（焦点仍在视图，之后也没有新的 focus / blur 事件）。
-- 解决：`attach` 时视图没有焦点（用户在应用界面中操作）就记一个标记；视图之后自己拿到的焦点在 `setImmediate` 之后交回应用渲染端（推迟后生效，`dom-ready` / `did-finish-load` 不会再拿走）；用户在视图内按下鼠标（`before-mouse-event` 的 `mouseDown`）时清除标记，焦点已被交回时主动 `webContents.focus()` 给视图（焦点事件与鼠标事件的先后不确定）。代码：`modules/web/web-view-manager.ts`（`guardFocus`）、`web-session.ts`。
+- 解决：`attach` 时视图没有焦点（用户在应用界面中操作）就记一个标记；视图之后自己拿到的焦点在 `setImmediate` 之后交回应用渲染端（推迟后生效，`dom-ready` / `did-finish-load` 不会再拿走）；用户在视图内按下鼠标（`before-mouse-event` 的 `mouseDown`）时清除标记，焦点已被交回时主动 `webContents.focus()` 给视图（焦点事件与鼠标事件的先后不确定）。代码：`modules/web/web-view-manager.ts`（`guardFocus`）、`web-session.ts`。注意：页面中点链接 / 按 Alt+←→ 时渲染端先 hide / release（焦点已交回应用）再 attach，只按「attach 时视图有没有焦点」判断会把这种导航也当成应用中的操作；因此 hide / release 交回焦点时另记「交接」，同一标签紧接着的 attach 把焦点给视图，应用中的按键 / 鼠标按下作废交接（M2 试用反馈第 1 项）。
 - 预防：在焦点事件里改焦点要推迟到事件之后；e2e 中模拟「用户点击视图」要用 `sendInputEvent` 的鼠标事件（会触发 `before-mouse-event`），只调 `webContents.focus()` 会被上述规则交回应用。

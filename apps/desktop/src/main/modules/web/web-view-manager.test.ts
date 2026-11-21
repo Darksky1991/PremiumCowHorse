@@ -395,6 +395,98 @@ describe('WebViewManager', () => {
       expect(win.focuses).toBe(1)
     })
 
+    describe('焦点在页面中导航（点链接 / 页面内 Alt+←→）：同一标签紧接着的 attach 把焦点给视图', () => {
+      /** 用户点击页面（焦点进入视图） */
+      const clickView = (v: FakeView): void => v.events.pointerDown()
+      /** 交回应用界面后视图失去焦点（假对象不联动） */
+      const yielded = (v: FakeView): void => {
+        v.focused = false
+      }
+
+      it('hide 时视图持有焦点 → 同标签再 attach（复用视图加载新页面）：focus 视图，加载时拿到的焦点不交回', () => {
+        manager.attach(win, input('t1'))
+        const v = viewOf(0)
+        clickView(v)
+        manager.hide(win.id, 't1')
+        expect(win.focuses).toBe(1)
+        yielded(v)
+        manager.attach(win, input('t1', 'second.html'))
+        expect(v.focused).toBe(true)
+        v.events.focused()
+        expect(win.focuses).toBe(1)
+      })
+
+      it('release 时视图持有焦点（查看器不同）→ 同标签 attach 新建的视图：focus 新视图，不交回', () => {
+        manager.attach(win, input('t1'))
+        const v = viewOf(0)
+        clickView(v)
+        manager.release(win.id, 't1')
+        yielded(v)
+        manager.attach(win, input('t1', 'notes.md', { view: 'markdown' }))
+        const w = viewOf(1)
+        expect(w.focused).toBe(true)
+        w.events.focused()
+        expect(win.focuses).toBe(1)
+      })
+
+      it('只沿用一次：之后的 attach 维持现状（视图不经点击拿到的焦点交回）', () => {
+        manager.attach(win, input('t1'))
+        const v = viewOf(0)
+        clickView(v)
+        manager.hide(win.id, 't1')
+        yielded(v)
+        manager.attach(win, input('t1', 'second.html'))
+        // 用户随后点击应用界面（焦点离开视图），切到别处再回来
+        yielded(v)
+        manager.hide(win.id, 't1')
+        manager.attach(win, input('t1'))
+        expect(v.focused).toBe(false)
+        gainFocus(v)
+        expect(win.focuses).toBe(2)
+      })
+
+      it('交回之后用户在应用界面中按键 / 按下鼠标（例如回到文本文件后在应用中按 Alt+→）→ 维持现状', () => {
+        manager.attach(win, input('t1'))
+        const v = viewOf(0)
+        clickView(v)
+        manager.release(win.id, 't1')
+        yielded(v)
+        manager.appInput(2) // 其他窗口的操作不影响本窗口
+        manager.appInput(win.id)
+        manager.attach(win, input('t1'))
+        const w = viewOf(1)
+        expect(w.focused).toBe(false)
+        gainFocus(w)
+        expect(win.focuses).toBe(2)
+      })
+
+      it('紧接着 attach 的是其他标签（页面中按 Ctrl+Tab 等）→ 两个标签都维持现状', () => {
+        manager.attach(win, input('t1'))
+        manager.attach(win, input('t2', 'b.html'))
+        manager.hide(win.id, 't2')
+        const v = viewOf(0)
+        clickView(v)
+        manager.hide(win.id, 't1')
+        yielded(v)
+        manager.attach(win, input('t2', 'b.html'))
+        expect(viewOf(1).focused).toBe(false)
+        manager.hide(win.id, 't2')
+        manager.attach(win, input('t1'))
+        expect(v.focused).toBe(false)
+      })
+
+      it('窗口的视图全部销毁（渲染端重新加载）后不沿用', () => {
+        manager.attach(win, input('t1'))
+        const v = viewOf(0)
+        clickView(v)
+        manager.hide(win.id, 't1')
+        yielded(v)
+        manager.disposeWindow(win.id)
+        manager.attach(win, input('t1'))
+        expect(viewOf(1).focused).toBe(false)
+      })
+    })
+
     it('隐藏中 / 已销毁的视图的焦点事件不处理', () => {
       manager.attach(win, input('t1'))
       manager.hide(win.id, 't1')

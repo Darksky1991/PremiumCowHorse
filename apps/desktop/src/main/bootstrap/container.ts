@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { hostname } from 'node:os'
 import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
 import { resolveLanguage } from '@pch/shared'
@@ -18,6 +19,7 @@ import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
+import { LaunchCapabilitiesRepo } from '../modules/launcher/launch-capabilities.repo'
 import { LauncherService } from '../modules/launcher/launcher.service'
 import { fakeRunPowerShell } from '../modules/launcher/fake-run'
 import { runPowerShell } from '../modules/launcher/powershell'
@@ -129,7 +131,9 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
         ? fakeRunPowerShell
         : runPowerShell,
     vfs,
-    logger
+    logger,
+    // 机器标识用主机名：数据库随漫游配置文件到别的机器时不沿用那台机器的检测结果
+    repo: new LaunchCapabilitiesRepo(db, hostname())
   })
 
   return {

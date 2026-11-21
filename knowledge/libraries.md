@@ -216,3 +216,11 @@
 - 原因：React DOM 在根容器上以 `{ passive: true }` 注册 `wheel` / `touchstart` / `touchmove`（`react-dom-client.development.js` 的 `addTrappedEventListener`：这三个事件名且浏览器支持 passive 时 `listenerWrapper = !0`）。React 19.3 仍是如此。
 - 解决：在 `useEffect` 中对元素 `addEventListener('wheel', handler, { passive: false })`，卸载时移除（`plugins/builtin/src/text/text-view.tsx`）。`Shift` + 滚轮或横向滚动不调用 `preventDefault`，交给原生的横向滚动。
 - 预防：需要拦截滚轮 / 触摸的组件一律用原生监听；只读取 `deltaY` 而不拦截时 `onWheel` 可以照用。
+
+### TanStack Query：`mutateAsync` / `refetchQueries` 返回时，用 `useQuery` 的组件还没有按新数据渲染
+
+- 日期：2026-11-21
+- 症状：从工作区一览切换工作区，`await activate.mutateAsync(id)` 之后立即对旧工作区的标签执行 tabs-store（zustand）的后退，旧标签在界面上短暂退回之前的位置（e2e 用 MutationObserver 在地址栏 / 标签栏记录到了旧位置的文字），之后才换成新工作区。
+- 原因：两层延迟。① 界面显示哪个工作区取决于 `useActiveWorkspace()` 的查询，它要等主进程的 `workspace.changed` → `invalidateQueries` → 再调用一次 `workspace.active` 才更新，`activate` 的 IPC 返回时还没开始。② 即使先 `await refetchQueries(...)`，`@tanstack/query-core` 5.107 的 `notifyManager` 默认用 `setTimeout(cb, 0)` 通知观察者（`notifyManager.js` 的 `defaultScheduler = systemSetTimeoutZero`），Promise 返回时组件仍拿着旧数据；而 zustand 的 `set` 同步通知订阅者，React 19 在微任务中渲染——于是先渲染了「旧工作区 + 后退后的标签」。
+- 解决：不在「切换的 Promise 返回后」做依赖界面已切换的操作，改为在因切换而卸载的组件（工作区一览）的 effect 清理中做：清理在新界面提交之后执行，用 `queryClient.getQueryData` 读到的已是新值（`features/workspace/workspaces-page.tsx` + `data/workspace.ts` 的 `useReadActiveWorkspaceId`）。
+- 预防：需要「界面已显示新状态之后」再执行的副作用，挂在渲染结果上（effect / 卸载清理），不要挂在 mutation 或 refetch 的 Promise 上；混用 TanStack Query 与 zustand 时注意两者的通知时机不同。

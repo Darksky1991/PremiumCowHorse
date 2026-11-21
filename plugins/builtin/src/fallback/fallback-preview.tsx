@@ -7,19 +7,21 @@ import {
   FolderIcon,
   FolderOpenIcon
 } from 'lucide-react'
-import { TEXT_PLUGIN_ID, type PreviewProps } from '@pch/plugin-sdk'
+import { FALLBACK_PLUGIN_ID, TEXT_PLUGIN_ID, type PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
 import { formatBytes, formatDateTime } from './format'
 
 /**
  * 文件信息（名称、位置、类型、大小、修改时间）与三个动作；所有访问都经 host。
- * 文件且候选查看器含文本插件时另有「作为文本查看」（host.tabs.viewWith，导航离开后恢复自动选择）
+ * 文件且候选查看器含文本插件时另有「作为文本查看」（host.tabs.viewWith，导航离开后恢复自动选择）。
+ * 「无法预览」只在自动选择到本插件时显示：用户选定「文件信息」（资源树单击、查看器菜单）时文件可能有预览器，不显示
  */
 export default function FallbackPreview({ resource, host }: PreviewProps): JSX.Element {
   const { t, language } = host.i18n
   const isDirectory = resource.kind === 'directory'
   const Icon = isDirectory ? FolderIcon : FileIcon
   const size = formatBytes(resource.size, language)
+  const chosen = host.tabs.selectedViewer() === FALLBACK_PLUGIN_ID
 
   return (
     <div className="h-full overflow-auto">
@@ -28,7 +30,9 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
           <Icon aria-hidden className="mt-0.5 size-8 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <h2 className="text-lg font-semibold break-all select-text">{resource.name}</h2>
-            {isDirectory ? null : <p className="text-sm text-muted-foreground">{t('noPreview')}</p>}
+            {isDirectory || chosen ? null : (
+              <p className="text-sm text-muted-foreground">{t('noPreview')}</p>
+            )}
           </div>
         </div>
 

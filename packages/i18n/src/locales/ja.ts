@@ -120,7 +120,13 @@ export default {
     deleteDescription:
       'ワークスペースとその項目だけを削除します。ディスク上のファイルやフォルダーは削除されません。',
     delete: '削除',
-    createdNotActivated: '作成しましたが、切り替えに失敗しました'
+    createdNotActivated: '作成しましたが、切り替えに失敗しました',
+    manage: 'ワークスペースの管理…',
+    listPage: 'ワークスペース一覧',
+    current: '使用中',
+    lastOpened: '最終使用: {{time}}',
+    renameMenu: '名前の変更…',
+    deleteMenu: '削除…'
   },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
@@ -146,7 +152,8 @@ export default {
     up: '1 つ上へ',
     refresh: '最新の情報に更新',
     viewer: '表示',
-    alwaysOpenWith: '.{{ext}} は常にこれで開く'
+    alwaysOpenWith: '.{{ext}} は常にこれで開く',
+    copyHint: 'クリックでパスをコピー'
   },
   tabs: {
     label: '開いているタブ',

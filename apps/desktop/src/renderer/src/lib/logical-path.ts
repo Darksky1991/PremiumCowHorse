@@ -2,24 +2,27 @@ import {
   isUnderUri,
   prefixOf,
   workspaceLocation,
+  workspacesLocation,
   type TabLocation,
   type WorkspaceEntry
 } from '@pch/shared'
 
 /**
  * 逻辑路径的一段（设计 devDoc/2026-11-19-15 第 2.1 节）：地址栏与预览区共用。
- * workspace：工作区（目标为工作区总览）；entry：条目（显示别名 = 条目标签）；
- * dir：目录（条目内的相对路径，或条目之外的绝对路径各段）；file：文件名
+ * workspaces：工作区一览（只在一览页本身的路径中出现）；workspace：工作区（目标为工作区总览）；
+ * entry：条目（显示别名 = 条目标签）；dir：目录（条目内的相对路径，或条目之外的绝对路径各段）；file：文件名
  */
 export interface PathSegment {
   label: string
   target: TabLocation
-  kind: 'workspace' | 'entry' | 'dir' | 'file'
+  kind: 'workspaces' | 'workspace' | 'entry' | 'dir' | 'file'
 }
 
 export interface LogicalPathContext {
   /** 位置所属的工作区；name 为显示名（空名称已换成本地化的默认名） */
   workspace: { id: string; name: string }
+  /** 工作区一览的本地化名称（一览页的段与标题、总览的上一级） */
+  workspacesTitle: string
   /** 该工作区的条目（分组不出现在路径中，只用 folder / file 条目） */
   entries: readonly WorkspaceEntry[]
 }
@@ -34,13 +37,13 @@ function decode(segment: string): string {
 
 /**
  * 位置所属的条目：包含它的 folder 条目，或 URI 相同的 file 条目；多个时取 URI 最长者（最内层）。
- * 工作区总览与条目之外的位置为 null
+ * 工作区总览、工作区一览与条目之外的位置为 null
  */
 export function entryOf(
   loc: TabLocation,
   entries: readonly WorkspaceEntry[]
 ): (WorkspaceEntry & { uri: string }) | null {
-  if (loc.kind === 'workspace') return null
+  if (loc.kind === 'workspace' || loc.kind === 'workspaces') return null
   let best: (WorkspaceEntry & { uri: string }) | null = null
   for (const e of entries) {
     if (e.uri === null) continue
@@ -95,9 +98,20 @@ function absoluteSegments(loc: TabLocation): PathSegment[] {
 
 /**
  * 位置的逻辑路径：`工作区` ›（分组不出现）› `条目别名` › 相对路径各段 ›（文件时）文件名。
- * 工作区总览只有工作区一段；条目之外的位置在工作区之后退化为绝对路径（驱动器 / 共享开始）
+ * 工作区总览只有工作区一段；条目之外的位置在工作区之后退化为绝对路径（驱动器 / 共享开始）。
+ * 工作区一览只有一览一段（名称取 ctx 中的本地化名称，不用标签标题的快照）；
+ * 其他位置的路径不含一览这一段（地址栏前置的工作区按钮已代表这一级）
  */
 export function logicalPath(loc: TabLocation, ctx: LogicalPathContext): PathSegment[] {
+  if (loc.kind === 'workspaces') {
+    return [
+      {
+        label: ctx.workspacesTitle,
+        kind: 'workspaces',
+        target: workspacesLocation(ctx.workspacesTitle)
+      }
+    ]
+  }
   const workspace: PathSegment = {
     label: ctx.workspace.name,
     kind: 'workspace',
@@ -124,9 +138,10 @@ export function logicalPath(loc: TabLocation, ctx: LogicalPathContext): PathSegm
 
 /**
  * 「上一级」：逻辑路径的上一段。条目内逐级向上，条目根（含 file 条目）→ 工作区总览；
- * 工作区总览 → null；条目之外 → 磁盘上的上级（驱动器 / 共享根之上为工作区总览）
+ * 工作区总览 → 工作区一览；一览 → null；条目之外 → 磁盘上的上级（驱动器 / 共享根之上为工作区总览）
  */
 export function parentLocation(loc: TabLocation, ctx: LogicalPathContext): TabLocation | null {
+  if (loc.kind === 'workspace') return workspacesLocation(ctx.workspacesTitle)
   const segments = logicalPath(loc, ctx)
   return segments.length < 2 ? null : segments[segments.length - 2]!.target
 }

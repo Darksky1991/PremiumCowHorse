@@ -11,6 +11,9 @@ import type { LaunchCapabilities, LaunchMode, PreviewProps } from '@pch/plugin-s
 import { Button } from '@pch/ui/components/button'
 import { formatBytes, formatDateTime } from './format'
 
+/** 检测超过这个时间才显示「検出中」（命中缓存时 IPC 只要几毫秒，不显示就不会闪） */
+const DETECTING_DELAY_MS = 300
+
 const MODE_KEYS: Record<LaunchMode, string> = {
   readOnly: 'modeReadOnly',
   edit: 'modeEdit',
@@ -29,6 +32,7 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
   const [caps, setCaps] = useState<LaunchCapabilities | null | undefined>(undefined)
   const [launching, setLaunching] = useState<LaunchMode | null>(null)
   const [detectRun, setDetectRun] = useState(0)
+  const [showDetecting, setShowDetecting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -39,6 +43,15 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
       cancelled = true
     }
   }, [host, resource.uri, detectRun])
+
+  useEffect(() => {
+    if (caps !== undefined) return
+    const timer = setTimeout(() => setShowDetecting(true), DETECTING_DELAY_MS)
+    return () => {
+      clearTimeout(timer)
+      setShowDetecting(false)
+    }
+  }, [caps])
 
   const launch = useCallback(
     async (mode: LaunchMode) => {
@@ -88,10 +101,15 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
         </dl>
 
         {caps === undefined ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <LoaderCircleIcon aria-hidden className="size-4 animate-spin" />
-            {t('detecting')}
-          </p>
+          // 占住与按钮区域相近的高度（说明行 + 一排按钮），检测完成后下面的按钮不跳动
+          <div className="flex min-h-[4.75rem] flex-col gap-2">
+            {showDetecting ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <LoaderCircleIcon aria-hidden className="size-4 animate-spin" />
+                {t('detecting')}
+              </p>
+            ) : null}
+          </div>
         ) : options.length > 0 ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">

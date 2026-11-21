@@ -1,4 +1,5 @@
 import {
+  Fragment,
   Suspense,
   use,
   useEffect,
@@ -52,8 +53,17 @@ export interface PreviewContainerProps {
   plugins: readonly AnyPreviewPlugin[]
 }
 
+export interface PreviewContainerRootProps extends PreviewContainerProps {
+  /**
+   * 工作区一览（kind 为 workspaces）的内置视图：在 features/workspace 中（要用工作区的对话框），
+   * 由 app/ 组合传入（feature 之间不互相 import）
+   */
+  renderWorkspaces: (tab: TabState) => ReactNode
+}
+
 /**
- * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview；
+ * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview，
+ * 工作区一览（kind 为 workspaces）显示 app/ 传入的内置视图（renderWorkspaces）；
  * 其余取得资源描述 → 注册表选择插件（没有插件按扩展名 / MIME 匹配的文件先 vfs.sniff，文本交给 textLike 插件）
  * → 懒加载插件组件。
  * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
@@ -66,21 +76,24 @@ export interface PreviewContainerProps {
  * 预览标签只在插件调用宿主的动作（host.ts 的 interacted）或双击标签头时转为常驻；
  * 标签内的点击、滚动、按键不改变预览状态（控制者裁定）。
  */
-export function PreviewContainer({ tab, plugins }: PreviewContainerProps): JSX.Element {
-  // 工作区总览不经插件：该标签若还有浏览器视图（从网页导航过来）则销毁
-  const overview = tab.kind === 'workspace'
+export function PreviewContainer({
+  tab,
+  plugins,
+  renderWorkspaces
+}: PreviewContainerRootProps): JSX.Element {
+  // 工作区总览 / 一览不经插件：该标签若还有浏览器视图（从网页导航过来）则销毁
+  const builtin = tab.kind === 'workspace' || tab.kind === 'workspaces'
   useLayoutEffect(() => {
-    if (overview) getWebViews().release(tab.id)
-  }, [overview, tab.id])
+    if (builtin) getWebViews().release(tab.id)
+  }, [builtin, tab.id])
+  let content: ReactNode
+  if (tab.kind === 'workspace') content = <WorkspaceOverview key={tab.uri} tab={tab} />
+  else if (tab.kind === 'workspaces')
+    content = <Fragment key={tab.uri}>{renderWorkspaces(tab)}</Fragment>
+  else content = <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
   return (
-    <div className="h-full min-h-0">
-      {/* 同一标签内导航到另一位置时整体重建（sniff 结果等状态不沿用；viewer 在标签状态中，随位置变化） */}
-      {tab.kind === 'workspace' ? (
-        <WorkspaceOverview key={tab.uri} tab={tab} />
-      ) : (
-        <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
-      )}
-    </div>
+    // 同一标签内导航到另一位置时整体重建（sniff 结果等状态不沿用；viewer 在标签状态中，随位置变化）
+    <div className="h-full min-h-0">{content}</div>
   )
 }
 
@@ -263,15 +276,20 @@ function PluginView({
   const workspaceName = workspace
     ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
     : undefined
+  const workspacesTitle = t('workspace:listPage')
   const parent = useMemo(
     () =>
       workspace === undefined || workspaceName === undefined
         ? null
         : parentLocation(
             { uri: tab.uri, kind: tab.kind, title: tab.title },
-            { workspace: { id: workspace.id, name: workspaceName }, entries: entries ?? [] }
+            {
+              workspace: { id: workspace.id, name: workspaceName },
+              workspacesTitle,
+              entries: entries ?? []
+            }
           ),
-    [workspace, workspaceName, entries, tab.uri, tab.kind, tab.title]
+    [workspace, workspaceName, workspacesTitle, entries, tab.uri, tab.kind, tab.title]
   )
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const open = useTabsStore((s) => s.open)
@@ -346,7 +364,8 @@ function PluginView({
       web: webHost.api,
       viewer: {
         candidates: () => candidates,
-        set: (id) => setViewer(tab.id, id)
+        set: (id) => setViewer(tab.id, id),
+        selected: () => findTab(useTabsStore.getState(), tab.id)?.viewer ?? null
       },
       tabs: { open, navigate },
       confirmExecutable: (name) =>

@@ -1,5 +1,5 @@
 /** 地址栏的导航命令（快捷键与鼠标侧键共用） */
-export type NavCommand = 'back' | 'forward' | 'refresh'
+export type NavCommand = 'back' | 'forward' | 'up' | 'refresh'
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'shiftKey' | 'metaKey'>
 
@@ -11,7 +11,9 @@ export interface KeyContext {
 
 /**
  * 全局快捷键 → 命令：`Alt+←` / `Alt+→` 后退 / 前进（与浏览器相同，焦点在输入框时也有效）；
- * `F5` 刷新激活标签，焦点在输入框（editable）时除外。有模态对话框打开时都不是命令
+ * `Alt+↑` 上一级（与 Windows 资源管理器相同）与 `F5` 刷新激活标签，焦点在输入框（editable）时除外
+ * （输入框 / 下拉选择中 Alt+↑ 有自己的含义；只对应用自己的输入框——网页视图中的按键由主进程转发、派发在
+ * window 上，不算输入框，见 main/modules/web/shortcuts.ts）。有模态对话框打开时都不是命令
  * （否则会作用于对话框背后的标签）。其他组合不是命令
  */
 export function keyCommand(e: KeyLike, { editable, modal }: KeyContext): NavCommand | null {
@@ -19,7 +21,7 @@ export function keyCommand(e: KeyLike, { editable, modal }: KeyContext): NavComm
   if (e.altKey) {
     if (e.key === 'ArrowLeft') return 'back'
     if (e.key === 'ArrowRight') return 'forward'
-    return null
+    return e.key === 'ArrowUp' && !editable ? 'up' : null
   }
   return e.key === 'F5' && !editable ? 'refresh' : null
 }

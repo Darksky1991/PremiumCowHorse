@@ -18,9 +18,12 @@ const NO_HISTORY: TabHistory = { back: [], forward: [] }
  *
  * - `tab/open`（在新标签打开）：同 URI 已打开 → 只激活；否则插在激活标签右侧
  *   （没有激活标签时放在末尾）。新标签的历史为空。没有「预览标签」（设计 2.8）。
+ *   带 `viewer` 时新标签以该查看器显示（已打开的标签不改）。
  * - `tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧，都没有则为 null（历史随标签消失）。
  * - `tab/navigate`（在当前标签打开）：同一标签内改位置并清除 viewState（允许与其他标签的 URI 重复）；
  *   离开的位置连同其 viewState 压入后退栈、前进栈清空。导航到当前 URI 不入栈（只更新类型与标题）。
+ *   带 `viewer` 时新位置以该查看器显示；导航到当前 URI 且带 `viewer`（含 null）时同一位置换查看器
+ *   （同 `tab/viewer`，资源树双击把单击打开的「文件信息」换成默认查看器，不多记一条历史）。
  * - `tab/back` / `tab/forward`：浏览器式，当前位置（连同 viewState）压入另一侧的栈；
  *   恢复目标位置离开时的 viewState（像浏览器后退恢复滚动位置）。
  * - `tab/viewer`：设置 / 清除当前位置的查看器（viewer），并清除 viewState。viewer 随位置进入历史，
@@ -40,7 +43,12 @@ export function layoutReducer(
         if (state.activeId === existing.id) return state
         return { ...state, activeId: existing.id }
       }
-      const tab: TabState = { id: newId(), ...locationOf(action), history: NO_HISTORY }
+      const tab: TabState = {
+        id: newId(),
+        ...locationOf(action),
+        ...(action.viewer === undefined ? {} : { viewer: action.viewer }),
+        history: NO_HISTORY
+      }
       const activeIndex = state.tabs.findIndex((t) => t.id === state.activeId)
       const at = activeIndex < 0 ? state.tabs.length : activeIndex + 1
       return { tabs: [...state.tabs.slice(0, at), tab, ...state.tabs.slice(at)], activeId: tab.id }
@@ -61,15 +69,19 @@ export function layoutReducer(
       const tab = state.tabs.find((t) => t.id === action.id)
       if (!tab) return state
       if (tab.uri === action.uri) {
-        // 同一位置：不入栈、不清除 viewState；只更新类型与标题
-        if (tab.kind === action.kind && tab.title === action.title) return state
-        return {
-          ...state,
-          tabs: replace(state.tabs, tab.id, { kind: action.kind, title: action.title })
-        }
+        // 同一位置：不入栈、不清除 viewState；只更新类型与标题（指定了不同的 viewer 时换查看器）
+        const viewerChanged = action.viewer !== undefined && (tab.viewer ?? null) !== action.viewer
+        if (!viewerChanged && tab.kind === action.kind && tab.title === action.title) return state
+        const located: TabState = { ...tab, kind: action.kind, title: action.title }
+        const next = viewerChanged ? withViewer(located, action.viewer ?? null) : located
+        return { ...state, tabs: state.tabs.map((t) => (t.id === tab.id ? next : t)) }
       }
       const history: TabHistory = { back: push(tab.history.back, entryOf(tab)), forward: [] }
-      return moveTo(state, tab, locationOf(action), history)
+      const target: TabHistoryEntry = {
+        ...locationOf(action),
+        ...(action.viewer == null ? {} : { viewer: action.viewer })
+      }
+      return moveTo(state, tab, target, history)
     }
     case 'tab/back':
     case 'tab/forward': {
@@ -100,14 +112,19 @@ export function layoutReducer(
       const tab = state.tabs.find((t) => t.id === action.id)
       if (!tab) return state
       if ((tab.viewer ?? null) === action.viewer) return state
-      const next: TabState = {
-        id: tab.id,
-        ...locationOf(tab),
-        ...(action.viewer === null ? {} : { viewer: action.viewer }),
-        history: tab.history
-      }
+      const next = withViewer(tab, action.viewer)
       return { ...state, tabs: state.tabs.map((t) => (t.id === tab.id ? next : t)) }
     }
+  }
+}
+
+/** 标签当前位置换查看器（null = 自动选择，删除该键）；viewState 属于上一个查看器，同时清除 */
+function withViewer(tab: TabState, viewer: string | null): TabState {
+  return {
+    id: tab.id,
+    ...locationOf(tab),
+    ...(viewer === null ? {} : { viewer }),
+    history: tab.history
   }
 }
 

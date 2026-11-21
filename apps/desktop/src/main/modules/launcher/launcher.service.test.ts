@@ -1,7 +1,9 @@
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppError, type FileStat } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
+import { openDatabase, type Database } from '../../infra/db/client'
+import { LaunchCapabilitiesRepo } from './launch-capabilities.repo'
 import { LauncherService } from './launcher.service'
 import type { RawAssociation } from './association'
 
@@ -28,17 +30,33 @@ type Run = (script: string, env: Record<string, string>, timeoutMs: number) => P
 
 type RunMock = ReturnType<typeof vi.fn<Run>>
 
-function setup(run: RunMock = vi.fn<Run>(async () => JSON.stringify([EXCEL]))): {
+const dbs: Database[] = []
+afterEach(async () => {
+  await Promise.all(dbs.splice(0).map((d) => d.destroy()))
+})
+
+async function memoryRepo(): Promise<LaunchCapabilitiesRepo> {
+  const db = await openDatabase(':memory:', silent)
+  dbs.push(db)
+  return new LaunchCapabilitiesRepo(db, 'PC-A')
+}
+
+async function setup(run: RunMock = vi.fn<Run>(async () => JSON.stringify([EXCEL]))): Promise<{
   service: LauncherService
   run: RunMock
-} {
-  const service = new LauncherService({ run, vfs: { stat }, logger: silent })
+}> {
+  const service = new LauncherService({
+    run,
+    vfs: { stat },
+    logger: silent,
+    repo: await memoryRepo()
+  })
   return { service, run }
 }
 
 describe('LauncherService.capabilities', () => {
   it('detects once per extension and caches the result', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     const a = await service.capabilities('file:///C:/a/B.XLSX')
     const b = await service.capabilities('file:///C:/other/c.xlsx')
     expect(a.ext).toBe('xlsx')
@@ -54,7 +72,7 @@ describe('LauncherService.capabilities', () => {
   })
 
   it('shares one in-flight detection between concurrent calls', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await Promise.all([
       service.capabilities('file:///C:/a.xlsx'),
       service.capabilities('file:///C:/b.xlsx')
@@ -63,9 +81,9 @@ describe('LauncherService.capabilities', () => {
   })
 
   it('detects again after redetect()', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await service.capabilities('file:///C:/a.xlsx')
-    service.redetect()
+    await service.redetect()
     await service.capabilities('file:///C:/a.xlsx')
     expect(run).toHaveBeenCalledTimes(2)
   })
@@ -75,13 +93,13 @@ describe('LauncherService.capabilities', () => {
       .fn<Run>()
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValue(JSON.stringify([EXCEL]))
-    const { service } = setup(run)
+    const { service } = await setup(run)
     expect((await service.capabilities('file:///C:/a.xlsx')).options).toEqual([])
     expect((await service.capabilities('file:///C:/a.xlsx')).options.length).toBeGreaterThan(0)
   })
 
   it('rejects non-file URIs; a file without an extension has no options', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await expect(service.capabilities('ftp://h/a.xlsx')).rejects.toMatchObject({
       code: 'FS_UNSUPPORTED_SCHEME'
     })
@@ -92,7 +110,7 @@ describe('LauncherService.capabilities', () => {
 
 describe('LauncherService.open', () => {
   it('passes path and verb only through the environment; the script has neither path nor Start-Process', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await service.capabilities('file:///C:/a.xlsx')
     run.mockClear()
     const target = 'C:\\work\\見積[1] 案.xlsx'
@@ -112,7 +130,8 @@ describe('LauncherService.open', () => {
     const service = new LauncherService({
       run,
       vfs: { stat: async (uri) => ({ ...(await stat(uri)), kind: 'directory' }) },
-      logger: silent
+      logger: silent,
+      repo: await memoryRepo()
     })
     await expect(service.open('file:///C:/work/folder.xlsx', 'edit')).rejects.toMatchObject({
       code: 'LAUNCH_FAILED'
@@ -121,7 +140,7 @@ describe('LauncherService.open', () => {
   })
 
   it('keeps UNC paths as they are', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await service.open('file://server/share/dir/a.xlsx', 'edit')
     expect((run.mock.calls.at(-1)?.[1] as Record<string, string>).PCH_TARGET).toBe(
       '\\\\server\\share\\dir\\a.xlsx'
@@ -129,7 +148,7 @@ describe('LauncherService.open', () => {
   })
 
   it('launches a switch option by exe and arguments through the environment', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await service.open('file:///C:/a.xlsx', 'readOnly')
     const [script, env] = run.mock.calls.at(-1) as Parameters<Run>
     expect(env).toEqual({
@@ -141,7 +160,7 @@ describe('LauncherService.open', () => {
   })
 
   it('maps a failing run to LAUNCH_FAILED', async () => {
-    const { service, run } = setup()
+    const { service, run } = await setup()
     await service.capabilities('file:///C:/a.xlsx')
     run.mockRejectedValueOnce(new Error('timeout'))
     await expect(service.open('file:///C:/a.xlsx', 'edit')).rejects.toMatchObject({
@@ -150,7 +169,7 @@ describe('LauncherService.open', () => {
   })
 
   it('fails with LAUNCH_FAILED for a mode the extension does not offer', async () => {
-    const { service } = setup(
+    const { service } = await setup(
       vi.fn<Run>(async () => JSON.stringify([{ ...EXCEL, ext: 'doc', exe: null }]))
     )
     const err = await service.open('file:///C:/a.doc', 'readOnly').catch((e: unknown) => e)
@@ -167,7 +186,8 @@ describe('LauncherService.open', () => {
           throw new AppError({ code: 'FS_NOT_FOUND' })
         }
       },
-      logger: silent
+      logger: silent,
+      repo: await memoryRepo()
     })
     await expect(missing.open('file:///C:/gone.xlsx', 'edit')).rejects.toMatchObject({
       code: 'FS_NOT_FOUND'

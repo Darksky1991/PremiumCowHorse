@@ -36,6 +36,9 @@ export interface FakeLaunch {
  */
 export const fakeRunPowerShell: typeof runPowerShell = async (script, env) => {
   if (script === DETECT_SCRIPT) {
+    // e2e 经 app.evaluate 读取：证明重启后没有再检测
+    const d = globalThis as unknown as { __pchFakeDetects?: number }
+    d.__pchFakeDetects = (d.__pchFakeDetects ?? 0) + 1
     const exts = (env.PCH_EXTS ?? '').split(',').filter(Boolean)
     const out: RawAssociation[] = exts.map(
       (ext) =>

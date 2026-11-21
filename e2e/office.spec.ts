@@ -13,6 +13,10 @@ const launches = (app: ElectronApplication): Promise<Array<Record<string, string
     ).map((l) => l.env)
   )
 
+/** 假 launcher 的检测次数（fake-run.ts 的 __pchFakeDetects） */
+const detects = (app: ElectronApplication): Promise<number> =>
+  app.evaluate(() => (globalThis as unknown as { __pchFakeDetects?: number }).__pchFakeDetects ?? 0)
+
 test.describe('office launch panel', () => {
   let userData: string
   let files: string
@@ -38,7 +42,7 @@ test.describe('office launch panel', () => {
       .locator('[role="row"][data-index]')
       .filter({ has: page.getByTitle(name, { exact: true }) })
 
-  test('single click in the tree and double click in the folder view both show the panel without launching', async () => {
+  test('double click in the tree and in the folder view both show the panel without launching', async () => {
     const { app, page } = await launchFast(userData, { PCH_E2E_FAKE_LAUNCHER: '1' })
     try {
       await data(page, 'settings.set', { 'general.language': 'en' })
@@ -48,8 +52,8 @@ test.describe('office launch panel', () => {
       const tree = page.getByRole('tree')
       await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
 
-      // 资源树单击：面板，按 options 的顺序显示 4 个按钮（Excel：edit / readOnly(/r) / protectedView / newFromFile）
-      await tree.getByRole('treeitem', { name: 'a.xlsx' }).click()
+      // 资源树双击（单击是文件信息，M2 反馈第 3 项）：面板，按 options 的顺序显示 4 个按钮（Excel：edit / readOnly(/r) / protectedView / newFromFile）
+      await tree.getByRole('treeitem', { name: 'a.xlsx' }).dblclick()
       const info = panel(page)
       await expect(info.getByRole('heading', { name: 'a.xlsx' })).toBeVisible()
       await expect(info).toContainText(path.join(project, 'a.xlsx'))
@@ -86,17 +90,55 @@ test.describe('office launch panel', () => {
       expect(await launches(app)).toHaveLength(2)
 
       // 检测不到任何方式：只有「Open with default app」
-      await tree.getByRole('treeitem', { name: 'c.xls' }).click()
+      await tree.getByRole('treeitem', { name: 'c.xls' }).dblclick()
       await expect(panel(page).getByRole('heading', { name: 'c.xls' })).toBeVisible()
       await expect(panel(page).getByRole('button', { name: 'Open with default app' })).toBeVisible()
       await expect(panel(page).getByRole('button', { name: 'Edit' })).toHaveCount(0)
 
       // 再検出：重新取得后仍显示按钮
-      await tree.getByRole('treeitem', { name: 'a.xlsx' }).click()
+      await tree.getByRole('treeitem', { name: 'a.xlsx' }).dblclick()
       await panel(page).getByRole('button', { name: 'Re-detect' }).click()
       await expect(panel(page).getByRole('button', { name: 'Edit' })).toBeVisible()
     } finally {
       await app.close()
+    }
+  })
+
+  test('the detection result is saved per machine: no detection after a restart, again after Re-detect', async () => {
+    const env = { PCH_E2E_FAKE_LAUNCHER: '1' }
+    const openPanel = async (page: Page): Promise<void> => {
+      const tree = page.getByRole('tree')
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await tree.getByRole('treeitem', { name: 'a.xlsx' }).dblclick()
+      await expect(panel(page).getByRole('button', { name: 'Edit' })).toBeVisible()
+    }
+
+    const first = await launchFast(userData, env)
+    try {
+      await data(first.page, 'settings.set', { 'general.language': 'en' })
+      const { id: workspaceId } = await data(first.page, 'workspace.active')
+      await data(first.page, 'entry.add', {
+        kind: 'folder',
+        workspaceId,
+        parentId: null,
+        path: project
+      })
+      await openPanel(first.page)
+      expect(await detects(first.app)).toBe(1)
+    } finally {
+      await first.app.close()
+    }
+
+    const second = await launchFast(userData, env)
+    try {
+      await openPanel(second.page)
+      expect(await detects(second.app)).toBe(0)
+
+      await panel(second.page).getByRole('button', { name: 'Re-detect' }).click()
+      await expect(panel(second.page).getByRole('button', { name: 'Edit' })).toBeVisible()
+      expect(await detects(second.app)).toBe(1)
+    } finally {
+      await second.app.close()
     }
   })
 })

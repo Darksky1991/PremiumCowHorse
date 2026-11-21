@@ -12,9 +12,10 @@ import {
 const modalOpen = (): boolean => document.querySelector(OPEN_MODAL_SELECTOR) !== null
 
 /**
- * 地址栏的全局快捷键（window 上监听）：`Alt+←` / `Alt+→`、F5（焦点在输入框时除外）、
+ * 地址栏的全局快捷键（window 上监听）：`Alt+←` / `Alt+→`、`Alt+↑` 与 F5（焦点在输入框时除外）、
  * 鼠标侧键（mouseup 的 button 3 / 4）。
- * - 视图内部已处理的按键（defaultPrevented，例如资源树内的 F5 刷新资源树）不再处理。
+ * - 视图内部已处理的按键（defaultPrevented，例如资源树内的 F5 刷新资源树、目录视图自己处理的
+ *   Alt+↑——它经 host.tabs.up 到达同一个上一级）不再处理，不会执行两次。
  * - 有模态对话框（Dialog / AlertDialog）打开时都不处理（否则作用于对话框背后的标签）。
  * - 侧键的 mousedown / mouseup / auxclick 都阻止默认动作，避免 Chromium 自己做历史导航。
  * run 取最新的（ref），监听只注册一次。

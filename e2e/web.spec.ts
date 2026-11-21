@@ -255,7 +255,7 @@ test.describe('the browser view (html plugin)', () => {
   async function openIndex(app: ElectronApplication, page: Page, tree: Locator): Promise<Page> {
     await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
     await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
-    await tree.getByRole('treeitem', { name: 'index.html' }).click()
+    await tree.getByRole('treeitem', { name: 'index.html' }).dblclick()
     await expect(tabs(page)).toHaveText(['index.html'])
     const view = await viewPage(app, '/proto/index.html')
     await expect(view.locator('#counter')).toHaveText('1')
@@ -406,7 +406,7 @@ test.describe('the browser view (html plugin)', () => {
         parentId: null,
         path: path.join(javadoc, 'index.html')
       })
-      await tree.getByRole('treeitem', { name: 'index.html' }).click()
+      await tree.getByRole('treeitem', { name: 'index.html' }).dblclick()
       await expect(tabs(page)).toHaveText(['index.html'])
       const index = await viewPage(app, '/index.html')
       await expect(index.locator('#top')).toHaveText('Javadoc')
@@ -533,10 +533,10 @@ test.describe('the browser view (html plugin)', () => {
     try {
       const tree = await setup(app, page)
       await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
-      await tree.getByRole('treeitem', { name: 'memo.txt' }).click()
+      await tree.getByRole('treeitem', { name: 'memo.txt' }).dblclick()
       await expect(panel(page).getByRole('region', { name: 'File content' })).toContainText('memo')
       await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
-      await tree.getByRole('treeitem', { name: 'index.html' }).click()
+      await tree.getByRole('treeitem', { name: 'index.html' }).dblclick()
       const view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('1')
       // 前提：焦点在页面中，应用界面没有焦点
@@ -547,12 +547,81 @@ test.describe('the browser view (html plugin)', () => {
       await pressIn(app, view, 'Left', ['alt'])
       await expect(tabs(page)).toHaveText(['memo.txt'])
       await expect.poll(() => focus(app)).toEqual({ app: true, views: [] })
-      // 不点击直接按 Alt+→（应用界面收到按键）：回到页面（新的视图）
-      await page.keyboard.press('Alt+ArrowRight')
+      // 不点击直接按 Alt+→（应用界面收到按键）：回到页面（新的视图）。
+      // 用主进程 sendInputEvent 发给应用的 webContents（经 before-input-event，与真实按键相同；
+      // Playwright 的 page.keyboard 不经它，主进程看不到「用户在应用中按了键」）
+      await app.evaluate(({ BrowserWindow }) => {
+        const wc = BrowserWindow.getAllWindows()[0]!.webContents
+        wc.sendInputEvent({ type: 'rawKeyDown', keyCode: 'Right', modifiers: ['alt'] })
+        wc.sendInputEvent({ type: 'keyUp', keyCode: 'Right', modifiers: ['alt'] })
+      })
       await expect(tabs(page)).toHaveText(['index.html'])
       const again = await viewPage(app, '/proto/index.html')
       await expect(again.locator('#counter')).toHaveText('2')
       await expect.poll(() => visibility(app)).toEqual([true])
+      // 这次的按键在应用界面中：视图加载后焦点仍在应用（视图拿走焦点若发生在加载期间：留出时间）
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: true, views: [false] })
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a link or Alt+←/→ pressed in the page keeps the keyboard focus in the page it opens', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      const index = await openIndex(app, page, tree)
+      await focusView(app, index)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+
+      // 页面中点同范围的 HTML 链接：同一视图加载新页面，焦点留在页面（视图拿走 / 交回焦点若发生在加载期间：留出时间）
+      await clickIn(app, index, '#to-second')
+      await expect(tabs(page)).toHaveText(['second.html'])
+      const second = await viewPage(app, '/proto/second.html')
+      await expect(second.locator('#second')).toHaveText('second')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: false, views: [true] })
+
+      // 页面中按 Alt+←：回到 index（同一视图），焦点留在页面
+      await pressIn(app, second, 'Left', ['alt'])
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const back = await viewPage(app, '/proto/index.html')
+      await expect(back.locator('#counter')).toHaveText('2')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: false, views: [true] })
+
+      // 页面中按 Alt+→：前进到 second（同一视图），焦点留在页面
+      await pressIn(app, back, 'Right', ['alt'])
+      await expect(tabs(page)).toHaveText(['second.html'])
+      const forward = await viewPage(app, '/proto/second.html')
+      await expect(forward.locator('#second')).toHaveText('second')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: false, views: [true] })
+      await pressIn(app, forward, 'Left', ['alt'])
+      const index3 = await viewPage(app, '/proto/index.html')
+      await expect(index3.locator('#counter')).toHaveText('3')
+
+      // Markdown 链接（查看器不同 → 新建视图）：焦点在新视图
+      await clickIn(app, index3, '#to-notes')
+      await expect(tabs(page)).toHaveText(['notes.md'])
+      const notes = await viewPage(app, '/proto/notes.md?pch-view=markdown')
+      await expect(notes.locator('#content h1')).toHaveText('Notes')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: false, views: [true] })
+
+      // Markdown 页面中按 Alt+←：回到 index（又一个新视图），焦点在页面
+      await pressIn(app, notes, 'Left', ['alt'])
+      await expect(tabs(page)).toHaveText(['index.html'])
+      const index4 = await viewPage(app, '/proto/index.html')
+      await expect(index4.locator('#counter')).toHaveText('4')
+      await page.waitForTimeout(500)
+      expect(await focus(app)).toEqual({ app: false, views: [true] })
+      // 资源树的选中没有移动（仍是最初点击的 index.html）
+      await expect(tree.getByRole('treeitem', { name: 'index.html' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
     } finally {
       await app.close()
     }
@@ -569,9 +638,12 @@ test.describe('the browser view (html plugin)', () => {
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus())
       await expect.poll(() => focus(app)).toEqual({ app: true, views: [] })
 
-      // ↓ → index.html：在当前标签以浏览器视图打开，视图加载后焦点仍在应用界面（资源树）
+      // ↓ → index.html：停留后以文件信息打开（M2 反馈第 3 项），Enter 在当前标签以浏览器视图打开，
+      // 视图加载后焦点仍在应用界面（资源树）
       await page.keyboard.press('ArrowDown')
       await expect(tabs(page)).toHaveText(['index.html'])
+      await expect(panel(page).getByRole('region', { name: 'File info' })).toBeVisible()
+      await page.keyboard.press('Enter')
       const view = await viewPage(app, '/proto/index.html')
       await expect(view.locator('#counter')).toHaveText('1')
       await expect.poll(() => visibility(app)).toEqual([true])
@@ -585,9 +657,11 @@ test.describe('the browser view (html plugin)', () => {
         'true'
       )
 
-      // 再 ↓ → notes.md（Markdown 视图，新建）：同样留在资源树
+      // 再 ↓ → notes.md（文件信息）、Enter（Markdown 视图，新建）：同样留在资源树
       await page.keyboard.press('ArrowDown')
       await expect(tabs(page)).toHaveText(['notes.md'])
+      await expect(panel(page).getByRole('region', { name: 'File info' })).toBeVisible()
+      await page.keyboard.press('Enter')
       const notes = await viewPage(app, '/proto/notes.md?pch-view=markdown')
       await expect(notes.locator('#content h1')).toHaveText('Notes')
       await page.waitForTimeout(500)
@@ -658,7 +732,7 @@ test.describe('the browser view (html plugin)', () => {
       const tree = await setup(app, page)
       await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
       await toggleRow(tree.getByRole('treeitem', { name: 'docs' }))
-      await tree.getByRole('treeitem', { name: 'README.md' }).click()
+      await tree.getByRole('treeitem', { name: 'README.md' }).dblclick()
       await expect(tabs(page)).toHaveText(['README.md'])
       // 视图加载 .md 本身的地址（带 ?pch-view=markdown：协议处理器返回外壳页）
       const view = await viewPage(app, '/docs/README.md?pch-view=markdown')
@@ -742,12 +816,12 @@ test.describe('the browser view (html plugin)', () => {
       await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
       await toggleRow(tree.getByRole('treeitem', { name: 'media' }))
 
-      await tree.getByRole('treeitem', { name: 'diagram.svg' }).click()
+      await tree.getByRole('treeitem', { name: 'diagram.svg' }).dblclick()
       const svg = await viewPage(app, '/media/diagram.svg')
       await expect.poll(() => svg.evaluate(() => document.documentElement.localName)).toBe('svg')
       await expect(svg.locator('#box')).toHaveAttribute('fill', 'rgb(30, 90, 200)')
 
-      await tree.getByRole('treeitem', { name: 'spec.pdf' }).click()
+      await tree.getByRole('treeitem', { name: 'spec.pdf' }).dblclick()
       const pdf = await viewPage(app, '/media/spec.pdf')
       await expect.poll(() => pdf.evaluate(() => document.contentType)).toBe('application/pdf')
       await expect.poll(() => visibility(app)).toEqual([true])

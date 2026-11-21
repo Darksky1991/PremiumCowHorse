@@ -122,7 +122,8 @@ test.describe('folder view (the folder plugin)', () => {
       await page.keyboard.press('Alt+ArrowUp')
       await expect(tabs(page)).toHaveText(['案件'])
 
-      // 条目根的上一级是工作区总览（不越过条目根走到磁盘上的上级）；总览没有上一级
+      // 条目根的上一级是工作区总览（不越过条目根走到磁盘上的上级）；总览中 Backspace 不是命令
+      // （总览的上一级是工作区一览，经地址栏的 ↑ / Alt+↑ 进入，见 address-bar.spec.ts）
       await expect(grid(page)).toBeFocused()
       await page.keyboard.press('Backspace')
       await expect(tabs(page)).toHaveText(['Default'])

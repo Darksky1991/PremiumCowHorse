@@ -19,3 +19,20 @@ export function workspaceIdOfUri(uri: string): string | null {
 export function workspaceLocation(workspaceId: string, title: string): TabLocation {
   return { uri: workspaceUri(workspaceId), kind: 'workspace', title }
 }
+
+/**
+ * 工作区一览的内部 URI（M2 反馈第 8 项）：只有一页、不带 id。它是工作区总览的上一级，
+ * 属于当前工作区的标签集；与总览一样不是文件系统（不发给扫描进程、不进 vfs.interest、树不定位它）。
+ * 注意它不以 WORKSPACE_URI_SCHEME（`pch-workspace:`）开头，workspaceIdOfUri 对它返回 null
+ */
+export const WORKSPACES_URI = 'pch-workspaces:'
+
+/** 是否为工作区一览的 URI */
+export function isWorkspacesUri(uri: string): boolean {
+  return uri === WORKSPACES_URI
+}
+
+/** 工作区一览的位置（title 为本地化的「工作区一览」） */
+export function workspacesLocation(title: string): TabLocation {
+  return { uri: WORKSPACES_URI, kind: 'workspaces', title }
+}

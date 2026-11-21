@@ -12,7 +12,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useReachabilityStore } from '@renderer/stores/reachability-store'
-import { useTabsStore } from '@renderer/stores/tabs-store'
+import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { notify } from '@renderer/stores/messages-store'
 import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
@@ -36,7 +36,7 @@ import { interestFromTree } from './interest'
 import { isEntryNode } from './menu-items'
 import { NewGroupDialog } from './new-group-dialog'
 import { NodeContextMenu } from './node-context-menu'
-import { openTarget } from './open-target'
+import { openRequest, openTarget, type OpenGesture } from './open-target'
 import { RemoveEntryDialog, type RemoveTarget } from './remove-entry-dialog'
 import { RenameDialog, type RenameTarget } from './rename-dialog'
 import { hiddenSelectionIndex, resolveSelection } from './selection'
@@ -60,7 +60,10 @@ type DialogState =
 
 /** 默认密度下的行高；实际高度由 measureElement 测量（紧凑密度下随 --spacing 变小） */
 const ROW_ESTIMATE = 28
-/** 键盘移动选中后，停留这么久才在当前标签打开（设计 2.8：快速连按只在停留处打开一次、记一条历史） */
+/**
+ * 键盘移动选中后，停留这么久才在当前标签打开（设计 2.8：快速连按只在停留处打开一次、记一条历史）。
+ * 文件以「文件信息」打开，与单击相同
+ */
 const KEY_OPEN_DELAY_MS = 400
 
 export interface ExplorerTreeProps {
@@ -86,7 +89,8 @@ export function ExplorerTree({
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const showHidden = useSetting('explorer.showHiddenFiles') ?? false
-  // 键名沿用 M1-3（避免迁移）；含义为「单击 / 键盘移动选中即在当前标签打开」，关闭时只选中、Enter 打开
+  // 键名沿用 M1-3（避免迁移）；含义为「单击 / 键盘移动选中即在当前标签打开」（文件为「文件信息」），
+  // 关闭时只选中、双击 / Enter 打开
   const selectionOpens = useSetting('explorer.singleClickPreview') ?? true
   const openHere = useTabsStore((s) => s.openHere)
   const expandedIds = useExplorerStore((s) => s.expanded[workspaceId] ?? NO_IDS)
@@ -161,13 +165,20 @@ export function ExplorerTree({
   useEffect(() => () => clearTimeout(keyOpenTimer.current), [])
 
   /**
-   * 打开节点（分组、状态行、失效链接不打开）：在当前标签打开（进入历史；没有标签时新建），
-   * newTab 时在新标签打开（同 URI 已打开则只激活）。取消尚未触发的键盘防抖打开
+   * 按操作打开节点（分组、状态行、失效链接不打开；打开什么见 openRequest）：
+   * select / activate 在当前标签打开（进入历史；没有标签时新建），newTab 在新标签打开（同 URI 已打开则只激活）。
+   * 文件：select 以「文件信息」打开（当前标签已在显示该文件时不动），activate / newTab 以默认查看器打开。
+   * 激活标签在调用时读取（键盘防抖到期时的状态）。取消尚未触发的键盘防抖打开
    */
-  const openNode = (node: TreeNode, newTab = false): void => {
+  const openNode = (node: TreeNode, gesture: OpenGesture): void => {
     cancelKeyOpen()
-    const target = openTarget(node)
-    if (target) openHere(workspaceId, target, { newTab })
+    const active = selectActiveTab(workspaceId)(useTabsStore.getState())
+    const request = openRequest(node, gesture, active?.uri ?? null)
+    if (request === null) return
+    openHere(workspaceId, request.target, {
+      newTab: request.newTab,
+      ...(request.viewer === undefined ? {} : { viewer: request.viewer })
+    })
   }
 
   // 定位请求：搜索结果的「在树中定位」（locate：选中、居中滚动、焦点移到树上）与
@@ -362,7 +373,7 @@ export function ExplorerTree({
     virtualizer.scrollToIndex(i, { align: 'auto' })
     cancelKeyOpen()
     if (selectionOpens && openTarget(node) !== null) {
-      keyOpenTimer.current = setTimeout(() => openNode(node), KEY_OPEN_DELAY_MS)
+      keyOpenTimer.current = setTimeout(() => openNode(node, 'select'), KEY_OPEN_DELAY_MS)
     }
   }
 
@@ -383,37 +394,37 @@ export function ExplorerTree({
   }
 
   /**
-   * 单击：选中，并按设置在当前标签打开；Ctrl+单击：在新标签打开。目录单击不展开（需求 7）。
-   * 双击时的第二次单击（detail 为 2）不再处理，交给 onRowDoubleClick
+   * 单击：选中，并按设置在当前标签打开（文件为「文件信息」）；Ctrl+单击：在新标签打开（默认查看器）。
+   * 目录单击不展开（需求 7）。双击时的第二次单击（detail 为 2）不再处理，交给 onRowDoubleClick
    */
   const onRowClick = (e: MouseEvent<HTMLDivElement>, node: TreeNode): void => {
     if (e.detail >= 2) return
     // 抽屉的标题：单击 = 展开 / 收起（与箭头相同），不改变选中（被收起分组内的选中项保留）
     if (drawers.includes(node.id)) return toggleNode(node)
     select(workspaceId, node.id)
-    if (e.ctrlKey || e.metaKey) openNode(node, true)
-    else if (selectionOpens) openNode(node)
+    if (e.ctrlKey || e.metaKey) openNode(node, 'newTab')
+    else if (selectionOpens) openNode(node, 'select')
     else cancelKeyOpen()
   }
 
   /**
-   * 双击：可展开的节点（分组、目录）展开 / 折叠；文件与单击相同（不另开标签）——第一次单击已经打开，
-   * 只有设置关闭（单击只选中）时才在这里打开
+   * 双击：可展开的节点（分组、目录）展开 / 折叠；文件在当前标签以默认查看器打开——
+   * 第一次单击已以「文件信息」打开时，同一位置换成默认查看器（不再多记一条历史）
    */
   const onRowDoubleClick = (node: TreeNode): void => {
     // 抽屉的标题由单击切换；双击的第二次不再切换回去
     if (drawers.includes(node.id)) return
     if (node.expandable) toggleNode(node)
-    else if (!selectionOpens) openNode(node)
+    else openNode(node, 'activate')
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     // 只处理树本身获得焦点时的按键：行内控件（「重试」按钮）上的 Enter / ↑↓ 交给控件自己
     if (e.target !== e.currentTarget) return
     const current = nodes[selectedIndex]
-    // Ctrl+Enter：在新标签打开
+    // Ctrl+Enter：在新标签打开（默认查看器）
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
-      if (current) openNode(current, true)
+      if (current) openNode(current, 'newTab')
       e.preventDefault()
       return
     }
@@ -438,11 +449,12 @@ export function ExplorerTree({
         else if (current.parentId !== null) moveTo(indexById.get(current.parentId) ?? 0)
         break
       case 'Enter':
-        // Enter：可展开的节点展开 / 折叠，并立即在当前标签打开（不等防抖）；错误行为重试
+        // Enter：可展开的节点展开 / 折叠，并立即在当前标签打开（不等防抖；文件为默认查看器，同双击）；
+        // 错误行为重试
         if (current?.status === 'error' && current.uri !== null) onRetry(current.uri)
         else if (current) {
           if (current.expandable) toggleNode(current)
-          openNode(current)
+          openNode(current, 'activate')
         }
         break
       case 'F2':
@@ -506,7 +518,7 @@ export function ExplorerTree({
                     style={{ transform: `translateY(${v.start}px)` }}
                     onClick={(e) => onRowClick(e, node)}
                     onDoubleClick={() => onRowDoubleClick(node)}
-                    onMiddleClick={() => openNode(node, true)}
+                    onMiddleClick={() => openNode(node, 'newTab')}
                     onToggle={() => toggleNode(node)}
                     onRetry={() => {
                       if (node.uri !== null) onRetry(node.uri)
@@ -521,7 +533,7 @@ export function ExplorerTree({
           workspaceId={workspaceId}
           node={menuNode}
           finalFocus={scrollRef}
-          onOpenInNewTab={() => menuNode && openNode(menuNode, true)}
+          onOpenInNewTab={() => menuNode && openNode(menuNode, 'newTab')}
           onNewGroup={() => openNewGroup(menuNode)}
           onAddPaths={(kind) => void addPaths(kind)}
           onRename={() => menuNode && openRename(menuNode)}
