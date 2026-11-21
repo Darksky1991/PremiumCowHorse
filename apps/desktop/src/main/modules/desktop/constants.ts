@@ -23,6 +23,9 @@ export const DESKTOP_TIMINGS = {
   keepLogons: 10,
   /** query-session-end 后冻结现场、暂停自动保存的时长；到期视为关机被取消 */
   sessionFreezeMs: 300_000,
-  /** 发出 desktop.exitRequested 后等待渲染端回应的上限；到期按「全部保存并退出」处理 */
-  exitPromptTimeoutMs: 30_000
+  /**
+   * 发出 desktop.exitRequested 后等待 desktop.exitShown（渲染端已显示对话框）的上限；
+   * 到期按「全部保存并退出」处理。收到 exitShown 后无限等待用户回答
+   */
+  exitShownTimeoutMs: 10_000
 } as const

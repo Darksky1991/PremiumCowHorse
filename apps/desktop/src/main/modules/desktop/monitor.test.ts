@@ -154,7 +154,8 @@ describe('DesktopMonitor', () => {
     t.handlers.office = () => Promise.resolve([doc('C:\\a.docx')])
     await t.m.refreshAll()
     t.handlers.office = () => Promise.reject(new Error('modal dialog'))
-    await t.m.refreshAll()
+    // 采集器失败不影响返回值：枚举成功即为 true
+    expect(await t.m.refreshAll()).toBe(true)
     expect(t.live.current()).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(120_000)
     expect(t.live.retained(Date.now())).toHaveLength(1)
@@ -281,10 +282,11 @@ describe('DesktopMonitor', () => {
   it('refreshAll 时枚举抛错：不调用任何采集器，已有项目不受影响', async () => {
     const t = setup()
     t.handlers.office = () => Promise.resolve([doc('C:\\a.docx')])
-    await t.m.refreshAll()
+    expect(await t.m.refreshAll()).toBe(true)
     t.setListError(new Error('koffi boom'))
     t.handlers.office = () => Promise.resolve([])
-    await t.m.refreshAll()
+    // 枚举失败：返回 false（调用方据此不把这一轮当作完整读取）
+    expect(await t.m.refreshAll()).toBe(false)
     expect(t.calls.office).toHaveLength(1)
     expect(t.m.unreadable()).toEqual([])
     expect(t.live.current()).toHaveLength(1)

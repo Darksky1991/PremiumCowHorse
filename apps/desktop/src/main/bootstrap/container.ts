@@ -260,12 +260,14 @@ function createDesktop(deps: {
     askOnExit: () => settings.get('desktop.askOnExit'),
     setAskOnExit: (value) => settings.set({ 'desktop.askOnExit': value }),
     rendererAlive: () => windows.mainRendererAlive(),
+    focusMain: () => windows.focusMain(),
     requestExit: () => windows.sendToMain('desktop.exitRequested', {}),
+    notifyCancelled: () => windows.sendToMain('desktop.exitCancelled', {}),
     closeMain: () => windows.closeMain(),
     saveExit: (save, keys) => desktop.saveExit(save, keys),
     currentKeys: () => desktop.current().items.map((i) => i.key),
     now: Date.now,
-    promptTimeoutMs: T.exitPromptTimeoutMs,
+    shownTimeoutMs: T.exitShownTimeoutMs,
     sessionFreezeMs: T.sessionFreezeMs,
     logger
   })

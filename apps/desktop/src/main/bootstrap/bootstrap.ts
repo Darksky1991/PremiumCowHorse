@@ -119,7 +119,8 @@ function wireDesktop(c: Container): void {
       c.logger.info(`[desktop] session-end (${event.reasons.join(',')})`)
       c.exitGuard.sessionEnded()
       c.desktop.sessionEnded()
-    }
+    },
+    rendererReset: () => c.exitGuard.rendererReset()
   })
 }
 

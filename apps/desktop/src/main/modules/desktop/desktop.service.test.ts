@@ -47,12 +47,15 @@ async function setup(
   dbs.push(db)
   const repo = new DesktopSnapshotRepo(db, 'PC')
   const live = new LiveState({ removeAfterMs: 60_000 })
-  /** 假 monitor：refreshAll 把 initial 作为 office 类的结果交给 live */
+  /** 假 monitor：refreshAll 把 initial 作为 office 类的结果交给 live；enumerateOk 为假时模拟枚举失败 */
+  const state = { enumerateOk: true }
   const monitor = {
     start: vi.fn(),
     stop: vi.fn(),
     refreshAll: vi.fn(async () => {
+      if (!state.enumerateOk) return false
       live.apply('office', opts.initial ?? [], Date.now())
+      return true
     }),
     unreadable: vi.fn((): DesktopCollector[] => [])
   } satisfies DesktopMonitorLike
@@ -77,7 +80,7 @@ async function setup(
   const setOpen = (items: DesktopItem[]): boolean => live.apply('office', items, Date.now())
   const autos = async (): Promise<{ id: number; itemCount: number; logonAt: number }[]> =>
     (await repo.list()).filter((s) => s.kind === 'auto')
-  return { db, repo, live, monitor, restore, emit, logger, service, setOpen, autos }
+  return { db, repo, live, monitor, state, restore, emit, logger, service, setOpen, autos }
 }
 
 describe('DesktopService', () => {
@@ -274,6 +277,38 @@ describe('DesktopService', () => {
     await t.service.start()
     expect(t.logger.warn).toHaveBeenCalledWith(expect.stringContaining('wts failed'))
     expect((await t.autos())[0]!.logonAt).toBe(T0)
+    t.service.stop()
+  })
+
+  it('恢复候选计算失败：记 warn、候选为 null，照常启动监控并写 auto', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    vi.spyOn(t.repo, 'listByLogon').mockRejectedValueOnce(new Error('db locked'))
+    await t.service.start()
+    expect(t.logger.warn).toHaveBeenCalledWith(expect.stringContaining('db locked'))
+    expect(t.monitor.start).toHaveBeenCalledTimes(1)
+    expect(await t.autos()).toHaveLength(1)
+    expect(await t.service.restorePrompt()).toBeNull()
+    t.service.stop()
+  })
+
+  it('首次完整读取因枚举失败：不写第一份 auto（saveAutoNow 也不写），之后的 tick 读取成功后再写', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    t.state.enumerateOk = false
+    await t.service.start()
+    expect(await t.autos()).toHaveLength(0)
+    await t.service.saveAutoNow()
+    expect(await t.autos()).toHaveLength(0)
+    // 下一次 tick：仍失败 → 不写
+    await vi.advanceTimersByTimeAsync(AUTO_MS)
+    expect(await t.autos()).toHaveLength(0)
+    expect(t.monitor.refreshAll).toHaveBeenCalledTimes(2)
+    // 再下一次 tick：成功 → 写出完整的现场
+    t.state.enumerateOk = true
+    await vi.advanceTimersByTimeAsync(AUTO_MS)
+    expect((await t.autos()).map((s) => s.itemCount)).toEqual([1])
+    // 之后不再每次 tick 都完整读取
+    await vi.advanceTimersByTimeAsync(AUTO_MS)
+    expect(t.monitor.refreshAll).toHaveBeenCalledTimes(3)
     t.service.stop()
   })
 

@@ -265,6 +265,8 @@ export const ipcContract = {
   ),
   /** 回应 desktop.exitRequested：取消退出 */
   'desktop.cancelExit': route<void>()(z.void()),
+  /** 渲染端已显示退出对话框（收到 desktop.exitRequested 后调用）；之后主进程不再超时 */
+  'desktop.exitShown': route<void>()(z.void()),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -318,10 +320,13 @@ export interface IpcEvents {
   /** 桌面记录有变化：current = 当前现场，snapshots = 快照列表（写入 / 改名 / 删除）。广播 */
   'desktop.changed': { scope: 'current' | 'snapshots' }
   /**
-   * 用户关闭主窗口、需要询问是否保存（只发给主窗口）：渲染端回应 desktop.exit 或 desktop.cancelExit；
-   * 30 秒内没有回应按「全部保存并退出」处理
+   * 用户关闭主窗口、需要询问是否保存（只发给主窗口；询问中再次关闭会重发）：渲染端显示对话框后立即调用
+   * desktop.exitShown，再以 desktop.exit 或 desktop.cancelExit 回应。10 秒内没有 exitShown 按「全部保存并退出」
+   * 处理；收到 exitShown 后无限等待。页面重新加载 / 渲染进程退出时询问作废
    */
   'desktop.exitRequested': Record<string, never>
+  /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
+  'desktop.exitCancelled': Record<string, never>
 }
 export type IpcEventName = keyof IpcEvents
 

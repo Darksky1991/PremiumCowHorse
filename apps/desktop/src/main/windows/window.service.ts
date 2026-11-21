@@ -18,6 +18,8 @@ export interface MainWindowHooks {
   querySessionEnd?: (event: Electron.WindowSessionEndEvent) => void
   /** Windows 的会话结束 */
   sessionEnd?: (event: Electron.WindowSessionEndEvent) => void
+  /** 主窗口的页面重新开始加载（主框架的跨文档导航，含重新加载）或渲染进程退出 */
+  rendererReset?: () => void
 }
 
 /**
@@ -55,6 +57,11 @@ export class WindowService {
     win.on('close', (e) => this.hooks.close?.(e))
     win.on('query-session-end', (e) => this.hooks.querySessionEnd?.(e))
     win.on('session-end', (e) => this.hooks.sessionEnd?.(e))
+    // did-start-loading 不带框架信息，改用 did-start-navigation 只取主框架的跨文档导航
+    win.webContents.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument) this.hooks.rendererReset?.()
+    })
+    win.webContents.on('render-process-gone', () => this.hooks.rendererReset?.())
     win.on('closed', () => {
       this.main = null
     })

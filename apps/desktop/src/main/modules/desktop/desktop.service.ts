@@ -110,14 +110,24 @@ export class DesktopService {
       this.d.logger.info('desktop: monitoring disabled on this platform')
       return
     }
-    this.candidate = pickRestoreCandidate(await this.d.repo.listByLogon(), this.logon)
+    try {
+      this.candidate = pickRestoreCandidate(await this.d.repo.listByLogon(), this.logon)
+    } catch (e) {
+      // 取不到候选只影响恢复提示，监控照常启动
+      this.d.logger.warn(`desktop: cannot pick the restore candidate: ${firstLine(e)}`)
+      this.candidate = null
+    }
     if (this.stopped) return
     monitor.start()
-    await monitor.refreshAll()
-    if (this.stopped) return
-    this.ready = true
-    const items = this.d.live.retained(this.d.now())
-    await this.enqueue(() => this.writeAuto(items))
+    if (await monitor.refreshAll()) {
+      if (this.stopped) return
+      this.ready = true
+      const items = this.d.live.retained(this.d.now())
+      await this.enqueue(() => this.writeAuto(items))
+    } else {
+      // 窗口枚举失败：现场不完整，第一份 auto 等之后第一次成功的完整读取（tick 中重试）
+      this.d.logger.info('desktop: first full read failed; the first auto snapshot is deferred')
+    }
     if (this.stopped) return
     this.timer = setInterval(() => this.tick(), this.d.autoSaveMs)
     const unreadable = monitor.unreadable()
@@ -231,10 +241,22 @@ export class DesktopService {
 
   private tick(): void {
     if (this.stopped || this.d.now() < this.pausedUntil) return
-    this.enqueue(async () => {
+    this.autoSave().catch((e: unknown) =>
+      this.d.logger.error(`desktop: auto save failed: ${firstLine(e)}`)
+    )
+  }
+
+  private async autoSave(): Promise<void> {
+    if (!this.ready) {
+      // 启动时的完整读取失败过：先再完整读取一次，成功后才开始写自动记录
+      const monitor = this.d.monitor
+      if (!monitor || !(await monitor.refreshAll()) || this.stopped) return
+      this.ready = true
+    }
+    await this.enqueue(async () => {
       const items = this.d.live.retained(this.d.now())
       if (signatureOf(items) !== this.lastAutoSig) await this.writeAuto(items)
-    }).catch((e: unknown) => this.d.logger.error(`desktop: auto save failed: ${firstLine(e)}`))
+    })
   }
 
   private async writeAuto(items: DesktopItem[]): Promise<void> {

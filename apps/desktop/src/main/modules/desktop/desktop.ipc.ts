@@ -13,6 +13,7 @@ type DesktopChannel =
   | 'desktop.restorePrompt'
   | 'desktop.exit'
   | 'desktop.cancelExit'
+  | 'desktop.exitShown'
 
 /** 桌面记录的 IPC（参数已由路由按契约校验） */
 export function desktopHandlers(
@@ -20,7 +21,7 @@ export function desktopHandlers(
     DesktopService,
     'list' | 'get' | 'current' | 'saveManual' | 'rename' | 'delete' | 'restore' | 'restorePrompt'
   >,
-  exit: Pick<ExitGuard, 'exit' | 'cancel'>
+  exit: Pick<ExitGuard, 'exit' | 'cancel' | 'shown'>
 ): HandlersOf<DesktopChannel> {
   return {
     'desktop.list': async () => desktop.list(),
@@ -32,6 +33,7 @@ export function desktopHandlers(
     'desktop.restore': async ({ snapshotId, itemIds }) => desktop.restore(snapshotId, itemIds),
     'desktop.restorePrompt': async () => desktop.restorePrompt(),
     'desktop.exit': async (input) => exit.exit(input),
-    'desktop.cancelExit': async () => exit.cancel()
+    'desktop.cancelExit': async () => exit.cancel(),
+    'desktop.exitShown': async () => exit.shown()
   }
 }

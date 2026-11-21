@@ -77,14 +77,18 @@ export class DesktopMonitor {
     this.debounce.clear()
   }
 
-  /** 立即对全部类别完整读取一次并等待完成（含失败），不抛错 */
-  async refreshAll(): Promise<void> {
-    if (this.stopped) return
+  /**
+   * 立即对全部类别完整读取一次并等待完成（含失败），不抛错。
+   * 返回窗口枚举是否成功（成功即为 true，个别采集器失败不影响）；已停止或枚举失败为 false
+   */
+  async refreshAll(): Promise<boolean> {
+    if (this.stopped) return false
     // 枚举失败时窗口列表不可信：不采集（不 apply、不 markFailed），各类视同本轮未采集
-    if (this.enumerate() === null) return
+    if (this.enumerate() === null) return false
     // 马上要采集，不必再等已排队的防抖
     for (const c of this.d.collectors) this.cancelDebounce(c.id)
     await Promise.all(this.d.collectors.map((c) => this.collect(c.id)))
+    return !this.stopped
   }
 
   /** 最近一次采集失败的类别 */
