@@ -211,6 +211,8 @@ export function itemsToOffer(
 
 ### Task 5: 窗口枚举与登录时刻（koffi）
 
+> **Task 1 实测（控制者 Ruling，详见 devDoc 台账 33）**：koffi 声明照 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/koffi-spike.cjs`（`WTSINFOW` 为 `WinStationName[32]`、`Domain[17]`、`UserName[21]`；`LogonTime` 取得成功）；pid → 进程路径做缓存（无缓存中位数约 1.9 ms、有缓存约 0.2 ms），缓存在 pid 消失后清除。
+
 **Files:**
 
 - Create: `apps/desktop/src/main/modules/desktop/window-list.ts`（+ `.test.ts`，只测纯函数部分）、`apps/desktop/src/main/modules/desktop/logon.ts`
@@ -245,6 +247,8 @@ export function getLogonTime(): Promise<number> // 毫秒时间戳，取整到�
 
 ### Task 6: 采集器：资源管理器与 Office
 
+> **Task 1 实测（控制者 Ruling）**：Office 不能对顶层窗口取 `OBJID_NATIVEOM`，要对子窗口 `EXCEL7` / `_WwG` / `mdiClass` 取，再 `.Application`，按进程 pid 去重；Word 的 `Documents.Item` 要传 `[ref]`；弹着对话框时调用不抛错而返回 null → **`FullName` 为空即视为该类本轮失败**（reject，交给 `markFailed`）；没有完整路径的文档（未保存 / 保护视图）过滤。可照 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/office-spike.ps1`。Explorer 照 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/explorer-spike.ps1`：主文件夹页内的非窗口子标签（お気に入り / 最近使った 等）要过滤。
+
 **Files:**
 
 - Create: `apps/desktop/src/main/modules/desktop/collectors/types.ts`、`collectors/explorer.ts`（+ `.test.ts`）、`collectors/office.ts`（+ `.test.ts`）、`collectors/scripts.ts`（两段固定 PowerShell 脚本）
@@ -276,6 +280,8 @@ Explorer 脚本输出 `[{ "hwnd": 123, "tabs": ["C:\\a", "::{F874...}"] }]`（�
 
 ### Task 7: 采集器：VS Code 与 Eclipse
 
+> **Task 1 实测（控制者 Ruling）**：`.code-workspace` 窗口的字段是 `workspaceIdentifier.configURIPath`（不是 `workspace.configPath`）；`folder` 为 `file:///c%3A/...`。`storage.json` 只在打开窗口后约 4–9 秒写入、关闭窗口不写，**不能表示现在开着什么**：以可见 Code 窗口的标题为准——标题默认格式 `<活动编辑器> - <根名> - Visual Studio Code`（工作区为 `<名> (Workspace)`，刚启动时只有 `Visual Studio Code`），从标题取根名，与 `storage.json`（`lastActiveWindow` + `openedWindows`）中各项的最后一段（工作区为文件名去掉 `.code-workspace`）匹配，只输出匹配上的项；标题只有 `Visual Studio Code` 或匹配不到的窗口本轮忽略。`state.vscdb` 备用方案删除。可照 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/vscode-spike.ps1`、`.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/vscode-titles.ps1`。Task 8 中 vscode 类的防抖改为 `10_000` ms（等 storage.json 写入）。
+
 **Files:**
 
 - Create: `collectors/vscode.ts`（+ `.test.ts`）、`collectors/eclipse.ts`（+ `.test.ts`），均在 `apps/desktop/src/main/modules/desktop/` 下
@@ -301,7 +307,7 @@ export function parseEclipseWorkspace(
 ): string | null
 ```
 
-VS Code：`target` 取 `folder`（`file:` URI → 本地路径）、`workspace.configPath` 或 `vscode-remote://` 原样；只保留与当前 Code 窗口数相符的条目（取法按 Task 1 Step 3 的结论）；`exe` 取窗口的 `exe`；`bounds` 取状态文件的 `uiState`。Eclipse：`-data <路径>` 优先（只取这一个参数，不保存整串命令行）；没有时取 `<eclipse.exe 所在目录>/configuration/.settings/org.eclipse.ui.ide.prefs` 的 `RECENT_WORKSPACES` 第一项（`\n` 分隔、反斜杠转义按 Java properties 规则还原）。两者读文件只读、读完即释放（`fs.promises.readFile`）。
+VS Code：`target` 取 `folder`（`file:` URI → 本地路径）、`workspaceIdentifier.configURIPath`（URI → 本地路径）或 `vscode-remote://` 原样；只保留与当前 Code 窗口数相符的条目（取法按 Task 1 Step 3 的结论）；`exe` 取窗口的 `exe`；`bounds` 取状态文件的 `uiState`。Eclipse：`-data <路径>` 优先（只取这一个参数，不保存整串命令行）；没有时取 `<eclipse.exe 所在目录>/configuration/.settings/org.eclipse.ui.ide.prefs` 的 `RECENT_WORKSPACES` 第一项（`\n` 分隔、反斜杠转义按 Java properties 规则还原）。两者读文件只读、读完即释放（`fs.promises.readFile`）。
 
 - [ ] **Step 1：写失败的测试**（样例用 Task 1 采到的真实文件，Eclipse 未验证时用按官方格式构造的样例并在台账注明）：`parseVscodeState` — `file:///c%3A/Users/x/proj` → `c:\Users\x\proj`、`.code-workspace` 与 `vscode-remote://` 原样、窗口数为 0 时返回空；`parseEclipseWorkspace` — `-data "C:\ws a"` 与 `-data C:\ws`、只有 prefs 时取第一项、都没有时 null。
 - [ ] **Step 2：运行确认失败**：`pnpm vitest run apps/desktop/src/main/modules/desktop/collectors/vscode.test.ts apps/desktop/src/main/modules/desktop/collectors/eclipse.test.ts` → FAIL。
@@ -310,6 +316,8 @@ VS Code：`target` 取 `folder`（`file:` URI → 本地路径）、`workspace.c
 - [ ] **Step 5：提交**：`git commit -m "feat(desktop): vscode and eclipse collectors"`
 
 ### Task 8: 监控编排
+
+> **控制者 Ruling（Task 1 结果）**：`debounceMs` 可按类别覆盖：`MonitorTimings` 增加 `debounceOverrides: Partial<Record<DesktopCollector, number>>`，vscode 为 `10_000`；测试增加「vscode 标题变化 10 秒后才采集」。
 
 **Files:**
 
@@ -355,6 +363,8 @@ export class DesktopMonitor {
 - [ ] **Step 5：提交**：`git commit -m "feat(desktop): monitor orchestration"`
 
 ### Task 9: 恢复执行
+
+> **Task 1 实测（控制者 Ruling）**：`::{CLSID}` 位置启动 / 导航时都要写成 `shell:::{CLSID}`；新建标签后的初始位置是 `::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}`（主文件夹），据此识别新标签再 `Navigate2`。可照 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/explorer-spike.ps1`、`.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/explorer-clsid.ps1`。测试 / 验证中关闭多标签窗口用 UI Automation `AutomationId = CloseButton` 的 `Invoke`（`WM_CLOSE` 与逐个 `Quit()` 对 3 个标签的窗口无效，见 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/explorer-closetabs.ps1`）。
 
 **Files:**
 
