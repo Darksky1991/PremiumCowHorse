@@ -109,3 +109,15 @@ foreach ($t in [PchOW]::Tops()) {
 }
 if ($out.Count -gt 0) { ConvertTo-Json -InputObject @($out) -Depth 4 -Compress }
 `
+
+/**
+ * Eclipse：输入 PCH_PID（进程号，脚本内先校验为纯数字）。
+ * 只输出该进程的 CommandLine（可能含其他参数，调用方只取 -data，不保存整串）；进程不存在时无输出。
+ */
+export const ECLIPSE_COMMANDLINE_SCRIPT = `
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
+if ($env:PCH_PID -notmatch '^\\d+$') { exit 1 }
+$p = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$env:PCH_PID)
+if ($p -and $p.CommandLine) { $p.CommandLine }
+`
