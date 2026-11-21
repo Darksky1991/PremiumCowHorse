@@ -52,7 +52,7 @@ if ($out.Count -gt 0) { ConvertTo-Json -InputObject @($out) -Depth 4 -Compress }
  * Office：输入 PCH_PIDS（逗号分隔的进程号）。
  * 对可见顶层窗口（XLMAIN / OpusApp / PPTFrameClass）的子窗口（EXCEL7 / _WwG / mdiClass）取 OBJID_NATIVEOM，
  * 再 .Application，按 pid 去重后枚举文档。输出 [{ app, path, readOnly, hwnd }]。
- * 找到子窗口但取不到 Application、或 FullName 为空（弹着对话框）时输出 {"error":"busy"}。无完整路径的文档不输出。
+ * 找到子窗口但取不到 Application、或 FullName 为空（弹着对话框）时输出 {"error":"busy"}。无完整路径的文档、没有可见窗口的 Excel 工作簿（PERSONAL.XLSB 等）不输出。
  */
 export const OFFICE_SCRIPT = `
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -102,7 +102,11 @@ foreach ($t in [PchOW]::Tops()) {
     if ($m[1] -eq 'word') { $ix = [ref]$i; $it = $col.Item($ix) } else { $it = $col.Item($i) }
     $full = $it.FullName
     if ([string]::IsNullOrEmpty($full)) { Busy }
-    if ($m[1] -eq 'excel') { try { if ($it.Windows.Count -eq 0) { continue } } catch {} }
+    if ($m[1] -eq 'excel') {
+      $visible = $false
+      try { foreach ($bw in $it.Windows) { if ($bw.Visible) { $visible = $true; break } } } catch { $visible = $true }
+      if (-not $visible) { continue }
+    }
     if ($full -notmatch '^([A-Za-z]:\\\\|\\\\\\\\|https?://)') { continue }
     $out += [pscustomobject]@{ app = $m[1]; path = [string]$full; readOnly = [bool]$it.ReadOnly; hwnd = $t[0] }
   }
@@ -125,7 +129,7 @@ if ($p -and $p.CommandLine) { $p.CommandLine }
 /**
  * 资源管理器多标签恢复：输入 PCH_TABS（路径的 JSON 数组；`::{CLSID}` 为原样）。
  * 记下现有 Shell 窗口 → 打开第一个路径（CLSID 写成 shell:::{CLSID}）→ 找到新出现的窗口 →
- * 对其余路径逐个点「添加新标签页」（UIA AutomationId = AddButton），对新标签 Navigate2。
+ * 对其余路径逐个点「添加新标签页」（UIA AutomationId = AddButton），对新标签 Navigate2（CLSID 同样加 shell: 前缀：Navigate2 不接受裸 `::{CLSID}`，台账 33 Step 2；与新标签当前路径比较仍用原值）。
  * 每完成一步输出一行 OK（新窗口建好 1 行，每加好一个标签 1 行），因此即便超时被终止，
  * 调用方也能按已收到的行数得知已恢复的标签数；中途出错时停止，不抛错。
  */
@@ -167,7 +171,9 @@ try {
         }
       }
       if (-not $new) { break }
-      if ($new.Path -ne [string]$tabs[$k]) { $new.Obj.Navigate2([string]$tabs[$k]) }
+      $target = [string]$tabs[$k]
+      if ($target.StartsWith('::{')) { $target = 'shell:' + $target }
+      if ($new.Path -ne [string]$tabs[$k]) { $new.Obj.Navigate2($target) }
       Write-Output 'OK'
       Start-Sleep -Milliseconds 300
     }
