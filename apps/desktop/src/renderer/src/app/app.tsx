@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import { builtinPlugins } from '@pch/plugin-builtin'
 import { AddressBar } from '@renderer/features/address-bar'
-import { DesktopView, SnapshotPage } from '@renderer/features/desktop'
+import { DesktopPrompts, DesktopView, SnapshotPage } from '@renderer/features/desktop'
 import { ExplorerView } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
@@ -20,27 +20,30 @@ const plugins = previewPlugins(builtinPlugins)
  */
 export function App(): JSX.Element {
   return (
-    <Shell
-      sidebarViews={{
-        explorer: <ExplorerView />,
-        search: <SearchView />,
-        desktop: <DesktopView />,
-        connections: <SidebarEmptyState view="connections" />
-      }}
-      workspaceSwitcher={<WorkspaceSwitcher />}
-      addressBar={<AddressBar />}
-      tabsArea={
-        <TabsArea
-          renderContent={(tab) => (
-            <PreviewContainer
-              tab={tab}
-              plugins={plugins}
-              renderWorkspaces={(page) => <WorkspacesPage tab={page} />}
-              renderDesktop={(page) => <SnapshotPage tab={page} />}
-            />
-          )}
-        />
-      }
-    />
+    <>
+      <Shell
+        sidebarViews={{
+          explorer: <ExplorerView />,
+          search: <SearchView />,
+          desktop: <DesktopView />,
+          connections: <SidebarEmptyState view="connections" />
+        }}
+        workspaceSwitcher={<WorkspaceSwitcher />}
+        addressBar={<AddressBar />}
+        tabsArea={
+          <TabsArea
+            renderContent={(tab) => (
+              <PreviewContainer
+                tab={tab}
+                plugins={plugins}
+                renderWorkspaces={(page) => <WorkspacesPage tab={page} />}
+                renderDesktop={(page) => <SnapshotPage tab={page} />}
+              />
+            )}
+          />
+        }
+      />
+      <DesktopPrompts />
+    </>
   )
 }

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import type {
   DesktopRestoreResult,
   DesktopSkipReason,
@@ -40,4 +41,29 @@ export function snapshotTitle(
 ): string {
   const label = snapshot.name ?? t(`desktop:${kindKey(snapshot.kind)}`)
   return `${formatSnapshotTime(snapshot.createdAt, language)} ${label}`
+}
+
+/**
+ * 恢复结果的汇总消息（快照页与启动时的恢复对话框共用）：
+ * 全部启动 = success，部分跳过 = info，一项也没启动 = warning
+ */
+export function restoreSummary(
+  result: DesktopRestoreResult,
+  t: TFunction,
+  language: string
+): { level: 'success' | 'info' | 'warning'; message: string } {
+  const skipped = skippedByReason(result)
+  const details = new Intl.ListFormat(language, { style: 'narrow', type: 'unit' }).format(
+    skipped.map(({ reason, count }) => t(`desktop:skipReason.${reason}`, { count }))
+  )
+  const parts = [
+    result.launched > 0
+      ? t('desktop:restored', { count: result.launched })
+      : t('desktop:restoredNone'),
+    ...(skipped.length > 0 ? [t('desktop:skipped', { details })] : [])
+  ]
+  return {
+    level: skipped.length === 0 ? 'success' : result.launched === 0 ? 'warning' : 'info',
+    message: parts.join(' / ')
+  }
 }

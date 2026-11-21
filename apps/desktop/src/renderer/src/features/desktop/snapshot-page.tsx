@@ -14,7 +14,7 @@ import { notify } from '@renderer/stores/messages-store'
 import { onTabRefresh } from '@renderer/stores/tabs-store'
 import { errorCode, errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
-import { formatSnapshotTime, kindKey, skippedByReason, snapshotTitle } from './snapshot-label'
+import { formatSnapshotTime, kindKey, restoreSummary, snapshotTitle } from './snapshot-label'
 
 export interface SnapshotPageProps {
   /** 显示桌面记录页（kind 为 desktop，uri 为 pch-desktop:<快照 id | current>）的标签 */
@@ -111,20 +111,8 @@ function SavedPage({ tab, id }: SnapshotPageProps & { id: number }): JSX.Element
       actionLabel={t('desktop:restoreSelected')}
       onAction={async (ids) => {
         const result = await restoreDesktop(id, ids.map(Number))
-        const skipped = skippedByReason(result)
-        const details = new Intl.ListFormat(language, { style: 'narrow', type: 'unit' }).format(
-          skipped.map(({ reason, count }) => t(`desktop:skipReason.${reason}`, { count }))
-        )
-        const parts = [
-          result.launched > 0
-            ? t('desktop:restored', { count: result.launched })
-            : t('desktop:restoredNone'),
-          ...(skipped.length > 0 ? [t('desktop:skipped', { details })] : [])
-        ]
-        notify(
-          skipped.length === 0 ? 'success' : result.launched === 0 ? 'warning' : 'info',
-          parts.join(' / ')
-        )
+        const { level, message } = restoreSummary(result, t, language)
+        notify(level, message)
       }}
     />
   )

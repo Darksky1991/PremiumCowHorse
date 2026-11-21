@@ -21,7 +21,7 @@
 - PowerShell 脚本是固定字符串，输入只经环境变量（`runPowerShell(script, env, timeoutMs)` 的约定），不拼接任何数据。
 - 恢复只启动快照中由主进程采集的项目：渲染端只传快照 id 与项目 id；可启动的 exe 文件名白名单 `explorer.exe`、`WINWORD.EXE`、`EXCEL.EXE`、`POWERPNT.EXE`、`Code.exe`、`eclipse.exe`（不区分大小写）（设计 5.5）。
 - 不保存整串命令行，只保留恢复所需的部分（设计 5.6）。
-- 数值（设计 5.2–5.4）：窗口扫描 `5000` ms；详情防抖 `2000` ms；完整读取兜底 `300_000` ms；消失后移除 `60_000` ms；自动保存间隔 `300_000` ms；采集器超时 `10_000` ms；恢复项之间 `500` ms；自动记录保留最近 `20` 份 + 最近 `10` 次登录各自的最后一份自动记录。
+- 数值（设计 5.2–5.4）：窗口扫描 `5000` ms；详情防抖 `2000` ms；完整读取兜底 `300_000` ms；消失后移除 `60_000` ms；自动保存间隔 `300_000` ms；采集器超时 `10_000` ms；恢复项之间 `500` ms；快照最多保留 `3` 个可见快照（auto / manual / exit，超过删最旧，恢复候选在本次运行中受保护），每次登录只有一份 auto（原地更新），`exit-none` 只留最新一个；恢复后清空全部快照、`10_000` ms 后重新扫描并写一份 auto（设计第 9 节，需求方 2026-11-22，取代原「20 份 + 10 次登录」）。
 - 快照按机器区分：`machine` = `os.hostname()`，只读写本机的行（与 `launch_capabilities` 同理：`%APPDATA%` 可能漫游）。控制者决定，设计未写，Task 3 并入设计。
 - 只在 Windows 上启用监控；其他平台 `DesktopService` 不启动监控，IPC 照常返回空结果。
 - 分层（`eslint.config.mjs`）：`modules/desktop` 只能依赖 `main-vfs`、`main-infra`、`main-core`、`shared`；不能 import `modules/launcher`。
@@ -517,6 +517,26 @@ export class DesktopService {
 - [ ] **Step 3：实现两个对话框与挂载**。
 - [ ] **Step 4：运行确认通过**：同上命令全部 PASS；`pnpm typecheck`、`pnpm lint`、`pnpm exec prettier --check .` 0；结束后 `Get-Process electron` 为空。
 - [ ] **Step 5：提交**：`git commit -m "feat(desktop): restore prompt, exit dialog and e2e"`
+
+### Task 12b: 需求方反馈——卡片式清单、保留 3 个、恢复后清空并重新扫描
+
+设计第 9 节（2026-11-22 需求方试用反馈）。本任务在 Task 12 之后执行，覆盖 Task 3 / 10 / 11 / 12 中与之冲突的部分。
+
+**Files:**
+
+- Modify: `apps/desktop/src/main/modules/desktop/snapshot.repo.ts`（+ test）、`desktop.service.ts`（+ test）、`constants.ts`；`apps/desktop/src/renderer/src/features/desktop/item-checklist.tsx` 及其使用处（快照页、两个对话框）；三语 locales；`e2e/desktop.spec.ts`
+
+**Interfaces:**
+
+- `DesktopSnapshotRepo`：`prune(keepAuto, keepLogons)` 改为 `prune(keepVisible: number, protectId: number | null): Promise<void>`——可见快照（auto / manual / exit）按 `created_at` 保留最新 `keepVisible` 个，`protectId` 不删且计入；`exit-none` 只留最新一个。新增 `updateAuto(id: number, input: { createdAt: number; items: DesktopItem[] }): Promise<void>`（替换项目与时间）与 `deleteAll(): Promise<void>`（只删本机）。
+- `DesktopService`：每次登录只维护一份 auto（启动时第一次写入后记住其 id，之后 `updateAuto`；该快照被用户删除后下次重新 insert）；每次写入后 `prune(3, 恢复候选 id)`；`restore()` 完成后 `deleteAll()` → 等待 `RESTORE_RESCAN_DELAY_MS = 10_000` → `monitor.refreshAll()` → 写一份新的 auto，并广播 `desktop.changed`（snapshots）。
+- `ItemChecklist`：去掉分组全选；分组标题带软件图标、不可聚焦；项目为卡片（`role="checkbox"` + `aria-checked`，或内含 shadcn Checkbox——二选一，保证键盘 Space / Enter 可切换），选中态有边框与勾选标记；卡片排成响应式网格（窄宽度单列）。接口 `{ items; selected; onChange }` 不变。
+
+- [ ] **Step 1：写失败的测试**：repo——`prune(3, null)` 在 5 个可见 + 2 个 exit-none 下只留最新 3 个可见与最新 1 个 exit-none；`protectId` 为最旧者时它保留且总数仍为 3；`updateAuto` 替换项目；`deleteAll` 不碰别的机器。service——同一登录多次自动保存只有一份 auto；restore 后快照被清空、10 秒后出现一份新的 auto；恢复候选在 prune 中受保护。e2e——用卡片选择（点击卡片切换）替换原勾选框操作；新增「恢复后侧栏只剩一份新的自动快照」。
+- [ ] **Step 2：运行确认失败**：`pnpm vitest run apps/desktop/src/main/modules/desktop/snapshot.repo.test.ts apps/desktop/src/main/modules/desktop/desktop.service.test.ts`；`pnpm build && pnpm test:e2e e2e/desktop.spec.ts` → FAIL。
+- [ ] **Step 3：实现**。
+- [ ] **Step 4：运行确认通过**；`pnpm typecheck`、`pnpm lint`、`pnpm exec prettier --check .`；截图（亮 / 暗各一张快照页）放 SDD 工作区 `shots/`。
+- [ ] **Step 5：提交**：`git commit -m "feat(desktop): card checklist, keep three snapshots and rescan after restore"`
 
 ### Task 13: 实机验证、文档与全量检查
 
