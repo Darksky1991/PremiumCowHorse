@@ -15,6 +15,8 @@ export default {
     themeDark: '深色',
     followSystem: '跟随系统',
     ready: '就绪',
+    messages: '通知 {{count}} 条',
+    messagesRestore: '显示未确认的通知',
     crashTitle: '界面显示时出现问题',
     crashHint: '如果重新加载后仍无法解决，请附上日志文件（main.log）联系负责人。',
     reload: '重新加载',
@@ -113,7 +115,13 @@ export default {
     deleteTitle: '删除“{{name}}”？',
     deleteDescription: '只删除工作区及其条目，不会删除磁盘上的文件或文件夹。',
     delete: '删除',
-    createdNotActivated: '已创建，但未能切换到该工作区'
+    createdNotActivated: '已创建，但未能切换到该工作区',
+    manage: '管理工作区…',
+    listPage: '工作区一览',
+    current: '当前',
+    lastOpened: '上次使用：{{time}}',
+    renameMenu: '重命名…',
+    deleteMenu: '删除…'
   },
   connections: {
     emptyTitle: '还没有远程连接',
@@ -137,7 +145,10 @@ export default {
     back: '后退',
     forward: '前进',
     up: '上一级',
-    refresh: '刷新'
+    refresh: '刷新',
+    viewer: '查看方式',
+    alwaysOpenWith: '.{{ext}} 总是用此查看器打开',
+    copyHint: '单击复制路径'
   },
   tabs: {
     label: '已打开的标签',
@@ -179,6 +190,7 @@ export default {
     FS_TIMEOUT: '没有响应，已中止',
     FS_UNAVAILABLE: '无法访问该位置',
     INDEX_UNAVAILABLE: '索引不可用',
-    DOC_NOT_FOUND: '文档已关闭，请重新打开'
+    DOC_NOT_FOUND: '文档已关闭，请重新打开',
+    LAUNCH_FAILED: '启动失败，请检查关联的应用程序'
   }
 } satisfies Resource

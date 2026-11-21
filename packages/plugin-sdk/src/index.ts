@@ -1,7 +1,9 @@
 import type { ComponentType } from 'react'
 import type { PreviewDocApi } from './doc'
+import type { PreviewWebApi } from './web'
 
 export * from './doc'
+export * from './web'
 
 /**
  * 预览插件 SDK（架构文档第 9 节）。
@@ -93,10 +95,40 @@ export interface PreviewPluginManifest {
   handlesMissing?: boolean
 }
 
+/**
+ * Office 等文件的打开方式（与 @pch/shared 的同名类型结构相同，宿主赋值保证一致）。
+ * 插件只看 mode，不关心 via（实现手段）。
+ */
+export type LaunchMode = 'edit' | 'readOnly' | 'protectedView' | 'newFromFile'
+
+export type LaunchVia =
+  { type: 'verb'; verb: string } | { type: 'switch'; exe: string; args: string[] }
+
+export interface LaunchOption {
+  mode: LaunchMode
+  via: LaunchVia
+}
+
+export interface LaunchCapabilities {
+  /** 不含点的小写扩展名 */
+  ext: string
+  /** 关联程序的文件描述（如 Microsoft Excel）；检测不到为 null（宿主未保证不是空串，插件按空处理） */
+  appName: string | null
+  /** 只包含检测到的方式，按显示顺序 */
+  options: LaunchOption[]
+}
+
 export type ToastType = 'info' | 'success' | 'warning' | 'error'
 
-/** PreviewHost.tabs.viewAs 的查看方式 */
-export type ViewAsMode = 'text' | 'info'
+/** PreviewHost.tabs.candidates 的一项：可用于当前资源的查看器 */
+export interface ViewerCandidate {
+  /** 插件 id */
+  id: string
+  /** 显示名（已按当前语言翻译） */
+  name: string
+  /** 是否为当前显示的查看器 */
+  current: boolean
+}
 
 /** 插件可读取的应用设置（只读，键与应用设置相同） */
 export interface HostSettings {
@@ -147,15 +179,22 @@ export interface PreviewHost {
      */
     onRefresh(listener: () => void): () => void
     /**
-     * 本标签改用另一种方式查看当前资源（按标签的临时状态，导航到其他位置后恢复自动选择）：
-     * text = 文本插件（pch.preview.text），info = 文件信息（fallback 插件）
+     * 本标签改用另一个查看器查看当前资源（按标签、按位置的选择，进入历史；导航到其他位置后恢复自动选择）。
+     * pluginId 不在 candidates() 中时不做任何事
      */
-    viewAs(mode: ViewAsMode): void
-    /** 该查看方式是否可用（对应的插件已注册、资源是文件）；不可用时 viewAs 不做任何事 */
-    canViewAs(mode: ViewAsMode): boolean
+    viewWith(pluginId: string): void
+    /** 可用于当前资源的查看器（按注册表的优先顺序，最后是文件信息）；含当前查看器（current） */
+    candidates(): ViewerCandidate[]
+    /**
+     * 本标签当前位置由用户选定的查看器（地址栏的查看器菜单、viewWith、资源树单击打开的「文件信息」等）；
+     * 自动选择时为 null。调用时读取最新状态
+     */
+    selectedViewer(): string | null
   }
   /** 文本文档（分页读取）；自动刷新由宿主负责 */
   doc: PreviewDocApi
+  /** 浏览器视图（本地 HTML、图片、PDF；Markdown）：占位元素 + 宿主管理的原生视图（web.ts） */
+  web: PreviewWebApi
   /** 系统操作：失败时由宿主提示错误，Promise 不会拒绝 */
   system: {
     revealInOs(uri: string): void
@@ -163,6 +202,12 @@ export interface PreviewHost {
     copyPath(uri: string): Promise<void>
     /** 用系统关联的应用打开；可执行类扩展名由宿主先弹确认框，取消时不打开 */
     openWithSystem(uri: string): Promise<void>
+    /** 该文件关联程序提供的打开方式（按扩展名缓存）；失败时宿主提示错误并返回 null */
+    getLaunchCapabilities(uri: string): Promise<LaunchCapabilities | null>
+    /** 按打开方式启动本机应用；失败时宿主提示错误，Promise 不拒绝 */
+    launch(uri: string, mode: LaunchMode): Promise<void>
+    /** 清除检测缓存（之后的 getLaunchCapabilities 重新检测） */
+    redetectLaunchCapabilities(): Promise<void>
   }
   ui: {
     toast(message: string, type?: ToastType): void

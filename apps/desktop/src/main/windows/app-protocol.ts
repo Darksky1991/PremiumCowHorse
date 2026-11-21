@@ -11,7 +11,19 @@ export function registerPrivilegedSchemes(): void {
     {
       scheme: APP_SCHEME,
       privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true }
-    }
+    },
+    // 浏览器视图（modules/web）：pch-web 提供范围内的本地文件，pch-asset 提供 Markdown 查看脚本。
+    // 处理器只注册在浏览器视图的会话上（persist:pch-web）
+    ...['pch-web', 'pch-asset'].map((scheme) => ({
+      scheme,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        stream: true
+      }
+    }))
   ])
 }
 

@@ -74,12 +74,12 @@ test.describe('tabs opened from the explorer tree', () => {
       await expect(tabs(page)).toHaveText(['案件'])
       await expect(backButton(page)).toBeDisabled()
 
-      // 单击文件：在当前标签打开（进入历史，后退回到目录）
+      // 单击文件：在当前标签打开（进入历史，后退回到目录）；查看器的区别见下一个用例
       await tree.getByRole('treeitem', { name: 'README.md' }).click()
       await expect(tabs(page)).toHaveText(['README.md'])
       await backButton(page).click()
       await expect(tabs(page)).toHaveText(['案件'])
-      // 文件的双击与单击相同：不另开标签
+      // 文件的双击也在当前标签打开：不另开标签
       await tree.getByRole('treeitem', { name: 'メモ.txt' }).dblclick()
       await expect(tabs(page)).toHaveText(['メモ.txt'])
 
@@ -141,6 +141,99 @@ test.describe('tabs opened from the explorer tree', () => {
     }
   })
 
+  test('file nodes: a single click / arrow stop shows file info in the current tab (nothing if already shown), a double click / Enter the default viewer, Ctrl+click / middle / Ctrl+Enter a new tab', async () => {
+    writeFileSync(path.join(project, 'メモ2.txt'), 'memo2')
+    writeFileSync(path.join(project, 'メモ3.txt'), 'memo3')
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      const item = (name: string): Locator => tree.getByRole('treeitem', { name, exact: true })
+      const panel = page.getByRole('tabpanel')
+      const info = panel.getByRole('region', { name: 'File info' })
+      const text = panel.getByRole('region', { name: 'File content' })
+      const forwardButton = page
+        .getByRole('navigation', { name: 'Address bar' })
+        .getByRole('button', { name: 'Forward', exact: true })
+      await toggleRow(item('案件'))
+
+      // 单击文件：当前标签（没有标签时新建）以「文件信息」打开，不是默认的文本查看器
+      await item('メモ.txt').click()
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(info).toBeVisible()
+      await expect(text).toHaveCount(0)
+      // 用户选定的「文件信息」：文件有预览器，不显示「无法预览」
+      await expect(info).not.toContainText("can't be previewed")
+
+      // 双击：同一位置换成默认查看器（第一次单击已打开，不再多记一条历史）
+      await item('メモ.txt').dblclick()
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(backButton(page)).toBeDisabled()
+
+      // 当前标签已在显示该文件：单击什么都不做（不切回文件信息、不进历史）
+      await item('メモ.txt').click()
+      await page.waitForTimeout(300)
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+      await expect(backButton(page)).toBeDisabled()
+
+      // 单击另一个文件：当前标签以文件信息打开并进入历史；后退 / 前进恢复当时的查看器
+      await item('README.md').click()
+      await expect(tabs(page)).toHaveText(['README.md'])
+      await expect(info).toBeVisible()
+      await backButton(page).click()
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(text).toBeVisible()
+      await forwardButton.click()
+      await expect(tabs(page)).toHaveText(['README.md'])
+      await expect(info).toBeVisible()
+
+      // ↓ 停留：当前标签以文件信息打开（防抖后）；Enter：同一位置换成默认查看器
+      await tree.focus()
+      await page.keyboard.press('ArrowDown')
+      await expect(item('メモ.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(info).toBeVisible()
+      await page.keyboard.press('Enter')
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+
+      // ↑ 后立即 ↓ 回到正在显示的文件并停留：什么都不做（仍是默认查看器）
+      await page.keyboard.press('ArrowUp')
+      await page.keyboard.press('ArrowDown')
+      await page.waitForTimeout(800)
+      await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(text).toBeVisible()
+
+      // Ctrl+Enter：新标签、默认查看器（取消 ↓ 的防抖打开）
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Control+Enter')
+      await expect(tabs(page)).toHaveText(['メモ.txt', 'メモ2.txt'])
+      await expect(tab(page, 'メモ2.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+
+      // Ctrl+单击：新标签、默认查看器
+      await item('メモ3.txt').click({ modifiers: ['Control'] })
+      await expect(tabs(page)).toHaveText(['メモ.txt', 'メモ2.txt', 'メモ3.txt'])
+      await expect(tab(page, 'メモ3.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+
+      // 中键：新标签、默认查看器
+      await toggleRow(item('設計書'))
+      await item('v1.txt').click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['メモ.txt', 'メモ2.txt', 'メモ3.txt', 'v1.txt'])
+      await expect(tab(page, 'v1.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(text).toBeVisible()
+      await expect(info).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
+
   test('× button, middle click and Ctrl+W close tabs; closing the last one shows the welcome page', async () => {
     const { app, page } = await launchFast(userData)
     try {
@@ -174,7 +267,7 @@ test.describe('tabs opened from the explorer tree', () => {
     }
   })
 
-  test('with explorer.singleClickPreview off a single click and the arrow keys only select; Enter and a file double click open', async () => {
+  test('with explorer.singleClickPreview off a single click and the arrow keys only select; Enter and a file double click open with the default viewer', async () => {
     const { app, page } = await launchFast(userData)
     try {
       await data(page, 'settings.set', { 'explorer.singleClickPreview': false })
@@ -197,10 +290,13 @@ test.describe('tabs opened from the explorer tree', () => {
       await expect(page.getByRole('tablist')).toHaveCount(0)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
-      // Enter 打开（没有标签时新建）；文件的双击在当前标签打开
+      // Enter 打开（没有标签时新建，默认查看器）；文件的双击在当前标签打开
+      const panel = page.getByRole('tabpanel')
       await memo.click()
       await page.keyboard.press('Enter')
       await expect(tabs(page)).toHaveText(['メモ.txt'])
+      await expect(panel.getByRole('region', { name: 'File content' })).toBeVisible()
+      await expect(panel.getByRole('region', { name: 'File info' })).toHaveCount(0)
       await readme.dblclick()
       await expect(tabs(page)).toHaveText(['README.md'])
     } finally {

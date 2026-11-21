@@ -15,6 +15,8 @@ export default {
     themeDark: 'Dark',
     followSystem: 'System',
     ready: 'Ready',
+    messages: 'Notifications: {{count}}',
+    messagesRestore: 'Show unread notifications',
     crashTitle: 'Something went wrong while displaying this window',
     crashHint: 'If reloading does not help, contact support and attach the log file (main.log).',
     reload: 'Reload',
@@ -119,7 +121,13 @@ export default {
     deleteDescription:
       'Only the workspace and its entries are deleted. This does not delete any files or folders on disk.',
     delete: 'Delete',
-    createdNotActivated: 'Workspace created, but switching to it failed'
+    createdNotActivated: 'Workspace created, but switching to it failed',
+    manage: 'Manage workspaces…',
+    listPage: 'Workspaces',
+    current: 'Current',
+    lastOpened: 'Last opened {{time}}',
+    renameMenu: 'Rename…',
+    deleteMenu: 'Delete…'
   },
   connections: {
     emptyTitle: 'No remote connections yet',
@@ -143,7 +151,10 @@ export default {
     back: 'Back',
     forward: 'Forward',
     up: 'Up one level',
-    refresh: 'Refresh'
+    refresh: 'Refresh',
+    viewer: 'View as',
+    alwaysOpenWith: 'Always open .{{ext}} with this',
+    copyHint: 'Click to copy the path'
   },
   tabs: {
     label: 'Open tabs',
@@ -187,6 +198,7 @@ export default {
     FS_TIMEOUT: 'Stopped because there was no response',
     FS_UNAVAILABLE: 'The location is unavailable',
     INDEX_UNAVAILABLE: 'The index is unavailable',
-    DOC_NOT_FOUND: 'The document was closed. Open it again'
+    DOC_NOT_FOUND: 'The document was closed. Open it again',
+    LAUNCH_FAILED: 'Could not launch the app. Check the associated application'
   }
 } satisfies Resource

@@ -1,4 +1,6 @@
-import { app } from 'electron'
+import path from 'node:path'
+import { hostname } from 'node:os'
+import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
 import { resolveLanguage } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
@@ -17,6 +19,23 @@ import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
+import { LaunchCapabilitiesRepo } from '../modules/launcher/launch-capabilities.repo'
+import { LauncherService } from '../modules/launcher/launcher.service'
+import { fakeRunPowerShell } from '../modules/launcher/fake-run'
+import { runPowerShell } from '../modules/launcher/powershell'
+import { ScopeTable } from '../modules/web/scope'
+import { markdownShell, MARKDOWN_ASSET_BASE } from '../modules/web/markdown-shell'
+import {
+  createAssetProtocolHandler,
+  createWebProtocolHandler,
+  type AssetSource
+} from '../modules/web/web-protocol'
+import { WebViewManager } from '../modules/web/web-view-manager'
+import {
+  configureWebSession,
+  createWebContentsView,
+  WEB_PARTITION
+} from '../modules/web/web-session'
 
 export interface Container {
   paths: AppPaths
@@ -30,6 +49,8 @@ export interface Container {
   documents: DocumentService
   i18n: i18n
   windows: WindowService
+  web: WebViewManager
+  launcher: LauncherService
 }
 
 /**
@@ -75,5 +96,59 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     preferredLanguage: () => resolveLanguage(settings.get('general.language'), app.getLocale())
   })
 
-  return { paths, logger, db, bus, settings, workspaces, vfs, scanner, documents, i18n, windows }
+  // 浏览器视图（doc 第 15 节）：专用会话 + pch-web 协议（范围内只读）；视图归属窗口，事件只发给所属窗口
+  const webScopes = new ScopeTable()
+  const webSession = session.fromPartition(WEB_PARTITION)
+  const web = new WebViewManager({
+    createView: (events) => createWebContentsView(webSession, events),
+    send: (owner, event, payload) => windows.sendTo(owner, event, payload),
+    scopes: webScopes,
+    openExternal: (url) => {
+      shell.openExternal(url).catch((e: unknown) => logger.warn(`[web] openExternal ${url}`, e))
+    },
+    logger
+  })
+  // Markdown 查看脚本（pch-asset）：生产读 out/web-assets/markdown；开发模式代理到 renderer dev server（台账 S9）
+  const devServer = /^https?:/.test(rendererUrl) ? rendererUrl : undefined
+  const viewerEntry = path.join(paths.webAssets, '../../../src/web-assets/markdown/main.ts')
+  const assetSource: AssetSource = devServer
+    ? { kind: 'dev', origin: devServer, fetch: (url) => net.fetch(url) }
+    : { kind: 'files', root: paths.webAssets }
+  const viewerShell = devServer
+    ? markdownShell({ script: `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}` })
+    : markdownShell()
+  configureWebSession(webSession, {
+    handler: createWebProtocolHandler({ scopes: webScopes, vfs, markdownShell: viewerShell }),
+    assetHandler: createAssetProtocolHandler(assetSource),
+    onDownload: (id) => web.notifyContents(id, 'download'),
+    logger
+  })
+
+  const launcher = new LauncherService({
+    // 测试用的假 run：打包后的应用绝不启用（与 PCH_E2E_CRASH_PLUGIN 相同，只在未打包时读取环境变量）
+    run:
+      !app.isPackaged && process.env.PCH_E2E_FAKE_LAUNCHER === '1'
+        ? fakeRunPowerShell
+        : runPowerShell,
+    vfs,
+    logger,
+    // 机器标识用主机名：数据库随漫游配置文件到别的机器时不沿用那台机器的检测结果
+    repo: new LaunchCapabilitiesRepo(db, hostname())
+  })
+
+  return {
+    paths,
+    logger,
+    db,
+    bus,
+    settings,
+    workspaces,
+    vfs,
+    scanner,
+    documents,
+    i18n,
+    windows,
+    web,
+    launcher
+  }
 }

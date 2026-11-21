@@ -35,7 +35,21 @@ describe('address bar commands', () => {
     expect(
       keyCommand(key('ArrowRight', { alt: true, shift: true }), { editable: false, modal: false })
     ).toBeNull()
-    expect(keyCommand(key('ArrowUp', { alt: true }), { editable: false, modal: false })).toBeNull()
+    expect(
+      keyCommand(key('ArrowDown', { alt: true }), { editable: false, modal: false })
+    ).toBeNull()
+  })
+
+  it('Alt+↑ goes up one level, except while typing (Alt+↑ belongs to the text field / select there)', () => {
+    expect(keyCommand(key('ArrowUp', { alt: true }), { editable: false, modal: false })).toBe('up')
+    expect(keyCommand(key('ArrowUp', { alt: true }), { editable: true, modal: false })).toBeNull()
+    expect(keyCommand(key('ArrowUp'), { editable: false, modal: false })).toBeNull()
+    expect(
+      keyCommand(key('ArrowUp', { alt: true, shift: true }), { editable: false, modal: false })
+    ).toBeNull()
+    expect(
+      keyCommand(key('ArrowUp', { alt: true, ctrl: true }), { editable: false, modal: false })
+    ).toBeNull()
   })
 
   it('F5 refreshes unless focus is in a text field; modified F5 is not a command', () => {
@@ -58,6 +72,7 @@ describe('address bar commands', () => {
     expect(keyCommand(key('ArrowLeft', { alt: true }), modal)).toBeNull()
     expect(keyCommand(key('ArrowRight', { alt: true }), modal)).toBeNull()
     expect(keyCommand(key('F5'), modal)).toBeNull()
+    expect(keyCommand(key('ArrowUp', { alt: true }), modal)).toBeNull()
     expect(keyCommand(key('ArrowLeft', { alt: true }), { editable: true, modal: true })).toBeNull()
     expect(mouseCommand(3, true)).toBeNull()
     expect(mouseCommand(4, true)).toBeNull()

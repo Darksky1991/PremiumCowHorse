@@ -154,3 +154,43 @@
 - 原因：electron-vite 只是 `apps/desktop` 的依赖，根目录的 `node_modules/.bin` 中没有它，npx 便从 npm 下载了一份到 npx 缓存中运行，那里找不到 electron。
 - 解决：`pnpm --filter @pch/desktop exec electron-vite build`（只构建、不做类型检查；完整构建用 `pnpm build`）。
 - 预防：工作区包的命令用 `pnpm --filter <包> exec`，不在根目录用 npx 调用只属于某个包的工具（npx 会静默下载，也绕过了锁定的版本）。
+
+### Windows PowerShell 5.1 的 `Start-Process` 没有 `-LiteralPath`；`-FilePath` 会做通配符解析而打开别的文件
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S4）`Start-Process -LiteralPath $env:PCH_TARGET -Verb …` 报 `A parameter cannot be found that matches parameter name 'LiteralPath'`。改用 `-FilePath` 后，同目录有 `見積[1] 案.xlsx` 与 `見積1 案.xlsx` 时，传前者打开的是后者。
+- 原因：5.1 的 `Start-Process` 参数集只有 `FilePath`（`(Get-Command Start-Process).ParameterSets` 可确认），且 `-FilePath` 按 PowerShell 路径规则解析，`[1]` 被当作通配符字符类。
+- 解决：`$si = New-Object System.Diagnostics.ProcessStartInfo; $si.FileName = $env:PCH_TARGET; $si.Verb = $env:PCH_VERB; $si.UseShellExecute = $true; [void][System.Diagnostics.Process]::Start($si)`（无通配符语义，已验证打开正确的文件）；或 `-FilePath ([WildcardPattern]::Escape($env:PCH_TARGET))`。
+- 预防：PowerShell 中处理用户文件路径时一律避免依赖通配符解析的参数；文件名含 `[` `]` 的用例要进测试。
+
+### Office 的 `OpenAsReadOnly` verb 实际以编辑模式打开；`Open` verb 可能弹出「选择应用」对话框
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S4，本机即点即用版 Office16）`Start-Process -Verb OpenAsReadOnly` 打开 `.xlsx` / `.docx` 后标题没有「只读」，同目录出现所有者文件 `~$…`；`-Verb Open`（或不带 verb、资源管理器双击、`shell.openPath`）弹出系统的「选择一个应用以打开此 .xlsx 文件」对话框而不是直接启动 Excel / Word。
+- 原因：注册表中 `OpenAsReadOnly` 的命令是 `EXCEL.EXE /h "%1"` / `WINWORD.EXE /h /n "%1"`，实测以编辑模式打开（`/h` 的语义未深究；Excel 的只读开关是 `/r`，实测有效；Word 没有对应开关）。「选择应用」对话框：本机 `.xlsx` / `.docx` 下没有 `UserChoice`（只有 `OpenWithList` / `OpenWithProgids`）——推测是系统因此要求用户选择默认应用，未深究。
+- 解决：判断打开模式用「是否出现 `~$` 所有者文件」（对照实验：编辑模式出现、只读 / 保护视图不出现）。只读需求改用 `ViewProtected`（保护视图，实测只读）；`New` verb 是「以该文件为蓝本新建」（实测两种文件都成立）。
+- 预防：verb 的名字不等于行为，Office 相关的功能要在真机上按「标题 + `~$` 文件」验证；`UserChoiceLatest` 在本机存在（`.html` / `.pdf` / `.txt` 等），`.pdf` 的 `UserChoice`（`ChromePDF`）与 `UserChoiceLatest\ProgId`（`MSEdgePDF`）不一致时，系统实际采用 `UserChoice`（`AssocQueryString(ASSOCSTR_PROGID)` 确认）。
+
+### PowerShell 5.1 执行无 BOM 的 UTF-8 `.ps1`：中文注释吞掉下一行，参数变成 `$null`
+
+- 日期：2026-11-20
+- 症状：脚本第一行是中文注释、第二行是 `param(...)`，执行时报 `Cannot bind argument to parameter 'Path' because it is null`，错误行号比文件里少一行。
+- 原因：Windows PowerShell 5.1 按系统 ANSI 代码页（cp932）读取没有 BOM 的脚本，UTF-8 的中文字节被误解码，注释行吞掉了换行，`param` 行成了注释的一部分。
+- 解决：`.ps1` 只写 ASCII（注释用英文），或保存为带 BOM 的 UTF-8；短命令直接用 `-Command` 传入。
+- 预防：由工具（Bash heredoc、Write）生成的 `.ps1` 默认无 BOM，写成 ASCII。
+
+### Windows PowerShell 5.1：`ConvertFrom-Json` 对 JSON 数组整体输出一个对象，`@()` 不会展开
+
+- 日期：2026-11-20
+- 症状：（M2 Task 9）启动脚本用 `$list = @(ConvertFrom-Json -InputObject $env:PCH_ARGS)` 再 `ForEach-Object` 给每个参数加引号，结果参数没有被加引号，Excel 把路径在空格处截断（弹出「找不到 …\sample」），而同样逻辑在 `.ps1` 文件中用 `@('/r', '…')` 数组是对的。
+- 原因：5.1 的 `ConvertFrom-Json` 把 JSON 数组作为**一个** `Object[]` 写出，`@()` 只包一层，`$list` 变成「只有一个元素（数组）」，`ForEach-Object` 的 `$_` 是整个数组。
+- 解决：`foreach ($x in (ConvertFrom-Json …)) { $list += [string]$x }`（`foreach` 会遍历数组本身，5.1 / 7 都适用）。
+- 预防：在 PowerShell 中处理 JSON 数组一律用 `foreach` 遍历；脚本逻辑要在真实 PowerShell 上跑一遍（见 `detect-script.test.ts`），不要只看字符串。另：Excel 把**加了引号的开关**（`"/r"`）当作文件名，开关不加引号、路径加引号。
+
+### `execFile` 的 `timeout`：子进程已以 0 退出、孙进程持有管道时，超时被当作成功
+
+- 日期：2026-11-20
+- 症状（M2 Task 9 审查与最终修复波核对）：PowerShell 脚本用 `ProcessStartInfo`（`UseShellExecute = $false`）启动 Excel 后立即退出，`execFile` 却要等到 15 秒超时才回调，而且回调的 `error` 为 null（启动被当作成功）。复现：`UseShellExecute=$false` 启动睡 6 秒的 `wscript.exe`，`timeout: 2000` → 2123 ms 回调，`error` 为 null。
+- 原因：.NET Framework 在 `UseShellExecute = $false` 时以继承句柄创建进程，孙进程继承了 Node 给 powershell 建的 stdout / stderr 管道；`execFile` 等到管道关闭（`close`）才回调。超时时 Node 结束子进程并销毁流，但子进程早已以 0 退出，于是按「退出码 0、无信号」回调成功。
+- 解决：启动外部程序的脚本一律 `UseShellExecute = $true`（经 ShellExecute，不继承管道）；`launcher/detect-script.test.ts` 有回归测试（孙进程睡 6 秒，脚本须在 3 秒内返回）。
+- 预防：不要把 `execFile` 的超时当作失败的保证；从脚本启动长期运行的程序时确认不继承标准输入输出句柄。

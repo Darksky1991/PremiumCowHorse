@@ -33,7 +33,13 @@ function RuntimeProviders({ children }: { children: ReactNode }): JSX.Element {
 }
 
 function ThemedToaster(): JSX.Element {
-  return <Toaster theme={useResolvedTheme()} position="bottom-right" />
+  return (
+    <Toaster
+      theme={useResolvedTheme()}
+      position="bottom-right"
+      swipeDirections={['top', 'right', 'bottom', 'left']}
+    />
+  )
 }
 
 /** 直接用浏览器打开开发服务器时的提示（此时没有主进程，也就没有 i18n 设置） */

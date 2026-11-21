@@ -1,6 +1,14 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.18　｜　日期：2026-11-20　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.22　｜　日期：2026-11-21　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.22 变更（M2 完成并合并到 `main`，标签 `m2`）：路线图 M2 标为合并完成；合并前的进度、待需求方确认的决定（Q3–Q25、F1–F7）、手动验证清单（V1–V11）与已知问题（K1–K9）见 `devDoc/2026-11-21-29-m2-summary.md`；Q2 / Q13（`pch-web` 范围与符号链接）需求方决定维持现状。涉及 18 节
+>
+> v1.21 变更（地址栏与工作区一览的追加修改，记录 `devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`）：工作区图标改为 lucide `GalleryVerticalIcon`（地址框的工作区按钮、工作区一览的标签；资源树 / 总览的分组仍为 Layers）；地址框中工作区部分（按钮 + 工作区段）成为地址框左端底色不同、以分隔线隔开、固定在左端的区域（不是框中的框）；单击当前位置（最后一段）或其后的空白处复制路径；工作区一览改为卡片网格（不显示图标，重命名 / 删除直接以按钮显示，各行等高），新建也是一张卡片（12.2、11.1 节）。
+>
+> v1.20 变更（M2 试用反馈的修改，记录 `devDoc/2026-11-21-26-m2-feedback.md`）：网页视图焦点交接（页面中点链接 / Alt+←→ 后焦点留在新页面）；资源树文件节点单击 / ↑↓ 停留 = 当前标签「文件信息」、双击 / Enter = 默认预览器、Ctrl+单击 / 中键 / Ctrl+Enter = 新标签默认预览器（`tab/open` / `tab/navigate` 的可选 `viewer`）；SDK `tabs.selectedViewer()`，fallback 的「无法预览」只在自动选择时显示；Office 打开方式检测结果按机器持久保存（迁移 0005 `launch_capabilities`）；预览区 → 树同步时目标目录本身也展开（跟随展开，离开时收起）；地址栏的地址框与前置工作区按钮（`LayersIcon` 快速切换菜单 +「管理工作区…」）；工作区一览页（`kind: 'workspaces'`，工作区总览的上一级）；Alt+↑ 为全局「上一级」快捷键。涉及 8、9、10、11、15、18 节
+>
+> v1.19 变更（M2 预览插件体系完成；设计 `devDoc/2026-11-20-22-m2-design.md`，计划 `devDoc/2026-11-20-23-m2-plan.md`，台账 `devDoc/2026-11-20-24-m2-ledger.md`，实现记录 `devDoc/2026-11-20-25-m2.md`）：查看器切换（`TabState.viewer`、`tab/viewer`、地址栏「表示」下拉与「常にこれで開く」写入 `preview.associations`）；应用消息收纳（`notify`、状态栏消息按钮、四向拖拽丢弃）；主进程 `modules/web`（每标签一个 `WebContentsView`、`pch-web://` 范围协议、`pch-asset://`、导航判定、LRU 8 个视图）与 `PreviewHost.web`；内置插件 html（含 PDF / 图片）、markdown（unified + mermaid，单独 vite 构建 `out/web-assets/markdown`）、office（启动面板）；`modules/launcher`（PowerShell 检测文件关联与 verb、`ProcessStartInfo` 经 ShellExecute 启动，删除设置 `launcher.officeDefaultAction` / `launcher.officeExtensions`）；provider `createReadStream`；第 15 节浏览器视图的安全模型。路线图 M2 标为完成；待需求方确认的决定、记录的问题与未验证项见实现记录。合并前最终修复（实现记录「已修复」）：范围根改为「首次取最外层 folder 条目根 ?? 文件所在目录，标签内跳转沿用」、跨页链接的 `?查询#锚点` 带到视图、资源树键盘浏览时视图不再抢焦点、整文件读取以 stat 大小为准、dev 代理不出 dev server 的源、外部链接每视图 2 秒一次、应用窗口的导航限制只跳过 `persist:pch-web`、launcher 只启动文件。核对 3.4、5.1、5.2、7.1、7.3、9、10、12、14、15、16、18 节与代码一致。涉及 3.4、5、7、9、10、12、14、15、16、18 节
+>
 > v1.18 变更（M1 完成并合并到 `main`，标签 `m1`）：路线图 M1 标为完成；合并前的进度、待需求方确认的决定（D1–D35）、手动验证清单（V1–V21）与已知问题（K1–K24）见 `devDoc/2026-11-20-21-m1-summary.md`；单窗口会话保存 / 恢复暂缓到 M3。涉及 18 节
 >
 > v1.17 变更（文本 / 日志预览完成；设计 `devDoc/2026-11-20-18-text-preview-design.md`，记录 `devDoc/2026-11-20-20-text-preview.md`）：新增纯逻辑包 `@pch/text-engine`（行索引、按行读取、编码判断、解码、分页数学；不依赖任何包、不碰 Node / DOM / Electron，eslint 以 `no-restricted-imports` / `no-restricted-globals` 强制）；provider 增加 `read(uri, offset, length, signal?)`（每次开-读-关；读取进行中其上级目录无法改名，已知限制，7.1）；主进程 `vfs/document/` 文档服务（字节窗口、1MB 分块后台索引、`doc.open` / `readLines` / `refresh` / `setEncoding` / `close`、归属窗口与上限、轮转 / 消失 / 追加判定）与 `vfs.sniff`（7.5）；编码判断自写（BOM、UTF-16 无 BOM、UTF-8 校验、CJK 逐字节评分），不引入 `encoding-japanese`（对比实验与验收样本见设计第 4 节与 devDoc 记录）；插件体系：`PreviewHost.doc`、`match.textLike`、`manifest.handlesMissing`、`tabs.viewAs` / `canViewAs`、未匹配文件的 sniff（9.3）；内置文本插件 `pch.preview.text`（自绘分页视图、块缓存、编码下拉、日志跟随末尾、部分模式「读取全部」，9.4）；设置 `preview.maxTextSizeMB` 改为「自动建立完整行索引的上限」（14 节）；路线图中文本 / 日志预览标为完成。核对 3.4、5、7.1、7.5、9.1、9.3、9.4、14、18 节与代码一致。涉及 3.4、5、7.1、7.5、9、14、18 节
@@ -165,9 +173,12 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | 包 | 用途 | 备注 |
 |---|---|---|
 | CodeMirror 6（@codemirror/* 及 @uiw/react-codemirror） | **将来**的文本编辑 / 语法高亮（小文件）；当前文本 / 日志预览是自绘分页视图，不使用（设计第 8 节） | 比 Monaco 轻得多；尚未引入 |
-| react-markdown + remark-gfm | Markdown 预览 | — |
-| pdfjs-dist | PDF 预览 | Mozilla 官方 |
-文本 / 日志预览（设计 `devDoc/2026-11-20-18-text-preview-design.md`）的行索引、按行读取与编码判断由工作区包 `@pch/text-engine` 自写，不引入第三方依赖（检测库的取舍见该设计第 4 节）。图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 `reg.exe` 与 PowerShell，不新增依赖。
+| unified + remark-parse + remark-gfm + remark-rehype + rehype-slug + rehype-stringify | Markdown 预览（GFM 表格 / 任务列表 / 删除线 / 自动链接 / **脚注**、GitHub 风格标题锚点、原始 HTML 原样输出） | M2 安装（取代 react-markdown）。在浏览器视图中由应用自带的查看脚本运行（9.4 节 markdown），不进应用渲染端；不需要 rehype-raw（raw 节点由 rehype-stringify 输出、浏览器插入时解析） |
+| mermaid | Markdown 中 ` ```mermaid ` 代码块渲染为图 | M2 安装；只在页面含 mermaid 代码块时动态加载。打进产物约 5.2MB（未压缩 JS 分块，zip 中约 1.5MB；台账 S8） |
+| pdfjs-dist | PDF 预览 | Mozilla 官方；**推迟**：M2 起 PDF 先由浏览器视图（Chromium 内置 PDF 查看器）显示 |
+Markdown 的 7 个包都放在 `apps/desktop` 的 devDependencies：查看脚本由单独的 vite 构建打包进 `out/web-assets/markdown`（`vite.markdown.config.ts`），运行时不 require，electron-builder 只打包 dependencies，不会重复进入安装包。
+
+文本 / 日志预览（设计 `devDoc/2026-11-20-18-text-preview-design.md`）的行索引、按行读取与编码判断由工作区包 `@pch/text-engine` 自写，不引入第三方依赖（检测库的取舍见该设计第 4 节）。图片、音视频使用浏览器原生能力，无需依赖。Office 文件改由本机 Office 打开（第 10 节），因此**不再引入** xlsx（SheetJS）与 docx-preview；Office 联动只使用系统自带的 PowerShell，不新增依赖。
 
 ### 3.5 质量保障
 
@@ -215,7 +226,7 @@ electron-updater（自动更新）。koffi 已作为依赖引入（3.2 节），
 ```
 premium-cow-horse/
 ├── apps/
-│   └── desktop/                  # Electron 应用：src/main · src/preload · src/renderer（electron-vite 目录约定）
+│   └── desktop/                  # Electron 应用：src/main · src/preload · src/renderer（electron-vite 目录约定）；src/web-assets/markdown（Markdown 查看脚本，浏览器入口，由 vite.markdown.config.ts 单独构建，M2）
 ├── packages/
 │   ├── shared/                   # 三端共用：IPC 契约、领域类型、zod schema、URI 工具、布局 reducer
 │   ├── i18n/                     # 语言资源（ja / zh-CN / en）与 i18next 初始化工厂
@@ -225,13 +236,14 @@ premium-cow-horse/
 ├── plugins/
 │   └── builtin/                  # 内置预览插件（单个 workspace 包，M1 创建），每个插件一个子目录
 │       └── src/
-│           ├── folder/           # M1
-│           ├── text/
-│           ├── image/
+│           ├── html/             # 浏览器显示：本地 HTML，以及 Chromium 能直接显示的 PDF / 图片（M2 已实现）
+│           ├── markdown/         # Markdown：在浏览器视图中由应用自带的查看脚本渲染（M2 已实现）
+│           ├── web-page/         # html / markdown 共用的界面（状态行、加载失败、外部打开；M2 已实现，不是插件）
+│           ├── office/           # Office 文件启动面板（调用本机 Office；M2 已实现）
+│           ├── text/             # 文本 / 日志（M1 已实现）
+│           ├── image/            # 专用图片 / PDF / 音视频插件：推迟（M2 起 html 插件代为显示）
 │           ├── pdf/
-│           ├── markdown/
 │           ├── media/
-│           ├── office/           # Office 文件启动面板（调用本机 Office）
 │           ├── folder/           # 目录视图：详细信息列表（M1-3 已实现；面包屑、「上一级」与刷新按钮 M1-3b 移到应用的地址栏）
 │           └── fallback/         # 无法预览时：显示文件信息 + 用系统应用打开（预览窗口内的动作；M1-3 已实现）
 ├── e2e/                          # Playwright Electron 端到端测试
@@ -309,6 +321,7 @@ apps/desktop/src/
 │   │   ├── settings/
 │   │   ├── plugin/                   # 插件发现与元数据（外部插件阶段启用）
 │   │   ├── launcher/                 # 外部应用联动：Office 只读/编辑/新建打开、远程编辑会话
+│   │   ├── web/                      # 浏览器视图（M2 已实现）：WebContentsView 管理、pch-web / pch-asset 协议、范围表、导航判定、快捷键、IPC（7.3、15 节）
 │   │   ├── system/                   # 应用信息、渲染端日志写入、在资源管理器显示、剪贴板、选择路径对话框
 │   │   └── window/                   # 自绘窗口按钮：最小化 / 最大化 / 关闭发起调用的窗口
 │   ├── windows/
@@ -375,10 +388,11 @@ apps/desktop/src/renderer/
 - 扫描引擎（2026-11-19）：`features/explorer/interest.ts`（树 → 关注点与视口内外的已展开目录，纯函数）；`stores/reachability-store.ts`（断开的共享 / 卷，由 `features/shell/use-reachability-events.ts` 写入：先订阅 `vfs.reachability`，再以 `vfs.offlineShares` 初始化（查询返回前已收到事件的共享以事件为准），窗口启动 / 重新加载前已断开的共享也能显示——按分层规则 store 只能由 feature 写入，外壳在窗口存在期间一直挂载）。
 - M1-3 标签与预览（✅ 2026-11-19 完成，11 节「已实现」）；`plugins/builtin`（folder / fallback 插件，9.4 节「已实现」）：`features/tabs/`（标签栏 `tab-bar.tsx`、标签区 `tabs-area.tsx`：标签栏 + 内容区，`Ctrl+W`）；`stores/tabs-store.ts`（按工作区保存标签集合，包装 `packages/shared/src/layout/` 的 `layoutReducer`；lint 放行 `stores → shared`）；`features/explorer/open-target.ts`（节点 → 打开目标，纯函数）。`features/preview/`（9.3 节「已实现」）：`registry.ts`（`scoreResource` / `pickPlugin` / `fallbackOf`，纯函数）、`executable.ts`（`isExecutableExtension`）、`host.ts`（`createPreviewHost(deps)`：PreviewHost 的实现，依赖注入便于单元测试）、`preview-container.tsx`、`plugin-error-boundary.tsx`、`confirm-executable-dialog.tsx`、`plugins.ts`（`previewPlugins(builtin)`：e2e 时追加测试插件）；`data/vfs.ts` 增加 `useResourceStat`（预览标签的 stat，`staleTime` 0）与 `fetchDirectory`（与资源树共用目录查询的缓存）；`vfs.interest` 的发送改为本窗口唯一的合并器 `createInterestHub`（资源树的 `useVfsInterest` 与标签区的 `useVfsTabsInterest` 各管一部分，合并后经同一个 300ms 防抖发送；一个来源卸载只清空自己的部分）；`stores/tabs-store.ts` 增加 `selectActiveDirectory`（激活标签显示目录时为其 URI），标签区据此发送 `tabs`；`lib/query-keys.ts` 增加 `stat` / `statRoot`，`vfs.changed` 同时让该目录自身与其直接子项的 stat 失效。
 - M1-3b 导航：`lib/logical-path.ts`（逻辑路径）、`features/preview/workspace-overview.tsx`（工作区总览）；`features/address-bar/`（应用级地址栏 `address-bar.tsx`、全局快捷键 `use-navigation-shortcuts.ts`、按键 / 侧键 → 命令的纯函数 `commands.ts`，12.2 节）；`stores/tabs-store.ts` 增加 `selectActiveTab`、刷新请求 `refreshSeq` / `requestRefresh` 与订阅函数 `onTabRefresh`（地址栏发出，标签内容订阅）。
+- M2 反馈第 6–8 项（2026-11-21）：`features/workspace/workspaces-page.tsx`（工作区一览，11.1 节「已实现」）；`features/address-bar/address-bar.tsx` 的地址框与前置的工作区按钮（12.2 节）；`stores/tabs-store.ts` 增加 `backFrom`
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
-外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; addressBar: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`AddressBar`（M1-3b，标题栏正下方的一行）、`TabsArea` 等组合进去；标签内容同样经插槽组合：`TabsArea` 的 `renderContent(tab)` 由 `app/` 传入 `<PreviewContainer tab plugins />`（features/tabs 与 features/preview 互不 import）；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
+外壳插槽（已实现）：`Shell` 的 props 为 `{ sidebarViews: Record<SidebarView, ReactNode>; workspaceSwitcher: ReactNode; addressBar: ReactNode; tabsArea: ReactNode }`，`app/app.tsx` 把 `ExplorerView`、`WorkspaceSwitcher`、`AddressBar`（M1-3b，标题栏正下方的一行）、`TabsArea` 等组合进去；标签内容同样经插槽组合：`TabsArea` 的 `renderContent(tab)` 由 `app/` 传入 `<PreviewContainer tab plugins renderWorkspaces />`（features/tabs 与 features/preview 互不 import；`renderWorkspaces(tab)` 返回 features/workspace 的 `WorkspacesPage`——工作区一览要用工作区的对话框，放在 features/workspace，由 `app/` 交给 PreviewContainer，M2 反馈第 8 项）；外壳读 `stores/tabs-store.ts`，当前工作区有标签时显示 `tabsArea`，否则显示欢迎页。侧栏 `SideBar` 只提供外框，标题行由各视图自己渲染（资源管理器的标题行带刷新按钮）；新增侧栏视图需要自带标题行。
 
 ### 5.4 命名与编码约定
 
@@ -442,7 +456,9 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 // 目标形态节选；已实现：app.getInfo、settings.*、workspace.{list,active,create,update,delete,activate}、
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
 // vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
-// window.*、log.write；事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed
+// window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）；
+// 事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
+// web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）
 // （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
@@ -490,6 +506,11 @@ export const ipcContract = {
   'window.close':        route<void>()(z.void()),
   'window.getState':     route<WindowState>()(z.void()),     // { maximized }
   'log.write':           route<void>()(LogWriteInput),          // 渲染端错误写入 main.log
+  // 浏览器视图（每个（窗口, 标签）一个 WebContentsView，归属调用方窗口；bounds 为 DIP 整数，宿主取整、不乘 devicePixelRatio）
+  'web.attach':          route<void>()(z.object({ tabId: z.string(), uri: z.string(), scopeRoot: z.string(), view: z.enum(['page', 'markdown']), bounds: WebBounds, fragment: z.string().regex(/^[?#]/).optional() })),  // 新建或复用并显示；uri 不在 scopeRoot 之下 → FS_INVALID_URI；fragment 拼到加载地址后（是否重新加载不看它）
+  'web.setBounds':       route<void>()(z.object({ tabId: z.string(), bounds: WebBounds })),
+  'web.hide':            route<void>()(z.object({ tabId: z.string() })),   // 只隐藏（页面状态保留）；web.release 销毁；web.reload 同形
+  'web.freeze':          route<{ image: string; yielded: boolean }>()(z.object({ tabId: z.string() })),  // 截图替身（data:image/png，物理像素）并隐藏；视图持有焦点时交回应用界面（yielded）；web.unfreeze({ tabId, refocus }) 恢复
   // ……
 } as const;
 
@@ -509,6 +530,10 @@ export interface IpcEvents {
   'window.stateChanged': WindowState;
   'doc.progress':      DocProgressEvent;              // 只发给文档所属的窗口
   'doc.changed':       DocChangedEvent;               // 同上
+  'web.state':         WebViewState;                  // { tabId, title, loading, failed }；以下 web.* 只发给视图所属的窗口
+  'web.navigate':      { tabId: string; uri: string; newTab: boolean; fragment: string };  // 视图内的链接指向范围内的资源；fragment = 链接的 ?查询#锚点（没有时为空串）
+  'web.notice':        { tabId: string; notice: 'outOfScope' | 'download' | 'unsupported' };
+  'web.shortcut':      { tabId: string; key: string; ctrl: boolean; shift: boolean; alt: boolean };  // 焦点在视图中的应用快捷键 / 鼠标侧键
 }
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppErrorPayload };
@@ -599,6 +624,8 @@ export interface FileEntry {
 
 已实现的是上面接口的子集（`stat`、`list`、`read`、`dispose`；`createReadStream` 于 M2 增加；`capabilities` 尚未引入）。**`read(uri, offset, length, signal?)`**（2026-11-20，文本预览）：每次调用 = 打开 → 读 → 在 `finally` 中关闭，不在调用之间持有句柄；到达文件末尾时返回更短的结果（offset 在末尾之后为空），不存在 → `FS_NOT_FOUND`。本地 provider 用 `fs.promises.open(p, 'r')`：libuv 在 Windows 上以 `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE` 打开（`knowledge/windows-and-tooling.md`），读取期间他人仍可追加、改名、删除该文件；但 **读取进行中的那一刻其上级目录不能改名**（Windows 的限制，与共享标志无关），因此只在一次读取期间打开（本地 1MB 约毫秒级）。`VfsService.read(uri, offset, length, signal?)` 同样按位置超时，并接受调用方的 `AbortSignal`（文档关闭时中止索引中的读取）。`watch` 已于 2026-11-19 删除（目录的持续刷新改由扫描进程负责，见下文），目标结构中也不再有 `watch`。`VfsService` 只负责一次性调用（`stat`、条目添加时的校验、扫描进程不可用时的直接枚举）：按 scheme 路由、统一超时（按位置取 `vfs.timeoutSec.local` / `vfs.timeoutSec.network`，整次调用的总时长，`FS_TIMEOUT`）与取消（`vfs.cancel` 通过 requestId 触发 AbortController，`FS_CANCELLED`；同一 requestId 的新请求取代旧请求）。取消与超时以「调用与中止信号赛跑」实现，即使 provider 不响应信号（例如无响应的网络共享上的 readdir）也能按时结束。Node 的文件系统错误统一转换为 `FS_*` 错误码（`vfs/errors.ts`）。新增一种远程类型（例如将来的 WebDAV、S3）只需新增一个 provider 并在组合根注册，其他代码零修改。
 
+**`createReadStream(uri, range?, signal?)`（M2，已实现）**：打开 → 返回 Node 读取流（`range` 为闭区间字节 `{start, end}`）；句柄由流持有（`autoClose`），流结束、出错、`destroy()` 或 `signal` 中止时关闭，打开方式同 `read`（他人仍可改名 / 删除，读取进行中其上级目录暂不能改名）。`VfsService.createReadStream` 的超时（按位置）只覆盖「打开」阶段，打开之后调用方的 `signal` 中止即销毁流；调用已超时 / 取消之后才打开完成的流立即销毁，不泄漏句柄。
+
 `FileEntry` 对符号链接与目录联接（junction）附带目标类型（`target: 'file' | 'directory' | null`，`null` 表示已失效），列目录时只对链接额外 stat 一次（计入同一并发上限），资源树据此判断能否展开（已实现，M1-2）。目标是文件以外的类型（如设备）也归为 `'file'`；目标 stat 因任何原因失败（不存在、循环、权限、网络）都为 `null`；lstat 本身失败的降级项不带 `target`，资源树按失效链接处理。
 
 **目录刷新：扫描 + 缓存（2026-11-19 起取代目录监听，设计见 `devDoc/2026-11-19-01-refresh-cache-design.md`）**：
@@ -635,6 +662,8 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
 **连接池通用策略**：懒连接、空闲 5 分钟回收、断线自动重连一次、连接状态通过 `connection.status` 推送到状态栏。
 
 ### 7.3 `pcfs://` 协议：让预览插件「像访问网页资源一样」访问任意文件
+
+> **已实现（M2，浏览器视图用的 `pch-web://`）**：`modules/web/{scope,mime,web-protocol}.ts`。地址 `pch-web://<范围编号>/<逐段 encodeURIComponent 的相对路径>`，范围编号 = `s` + `sha256(范围根 URI)` 前 16 个十六进制字符（`s` 前缀避免主机名被当作 IPv4 数字解析），`ScopeTable` 在内存登记 编号 → 范围根；`fromWebUrl` 逐段解码后拒绝空段、`.` / `..`、含 `/` `\` NUL 的段，并用 `isUnderUri` 复核（未登记 → 404，范围外 → 403）。**范围根的确定**（渲染端 `web-host.ts` 的 `scopeRootFor`，最终修复 I1）：候选 = 包含页面的**最外层** folder 条目根 ?? 文件所在目录（文件条目、地址栏打开的条目外文件；驱动器根为 `file:///C:/`）；`WebViews` 按标签记住最近一次的范围根（与视图分开：release 后保留，标签关闭时忘记），之后该标签 attach 的页面仍在其中就**沿用**（Javadoc 的 `index.html` → `pkg/Class.html` 后 `../stylesheet.css`、`../index.html` 仍指向正确的文件，源不变，localStorage / sessionStorage 不变），只有候选比它更宽（首次 attach 时条目尚未加载）时换成候选；页面不在其中时取候选。嵌套条目首次打开取最外层是控制者裁定，待需求方确认（实现记录 Q2）。`createWebProtocolHandler` 只读：GET / HEAD，单区间 `Range`（206 / 416；没有 `Range` 时也按 stat 的大小读，stat 之后被追加的部分不发，响应体与 `Content-Length` 一致），`Content-Type` 取内置表（`mimeOf`，不引入 `mime` 包），`Cache-Control: no-store`，目录 / 不存在 → 404，`FS_UNAVAILABLE` → 502，`FS_TIMEOUT` → 504；响应体取消或请求中止时销毁流。查询参数只认两个（M2 Task 8，其余忽略）：`?pch-view=markdown` → 文件存在时返回 Markdown 外壳页（`markdown-shell.ts`，`Content-Type: text/html; charset=utf-8` + `Content-Security-Policy` 响应头 `MARKDOWN_CSP`，不读文件内容）；`?pch-raw=1` → 原始字节（`application/octet-stream`，不处理 `Range`，超过 `MARKDOWN_MAX_BYTES` = 5MB → 413），供查看脚本同源 fetch。`registerPrivilegedSchemes` 登记 `pch-web`、`pch-asset`（`standard`、`secure`、`supportFetchAPI`、`corsEnabled`、`stream`）；两个处理器都只注册在浏览器视图的会话（`configureWebSession`），各自外包发起方检查：`pch-web` 只放行无发起方与同一 `pch-web://<范围编号>` 源（`guardInitiator`），`pch-asset` 只放行无发起方与来自 `pch-web://` 页面的请求（`guardAssetInitiator`）。**`pch-asset://viewer/…`**（`createAssetProtocolHandler`）：生产只提供 `out/web-assets/markdown`（asar 内，`AppPaths.webAssets`）中扩展名为 `.js` / `.css` / `.map` 的文件（路径逐段解码后拒绝空段、`.` / `..`、含 `/` `\` NUL 的段并复核仍在该目录下，否则 404），响应带 `Access-Control-Allow-Origin: *`（外壳页是 pch-web 源，module 脚本与动态分块以 CORS 模式请求）、`X-Content-Type-Options: nosniff`；开发模式（渲染端地址为 http 的 dev server）所有路径原样代理到 renderer dev server（`net.fetch`；解析结果不在 dev server 的源上——`//host`、反斜杠开头——时 404），外壳的脚本地址为 `pch-asset://viewer/@fs/<main.ts 的绝对路径>`。下文的 `pcfs://` 仍是目标结构。
 
 插件拿到的是一个 URL（`pcfs://res/<encodeURIComponent(uri)>`），可以直接用于 `<img>`、`<video>`、pdf.js、`fetch()`，无需关心文件在本地还是 FTP 上。
 
@@ -704,7 +733,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 此外提供一个默认工作区（id 为 `default`，显示名称按语言为「默认」/「デフォルト」/「Default」，可改名、不可删除），用于不属于任何案件的常用目录。默认工作区的 `name` 为空字符串时显示本地化名称；把它改名为空字符串即「恢复默认名称」，其他工作区改名为空 → `WORKSPACE_NAME_REQUIRED`（已实现，M1-2）。「当前工作区」指用户当前正在使用的工作区：切换时记录 `last_opened_at`，取最大者，重启后回到上次使用的工作区。
 
-工作区切换器（已实现，M1-2，`features/workspace`）：标题栏按钮显示当前工作区名称，下拉菜单含工作区列表（当前项打勾，选中即切换并关闭菜单）、新建工作区…、重命名当前工作区…、恢复默认名称（仅默认工作区且已改名时）、删除当前工作区…（默认工作区不显示）；欢迎页的「新建工作区」打开同一个对话框。新建 = `create` 后 `activate`（切换失败时提示「已创建但未能切换」并关闭对话框，避免再次提交重复创建）。**删除当前工作区时先切回默认工作区、成功后再删除**：主进程的 `workspace.delete` 不改变「当前工作区」，先删除会让 `last_opened_at` 最大的另一个工作区短暂成为当前工作区；切换失败则什么都不删。删除只删工作区与条目，确认框说明不会删除磁盘上的文件。重命名 / 删除对话框的目标在打开时锁定（工作区 id），对话框打开期间当前工作区变化（例如主进程事件）也只作用于打开时的工作区（最终审查 #51，e2e `workspace switcher: rename / delete dialogs act on the workspace they were opened for`）。
+工作区切换器（已实现，M1-2，`features/workspace`）：标题栏按钮显示当前工作区名称，下拉菜单含工作区列表（当前项打勾，选中即切换并关闭菜单）、新建工作区…、重命名当前工作区…、恢复默认名称（仅默认工作区且已改名时）、删除当前工作区…（默认工作区不显示）；欢迎页的「新建工作区」打开同一个对话框。新建 = `create` 后 `activate`（切换失败时提示「已创建但未能切换」并关闭对话框，避免再次提交重复创建）。**删除当前工作区时先切回默认工作区、成功后再删除**（`workspace-flows.ts` 的 `removeWorkspace(deps, targetId, activeId)`；目标在确认时已不是当前工作区——工作区一览中删除其他工作区、或对话框打开期间当前工作区变了——时直接删除、不切换；当前工作区未知（`workspace.active` 查询出错 / 尚无数据）时按「是当前工作区」处理、先切到默认。M2 反馈第 8 项）：主进程的 `workspace.delete` 不改变「当前工作区」，先删除会让 `last_opened_at` 最大的另一个工作区短暂成为当前工作区；切换失败则什么都不删。删除只删工作区与条目，确认框说明不会删除磁盘上的文件。重命名 / 删除对话框的目标在打开时锁定（工作区 id），对话框打开期间当前工作区变化（例如主进程事件）也只作用于打开时的工作区（最终审查 #51，e2e `workspace switcher: rename / delete dialogs act on the workspace they were opened for`）。
 
 ### 8.2 树的渲染
 
@@ -730,7 +759,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
   - **分组抽屉**：根下的分组（`drawerIds(entries)`）同一时刻只展开一个：展开一个时其余顶层分组的展开标记被去掉，**子孙的展开记录保留**（纯函数 `toggleExpanded` / `expandNodes`，`explorer-store.ts`），重新展开时原样恢复；定位 / 同步的祖先链经过被收起的顶层分组时展开它并按同一规则收起其余分组。分组内的子分组按普通节点展开。抽屉标题为分节标题的外观（上边线、浅背景、粗体），仍是树的一行（↑↓ 遍历、→ ← / Enter 展开收起、`aria-expanded`）；**单击标题 = 展开 / 收起**（与箭头相同，不改变选中，双击不再切换回去）。
   - **被折叠挡住的选中**：选中项因祖先被折叠（抽屉互斥、全部折叠、单击收起抽屉）而不可见时，树把最近的可见祖先显示为选中，但不改写 store 中的选中（`hiddenSelectionIndex`，`selection.ts`）；重新展开后原来的选中项恢复。最近的可见祖先已展开、但其子项尚未加载（只有「加载中 / 出错」状态行——例如抽屉收起期间无观察者的目录查询被 TanStack Query 按 `gcTime` 回收，重新展开时重新列出）同样视为被挡住，加载完成后恢复（M1-3b 最终审查修复）。用户在其他行上的操作照常改变选中。显式折叠普通节点（箭头 / 双击 / ←）时选择仍移到被折叠的节点（M1-2 行为不变）。
   - **拖放与根下顺序**：显示顺序与 `sort_order` 不同，`resolveDrop` 按 `rank` 把落点换算为 `entry.move` 的 index；落在另一类条目的边缘（未分组条目落在分组的上 / 下缘、分组落在未分组条目之间）时，插在线之前最近的同类条目之后（没有时在线之后最近的同类条目之前），即未分组条目放到未分组区的相应端、分组放到分组区的相应端；新增（固定真实子项 / 系统拖入）同理改写 `position`。拖进被收起的分组时不展开它。
-- **键盘与无障碍**：`role="tree"` 只有一个 Tab 停靠点（`aria-activedescendant`），行为 `treeitem`（`aria-level`、`aria-expanded`、`aria-selected`）；↑↓ 移动选择，→ 展开 / 进入首个子项，← 折叠 / 回到父项，Enter 展开或折叠，F2 重命名、Delete 移除（仅条目），F5 刷新（焦点在资源管理器视图内时）。树只处理自身获得焦点时的按键，行内控件上的按键交给控件。折叠时若选中项在其子孙中，选择移到被折叠的节点。M1-3b 起的打开方式与「树跟随标签」见 11.1 节「已实现」的资源树一条（目录单击不展开；双击 / 箭头 / → ← 展开折叠；键盘移动选中后 400ms 在当前标签打开）。
+- **键盘与无障碍**：`role="tree"` 只有一个 Tab 停靠点（`aria-activedescendant`），行为 `treeitem`（`aria-level`、`aria-expanded`、`aria-selected`）；↑↓ 移动选择，→ 展开 / 进入首个子项，← 折叠 / 回到父项，Enter 展开或折叠，F2 重命名、Delete 移除（仅条目），F5 刷新（焦点在资源管理器视图内时）。树只处理自身获得焦点时的按键，行内控件上的按键交给控件。折叠时若选中项在其子孙中，选择移到被折叠的节点。M1-3b 起的打开方式与「树跟随标签」见 11.1 节「已实现」的资源树一条（目录单击不展开；双击 / 箭头 / → ← 展开折叠；键盘移动选中后 400ms 在当前标签打开；文件节点单击 / 停留为「文件信息」、双击 / Enter 为默认查看器）。
 - **拖放**（`drag-drop.ts` 的纯函数 `resolveDrop` 决定动作，执行器只调用 `entry.move` / `entry.add`）：
   - dragstart **只设置自定义 MIME** `application/x-pch-node`（JSON），不设置 `text/uri-list`、`text/plain`、`DownloadURL`，`effectAllowed` 为 `move`（条目）/ `link`（真实子项）；拖出应用时没有任何目标能接受，不会生成文件。
   - 落点：行的上 25% 为 before、下 25% 为 after、中间且为分组时为 inside（非分组按 50% 分上下）；已展开且有可见子项的分组的 after 视为「放进该分组的第 0 位」（与画线位置一致）。真实节点、状态行、自身或自身的后代作为落点时 dragover 不 `preventDefault`（禁止光标，不触发 drop）。折叠的分组悬停时不自动展开。
@@ -860,12 +889,13 @@ export const definePreviewPlugin = <VS>(plugin: PreviewPlugin<VS>) => plugin;
 - `FileStat` / `FileEntry` / `DirectoryListing` 在 SDK 中重新声明（模块边界不允许 SDK 依赖 shared），与 `@pch/shared` 的同名类型结构相同，宿主实现把 shared 的值赋给 SDK 类型、不一致时编译失败。
 - 新增 `AnyPreviewPlugin`（注册表的列表元素，各插件 viewState 类型不同）与常量 `FALLBACK_PLUGIN_ID`。
 - **文本文档 `PreviewHost.doc`**（文本预览 Task 5，`packages/plugin-sdk/src/doc.ts`，7.5 节）：`open(uri, { encoding?, at? })`、`readLines(docId, start, count)`、`setEncoding(docId, encoding | null)`、`buildIndex(docId)`、`close(docId)`、`onProgress(docId, cb)`、`onChanged(docId, cb)`。类型 `DocumentInfo` / `DocLineBlock` / `DocProgress` / `DocEncoding` 在 SDK 中重新声明（与 shared 结构相同，渲染端 `doc-session.test.ts` 的类型测试保证；`DocLineBlock` 与 text-engine 的 `LineBlock` 同构，插件可直接交给 `decodeBlock`；SDK 不依赖 text-engine）。`DocChange` = `doc.changed` 的标志 + 变化之后的 `info?: DocumentInfo`（宿主刷新取得；没有变化时不回调）。**`reset` 到达时立即不带 info 通知一次**（插件马上丢弃已缓存的行、在 info 到达前不读取），刷新取得 info 后再带 info（仍含 `reset`）通知；刷新失败时 info 留到之后成功的刷新（最终审查修复：此前要等刷新应答，刷新失败期间新旧内容会混排）。**自动刷新由宿主负责**，插件不计时：标签是激活标签且窗口聚焦时，每个打开的文档每隔 `cache.interval.focus.local` / `.network` 秒（UNC 为网络，`isUncUri`；映射的网络驱动器按本地）`doc.refresh` 一次（上一次返回后才计时）；`missing`（文件不存在）后也按同样的间隔继续检查，日志轮转（改名后新建同名文件）时不按 F5 也会以 `reset` 回到新文件；地址栏刷新 / F5 立即刷新全部文档。**过期丢弃**：`reset` 到达、`setEncoding` / `buildIndex` 完成时文档代号递增，此前发出的 `readLines` 以 `DocStaleError`（SDK 导出，`code: 'DOC_STALE'`）拒绝，插件忽略即可。宿主实现 `features/preview/doc-session.ts`（`use-doc-session.ts` 让它在标签内容存续期间保持同一个对象：宿主随设置等重建时插件不必重新打开文档；卸载时关闭仍打开的文档，含之后才完成的 open），事件订阅 `data/doc.ts`，窗口焦点 `lib/window-focus.ts`。
-- `tabs.viewAs(mode)` / `tabs.canViewAs(mode)`（`ViewAsMode = 'text' | 'info'`，Task 5）：本标签改用文本插件（常量 `TEXT_PLUGIN_ID = 'pch.preview.text'`）/ 文件信息（fallback）查看当前资源；text 只对文件、文本插件已注册且不是当前插件，info 只要当前不是 fallback；不可用时 `viewAs` 不做任何事。
+- `tabs.viewWith(pluginId)` / `tabs.candidates()`（M2 Task 2 起取代 `tabs.viewAs` / `canViewAs` 与 `ViewAsMode`）：`candidates()` 返回可用于当前资源的查看器 `ViewerCandidate[] = { id, name（已按当前语言翻译）, current }`（顺序：按得分的匹配插件、文件另加文本插件 `TEXT_PLUGIN_ID = 'pch.preview.text'`、最后 fallback）；`viewWith(id)` 为当前标签的当前位置选择该查看器（写入 `TabState.viewer`，11.1），不在候选中时不做任何事。fallback 插件的「作为文本查看」在候选含文本插件时显示。`tabs.selectedViewer()`（M2 试用反馈）返回本标签当前位置用户选定的查看器 id（自动选择时为 null，调用时读最新状态）。
 - `ResourceInfo.textLike?: boolean` 与 `match.textLike?: boolean`（Task 5）：见 9.3 节。
 - `PreviewPluginManifest.handlesMissing?: boolean`（文本预览 Task 6）：插件自己处理「文件已不存在」。显示中的文件被删除、容器重新 stat 得到 `FS_NOT_FOUND`（且此前 stat 成功过）时，选中的插件声明了它就继续显示（资源描述为删除之前的，插件不重新挂载；同名文件重新出现时照常更新），否则显示「找不到」与「重试」（此前的行为）。文本插件声明它：日志被删除 / 轮转的间隙保留已显示的内容并提示。
 - ~~插件调用宿主动作时预览标签转为常驻~~：M1-3b 取消「预览标签」（设计 `devDoc/2026-11-19-15-navigation-design.md` 2.8，需求方 2026-11-20 确认），宿主不再有「交互后转常驻」的逻辑；所有标签都是普通标签。
 - `fs.refresh(uri): Promise<void>`（最终审查修复追加）：让宿主立即重新确认该目录（`vfs.refresh` 该目录，并让其目录查询失效），之后的 `list` 取得确认后的内容。M1-3b 起刷新的入口在应用的地址栏，插件经 `tabs.onRefresh` 收到请求后调用它。
 - `fs.rootOf(uri): string | null`（M1-3 追加）：uri 所属的工作区 folder 条目的根（包含它的条目中 URI 最长者，`isUnderUri`），不在任何条目之下时为 null；`i18n.describeError(error)`（M1-3 追加）：宿主 API 拒绝时的错误（带 code）→ 应用的错误文案（`errors:<code>`），插件不必自带错误码文案。
+- **浏览器视图 `PreviewHost.web`**（M2 Task 7，`packages/plugin-sdk/src/web.ts`；设计 `devDoc/2026-11-20-22-m2-design.md` 5.2）：`attach(element, uri, { view: 'page' | 'markdown' }): () => void`——让本标签的浏览器视图（主进程 `WebContentsView`，6.3 节）显示 uri 并贴在占位元素上，返回的解除函数只隐藏（标签关闭 / 当前位置不再用网页查看器时宿主销毁）；`onState(cb)`（`{ title, loading, failed }`，已有状态时立即回放一次；`failed` 为应用错误码，可交给 `describeError`）、`onNotice(cb)`（`'outOfScope' | 'download' | 'unsupported'`）、`reload()`（加载失败后的「再試行」；**简报之外追加**：SDK 原来没有让插件重新加载的入口）、`openExternal(uri)`（本地文件经 `system.openPath` 交给关联的应用；失败由宿主提示，不拒绝）。类型在 SDK 中重新声明（`WebViewKind`、`WebNotice`、`WebPageState`），与 shared 结构相同。插件只放占位元素，位置同步、导航、快捷键、刷新与截图替身都由宿主处理（12.1 节「已实现（M2 Task 7）」）。
 - 依赖（控制者裁定）：内置插件除 `plugin-sdk` 与 `ui` 外，允许依赖 `lucide-react`（仅用于图标）与 `@tanstack/react-virtual`（虚拟滚动，版本与渲染端相同）。eslint 的模块边界规则只约束工作区内的包，不限制这两个外部包。
 
 关键约束：插件**只能**通过 `PreviewHost` 与外界交互，拿不到 `window.pch`。这样主应用可以随时调整内部实现，而且将来把第三方插件放进沙箱 iframe 时，只需用 postMessage 实现同一个 `PreviewHost` 接口，插件代码不用改。
@@ -893,9 +923,9 @@ export default definePreviewPlugin<{ zoom: number }>({
 
 **已实现（M1-3）**（`features/preview/`）：
 - 计分 `scoreResource(manifest, resource)`：kinds / schemes（不带冒号）不符、超过 `maxSize`、`when` 为 false → 不匹配；扩展名大小写不敏感、按「名称以 `.扩展名` 结尾」判断（支持 `tar.gz`）；声明了 `extensions` 或 `mimeTypes` 却一项都没命中 → 不匹配，都没声明 → 0 分（只按 kinds 等条件，例如 folder 插件）；命中的分数相加后加 `priority`。`pickPlugin`：得分最高者，同分取先注册的；fallback 插件不参与计分，没有任何匹配时返回它（列表中没有 fallback 时抛错）。`mime` 暂为 null；`preview.associations` 与「用其他方式打开」推迟。
-- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建。**工作区总览**（`kind: 'workspace'`，M1-3b）不经插件，显示内置视图 `WorkspaceOverview`（11.1 节「已实现」）。**目录标签不 stat**（最终审查修复）：直接用标签的类型与标题构造 `ResourceInfo`（大小 / 时间为 0，folder 插件不使用）交给插件，断开、无响应、被删除等状态都由插件的 `fs.list`（缓存优先）表现——此前先 stat，共享无响应时要等到 stat 超时（本地 5 秒 / 网络 10 秒）才显示错误页，缓存与「已断开」基本显示不出来，且每次切换标签都在主进程 stat 一次（占用 libuv 线程池，`knowledge/electron.md`）。**文件标签**先 `vfs.stat`（TanStack Query，新鲜期 5 秒——期间切换回标签不再 stat；错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型）；所在共享在 reachability-store 中为断开时不发 stat，只显示文件名与「已断开（重新连接后显示）」，恢复在线后自动 stat。「以文件信息显示」（fallback）对目录也先 stat。然后选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。（M1-3b 起没有预览标签，宿主不再把标签「转常驻」。）可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
+- `PreviewContainer`（由 `app/` 经 `TabsArea.renderContent` 组合）：按 `tab.uri` 重建。**工作区总览**（`kind: 'workspace'`，M1-3b）不经插件，显示内置视图 `WorkspaceOverview`（11.1 节「已实现」）；**工作区一览**（`kind: 'workspaces'`，M2 反馈第 8 项）同样不经插件，显示 `app/` 传入的 `renderWorkspaces(tab)`。两者都会销毁该标签残留的浏览器视图。**目录标签不 stat**（最终审查修复）：直接用标签的类型与标题构造 `ResourceInfo`（大小 / 时间为 0，folder 插件不使用）交给插件，断开、无响应、被删除等状态都由插件的 `fs.list`（缓存优先）表现——此前先 stat，共享无响应时要等到 stat 超时（本地 5 秒 / 网络 10 秒）才显示错误页，缓存与「已断开」基本显示不出来，且每次切换标签都在主进程 stat 一次（占用 libuv 线程池，`knowledge/electron.md`）。**文件标签**先 `vfs.stat`（TanStack Query，新鲜期 5 秒——期间切换回标签不再 stat；错误优先于数据，失败时显示错误码文案与「重试」）得到 `ResourceInfo`（链接按 stat 跟随后的类型）；所在共享在 reachability-store 中为断开时不发 stat，只显示文件名与「已断开（重新连接后显示）」，恢复在线后自动 stat。「以文件信息显示」（fallback）对目录也先 stat。然后选插件；插件模块用缓存的 `plugin.load()` Promise + React `use()` 加载（每个插件只加载一次，失败的加载保持失败直到重新加载窗口），外层 `PluginErrorBoundary`（按插件 id 作 key）+ `Suspense`。插件渲染抛错或加载失败时只在该标签显示错误面板（插件名称、「以文件信息显示」切换为 fallback 插件；错误写入 main.log），其他标签与外壳不受影响。（M1-3b 起没有预览标签，宿主不再把标签「转常驻」。）可执行类文件的确认框（shadcn AlertDialog，初始焦点在「取消」）由容器渲染、宿主调用。
 - **未匹配文件的 sniff**（文本预览 Task 5）：非空文件没有被任何非 fallback 插件匹配、且有插件声明了 `match.textLike` 时（`needsSniff`），容器先 `vfs.sniff`（显示加载中），结果在该标签的这个位置内缓存（`use-sniff.ts`）；`text` → 资源描述带 `textLike: true`，`scoreResource` 对声明了 `textLike` 的插件视为命中（0 分 + priority，kinds / schemes / maxSize / when 照常），`binary` / `empty` / 读取失败 → `textLike: false`（fallback）。空文件不 sniff（fallback）。
-- **查看方式覆盖**（Task 5）：`PreviewContainer` 按标签、按位置的临时状态 `viewAs: 'info' | 'text' | null`（原「以文件信息显示」的 `showInfo` 并入），导航离开后清除；`resolvePlugin`：info → fallback，text → 文本插件（未注册时 fallback），null → 按资源选择（不 sniff）。错误面板的「以文件信息显示」与插件的 `host.tabs.viewAs` 都设置它。
+- **查看器选择**（M2 Task 2，取代 Task 5 的 `viewAs` 临时状态）：用户为某位置选的查看器是标签状态 `TabState.viewer`（插件 id，随位置进入历史，11.1）。`registry.ts`：`candidatesFor(plugins, resource)`（候选，同上）；`associationFor(name, associations)`（设置 `preview.associations`：扩展名 → 插件 id，取最长扩展名、大小写不敏感）；`resolvePlugin(plugins, resource, { viewer, associations })`：viewer 在候选中 → 它；否则关联在候选中 → 它；否则 `pickPlugin`。不在候选中的 viewer / 关联被忽略。`PreviewContainer` 选了 viewer 时不 sniff。错误面板的「以文件信息显示」设置 viewer 为 fallback；目录选了 viewer 时才 stat（没选时不 stat）。
 - e2e 的崩溃插件：`features/preview/plugins.ts` 的 `previewPlugins(builtin)` 在 bootstrap 的 `e2eCrashPlugin` 为 true 时追加两个测试插件（`.crash` 渲染时抛错、`.crashload` 懒加载失败）；主进程只在**未打包**且环境变量 `PCH_E2E_CRASH_PLUGIN=1` 时设置该标志（与 `PCH_USER_DATA_DIR` 相同的限制），打包后的应用不会注册它们。
 
 ### 9.4 内置插件
@@ -904,18 +934,19 @@ export default definePreviewPlugin<{ zoom: number }>({
 |---|---|---|
 | folder | 所有目录 | 列表 / 网格 / 详细信息视图，排序、筛选；viewState 保存视图模式与滚动位置（M1-3：详细信息列表、排序，viewState 只保存排序；M1-3b 最终审查修复起 viewState 保存排序、选中项与滚动位置；路径与「上一级」M1-3b 起由应用的地址栏提供） |
 | text | 文本、代码、日志、CSV、bat、ini 等 | 自绘分页视图（任意大小立即打开、只渲染可见行），只读，编码切换，日志跟随末尾（文本预览设计 `devDoc/2026-11-20-18-text-preview-design.md`；CodeMirror 6 改为将来「编辑 / 高亮」的候选） |
-| markdown | .md | 渲染 / 源码切换 |
-| image | 常见图片 | 缩放、适应窗口 |
-| pdf | .pdf | pdf.js，页码与缩放进 viewState |
+| markdown | .md / .markdown / .mdown / .mkd（5MB 以下） | 本标签的浏览器视图中由应用自带的查看脚本渲染（M2 Task 8 已实现，见下）；源码经地址栏的查看器下拉切换为文本 |
+| html（浏览器显示） | .html / .htm / .xhtml，以及浏览器能直接显示的 .pdf 与常见图片 | 本标签的浏览器视图（M2 Task 7 已实现，见下） |
+| image | 常见图片 | 缩放、适应窗口（M2 起先由 html 插件经 Chromium 的图片文档显示；专用插件推迟） |
+| pdf | .pdf | pdf.js，页码与缩放进 viewState（M2 起先由 html 插件经 Chromium 内置 PDF 查看器显示；专用插件推迟） |
 | media | 音视频 | 原生播放器，依赖 pcfs 的 Range 支持 |
-| office | Excel / Word / PowerPoint 等（扩展名可在设置中调整） | 不渲染内容，显示启动面板：只读 / 编辑 / 新建打开（按检测结果显示）与远程编辑状态，见第 10 节 |
+| office | Excel / Word / PowerPoint 等（扩展名固定在 manifest） | 不渲染内容，显示启动面板：按检测结果（`options` 的顺序）显示 読み取り専用 / 編集 / 新規作成 / 保護ビュー 按钮；已实现（M2 Task 10），见 10.6 |
 | fallback | 其他 | 文件信息 + 用系统默认程序打开 |
 
 需求方决定（2026-11-19）：**资源树只用于展示，对文件的操作都放在将来的预览窗口中**。上表与 9.3 节中「用系统应用打开」「只读 / 编辑 / 新建打开」等打开动作只由预览窗口（标签中的插件）提供，资源树的右键菜单不提供（`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主调用）。
 
 **已实现（M1-3）：folder**（`plugins/builtin/src/folder/`，`match.kinds = ['directory']`）：没有工具栏（M1-3b：面包屑、「上一级」与「刷新」按钮都由应用的地址栏取代，12.2 节）。列表（`role="grid"`）：列为名称（图标区分目录 / 文件 / 链接 / 失效链接）、修改时间（`dateStyle`/`timeStyle` short，按界面语言）、类型（文件夹 / 「扩展名大写 + 文件」/ 链接类型）、大小（1024 进位，目录与失效链接不显示）；点击列头排序（同一列再点反转，`aria-sort`），目录与指向目录的链接始终在前，名称按 `Intl.Collator('ja', { numeric: true })`，其他列相等时按名称升序；排序、选中项（`selectedUri`）与滚动位置（`scrollTop`，滚动停止 150ms 后保存）存于标签的 viewState（只在内存中；同一标签内导航到新位置时 `layoutReducer` 清除，回到按名称升序；**后退 / 前进回到该目录时恢复**——视图按 URI 重建，选中取 viewState 的初值，列表首次就绪时滚到保存的位置，M1-3b 最终审查修复）。`@tanstack/react-virtual` 虚拟滚动（行高 28、`measureElement`、overscan 10；1 万项的目录 DOM 中的行数 ≤ 100，e2e 断言）。「显示隐藏文件」从 `host.settings.get` 读取，打开时隐藏项名称变淡。交互：单击只选中；双击 / Enter 在当前标签打开（M1-3b 设计 2.8）——目录与指向目录的链接 `host.tabs.navigate(uri, 'directory')`，普通文件 `host.tabs.navigate(uri, 'file')`（不 stat），指向文件的链接与失效链接 `host.tabs.navigate(uri)`（宿主 stat；失效时提示错误、标签不变），都进入标签的历史，「后退」回到目录列表；中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开（`host.tabs.open(uri)`，同 URI 已打开则只激活；目录视图的行没有右键菜单，「在新标签页中打开」只在资源树）；Backspace / Alt+↑ 经 `host.tabs.up()` 到逻辑路径的上一级（条目根之上是工作区总览）；↑↓ / PageUp / PageDown / Home / End 移动选中；在标签内导航后焦点回到列表。刷新：地址栏的刷新按钮与全局 `F5`（M1-3b；此前是视图工具栏的按钮与视图内的 `F5`，已删除以免重复触发）经 `host.tabs.onRefresh` 通知插件，插件经 `host.fs.refresh` 让扫描进程立即确认该目录并重新列出，期间保留当前内容（最终审查修复）；刷新（`vfs.refresh` → `scheduler.refresh`）**绕过 P0 的 2 秒去重**（M1-3b 审查修复：此前刚列出后 2 秒内刷新会被静默丢掉），也不与正在执行的 P0 合并，已在排队的仍合并（连按 F5 不重复排队）。**条目之外的目录**（M1-3b 起「上一级」不再越过条目根，界面上已无法到达；保留给旧数据与将来的定位）不进缓存、不在调度范围内，没有 `vfs.changed`，外部变化不会自动显示，要用「刷新」；降级模式（扫描进程不可用、主进程直接枚举）下同样只能刷新。数据：`host.fs.list`（缓存优先）+ `host.fs.subscribe`（该目录的 `vfs.changed` 时重新列出，期间保留当前内容）；出错时显示错误文案（`host.i18n.describeError`）与「重试」，错误优先于旧内容。导航（双击目录）经 `host.tabs.navigate(uri, 'directory')`，宿主不 stat；上一级经 `host.tabs.up()`。**标签中显示的目录被删除**（最终审查修复）：不再依赖 stat——扫描进程在删除某目录的缓存时（读取得到「不存在」、被替换为文件，或父目录的列表中它已消失），除父目录外还对按关注点处理的目录（各窗口的选中目录与标签中的目录）中等于它或在其之下者各发一次 `vfs.changed`（`scheduler.ts` 的 `notifyRemoved`；之后再读取失败不再通知，不会循环），目录视图据此重新列出，`fs.list` 以 `FS_NOT_FOUND` 拒绝，显示「找不到」与「重试」（e2e 断言）。状态行：项目数、「已断开（基于缓存）」（`fs.list` 的 `state` 为 offline：扫描进程判定断开，或渲染端的可达状态为断开；可达状态变化时宿主重建、视图重新列出，显示中的目录随之切换）、读取中；**不显示「基于缓存（N 前）」**（控制者裁定）：检查后内容没有变化时扫描进程不广播 `vfs.changed`，列表的 `checkedAt` 不会更新，「N 前」会越来越旧，而该目录作为关注点实际每 5 秒都确认过，显示出来会误导用户（资源树的悬停提示「上次检查」保持不变）。
 
-**已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。目录由 folder 插件显示（fallback 只在「以文件信息显示」时显示目录）。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，审查时追加 `.pif .scf .msp .jar .appref-ms`，最终审查追加 `.url .website .application .inf .chm .settingcontent-ms .psm1 .psd1 .ps1xml .ws .wsc .sct .vb .appinstaller .msix .appx .xll .diagcab .library-ms .search-ms .gadget`——只增加确认、不阻止打开，需求方可裁剪；大小写不敏感；NTFS 备用数据流的名称（`run.bat::$DATA`、`run.bat:stream`）按第一个 `:` 之前的文件名判断；判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。文件且 `host.tabs.canViewAs('text')` 时另有「作为文本查看」按钮（文本预览 Task 5；文本插件注册之前不显示）。
+**已实现（M1-3）：fallback**（`plugins/builtin/src/fallback/`）：名称、位置（Windows 路径）、类型、大小（1024 进位单位 + 精确字节数，目录不显示）、修改时间（含秒，按界面语言），动作「用系统应用打开」「在资源管理器中显示」「复制路径」。目录由 folder 插件显示（fallback 只在「以文件信息显示」时显示目录）。「用系统应用打开」对可执行类扩展名（`.exe .com .bat .cmd .ps1 .vbs .vbe .js .jse .wsf .wsh .msi .msc .scr .lnk .reg .hta .cpl`，审查时追加 `.pif .scf .msp .jar .appref-ms`，最终审查追加 `.url .website .application .inf .chm .settingcontent-ms .psm1 .psd1 .ps1xml .ws .wsc .sct .vb .appinstaller .msix .appx .xll .diagcab .library-ms .search-ms .gadget`——只增加确认、不阻止打开，需求方可裁剪；大小写不敏感；NTFS 备用数据流的名称（`run.bat::$DATA`、`run.bat:stream`）按第一个 `:` 之前的文件名判断；判断前去掉名称末尾的点与空格——Windows 打开路径时会去掉它们）先弹确认框，取消（按钮 / Esc）时不调用 `system.openPath`。文件且 `host.tabs.candidates()` 含文本插件时另有「作为文本查看」按钮（文本预览 Task 5；文本插件注册之前不显示）。文件的「この種類のファイルはプレビューできません。」只在自动选择到 fallback 时显示；用户选定「文件信息」（资源树单击、查看器菜单，`host.tabs.selectedViewer()` 为 fallback）时不显示（M2 试用反馈）。
 
 **已实现（文本预览 Task 6）：text**（`plugins/builtin/src/text/`，id `pch.preview.text`）：`match = { kinds: ['file'], extensions: [txt log out md csv tsv json jsonc xml yaml yml ini conf cfg properties toml sql env gitignore editorconfig sh bat cmd ps1 psm1 js ts tsx jsx mjs cjs py java kt c h cc cpp hpp cs go rs rb php html htm css scss less vue svelte gradle], textLike: true }`（扩展名表之外、容器 sniff 为文本的文件也交给它），`handlesMissing: true`。经 `host.doc` 读取（7.5 节），不用浏览器原生滚动高度：
 - **视图**（`text-view.tsx` 布局与键鼠）：固定行高 20px，视口只渲染从 `top` 起的可见行（`visible + 1` 行）；行号栏（`gutter.tsx`，宽度按总行数的位数；**部分模式不显示**）、文本（`lines.tsx`，等宽字体 `font-mono`，不换行，横向由该元素原生滚动，`←` / `→` 也可横向移动；截断行末尾显示「…（行が長すぎるため省略）」）、自绘纵向滚动条（`scrollbar.tsx`，`role="scrollbar"`；拇指按 `@pch/text-engine` 的 `pager-model` 缩放，最小 20px，拖动按位置换算行号，点击轨道翻页）。移动：滚轮（纵向按 px / 行高换算，`Shift` / 横向交给原生横向滚动）、拖动、`↑` / `↓`、`PageUp` / `PageDown`（可见行数 − 1）、`Ctrl+Home` / `Ctrl+End`。可见范围内用浏览器原生选择与复制；跨屏选择不支持。
@@ -925,6 +956,16 @@ export default definePreviewPlugin<{ zoom: number }>({
 - **工具栏**（`toolbar.tsx`）：先頭へ / 末尾へ / 末尾を追従（`aria-pressed`）。**状态栏**（`status-bar.tsx`）：编码下拉（`DropdownMenu` 的单选：自動判別 + UTF-8 / UTF-16 LE / UTF-16 BE / Shift_JIS / EUC-JP / ISO-2022-JP / GB18030 (GBK) / Big5 / Windows-1252；按钮显示「Shift_JIS（自動）」或手动选择的名称）、提示（`confidence: 'guess'` →「文字コードは推定です」、可见行含 U+FFFD →「文字化けしている可能性があります」、`binary` →「バイナリファイルをテキストとして表示しています」、可见行有截断 →「長すぎる行は途中までしか表示していません」、索引 / 读取错误——都经 `describeError` 显示错误码对应的三语文案，索引失败为「読み込みに失敗しました（<文案>）。更新で再試行します」，不直接显示错误码；`describeError` 也接受错误码本身（`DocProgress.error`），最终审查修复）、行数（索引中为「行を数えています N%（M 行）」）、大小（1024 进位）；部分模式为「先頭 / 末尾 4 MB のみ表示（全体 N）」+「すべて読み込む」（`buildIndex`，之后显示行号；位置按 `view-position.ts` 的 `afterReadAll` 换算：部分模式的 `top` 是窗口内行号，开头窗口起点在第 0 行、不变，末尾窗口起点在全量索引中的行号无法得知，未跟随时跳到末尾并跟随，最终审查修复——此前窗口内行号被当作绝对行号，末尾窗口读取全部后跳到文件开头附近）。
 - **viewState**（`view-state.ts`）：`{ top, encoding?, follow }`（移动停止 150ms 后保存；**卸载时防抖中的状态立即保存**——宿主的 `onViewStateChange` 带上该视图的位置（`setViewState(tabId, state, uri)`），标签已导航离开时 `layoutReducer` 把它写入刚离开的历史项而不是新位置，最终审查修复；后退 / 前进恢复，手动编码以 `open` 的 `encoding` 恢复）。
 - e2e（`e2e/text.spec.ts`）：10 万行日志打开在末尾（最后一行与行号）、`Ctrl+Home`、拖动滚动条到中间（行号与内容一致）；外部追加 3 行 → 跟随显示；轮转 → 重新加载、删除 →「ファイルが存在しません」并保留内容；约 200MB 文件（全量模式；50MB 在磁盘缓存下可能在显示进度前就索引完）索引进行中改名该文件成功（改名后状态栏出现「読み込みに失敗しました（ファイルまたはフォルダーが見つかりません）…」，证明改名确实发生在索引进行中，且显示的是文案而不是错误码）、上级目录 2 秒内可改名、索引完成后上级目录一次改名成功；删除后读取失败的错误在同名空文件出现（reset）后消失；移动后立即导航离开、后退时位置恢复；末尾窗口「すべて読み込む」后在整个文件的末尾；Shift_JIS / EUC-JP / GBK / Big5 / UTF-16 LE·BE / ISO-2022-JP / Windows-1252 样本显示正确（Chromium 的 `TextDecoder` 支持这些标签）与手动切换；无扩展名文本按文本打开；PNG → 文件信息 →「テキストとして表示」；20MB 单行 → 截断提示、界面可操作；降低 `preview.maxTextSizeMB` → 部分模式 →「すべて読み込む」后显示行号。
+
+**已实现（M2 Task 7）：html**（`plugins/builtin/src/html/`，id `pch.preview.html`，名称「ブラウザー表示 / 浏览器显示 / Browser view」）：`match = { kinds: ['file'], extensions: [html htm xhtml pdf png jpg jpeg gif webp svg bmp] }`、`priority: 1`（与文本插件的 html / htm 同为扩展名 3 分时胜出，文本仍在候选中，可经地址栏的查看器下拉切换）；图片与 PDF 依据先行验证 S3（Chromium 的图片文档与内置 PDF 查看器，不需要 `plugins: true`；e2e 覆盖 png / svg / pdf，其余图片格式未逐一验证）。注册顺序 folder、html、markdown、（office）、text、fallback。界面：占位元素（`host.web.attach(el, uri, { view: 'page' })`）+ 一行状态（页面标题、読み込み中、加载失败时 `describeError(failed)` 与「再試行」、被阻止的动作的提示停留 5 秒、「システムのブラウザーで開く」）。加载失败时解除占位（视图隐藏），此时地址栏刷新 / F5 由插件经 `tabs.onRefresh` 调 `web.reload()`。viewState 无（页面状态由视图保活，跨历史项不恢复）。e2e：`e2e/web.spec.ts`（相对 CSS / 图片 / 脚本、链接到 HTML / Markdown / 外网 / 范围外 `file:` / 其他范围、切换标签后页面不重新加载、焦点在页面时 F5 与 Ctrl+W、下拉 / toast 时的截图替身、图片与 PDF）。
+
+**已实现（M2 Task 8）：markdown**（`plugins/builtin/src/markdown/`，id `pch.preview.markdown`，名称「Markdown 表示 / Markdown 显示 / Markdown」）：`match = { kinds: ['file'], extensions: [md markdown mdown mkd], maxSize: 5MB }`、`priority: 1`（与文本插件的 md 同为扩展名 3 分时胜出；超过 5MB 不参与匹配，落到文本）。界面与 html 插件共用 `plugins/builtin/src/web-page/`（`WebPagePreview({ view, external? })` 与共用文案 `webPageMessages(name)`；eslint 元素 `plugin-web-page`，只依赖 plugin-sdk / ui，只允许 html / markdown 插件引用）：占位元素（`host.web.attach(el, uri, { view: 'markdown' })`）+ 一行状态，**没有**「システムのブラウザーで開く」（html 插件传 `external`）。渲染（设计 devDoc/2026-11-20-22-m2-design.md 5.4）：
+- 主进程 attach 时视图地址为 `toWebUrl(uri) + '?pch-view=markdown'`，协议处理器返回外壳页（`<meta charset="utf-8">`、`<meta name="color-scheme" content="light dark">`、`<link rel="stylesheet" href="pch-asset://viewer/markdown.css">`、`<article id="content" class="markdown-body">`、`<script type="module" src="pch-asset://viewer/markdown.js">`），文档 URL 就是 .md 本身，相对路径的图片与链接按它解析。
+- **查看脚本**（`apps/desktop/src/web-assets/markdown/`，eslint 元素 `web-asset`：只能依赖 `text-engine` 与外部包）：`main.ts` 同源 `fetch(location.pathname + '?pch-raw=1')` → `decodeMarkdown`（`render.ts`：`sampleRanges` 取样 + `detectEncoding` + `TextDecoder`，跳过 BOM；Shift_JIS 等与文本查看器同样的判断）→ `renderMarkdown`（unified：remark-parse → remark-gfm → remark-rehype `allowDangerousHtml` → rehype-slug → rehype-stringify `allowDangerousHtml`；脚注 id 带 remark-rehype 默认的 `user-content-` 前缀，标题 id 不带前缀，`[見出し](#見出し)` 可用）→ `innerHTML` 插入 → `document.title` = 第一个 h1（没有时为文件名；状态行显示）→ 地址带片段时滚动到该元素 → `renderMermaidBlocks`（`mermaid.ts`：有 `pre > code.language-mermaid` 时才 `import('mermaid')`，`securityLevel: 'strict'`、`suppressErrorRendering: true`，主题 `default` / `dark`；单个图失败时原位置显示错误信息与源码）。浅色 / 深色：`markdown.css` 与 mermaid 主题都按 `prefers-color-scheme`（视图跟随 `nativeTheme.themeSource`，台账 S2），主题切换时按新主题重新渲染 mermaid（保持滚动位置），不重新加载页面。
+- **安全**：外壳的 CSP 为 `default-src 'self' https: data:; script-src pch-asset:; style-src 'self' 'unsafe-inline' http: https: pch-asset:; img-src 'self' http: https: data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`（设计 5.4 的原值 + img-src / style-src 的 `http:`：控制者裁定，内网系统常为 http，Markdown 引用的内网图片与样式应能显示，脚本仍只允许 `pch-asset:`；mermaid 12 实测不需要 `unsafe-eval`，SVG 内的 `<style>` 与 style 属性由 `'unsafe-inline'` 放行）。`frame-src 'none'`（审查第 1 轮）：不限制时 frame-src 落到 default-src，Markdown 中的 `<iframe src="./x.html">` 会加载同源的本地 HTML（无 CSP，脚本执行并可操作外壳页，e2e 实测）、data: 框架中的脚本也会运行；mermaid 的 `securityLevel: 'strict'` 不用 iframe。`base-uri` / `form-action` 同样禁止。Markdown 中的原始 HTML 原样输出：`innerHTML` 插入的 `<script>` 不执行，`onerror=` 等内联处理器被 CSP 阻止、iframe 不加载（e2e 断言标题未被改动；视图控制台中是 CSP 违规的报错，由 scratchpad 脚本核实）。
+- **构建**：单独的 vite 构建 `apps/desktop/vite.markdown.config.ts`（台账 S9 方案 B；`root` = 查看脚本目录、`base: './'`、产物 `out/web-assets/markdown/{markdown.js, markdown.css, chunks/*.js}`），`build` 脚本为 `pnpm typecheck && electron-vite build && vite build -c vite.markdown.config.ts`；`electron-builder.yml` 排除该配置文件。开发模式不需要预先构建：renderer 的 `optimizeDeps.entries` 加入查看脚本的 `main.ts`（否则首次打开 Markdown 时 dev server 才发现 unified / mermaid、重新预构建并重新加载整个应用窗口，实测）。
+- 链接与 HTML 相同（5.3.6）：`./other.md` 在本标签以 Markdown 打开（同一插件 → 同一个视图），`./spec.xlsx` 等交给应用按查看器规则显示，脚注与标题锚点是页内导航，页面自己处理。从 HTML 页面到 Markdown（查看器不同）按 Task 7 的规则销毁旧视图、新建视图。
+- e2e：`e2e/web.spec.ts`「Markdown renders in the browser view…」（表格、相对图片、mermaid 生成 svg 与失败块显示源码、`<script>` / `onerror=` 不改动标题、脚注链接与回跳只改变片段、`other.md` 在本标签以 Markdown 打开且复用视图、查看器下拉切到 Text 显示源码且视图销毁）。
 
 ### 9.5 第三方插件（后续阶段）
 
@@ -942,28 +983,28 @@ Excel、Word、PowerPoint 等 Office 文件不在应用内渲染，而是交给�
 
 ### 10.2 能力检测：读取 Windows 文件关联
 
-Windows 资源管理器右键菜单里的「開く」「読み取り専用で開く」「新規」等，本质上是注册表中该文件类型 ProgID 下的 shell verb。本应用按以下顺序检测，结果按扩展名缓存（启动时及用户手动刷新时重新检测）：
+Windows 资源管理器右键菜单里的「開く」「読み取り専用で開く」「新規」等，本质上是注册表中该文件类型 ProgID 下的 shell verb。本应用按以下顺序检测，结果按扩展名持久保存（内存 + 数据库表 `launch_capabilities`，每台机器每个扩展名只检测一次：首次需要时检测，不阻塞启动，应用重启后直接使用已保存的结果；检测失败不保存，下次重试；面板上的「再検出」清除内存与数据库中本机的结果后重新检测并保存）。数据库在 `userData`（`%APPDATA%`，Roaming）下，漫游配置文件 / 文件夹重定向时会跟着用户到别的机器，因此每行带机器标识（主机名），只读写 / 清除本机的行：
 
 1. 读取 `HKCU\...\Explorer\FileExts\<ext>\UserChoice` 的 ProgId（用户自己选过的默认程序优先），没有则读 `HKCR\<ext>` 的默认值。
-2. 列出 `HKCR\<ProgId>\shell` 下的所有 verb。直接读注册表而不用 .NET 的 `ProcessStartInfo.Verbs`，因为后者按设计不会列出 `New`。
-3. 读取 `open` verb 的命令行，识别目标程序（`EXCEL.EXE`、`WINWORD.EXE`、`POWERPNT.EXE` 或其他）。
+2. 列出 `HKCR\<ProgId>\shell` 下的所有 verb。直接读注册表（经 PowerShell 的注册表提供程序）而不用 .NET 的 `ProcessStartInfo.Verbs`，因为后者按设计不会列出 `New`。
+3. 读取默认 verb（没有则 `open`）的命令行，识别目标程序（`EXCEL.EXE`、`WINWORD.EXE`、`POWERPNT.EXE` 或其他）。
 
-注册表读取使用系统自带的 `reg.exe`（通过 execFile 调用）。注意 `reg query` 输出中「默认值」的标签会随系统语言变化（日文系统为「(既定)」），解析时按 `REG_SZ` 等类型标记分割，不依赖标签文字。
+注册表读取由固定的 PowerShell 脚本完成（`Registry::` 提供程序，不解析 `reg query` 的文本输出，因此不受系统语言影响），输出 JSON，主进程用 zod 校验。
 
 ### 10.3 打开方式与实现手段
 
-每种方式优先使用 shell verb（与资源管理器右键菜单行为完全一致，DDE、DelegateExecute 等细节由 Windows 处理），其次使用 Office 官方文档记载的命令行开关；两者都没有就不提供。
+每种方式优先使用 shell verb（与资源管理器右键菜单行为一致，DDE、DelegateExecute 等细节由 Windows 处理），其次使用 Office 官方文档记载的命令行开关；两者都没有就不提供。**verb 的名字不等于行为**，下表依据 2026-11-20 在本机（即点即用版 Office16）对 Excel / Word 的实测（台账 `devDoc/2026-11-20-24-m2-ledger.md` S4，判定标准为窗口标题与同目录是否出现所有者文件 `~$…`）：
 
-| 方式 | 首选 verb | 备选命令行开关 | 说明 |
-|---|---|---|---|
-| 编辑打开 | `Open`（默认动作） | — | 共享盘上文件被他人占用时，由 Office 自己提示只读或通知 |
-| 只读打开 | `OpenAsReadOnly` | Excel：`/r` | Word 没有只读开关（其 `/r` 是重新注册），只能依赖 verb |
-| 受保护的视图 | `ViewProtected` | — | 仅当没有只读方式时作为替代显示，并如实标注为「受保护的视图」而非「只读」 |
-| 新建打开 | `New` | Excel：`/t`；Word：`/f` | `New` verb 多见于模板类型（.xltx/.dotx/.potx）；PowerPoint 只依赖 verb |
+| 方式 | 来源 | 说明 |
+|---|---|---|
+| 编辑打开 `edit` | 默认 verb（存在于 verbs 时），否则 `Open` | 共享盘上文件被他人占用时，由 Office 自己提示只读或通知。本机 `.xlsx` / `.docx` 没有 `UserChoice` 时，`Open` 会弹出系统「选择应用」对话框（与资源管理器双击相同，系统状态，非本应用问题） |
+| 只读打开 `readOnly` | **仅当关联程序是 `EXCEL.EXE` 时**用官方文档记载的开关 `/r` | 实测：标题 `… - Read-Only - Excel`，无 `~$` 文件。**不从 `OpenAsReadOnly` 推导**：实测它（`/h`）以编辑模式打开，出现 `~$` 文件。Word / PowerPoint 没有只读开关，不提供 |
+| 受保护的视图 `protectedView` | `ViewProtected` | 实测为只读（标题 `… - Protected View - …`，无 `~$` 文件），有此 verb 就显示，标注为「受保护的视图」 |
+| 新建打开 `newFromFile` | `New` | 实测以该文件为蓝本新建未保存的文档，原文件不被占用 |
 
-命令行开关只在识别到 Microsoft Office 时使用，exe 路径从 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe>` 读取。
+开关方式的 exe 路径：优先取 `HKLM`（再 `HKCU`）`SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe 文件名>`，否则取默认 verb 的命令中的路径，且文件须存在。`UserChoiceLatest` 不读：本机系统实际采用的是 `UserChoice`（`.pdf` 的两者不一致，实测系统用 `UserChoice`），若以后发现不一致导致错误，再改用 `AssocQueryString`。
 
-由于检测基于文件关联而不是写死 Office，若用户的默认程序是 WPS、LibreOffice 等，同样会显示该程序在注册表中提供的方式。
+由于检测基于文件关联而不是写死 Office，若用户的默认程序是 WPS、LibreOffice 等，同样会显示该程序在注册表中提供的 verb（`readOnly` 例外：只对 `EXCEL.EXE` 提供）。
 
 ```ts
 // packages/shared/src/launcher/types.ts
@@ -975,25 +1016,15 @@ export interface LaunchOption {
 }
 
 export interface LaunchCapabilities {
-  ext: string;
-  appName: string | null;            // 'Microsoft Excel' 等，取自程序的文件描述
+  ext: string;                       // 不含点的小写扩展名
+  appName: string | null;            // 'Microsoft Excel' 等，取自程序的文件描述；空串规范为 null
   options: LaunchOption[];           // 只包含检测到的方式
 }
 ```
 
-```ts
-// apps/desktop/src/main/modules/launcher/shell-execute.ts
-// 通过 PowerShell 的 Start-Process 调用 ShellExecute，路径与 verb 经环境变量传入，避免命令注入
-export async function shellExecuteVerb(target: string, verb: string): Promise<void> {
-  await execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -LiteralPath $env:PCH_TARGET -Verb $env:PCH_VERB'],
-    { env: { ...process.env, PCH_TARGET: target, PCH_VERB: verb }, windowsHide: true, timeout: 15_000 },
-  );
-}
-```
+启动经 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（`modules/launcher/powershell.ts`，`windowsHide`、超时 15 秒），路径、verb、exe、参数只经环境变量传入，脚本是固定字符串（`detect-script.ts`，纯 ASCII、不含双引号）。**不用 `Start-Process`**：Windows PowerShell 5.1 没有 `-LiteralPath`，`-FilePath` 把 `[` `]` 当通配符（同目录有 `見積[1] 案.xlsx` 与 `見積1 案.xlsx` 时会打开错的那个）。verb 方式用 `System.Diagnostics.ProcessStartInfo`（`FileName = $env:PCH_TARGET`、`Verb = $env:PCH_VERB`、`UseShellExecute = $true`）；开关方式同样用 `UseShellExecute = $true`（为 `$false` 时 .NET Framework 以继承句柄创建进程，Office 会继承 Node 的 stdout 管道，`execFile` 要等 Office 退出或超时才返回）、不设 `Verb`、`FileName = $env:PCH_EXE`、`Arguments` 由脚本从 JSON 数组（`$env:PCH_ARGS`）组成：形如 `/r` 的开关不加引号（Excel 把加了引号的开关当作文件名），其余加引号。
 
-PowerShell 启动约需数百毫秒，对「打开文件」可以接受。若贵司终端策略禁止 PowerShell，可改为用 koffi 直接调用 `ShellExecuteExW`（届时会作为新依赖告知），接口不变。
+PowerShell 启动约需 0.5～1 秒，相对 Office 自身数秒的启动可以接受（台账 S7）。若终端策略禁止 PowerShell，可改为用 koffi 直接调用 `ShellExecuteExW`（届时作为新依赖告知），接口不变。
 
 ### 10.4 不同资源类型的处理
 
@@ -1020,21 +1051,23 @@ FTP/SFTP 上的文件无法被 Office 直接写回，因此由本应用代理：
 ### 10.6 在界面中的体现
 
 1. 目录视图（预览窗口中的 `pch.preview.folder`）的右键菜单出现「用 {appName} 打开 ▸ 只读 / 编辑 / 新建」，子项按检测结果动态生成。资源树不提供（需求方 2026-11-19 决定：资源树只用于展示，打开动作只由将来的预览窗口提供）。
-2. 在预览窗口（目录视图）中双击 Office 文件的默认动作由设置 `launcher.officeDefaultAction` 决定（只读 / 编辑 / 每次询问），默认**只读**：保守业务中查阅设计书远多于修改，且在共享盘上以编辑方式打开会锁定文件，影响同事。
+2. 设置 `launcher.officeDefaultAction` 与 `launcher.officeExtensions` 已删除（M2）：在应用内打开 Office 文件都先显示启动面板（`pch.preview.office`），由用户选择打开方式（M2 反馈第 3 项起，资源树中单击 Office 文件显示「文件信息」，双击 / Enter / 新标签才是启动面板）；Office 扩展名固定在插件 manifest。
 3. 在应用内以标签方式打开 Office 文件时，由内置的 `pch.preview.office` 插件显示一个启动面板：文件信息、三个打开按钮（只显示可用的）、该文件的远程编辑会话状态。这样标签、会话恢复等机制对 Office 文件依然成立。
+
+**已实现（M2 Task 10）**：`plugins/builtin/src/office/`（id `pch.preview.office`，`match = { kinds: ['file'], extensions: [xlsx xlsm xls xltx xltm xlsb docx docm doc dotx pptx pptm ppt potx] }`）。面板：图标、文件名、位置（`toDisplayPath`）、大小、修改时间；「{{app}} で開く」+ 按 `options` 的顺序显示的按钮（插件只看 `mode`，不关心 `via`）；`appName` 为空（null 或空串）时显示「関連付けられたアプリで開く」；检测不到任何方式（`options` 为空）时只有「既定のアプリで開く」（`openWithSystem`）；底部「エクスプローラーで表示」「パスをコピー」「再検出」（`redetectLaunchCapabilities()` 后重新取能力）。按钮按下后进入「起動中」状态（所有方式按钮禁用，`launch` 的 Promise 结束即恢复），防止连按。SDK `system.getLaunchCapabilities(uri)`（失败由宿主提示并返回 null）/ `launch(uri, mode)`（失败由宿主提示，不拒绝）/ `redetectLaunchCapabilities()`，`LaunchCapabilities` 等类型在 SDK 中重新声明，宿主赋值保证结构一致。远程编辑会话状态尚未实现（第 10.5 节）。**已实现（第 4 项反馈）**：`launch_capabilities` 表（迁移 0005，主键 `(machine, ext)`）+ `modules/launcher/launch-capabilities.repo.ts`（构造时传入本机标识，组合根用 `os.hostname()`；`get` / `put` / `clear` 只针对本机的行；读出时 zod 校验，结构不符 / `ext` 不一致的行当作没有保存并重新检测）；`LauncherService` 依赖注入该 repo，保留 generation 机制（检测期间 `redetect()` 则丢弃结果、不写库）；面板的「検出中」提示延迟 300ms 才显示，检测期间占住按钮区域的高度，命中保存结果时不闪。e2e（`e2e/office.spec.ts`）经「未打包且 `PCH_E2E_FAKE_LAUNCHER=1`」在组合根注入假 run（`modules/launcher/fake-run.ts`：检测返回固定 JSON，启动为空操作并记录）。
 
 ### 10.7 代码位置
 
 ```
 apps/desktop/src/main/modules/launcher/
-├── association.ts            # 读取注册表，解析 ProgId、verb、exe
-├── capability.service.ts     # 按扩展名检测并缓存 LaunchCapabilities
-├── office-switches.ts        # 已核实的 Office 命令行开关表
-├── shell-execute.ts          # verb 调用（PowerShell 实现，可替换为 koffi）
-├── launcher.service.ts       # 根据资源类型与方式，准备本地路径并启动
-├── edit-session.service.ts   # 远程编辑会话：监听、上传、冲突、结束
-├── edit-session.repo.ts
-└── launcher.ipc.ts
+├── detect-script.ts          # 固定 PowerShell 脚本：能力检测、verb 启动、开关启动
+├── association.ts            # 检测输出的 zod 校验（RawAssociation）与「原始关联 → LaunchCapabilities」
+├── powershell.ts             # runPowerShell（execFile，可替换为 koffi）
+├── launcher.service.ts       # 按扩展名检测，结果持久保存（内存 + launch-capabilities.repo）；stat（不是文件 → LAUNCH_FAILED）→ 本地路径 → 启动（已实现，M2）
+├── launch-capabilities.repo.ts # launch_capabilities 表的存取（读出 zod 校验；已实现，第 4 项反馈）
+├── launcher.ipc.ts           # launcher.capabilities / launcher.open / launcher.redetect（已实现，M2）
+├── edit-session.service.ts   # （未实现）远程编辑会话：监听、上传、冲突、结束
+└── edit-session.repo.ts      # （未实现）
 plugins/preview-office/       # Office 文件的启动面板插件
 ```
 
@@ -1052,6 +1085,7 @@ export interface TabState {
   title: string;
   pinned: boolean;
   viewState?: unknown;         // 由插件定义：滚动位置、页码、缩放、排序、编码……
+  viewer?: string;             // 用户为当前位置选的查看器（插件 id，M2）
 }
 
 export interface WindowState {
@@ -1084,7 +1118,7 @@ export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutS
 
 ### 11.2 关键流程
 
-**打开**（M1-3b 起，浏览器式，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.8，需求方 2026-11-20 确认）：单击（或 Enter）在当前标签打开，记入该标签的历史，没有标签时新建；中键 / Ctrl+单击 / 右键「在新标签页中打开」在新标签打开，同一 URI 已打开则直接激活。没有「预览标签」（此前的斜体预览标签、被下一次单击替换、双击标签头 / 宿主动作转常驻都已取消）。
+**打开**（M1-3b 起，浏览器式，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.8，需求方 2026-11-20 确认）：单击（或 Enter）在当前标签打开，记入该标签的历史，没有标签时新建；中键 / Ctrl+单击 / 右键「在新标签页中打开」在新标签打开，同一 URI 已打开则直接激活。资源树中的文件：单击 / ↑↓ 停留以「文件信息」打开（当前标签已在显示该文件时不动），双击 / Enter 以默认查看器打开，新标签打开时为默认查看器（M2 反馈第 3 项，11.1 节「已实现」的资源树一条）。没有「预览标签」（此前的斜体预览标签、被下一次单击替换、双击标签头 / 宿主动作转常驻都已取消）。
 
 **弹出**：标签右键「在新窗口打开」或把标签拖出窗口边缘 → 渲染端发送 `tab/detach` → reducer 新建一个 detached 窗口并移入该标签 → LayoutService 发现新窗口，用 window-factory 创建 BrowserWindow 加载 `/window/?id=…`。弹出窗口内同样有标签栏，可继续打开多个。
 
@@ -1096,33 +1130,37 @@ export function layoutReducer(state: LayoutState, action: LayoutAction): LayoutS
 
 ```ts
 // M1-3b：标签显示「位置」；workspace 的 uri 为 'pch-workspace:<工作区 id>'（location.ts：workspaceUri / workspaceIdOfUri）
-export type LocationKind = 'workspace' | 'directory' | 'file'
+// M2 反馈第 8 项：workspaces（工作区一览）的 uri 固定为 'pch-workspaces:'（location.ts：WORKSPACES_URI / isWorkspacesUri / workspacesLocation）
+export type LocationKind = 'workspace' | 'workspaces' | 'directory' | 'file'
 export interface TabLocation { uri: string; kind: LocationKind; title: string }
-export interface TabHistoryEntry extends TabLocation { viewState?: unknown }   // 离开该位置时的 viewState（没有时不含该键）
+export interface TabHistoryEntry extends TabLocation { viewState?: unknown; viewer?: string }   // 离开该位置时的 viewState / 用户选的查看器（没有时不含该键）
 export interface TabHistory { back: TabHistoryEntry[]; forward: TabHistoryEntry[] }   // 各至多 TAB_HISTORY_LIMIT = 50
-export interface TabState extends TabLocation { id: string; viewState?: unknown; history: TabHistory }   // M1-3b 起没有 preview
+export interface TabState extends TabLocation { id: string; viewState?: unknown; viewer?: string; history: TabHistory }   // M1-3b 起没有 preview
 export interface TabsState { tabs: TabState[]; activeId: string | null }
 export type TabsAction =
-  | ({ type: 'tab/open' } & TabLocation)          // 新标签
+  | ({ type: 'tab/open'; viewer?: string } & TabLocation)          // 新标签（viewer：M2 反馈第 3 项）
   | { type: 'tab/close'; id: string }
   | { type: 'tab/activate'; id: string }
-  | ({ type: 'tab/navigate'; id: string } & TabLocation)
+  | ({ type: 'tab/navigate'; id: string; viewer?: string | null } & TabLocation)
   | { type: 'tab/back'; id: string }
   | { type: 'tab/forward'; id: string }
   | { type: 'tab/viewState'; id: string; viewState: unknown }
+  | { type: 'tab/viewer'; id: string; viewer: string | null }   // M2：选择 / 清除当前位置的查看器
 export function layoutReducer(state: TabsState, action: TabsAction, newId: () => string): TabsState
 ```
 
-- `tab/open`（新标签）：同 URI 已打开 → 只激活；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`（当前标签）：同标签内改位置并清除 viewState（允许与其他标签的 URI 重复），离开的位置连同其 viewState 压入后退栈、前进栈清空；导航到当前 URI 不入栈（只更新类型与标题，viewState 保留）。`tab/back` / `tab/forward`（M1-3b）：浏览器式，当前位置连同 viewState 压入另一侧的栈，**恢复目标位置离开时的 viewState**（像浏览器后退恢复滚动位置；目标没有保存时为 undefined。M1-3b 最终审查修复，此前同样清除）；没有可去的位置时不变。（M1-3b 取消预览标签：`preview` 字段、`tab/promote` 与「预览打开替换预览标签」都已删除。）`tab/viewState` 可带 `uri`（该状态所属的位置；文本预览最终审查修复）：与当前位置相同或省略时写入当前；标签已离开该位置（视图在导航之后才卸载、补存防抖中的状态）时写入后退栈顶或前进栈顶中 URI 相同的一项（两者都相同时取后退栈顶），都不是时不变——此前卸载后保存会落到新位置上，因此插件在卸载时不保存。`stores/tabs-store.ts` 的 `openHere(workspaceId, target, { newTab? })` 是界面共用的浏览器式打开：有激活标签时 `tab/navigate`，没有或 `newTab` 时 `tab/open`（资源树、地址栏使用）。历史属于标签（每个标签独立、只在内存中，关闭标签即消失；新开的标签历史为空），两个栈各至多 50 项，超出时丢弃最旧的。没有变化时返回同一个状态对象。
-- 逻辑路径（M1-3b，`renderer/src/lib/logical-path.ts`，地址栏与预览区共用）：`logicalPath(loc, { workspace: { id, name }, entries })` → `PathSegment[]`（`{ label, target: TabLocation, kind: 'workspace' | 'entry' | 'dir' | 'file' }`）：`工作区名` ›（分组不出现）› `条目标签（别名）` › 相对路径各段 ›（文件时）文件名。所属条目为包含它的 folder 条目或 URI 相同的 file 条目，多个时取 URI 最长者；条目段的目标标题也是别名（标签在条目根时标题为别名）。条目之外的位置在工作区之后退化为绝对路径（驱动器 `C:` / 共享 `\\host\share` 开始）。`parentLocation(loc, ctx)` = 逻辑路径的上一段：条目根之上是工作区总览、总览为 null、条目之外为磁盘上的上级（驱动器 / 共享根之上为总览）。
+- `tab/open`（新标签）：同 URI 已打开 → 只激活；否则插在激活标签右侧。`tab/close`：关闭激活标签时激活右侧相邻标签，没有则左侧；关闭最后一个 → 欢迎页。`tab/navigate`（当前标签）：同标签内改位置并清除 viewState（允许与其他标签的 URI 重复），离开的位置连同其 viewState 压入后退栈、前进栈清空；导航到当前 URI 不入栈（只更新类型与标题，viewState 保留）。`tab/back` / `tab/forward`（M1-3b）：浏览器式，当前位置连同 viewState 压入另一侧的栈，**恢复目标位置离开时的 viewState**（像浏览器后退恢复滚动位置；目标没有保存时为 undefined。M1-3b 最终审查修复，此前同样清除）；没有可去的位置时不变。（M1-3b 取消预览标签：`preview` 字段、`tab/promote` 与「预览打开替换预览标签」都已删除。）`tab/viewState` 可带 `uri`（该状态所属的位置；文本预览最终审查修复）：与当前位置相同或省略时写入当前；标签已离开该位置（视图在导航之后才卸载、补存防抖中的状态）时写入后退栈顶或前进栈顶中 URI 相同的一项（两者都相同时取后退栈顶），都不是时不变——此前卸载后保存会落到新位置上，因此插件在卸载时不保存。`stores/tabs-store.ts` 的 `openHere(workspaceId, target, { newTab?, viewer? })` 是界面共用的浏览器式打开：有激活标签时 `tab/navigate`，没有或 `newTab` 时 `tab/open`（资源树、地址栏使用）。**打开时指定查看器**（M2 反馈第 3 项）：`tab/open` 的 `viewer` 给新标签（同 URI 已打开时只激活，不改其查看器）；`tab/navigate` 的 `viewer` 给新位置（`null` / 省略 = 自动选择），导航到当前 URI 时指定了 `viewer`（含 `null`）则同一位置换查看器（同 `tab/viewer`：清除 viewState、不入栈），省略时保留当前查看器（地址栏点当前段等原有行为不变）。历史属于标签（每个标签独立、只在内存中，关闭标签即消失；新开的标签历史为空），两个栈各至多 50 项，超出时丢弃最旧的。没有变化时返回同一个状态对象。 `tab/viewer`（M2）：设置当前位置的 `viewer` 并清除 `viewState`（viewState 属于上一个查看器），`null` 删除该键；viewer 随位置进入历史（`entryOf`），`tab/navigate` 到新位置时清除，后退 / 前进恢复历史项的 viewer；补存刚离开位置的 viewState 时保留该项的 viewer；`stores/tabs-store.ts` 的 `setViewer(tabId, viewer)`。`backFrom(tabId, uri)`（M2 反馈第 8 项）：标签仍在 `uri` 时后退一步（没有后退历史或已离开时不变），工作区一览切换工作区后用它。
+- 逻辑路径（M1-3b，`renderer/src/lib/logical-path.ts`，地址栏与预览区共用）：`logicalPath(loc, { workspace: { id, name }, workspacesTitle, entries })` → `PathSegment[]`（`{ label, target: TabLocation, kind: 'workspaces' | 'workspace' | 'entry' | 'dir' | 'file' }`；`workspacesTitle` 为本地化的「工作区一览」）：`工作区名` ›（分组不出现）› `条目标签（别名）` › 相对路径各段 ›（文件时）文件名。所属条目为包含它的 folder 条目或 URI 相同的 file 条目，多个时取 URI 最长者；条目段的目标标题也是别名（标签在条目根时标题为别名）。条目之外的位置在工作区之后退化为绝对路径（驱动器 `C:` / 共享 `\\host\share` 开始）。`parentLocation(loc, ctx)` = 逻辑路径的上一段：条目根之上是工作区总览、**总览之上是工作区一览、一览为 null**（M2 反馈第 8 项）、条目之外为磁盘上的上级（驱动器 / 共享根之上为总览）。工作区一览本身的路径只有一览一段（名称取 `workspacesTitle`，不用标签标题的快照）；其他位置的路径**不**显示一览这一段（地址框前置的工作区按钮已代表这一级）。
 - 工作区总览（M1-3b，`features/preview/workspace-overview.tsx`，应用内置视图、不是插件）：工作区 id 取自标签的 URI（标签按工作区区分，总览只会是所属工作区的），标题为工作区显示名；分组为分节（`overview-model.ts`：未分组的项在前、无标题，之后是分组；分组内先项后子分组，同层按 sortOrder），folder / file 条目为项（别名、真实路径；悬停提示为真实路径）。单击只获得焦点；双击 / Enter 在当前标签打开（folder 为目录、file 为文件，都进入历史）；中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开（M1-3b 设计 2.8）。从条目根上来时焦点落在刚离开的条目上。`pch-workspace:` 不是文件 URI：不发给扫描进程、不进 `vfs.interest.tabs`（`selectActiveDirectory` 只取 `kind: 'directory'`），资源树不定位它（激活标签为总览时树的选中保持不变）。
+- 工作区一览（M2 反馈第 8 项，需求方 2026-11-21 确认；`features/workspace/workspaces-page.tsx`，应用内置视图、不是插件）：工作区总览的上一级，**属于当前工作区的标签集**（标签按工作区区分不变；标签只在内存中，不持久化）。进入方式：总览处地址栏的 ↑ / `Alt+↑`；地址框前置工作区按钮菜单底部的「管理工作区…」（有激活标签时在其中导航，没有时新建标签）。内容：**卡片网格**（v1.21 需求方要求；`grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]`——`auto-rows-fr` 使各行等高，窗口变窄、新建卡片换到另一行时高度也一致），每个工作区一张卡片（不显示图标；显示名、最近使用时间 `lastOpenedAt`——没有时不显示；当前工作区带「使用中」标记、强调色边框与 `aria-current`；条目数不显示，不为此新增 IPC），最后一张是虚线边框的「新しいワークスペース…」卡片（单击 / Enter 打开新建对话框：是操作而不是选择对象，不需要双击）。单击工作区卡片只获得焦点；**双击 / Enter 切换到该工作区**（切换失败只提示），**当前工作区**双击 / Enter 在本标签进入其总览；←→↑↓ / Home / End 在卡片（含新建卡片）之间移动焦点（`grid-nav.ts` 的 `gridNeighbor`：←→ 按阅读顺序，↑↓ 取相邻行中水平中心最近的一张，列数随宽度变化所以按实际位置计算）；在标签内导航到一览后焦点落在刚离开的工作区（从总览上来时），否则当前工作区。新建卡片与每张卡片右下角直接显示的操作按钮（ghost / 删除为 destructive 的 `icon-xs`，悬停提示与 `aria-label` 为操作名；不折叠进菜单）/ 右键菜单（共用同一份操作：重命名…、恢复默认名称——仅默认工作区且已改名、删除…——默认工作区没有）复用标题栏切换器的对话框（`workspace-dialogs.tsx`）。**从一览切走后旧标签后退一步**：一览因切换工作区而卸载后（不论经一览双击 / 新建、地址框的工作区按钮菜单还是标题栏的切换器切换），本标签仍是旧工作区的激活标签、仍在一览且有后退历史时后退一步（`workspace-flows.ts` 的 `listTabToLeave` + `tabs-store.backFrom`；没有历史时不动），以后切回旧工作区时不停在一览页；一览不是激活标签、或激活标签不在一览时不动。后退放在一览的卸载清理中，用 `data/workspace` 的 `useReadActiveWorkspaceId` 读查询缓存判断显示中的工作区：那时 React 已提交新工作区的界面，旧标签的后退不显示出来，也不为之前的位置挂载插件 / 浏览器视图（M2 反馈审查 I2：此前在 `activate` 返回后立即后退，`useActiveWorkspace` 要再经 `workspace.changed` → 重新取得才更新，旧标签会在界面上短暂退回；e2e 用 MutationObserver 断言地址栏 / 标签栏不出现旧位置）。在一览中删除当前工作区时先切到默认工作区，一览（连同删除确认框）随切换卸载，删除在后台完成，失败时只有提示（e2e 覆盖结果）。刷新（地址栏 / F5）重新取得工作区列表。`pch-workspaces:` 不是文件 URI：不发给扫描进程、不进 `vfs.interest`，资源树的同步请求找不到所属条目（`revealPath` 为 null）时不动、不提示。
 - 资源树（`features/explorer`，M1-3b 设计 2.4 / 2.8）：
-  - **打开**：单击 = 选中 + 在当前标签打开（`openHere`，记入历史；没有标签时新建）；**目录单击不展开**（需求 7）。中键 / Ctrl+单击 / Ctrl+Enter / 右键「在新标签页中打开」= 在新标签打开（同 URI 已打开则只激活）。**双击**：分组 / 目录 = 展开 / 折叠（第二次单击 `detail` 为 2 不再处理）；文件与单击相同（不另开标签）。展开箭头（`data-tree-toggle`）单击只展开 / 折叠，不选中、不打开。→ / ← 照旧展开折叠 / 移动。Enter = 可展开的节点展开或折叠 + 立即在当前标签打开（错误行为重试）。
-  - **键盘移动选中**（↑↓，以及 → ← 移到子项 / 父项）后 **400ms 防抖**在当前标签打开（`KEY_OPEN_DELAY_MS`）：快速连按只在最后停留处打开一次、记一条历史；单击 / Enter / 菜单打开，以及激活标签的位置被其他操作改变（同步请求到达）时取消尚未触发的打开。
-  - 设置 `explorer.singleClickPreview`（键名沿用，避免迁移）的含义改为「单击 / 键盘移动选中即在当前标签打开」：关闭时单击与 ↑↓ 只选中，Enter 打开，文件双击打开，目录双击只展开。
-  - **树跟随标签**（预览区 → 树）：`stores/navigation-store.ts` 订阅 tabs-store，激活标签（id 或位置）一变——打开、切换标签、标签内导航、后退 / 前进、地址栏点段、上一级——就发出 `mode: 'sync'` 的定位请求；资源树经 `use-reveal.ts`（与搜索的 `locate` 共用：所属条目 → 展开祖先 → 逐层等待列表）选中并滚动到该节点（`align: 'auto'`），**不聚焦、不提示、不确认目录**；位置不在树中（工作区总览、条目之外，以及展开祖先后列表中没有该项、某一层超时）时选中不变——只在找到目标时选中（`settleReveal` / `settleRevealTimeout` 按模式区分；搜索结果等的 `locate` 仍选中已到达的最深一层并提示。M1-3b 最终审查修复：此前 sync 也会选中最深的祖先）；选中节点的 URI 已是该位置时不动（同一 URI 在树中出现多次时，选中留在用户点的那一行）。请求在 store 层发出，资源树不挂载期间（侧栏显示搜索）的变化留到挂载时处理（只保留最新一个）。**不形成循环**：打开只由用户的单击 / 键盘 / 菜单发起，同步引起的选中不触发打开（e2e 以选中次数与历史条数断言）。
+  - **打开**：单击 = 选中 + 在当前标签打开（`openHere`，记入历史；没有标签时新建）；**目录单击不展开**（需求 7）。中键 / Ctrl+单击 / Ctrl+Enter / 右键「在新标签页中打开」= 在新标签打开（同 URI 已打开则只激活）。**双击**：分组 / 目录 = 展开 / 折叠（第二次单击 `detail` 为 2 不再处理）；文件见下一条。展开箭头（`data-tree-toggle`）单击只展开 / 折叠，不选中、不打开。→ / ← 照旧展开折叠 / 移动。Enter = 可展开的节点展开或折叠 + 立即在当前标签打开（错误行为重试）。
+  - **文件节点（file / link-file）的查看器**（M2 反馈第 3 项，需求方 2026-11-21 确认；纯函数 `openRequest(node, gesture, activeUri)`，`open-target.ts`）：单击与 ↑↓ 停留（`select`）= 当前标签以「文件信息」（`FALLBACK_PLUGIN_ID`）打开，**当前标签已在显示该文件时（无论哪个查看器）什么都不做**（不切回文件信息、不进历史）；双击与 Enter（`activate`）= 当前标签以默认查看器打开（`viewer: null`，自动选择）——第一次单击已以文件信息打开时由 `tab/navigate` 到当前 URI 换查看器，不多记一条历史；Ctrl+单击 / 中键 / Ctrl+Enter / 菜单（`newTab`）= 新标签、默认查看器。「文件信息」打开后地址栏的查看器菜单照常可切换；查看器随位置进入历史，后退 / 前进恢复。目录、条目根等非文件节点不指定查看器（行为不变）。只限资源树：工作区总览、目录视图、地址栏中的文件打开仍为默认查看器。
+  - **键盘移动选中**（↑↓，以及 → ← 移到子项 / 父项）后 **400ms 防抖**在当前标签打开（`KEY_OPEN_DELAY_MS`；文件以「文件信息」打开，同单击）：快速连按只在最后停留处打开一次、记一条历史；单击 / Enter / 菜单打开，以及激活标签的位置被其他操作改变（同步请求到达）时取消尚未触发的打开。
+  - 设置 `explorer.singleClickPreview`（键名沿用，避免迁移）的含义改为「单击 / 键盘移动选中即在当前标签打开」：关闭时单击与 ↑↓ 只选中，Enter 与文件双击以默认查看器打开，目录双击只展开。
+  - **树跟随标签**（预览区 → 树）：`stores/navigation-store.ts` 订阅 tabs-store，激活标签（id 或位置）一变——打开、切换标签、标签内导航、后退 / 前进、地址栏点段、上一级——就发出 `mode: 'sync'` 的定位请求；资源树经 `use-reveal.ts`（与搜索的 `locate` 共用：所属条目 → 展开祖先 → 逐层等待列表）选中并滚动到该节点（`align: 'auto'`），**不聚焦、不提示、不确认目录**；**位置是目录时该目录本身也展开**（显示其子项，与目录视图一致；文件只展开祖先、选中文件行。M2 反馈第 5 项）——这样展开的目录，以及同步时本来折叠、为显示目标而展开的祖先，记为「跟随展开」（`explorer-store` 的 `followed`，`followTo` / `openFollowed`），下一次同步时不是新位置、也不在其祖先链上的跟随展开节点收起，后退 / 上一级 / 去别处时树不越展越多；原本已展开的祖先、用户自己展开的目录不收起，用户折叠过（`toggle`）或全部折叠后的节点不再算跟随展开；`locate` 不展开目标本身；树中单击 / ↑↓ 停留打开时选中节点的 URI 已是该位置（见下文），同步跳过，因此目录单击仍不展开（需求 7）——跳过时什么都不做：不收起（免得行在指针下移动、双击的第二下落到别的行），跟随记录保留，到下一次由标签驱动的同步（目录视图、地址栏、后退 / 前进、切换标签）时收起；位置不在树中（工作区总览、条目之外，以及展开祖先后列表中没有该项、某一层超时）时选中不变——只在找到目标时选中（`settleReveal` / `settleRevealTimeout` 按模式区分；搜索结果等的 `locate` 仍选中已到达的最深一层并提示。M1-3b 最终审查修复：此前 sync 也会选中最深的祖先）；选中节点的 URI 已是该位置时不动（同一 URI 在树中出现多次时，选中留在用户点的那一行）。请求在 store 层发出，资源树不挂载期间（侧栏显示搜索）的变化留到挂载时处理（只保留最新一个）。**不形成循环**：打开只由用户的单击 / 键盘 / 菜单发起，同步引起的选中不触发打开（e2e 以选中次数与历史条数断言）。
   - 条目根 / 真实目录 / 指向目录的链接打开为 `directory`，文件 / 指向文件的链接为 `file`；分组、状态行、失效链接不打开。标题为节点显示名（条目为条目标签）。
-- 标签栏（`features/tabs`）：`role="tablist"` / `tab`；单击激活、× / 中键关闭（M1-3b 起没有斜体的预览标签与「双击转常驻」）、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`；工作区总览为标题），图标按位置种类（总览 / 目录 / 文件）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
+- 标签栏（`features/tabs`）：`role="tablist"` / `tab`；单击激活、× / 中键关闭（M1-3b 起没有斜体的预览标签与「双击转常驻」）、`Ctrl+W` 关闭激活标签；悬停提示为完整路径（`lib/file-uri.ts`；工作区总览 / 一览为标题），图标按位置种类（总览 / 一览〔GalleryVertical〕/ 目录 / 文件）；工作区一览的标题按当前语言显示（其他标签的标题是打开时的快照）；只有一个 Tab 停靠点，←→ / Home / End 切换；溢出时横向滚动（纵向滚轮换成横向）。内容区只渲染激活标签（按标签 id 重建），内容由 `PreviewContainer` 提供（9.3 节「已实现」）。
 - ~~预览转常驻~~：M1-3b 取消预览标签（设计 2.8，需求方 2026-11-20 确认），所有标签都是普通标签。
 
 ### 11.3 会话快照
@@ -1157,11 +1195,18 @@ export interface SessionSnapshot {
 
 已实现（M1-2）：query key 集中在 `lib/query-keys.ts`（`['workspace','list']`、`['workspace','active']`、`['entry','list',workspaceId]`、`['vfs','list',uri]`、`['search',workspaceId,text,kind]` 等）；`workspace.changed` → 工作区相关缓存与对应工作区的条目失效，`vfs.changed` → 对应目录列表失效。全局默认 `staleTime: Infinity`、`retry: false`、`refetchOnWindowFocus: false`（数据来自本机主进程，变化由事件推送），目录列表同样不按时间或聚焦重新获取（新鲜度由扫描进程负责，8.3 节）。同一目录的列表请求以 `dir:<uri>` 为 requestId；TanStack Query 取消查询（signal 中止）时渲染端发送 `vfs.cancel`（7.1 节）。文件名搜索（`data/search.ts`）`staleTime: 0`、不随 `vfs.changed` 失效（扫描中变化频繁，结果行会不停跳动；界面标注「基于缓存」与更新时刻），每次查询用新的 requestId（`search:<页面随机前缀>:<序号>`），取消时以该 id 发送 `vfs.cancel`——各次查询若共用一个 id，旧查询的取消可能落到紧随其后的新查询上；输入变化时保留同一工作区的上一次结果直到新结果到达（8.4 节）。例外：`vfs.reachability` 由外壳（`features/shell`）订阅并写入 `stores/reachability-store.ts`（分层规则：store 只能由 feature 写入；启动时先以 `vfs.offlineShares` 初始化）；同一事件的 `online` 另由 `lib/query-client.ts` 让该共享 / 卷下的目录查询失效。
 
+已实现（M2）：应用消息——全应用的 toast 只经 `stores/messages-store.ts` 导出的 `notify(level, text)`（sonner 只在此文件与 `Toaster` 处出现；放在 stores 而非 lib，是因为分层规则不允许 lib 依赖 stores）。`Toaster` 开启四向拖拽丢弃（sonner 内置阈值 45px）。结束方式：用户拖拽 / 关闭（`onDismiss`）= 确认，不收纳；自动消失（`onAutoClose`）时 `error` / `warning` 收纳进 `tray`（新的在前，上限 50，超出丢最旧）、`info` / `success` 丢弃；`stashVisible()` 把显示中的 toast 全部收纳并 dismiss（不视为确认），`restoreTray()` 重新显示。`visible`（显示中的 toast id）供浏览器视图换截图判断。状态栏的 `MessageTrayButton` 在 `tray` 非空时显示「通知 N 件」，点击 `restoreTray()`。
+
+已实现（M2 Task 7）：浏览器视图的渲染端（设计 `devDoc/2026-11-20-22-m2-design.md` 5.2 / 5.3.1 / 5.3.6 / 5.3.7）——
+- `data/web.ts`：`web.state / navigate / notice / shortcut` 事件的订阅（`webEvents`）。
+- `features/preview/web-host.ts`：`createWebViews`（每个渲染端一个，`preview-container.tsx` 首次需要时创建）按标签**串行**执行 `web.*` 调用（`web.freeze` 等 `capturePage` 期间到达的 `web.unfreeze` 若先执行，主进程会在截图后把视图隐藏而不再显示）、缓存各标签最近的 `web.state`（attach 复用视图且 URL 相同时主进程不再发状态，插件重新挂载时回放）、订阅 `tabs-store`：主进程中有视图的标签已不存在（关闭，含未激活的标签）→ `web.release`（分层规则不允许 stores 调用 IPC，release 在 features/preview 发出；`tabs-store` 只新增 `findTab(state, id)`）。`createWebHost`（每个标签内容 `PluginView` 一个，按标签 id 记忆；宿主重建时经 `setLinks` 在布局阶段换成最新的条目根 / `tabs` / 错误提示，视图不因主题、条目变化而隐藏再显示）：attach 的范围根见 7.3 节「范围根的确定」（`WebViews` 按标签记住，跳转沿用），并取走 `WebViews` 中该 URI 待用的片段（`web.navigate` 的 `fragment`）一并发给 `web.attach`；位置 = 占位元素的 `getBoundingClientRect()`（DIP，不乘 `devicePixelRatio`；`x = round(left)`、`width = round(right) - x`），`ResizeObserver` + 窗口 `resize` 在同一帧内合并为一次 `web.setBounds`（位置不变不发）；`web.navigate` → `tabs.navigate` / `tabs.open`（newTab）；`web.shortcut` → `window` 上派发 `keydown`（复用现有快捷键处理）；刷新请求 → `web.reload`。插件卸载（解除占位）一律只 `web.hide`；**销毁**只在：标签关闭（`createWebViews` 的 tabs-store 订阅）、本标签内容改用其他查看器（`PluginView` 在布局阶段 `setLocation({ pluginId, uri })`，`pluginId` 为实际解析出的插件，与视图「所有者」——最近一次 attach 的插件——不同即 `web.release`；插件仍在懒加载时同样生效）、工作区总览（`PreviewContainer`）。同一查看器导航到另一位置（网页之间跳转、后退 / 前进）时复用同一视图，主进程加载新 URL（同一个 webContents：sessionStorage 延续，M2 Task 7 审查修复——此前每次跳转都销毁重建）。状态缓存连同当时 attach 的 URI 一起保存，只回放同一 URI 的状态（导航到另一页面不会回放上一页的失败）。加载失败码映射为应用错误码（`HTTP_404` → `FS_NOT_FOUND` 等，其余 `UNKNOWN`）。
+- **截图替身**：`lib/overlay-tracker.ts` 的 `useOverlayOpen()`——`MutationObserver` 观察 body 子树，`[data-open]` / `[data-ending-style]`（Base UI Popup 打开中 / 关闭动画中）且 role 为 `menu` / `dialog` / `alertdialog` / `listbox`、无 `hidden` 的节点存在时为 true（Tooltip 没有 role，不计入）。`PluginView` 把 `useOverlayOpen() || messages-store.visible.length > 0` 交给 `webHost.setCovered`：变为遮挡 → `web.freeze` → 占位元素背景 = 返回的 PNG（`background-size: 100% 100%`，截图为物理像素），解除 → 清除背景、`web.unfreeze`；截图期间解除遮挡时不显示迟到的图。只因 toast 处于截图时，占位元素上的 `pointerdown` → `stashVisible()`（不转发给页面）。**焦点**：隐藏的视图拿不住焦点（实测 `setVisible(false)` 后视图与应用的 `isFocused()` 都为假），主进程在 `web.freeze` 时把页面持有的焦点交回应用界面并报告 `yielded`。只因 toast 时渲染端让应用中残留的焦点元素失去焦点（页面中正在进行的输入不会落到资源树等处），结束时若用户没有在应用中操作（`document.hasFocus()` 且 `activeElement` 为 body）则 `web.unfreeze({ refocus: true })` 把焦点还给页面；期间打开过弹出层或焦点移到了应用中的元素则不还（系统级按键实测两种情形）。系统截图确认：下拉 / toast 显示在截图之上，视图与占位元素逐像素对齐（150% 缩放）。
+
 ### 12.2 界面布局
 
 ```
 ┌ 标题栏：工作区切换器 │ 搜索/命令面板（Ctrl+K） │ 主题/语言快捷切换 │ 窗口按钮 ┐
-├ 地址栏：[←][→][↑][⟳]  工作区 ▾ › 条目别名 › 段 … › 文件名 ─────────────────────┤
+├ 地址栏：[←][→][↑][⟳] ( [≋] 工作区 › 条目别名 › 段 … › 文件名 )  [表示] ─────────┤
 ├──┬────────────────┬─────────────────────────────────────────────────────┤
 │活│ 资源树          │ 标签栏（拖拽排序、固定、预览模式、溢出菜单）              │
 │动│ （工作区条目 +  ├─────────────────────────────────────────────────────┤
@@ -1174,11 +1219,11 @@ export interface SessionSnapshot {
 
 隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 与 fallback 插件已实现（9.3、9.4 节「已实现」），folder 与 fallback 插件均已实现（9.4 节「已实现」）。
 
-**地址栏（M1-3b 已实现，`features/address-bar`，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.2 / 2.8 节）**：标题栏正下方、横跨活动栏 / 侧栏 / 内容区的一行（`Shell` 的 `addressBar` 插槽，`<nav>`，与标题栏同级、不属于任何标签的内容），显示当前工作区**激活标签**的位置；没有标签时只有工作区一段。
-- 按钮：后退 / 前进（按该标签自己的历史，11.1 节）、上一级（`lib/logical-path.ts` 的 `parentLocation`，与目录视图的 Backspace / `Alt+↑` 相同）、刷新（`stores/tabs-store.ts` 的 `requestRefresh(tabId)`：目录视图重新确认并列出、文件标签重新 stat、工作区总览重新取得条目）；不可用时禁用（没有标签时全部禁用）。悬停提示带快捷键。
-- 路径段：每次由 `logicalPath` 用最新的工作区名与条目计算（条目改名后立即更新；标签栏的标题仍是打开时的快照）。单击段 = 在当前标签内导航（进入历史；当前位置本身不变）；中键 / `Ctrl+单击` = 在新标签打开（同 URI 已打开时按 `tab/open` 只激活）；没有激活标签时单击也新建标签。段的悬停提示为真实路径（Windows 路径；工作区段没有）；最后一段 `aria-current="location"`。段过长时截断（最大宽度），段多时横向滚动（滚动条隐藏，纵向滚轮换成横向），路径或宽度变化后滚到末尾，使当前位置可见。
-- 工作区段旁的 ▾：列出工作区（当前项选中），选中即切换（与标题栏的切换器相同，经 `data/workspace` 的 `activate`；新建 / 重命名 / 删除只在标题栏的切换器中）。
-- 快捷键（`use-navigation-shortcuts.ts`，监听 window，按键 → 命令为纯函数 `commands.ts`）：`Alt+←` / `Alt+→` 后退 / 前进（焦点在输入框时也有效，与浏览器相同）；`F5` 刷新激活标签（焦点在 input / textarea / select / contenteditable 时除外；视图内已处理的按键——`defaultPrevented`，例如资源树内的 `F5` 刷新资源树——不再处理）；鼠标侧键为 `mouseup` 的 `button` 3 / 4（后退 / 前进），侧键的 `mousedown` / `mouseup` / `auxclick` 都阻止默认动作（不用主进程的 `app-command`）。**有模态对话框打开时**（DOM 中有未隐藏的 `[role="dialog"]` / `[role="alertdialog"]`，即 Base UI Dialog / AlertDialog 的弹出层；`OPEN_MODAL_SELECTOR`）这些快捷键与侧键都不处理（否则作用于对话框背后的标签；侧键的默认动作仍阻止。M1-3b 最终审查修复）。系统级侧键（`mouse_event` 的 XBUTTON1 / XBUTTON2）已实测：每按一次后退 / 前进一步，页面不发生历史导航。
+**地址栏（M1-3b 已实现，`features/address-bar`，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.2 / 2.8 节）**：标题栏正下方、横跨活动栏 / 侧栏 / 内容区的一行（`Shell` 的 `addressBar` 插槽，`<nav>`，与标题栏同级、不属于任何标签的内容），显示当前工作区**激活标签**的位置；没有标签时只有工作区一段。**地址框**（M2 反馈第 6 项，需求方 2026-11-21 确认）：前置的工作区按钮与路径各段放在一个圆角、浅底的框中（`data-slot="address-box"`：`rounded-md border bg-muted/50`，高 28px，地址栏行高 36px），导航按钮（← → ↑ ⟳）与右端的查看器按钮留在框外，像 Edge / Windows 资源管理器的地址框；亮色 / 暗色下框与 ghost 按钮的悬停底色都可分辨（截图确认）。**工作区部分**（v1.21）：工作区按钮与第一段（工作区；一览页时为一览段）合成地址框左端的一个区域（`data-slot="address-workspace"`：撑满框高 `self-stretch`、右侧分隔线 `border-r`、不透明的底色 `color-mix(in oklch, var(--background), var(--foreground) 7%)`，暗色为 20%），底色与框不同，与后面的路径区分。不是框中的框：没有自己的边框 / 圆角 / 阴影，左侧圆角由地址框的 `overflow-hidden` 裁出，与框一致（需求方 2026-11-21 第二轮反馈；暗色下原来的 `bg-background` 比框更暗、对比不足，改为叠加前景色变亮）。底色必须不透明：它是段列表的第一项，`sticky left-0`，路径很长横向滚动时固定在左端（路径从它下面经过），工作区这一级始终可见。**复制路径**（v1.21）：单击当前位置（最后一段，不带修饰键）或其后的空白处（框本身或段列表的空白）把当前位置的路径写入剪贴板（`system.copyText`；文件 / 目录为 Windows 路径，其他如网页为 URI）并提示「パスをコピーしました」；工作区 / 一览没有路径，不动作；`Ctrl+单击` / 中键当前段仍在新标签打开。当前段与空白处的悬停提示为「路径 + 换行 + クリックでパスをコピー」（`addressBar:copyHint`）。 **查看器下拉（M2 Task 3）**：地址栏右端的「表示」按钮（`viewer-menu.tsx`）列出当前标签资源的候选查看器（单选，选中即 `tabs-store.setViewer`，进入历史；候选少于 2 个或无标签时禁用）；分隔线下的勾选项「.ext は常にこれで開く」写入 / 删除设置 `preview.associations[ext]`（ext = 文件名最后一段扩展名小写）。候选由预览容器写入 `stores/viewer-store.ts`（`byTab[tabId] = { candidates, ext }`，名称已按插件语言资源翻译，卸载时清除；内容相同的重复写入不触发订阅），地址栏经 store 读取（feature 之间不互相 import）。
+- 按钮：后退 / 前进（按该标签自己的历史，11.1 节）、上一级（`lib/logical-path.ts` 的 `parentLocation`，与目录视图的 Backspace / `Alt+↑` 相同；总览之上是工作区一览）、刷新（`stores/tabs-store.ts` 的 `requestRefresh(tabId)`：目录视图重新确认并列出、文件标签重新 stat、工作区总览重新取得条目）；不可用时禁用（没有标签时全部禁用）。悬停提示带快捷键。
+- 路径段：每次由 `logicalPath` 用最新的工作区名与条目计算（条目改名后立即更新；标签栏的标题仍是打开时的快照）。单击其他段 = 在当前标签内导航（进入历史）；单击当前位置 = 复制路径（见上）；中键 / `Ctrl+单击` = 在新标签打开（同 URI 已打开时按 `tab/open` 只激活）；没有激活标签时单击也新建标签。段的悬停提示为真实路径（Windows 路径；工作区段没有，`title=""` 以免继承地址框的复制提示）；最后一段 `aria-current="location"`。段过长时截断（最大宽度），段多时横向滚动（滚动条隐藏，纵向滚轮换成横向），路径或宽度变化后滚到末尾，使当前位置可见。
+- **前置的工作区按钮**（M2 反馈第 7 项：放在工作区名**前面**，lucide `GalleryVerticalIcon`（v1.21 起；最初为 `LayersIcon`，与资源树 / 总览的分组图标重复），去掉原来工作区名后面的 ▾；ghost、`icon-xs`，`aria-label` / 悬停提示为 `workspace:switcherLabel`）：快速切换菜单，列出工作区（当前项选中），选中即切换（与标题栏的切换器相同，经 `data/workspace` 的 `activate`）；底部分隔线下「管理工作区…」进入工作区一览（11.1 节）。新建 / 重命名 / 删除在标题栏的切换器与工作区一览中。
+- 快捷键（`use-navigation-shortcuts.ts`，监听 window，按键 → 命令为纯函数 `commands.ts`）：`Alt+←` / `Alt+→` 后退 / 前进（焦点在输入框时也有效，与浏览器相同）；`Alt+↑` 上一级（M2 反馈第 8 项；焦点在应用的输入框时除外——输入框 / 下拉选择中 Alt+↑ 有自己的含义；目录视图自己处理 Alt+↑ 并 `preventDefault`，全局按 `defaultPrevented` 跳过，不会执行两次。**焦点在网页视图中时 Alt+↑ 总是上一级**，页面里的 `<select>` / `<textarea>` 也一样，与 Alt+← / Alt+→ 相同：主进程在 `before-input-event` 中必须同步决定是否拦截，而 `Electron.Input` 与 `WebContents`（含 `focusedFrame`）都拿不到页面中获得焦点的元素，只有向页面执行脚本才能知道——视图没有 preload，不为此注入脚本（15 节））；`F5` 刷新激活标签（焦点在 input / textarea / select / contenteditable 时除外；视图内已处理的按键——`defaultPrevented`，例如资源树内的 `F5` 刷新资源树——不再处理）；鼠标侧键为 `mouseup` 的 `button` 3 / 4（后退 / 前进），侧键的 `mousedown` / `mouseup` / `auxclick` 都阻止默认动作（不用主进程的 `app-command`）。**有模态对话框打开时**（DOM 中有未隐藏的 `[role="dialog"]` / `[role="alertdialog"]`，即 Base UI Dialog / AlertDialog 的弹出层；`OPEN_MODAL_SELECTOR`）这些快捷键与侧键都不处理（否则作用于对话框背后的标签；侧键的默认动作仍阻止。M1-3b 最终审查修复）。系统级侧键（`mouse_event` 的 XBUTTON1 / XBUTTON2）已实测：每按一次后退 / 前进一步，页面不发生历史导航。
 
 ### 12.3 渲染端入口
 
@@ -1203,7 +1248,7 @@ createRoot(document.getElementById('root')!).render(
 
 ## 13. 数据库设计
 
-位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留））。
+位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留）、`launch_capabilities`（迁移 0005））。
 
 ```sql
 -- 时间戳一律为 UNIX 毫秒（INTEGER）；JSON 列以 TEXT 存储
@@ -1239,6 +1284,14 @@ CREATE TABLE index_targets (                          -- 迁移 0003 已实现�
   uri          TEXT NOT NULL,                         -- 已规范化，位于该工作区某 folder 条目之下
   created_at   INTEGER NOT NULL,
   PRIMARY KEY (workspace_id, uri)
+);
+
+CREATE TABLE launch_capabilities (                    -- 迁移 0005 已实现：文件关联的打开方式检测结果（每台机器每个扩展名一份）
+  machine     TEXT NOT NULL,                          -- 检测所在机器的主机名（os.hostname()）；数据库随漫游配置文件到别的机器时不沿用
+  ext         TEXT NOT NULL,                          -- 不含点的小写扩展名
+  data        TEXT NOT NULL,                          -- LaunchCapabilities 的 JSON（含「检测成功但没有任何方式」）
+  detected_at INTEGER NOT NULL,                       -- UNIX 毫秒
+  PRIMARY KEY (machine, ext)
 );
 
 CREATE TABLE connections (
@@ -1326,14 +1379,12 @@ export const settingsSchema = z.object({
   'cache.backgroundGapMs.network': z.number().int().min(500).default(2000),
   'vfs.timeoutSec.local':        z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network':      z.number().int().min(10).max(120).default(10),
-  'launcher.officeExtensions':   z.array(z.string()).default(['xlsx', 'xlsm', 'xls', 'xltx', 'docx', 'doc', 'dotx', 'pptx', 'ppt', 'potx']),
-  'launcher.officeDefaultAction': z.enum(['readOnly', 'edit', 'ask']).default('readOnly'),
   'launcher.autoUploadRemoteEdits': z.boolean().default(true),         // 远程编辑会话保存后自动上传
 });
 export type Settings = z.infer<typeof settingsSchema>;
 ```
 
-已实现：上面的全部键均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。
+已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。
 
 设置页本身是一个内部标签（`internal://settings`），由内部插件渲染，因此同样支持弹出与会话恢复。修改后主进程广播 `settings.changed`，所有窗口即时生效。
 
@@ -1350,13 +1401,22 @@ shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通
 ## 15. 安全设计
 
 1. 所有窗口统一由 window-factory 创建：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`、`webSecurity: true`。
-2. `index.html` 以 meta 声明 CSP（`script-src 'self'`，不允许内联脚本；`style-src` 因组件浮层定位需要 `'unsafe-inline'`）；禁止页面内导航到外部地址，`setWindowOpenHandler` 一律拒绝，外部链接经白名单校验后用 `shell.openExternal` 打开。
+2. `index.html` 以 meta 声明 CSP（`script-src 'self'`，不允许内联脚本；`style-src` 因组件浮层定位需要 `'unsafe-inline'`）；禁止页面内导航到外部地址，`setWindowOpenHandler` 一律拒绝，外部链接经白名单校验后用 `shell.openExternal` 打开。这些全局限制（`windows/security.ts`）施加于除浏览器视图会话 `persist:pch-web` 之外的所有 webContents（应用窗口在默认会话）；浏览器视图由 `modules/web` 施加自己的处理（第 9 项）。`will-attach-webview` 对所有 webContents 一律拒绝。
 3. IPC 校验发送方来源（只接受 `app://renderer` 或开发地址），所有输入经 zod 校验。
 4. `pcfs://` 只接受已知 scheme，远程 URI 必须对应已存在的连接；本地路径做规范化，防止路径穿越。
 5. 机密使用 `safeStorage`（Windows 下为 DPAPI）加密存储，不进入渲染进程、不写日志。
 6. SFTP 主机密钥 TOFU 校验；FTP 明文连接在界面上标注风险并推荐 FTPS。
 7. 插件仅能访问 PreviewHost；第三方插件默认关闭，需用户显式启用。
 8. 打包时启用 Electron Fuses（`electron-builder.yml` 的 `electronFuses`：关闭 RunAsNode、NODE_OPTIONS 与 inspect 参数，启用 asar 完整性校验与仅从 asar 加载）；渲染端产物位于 asar 内，同受完整性校验保护；发布时进行代码签名。
+9. **浏览器视图（M2，主进程 `modules/web`）**：本地 HTML / Markdown 显示在主进程为每个标签创建的 `WebContentsView` 中（独立渲染进程），插件只放占位元素。
+   - **已实现**（`web-session.ts`、`web-view-manager.ts`、`navigation.ts`、`shortcuts.ts`、`web.ipc.ts`）：
+     - 视图 `webPreferences`：`sandbox`、`contextIsolation`、`nodeIntegration: false`、无 preload、`webSecurity`、`devTools: false`、`spellcheck: false`；会话 `persist:pch-web`（持久化，localStorage 按范围编号隔离）。
+     - 会话：注册 `pch-web`（范围内只读，7.3 节）与 `pch-asset`（Markdown 查看脚本，7.3 节）两个处理器，各自外包**发起方检查**：`pch-web`（`guardInitiator`）按 `request.initiatorOrigin` 只放行「无发起方」（应用的 `loadURL` / `reload`）与「同一 `pch-web://<范围编号>` 源」，其余（外站 iframe、其他范围的页面、沙箱 iframe 等不透明源 `"null"`）403（e2e 以其他范围的图片 / fetch 失败确认检查生效）；`pch-asset`（`guardAssetInitiator`）只放行无发起方与来自 `pch-web://` 页面的请求，应用窗口、外站、不透明源 403。范围的含义：页面脚本可同源读出范围内全部文件的内容，且外网放行（可外发）；条目根为驱动器根 / 共享根时范围即整个盘 / 共享；范围判定为字符串比较，经范围内的符号链接 / 联接点可读到范围外。需求方 2026-11-21 了解上述风险后决定维持现状：不收窄范围、外网照常放行、不做 realpath 校验（实现记录 Q2 / Q13）。权限请求与检查除剪贴板写入（`clipboard-sanitized-write`，原型的「复制」按钮）外一律拒绝；`will-download` 一律取消并向该视图发 `web.notice download`。
+     - 导航：主框架的 `will-navigate` / `will-redirect` 与 `setWindowOpenHandler` 一律阻止视图自己导航，经 `decideNavigation` 判定——同范围 `pch-web`、范围内 `file:` → `web.navigate`（由应用在标签中打开，新窗口请求为 `newTab`；链接的 `?查询#锚点` 作为 `fragment` 不进入标签的位置，在该标签打开时交给下一次 `web.attach` 拼到加载地址后，Markdown 视图只取 `#锚点`；新标签打开时不带）；`http:` / `https:` / `mailto:` → `shell.openExternal`（同一视图 2 秒内最多一次，超出丢弃并记日志：页面脚本 / meta refresh 无需用户手势即可触发）；其他范围 / 范围外 → `web.notice outOfScope`；其他协议 → `web.notice unsupported`。子框架不拦截。每次主框架提交后清空视图的导航历史（标签历史由应用管理，页面的历史导航无处可去）。页面中点击 `file:` 链接（主框架与 `target=_blank`）在渲染进程即被 Chromium 拦截（`Not allowed to load local resource`），不触发上述事件：结果是静默无反应（不读取文件，但不提示，范围内的 `file:` 绝对链接也打不开）。
+     - 按键：`before-input-event` 中应用快捷键（F5、Alt+← / Alt+→ / Alt+↑、Ctrl+W、Ctrl+Shift+F、Ctrl+B，以渲染端 window 级 keydown 为准；`modules/web/shortcuts.ts` 的 `APP_SHORTCUTS`）不交给页面，作为 `web.shortcut` 发给所属窗口——不区分页面中的焦点是否在输入框（主进程拿不到页面的焦点元素，见 12.2 节 `Alt+↑`），页面内下拉选择的 Alt+↑ 也作为「上一级」；鼠标侧键（`before-mouse-event` 的 `back` / `forward`）整组阻止，抬起时转为 Alt+← / Alt+→。
+     - 生命周期：每窗口最多 8 个视图（LRU，显示中的除外）；窗口关闭、渲染端提交新文档（重新加载）或崩溃时销毁该窗口的全部视图；退出时全部销毁。
+     - 焦点（M2 Task 7 审查修复）：`hide` / `release` / `freeze` 时视图若持有键盘焦点，交回所属窗口的渲染端（`OwnerWindow.focus()`）；`freeze` 交回焦点时报告 `yielded`；`unfreeze({ refocus })` 只在渲染端判断「只因 toast 截图、截图时交回了焦点、期间用户没有在应用中操作（`document.hasFocus()` 且 `activeElement` 为 body）」时把焦点还给视图（审查第 2 轮：无条件还回会抢走用户在资源树等处的焦点）。否则隐藏 / 销毁的视图留着焦点，应用快捷键（Alt+→、F5…）在用户点击之前都不生效（系统级按键实测）。**加载时不抢焦点**（最终修复 I3，Q18）：视图新建 / `loadURL` 时会拿走键盘焦点（实测），资源树 ↑↓ 经过 html / pdf / 图片 / md 时方向键随之进入页面；`attach` 时视图没有焦点（用户在应用界面中操作）则此后视图自己拿到的焦点（webContents `focus` 事件，`setImmediate` 之后处理——在事件中同步交回不生效）交回应用界面，直到用户在视图内按下鼠标（`before-mouse-event` 的 mouseDown；焦点已被交回时按下鼠标把焦点给视图）或 `unfreeze` 还焦点；`attach` 时视图已持有焦点则不干预。**焦点在页面中导航时留在新页面**（试用反馈第 1 项）：在页面中点同范围链接 / 按 Alt+←→（`shortcuts.ts` 转发）时，渲染端先 `web.hide`（同一查看器，复用视图）或 `web.release`（查看器不同，例如 html → md）再 `web.attach`，hide / release 已把焦点交回应用，按上一条规则新页面拿到的焦点会被交回。为此 `hide` / `release` 交回了焦点时按窗口记下「焦点交接」（`WebViewManager.handoffs`：窗口 → 标签）；紧接着的 `attach` 若是同一标签则取走它：不设 guard 并主动 `webContents.focus()` 视图（复用的或新建的）。交接只给紧接着的一次 `attach`（任一标签的 attach 都作废它），用户在应用界面中按下键盘 / 鼠标（应用渲染端 webContents 的 `before-input-event` 非 keyUp / `before-mouse-event` 的 mouseDown，`bindWebViewOwner` 接到 `WebViewManager.appInput`）或窗口的视图全部销毁时也作废——例如页面中 Alt+← 回到文本文件后，在应用中按 Alt+→ 回到网页：焦点留在应用。只看按下：交回焦点后键的抬起落到应用界面，不算用户操作。
+   - 渲染端（宿主 `PreviewHost.web` 与截图替身）：M2 Task 7 已实现，见 12.1 节。
 
 ---
 
@@ -1386,11 +1446,11 @@ export default defineConfig({
 
 ### 16.3 开发流程
 
-根目录 `pnpm dev` 即 `electron-vite dev`：Vite dev server 提供渲染端（只监听 localhost），主进程 / preload 重新构建后自动重启 Electron，开发窗口中 F12 打开 DevTools。开发环境使用独立的 userData（`PremiumCowHorse-dev`）。
+根目录 `pnpm dev` 即 `electron-vite dev`：Vite dev server 提供渲染端（只监听 localhost），主进程 / preload 重新构建后自动重启 Electron，开发窗口中 F12 打开 DevTools。开发环境使用独立的 userData（`PremiumCowHorse-dev`）。Markdown 查看脚本在开发模式下由 `pch-asset://` 代理到 renderer dev server（`/@fs/…`），renderer 的 `optimizeDeps.entries` 包含该入口（否则首次打开 Markdown 时 vite 重新预构建并重载整个窗口）。
 
 ### 16.4 打包与分发
 
-`pnpm build` 执行类型检查与 `electron-vite build`（产出 `apps/desktop/out`）；`pnpm dist` 再调用 electron-builder 生成 **zip 免安装文件夹版**（`PremiumCowHorse-<版本>-win-x64.zip`），解压到任意目录后运行其中的 `PremiumCowHorse.exe`，不需要安装与管理员权限。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。用户数据位于 `%APPDATA%\PremiumCowHorse`，与程序所在目录无关，替换新版本时直接覆盖程序目录即可。
+`pnpm build` 执行类型检查、`electron-vite build`（产出 `apps/desktop/out`）与 Markdown 查看脚本的单独 vite 构建（`vite.markdown.config.ts`，产出 `out/web-assets/markdown`，约 5.4MB，其中 89 个分块只在含 mermaid 代码块时按需加载；`pnpm start`（`electron-vite preview`）不会构建它，未执行过 `pnpm build` 时 Markdown 查看器 404）；`pnpm dist` 再调用 electron-builder 生成 **zip 免安装文件夹版**（`PremiumCowHorse-<版本>-win-x64.zip`），解压到任意目录后运行其中的 `PremiumCowHorse.exe`，不需要安装与管理员权限。asar 中只包含 `out/` 与主进程的运行时依赖（`dependencies`）。由于使用 `node:sqlite`，无需原生模块重编译步骤。用户数据位于 `%APPDATA%\PremiumCowHorse`，与程序所在目录无关，替换新版本时直接覆盖程序目录即可。
 
 分发形式的选择（实测）：
 
@@ -1411,7 +1471,7 @@ export default defineConfig({
 | 单元测试 | layoutReducer、URI 工具、插件匹配算法、设置 schema | vitest |
 | 服务测试 | 各 service + 内存数据库（`node:sqlite` 的 `:memory:`），含事务并发安全测试 | vitest |
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
-| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的打开 / 关闭（`e2e/tabs.spec.ts`；M1-3b 起为浏览器式：单击当前标签、中键 / Ctrl+单击 / 菜单新标签、目录单击不展开、双击 / 箭头展开）、树跟随标签与 ↑↓ 防抖打开、同步不循环（`e2e/tree-sync.spec.ts`，M1-3b）、全部折叠 / 定位到当前项、分组抽屉的互斥与恢复、未分组条目在上（`e2e/drawer.spec.ts`，M1-3b）、fallback 的文件信息与三个动作、可执行文件的确认、没有预览标签（点击 / 按键 / 插件动作都不改变标签）、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
+| 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的打开 / 关闭（`e2e/tabs.spec.ts`；M1-3b 起为浏览器式：单击当前标签、中键 / Ctrl+单击 / 菜单新标签、目录单击不展开、双击 / 箭头展开；M2 反馈第 3 项：文件单击 / ↑↓ 停留为文件信息、已在显示时不动，双击 / Enter 为默认查看器，Ctrl+单击 / 中键 / Ctrl+Enter 为新标签默认查看器）、树跟随标签与 ↑↓ 防抖打开、同步不循环（`e2e/tree-sync.spec.ts`，M1-3b）、全部折叠 / 定位到当前项、分组抽屉的互斥与恢复、未分组条目在上（`e2e/drawer.spec.ts`，M1-3b）、fallback 的文件信息与三个动作、可执行文件的确认、没有预览标签（点击 / 按键 / 插件动作都不改变标签）、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
 | 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
 | 依赖审计 | 已知漏洞 | pnpm audit |
@@ -1424,7 +1484,7 @@ export default defineConfig({
 |---|---|---|
 | M0 骨架（✅ 2026-11-18 完成） | 跑通全链路 | monorepo、electron-vite、app 协议、类型化 IPC、SQLite 与迁移、设置服务、i18n、主题、自绘标题栏与窗口按钮、lint 与模块边界、错误落盘、zip 分发 |
 | M1 工作区与本地文件（✅ 2026-11-20 完成，合并到 `main`，标签 `m1`；总结与待确认清单见 `devDoc/2026-11-20-21-m1-summary.md`） | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索**（复用 `index.db` 的 FTS5 trigram 索引：活动栏的搜索视图、`Ctrl+Shift+F`、在资源树中定位；✅ 2026-11-19 完成，设计 `devDoc/2026-11-19-02-search-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-07-search.md`）；**M1-3 标签与目录视图（✅ 2026-11-19 完成，为「最低可用原型」：单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder / fallback 插件、激活目录按关注点处理；设计 `devDoc/2026-11-19-12-m1-3-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-14-m1-3.md`；标签拖拽 / 固定 / 溢出菜单、网格视图、会话恢复均推迟）**；**M1-3b 导航、同步与资源树改进（✅ 2026-11-20 完成：标签历史与逻辑路径、浏览器式打开（取消预览标签）、应用地址栏、树与预览区双向同步、类型图标、定位 / 全部折叠与分组抽屉；设计 `devDoc/2026-11-19-15-navigation-design.md`，部分决定待需求方确认，见 `devDoc/2026-11-19-17-navigation.md`）**；**文本 / 日志预览（✅ 2026-11-20 完成：`@pch/text-engine`、provider `read`、主进程文档服务与 `vfs.sniff`、自写编码判断、文本插件（自绘分页、日志跟随、部分模式）、`PreviewHost.doc`；设计 `devDoc/2026-11-20-18-text-preview-design.md` 第 7 节的决定待需求方确认，见 `devDoc/2026-11-20-20-text-preview.md`）** |
-| M2 预览插件体系 | 插件化落地 | plugin-sdk、注册表与匹配、PreviewContainer、pcfs 协议、text（M1 内已提前完成，见上）/markdown/image/pdf/media/fallback 插件；Office 打开方式检测与本地/SMB 文件的只读/编辑/新建打开、office 启动面板插件 |
+| M2 预览插件体系（✅ 2026-11-21 完成，合并到 `main`，标签 `m2`；总结与待确认清单见 `devDoc/2026-11-21-29-m2-summary.md`；设计 `devDoc/2026-11-20-22-m2-design.md`，实现记录 `devDoc/2026-11-20-25-m2.md`，待需求方确认的决定见其第 4 节；试用反馈的修改 `devDoc/2026-11-21-26-m2-feedback.md`、`devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`） | 插件化落地 | 查看器切换与「常にこれで開く」、应用消息收纳、浏览器视图（`WebContentsView` + `pch-web://` 范围协议，取代原计划的 `pcfs://`）与 `PreviewHost.web`、html（含 PDF / 图片）/ markdown（GFM、脚注、mermaid）/ office 启动面板插件、Office 打开方式检测与启动（本地 / SMB 文件：编辑 / 保护视图 / 新建，Excel 另有只读）；text 在 M1 内已提前完成；专用 image / pdf / media 插件与 `pcfs://` 推迟 |
 | M3 多窗口与会话 | 中断恢复 | LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换 |
 | M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
 | M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |
@@ -1445,7 +1505,7 @@ M3 放在 M4 之前，是因为会话与多窗口决定了标签和插件 viewSt
 | SMB 认证依赖 `net use`，且仅限 Windows | 未挂载 SMB | 先满足主要平台；后续用 koffi 调用 Windows API；接口不变 |
 | FTP 单连接串行、日文服务器编码各异 | 远程性能与乱码 | 连接池 + 队列；连接级编码选项 |
 | 终端策略禁止 PowerShell | Office 打开动作（只在将来的预览窗口中提供） | 改用 koffi 调用 `ShellExecuteExW`（koffi 已引入）；默认「编辑打开」也可退回 `shell.openPath` |
-| 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果可手动刷新；启动时重新检测 |
+| 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果按机器持久保存，可在面板上手动「再検出」刷新（不再每次启动重新检测） |
 | Excel 不能同时打开两个同名工作簿 | 远程缓存副本与本地同名文件冲突 | 属 Office 自身限制，检测到同名已打开时给出提示 |
 | 远程编辑期间他人修改了服务器上的文件 | 覆盖他人修改 | 上传前比对远端基线，冲突必须由用户选择处理方式 |
 | 超大文件、超大目录 | 卡顿 | 文本大小上限与截断、虚拟滚动、目录枚举在扫描进程中进行（koffi 异步调用在线程池执行，一次系统调用取回 64KB，不阻塞主进程与窗口）、展开时先显示缓存；降级模式的直接枚举仍为最多 16 并发的分批 stat、可取消（已发出的单个系统调用无法中止） |

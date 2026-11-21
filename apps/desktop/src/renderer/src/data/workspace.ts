@@ -1,6 +1,8 @@
+import { useCallback } from 'react'
 import {
   useMutation,
   useQuery,
+  useQueryClient,
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
@@ -20,6 +22,15 @@ export function useActiveWorkspace(): UseQueryResult<Workspace> {
     queryKey: queryKeys.activeWorkspace,
     queryFn: () => call('workspace.active', undefined)
   })
+}
+
+/**
+ * 返回读取「显示中的工作区」id 的函数：查询缓存中 workspace.active 的当前值（不订阅、不发请求）。
+ * 用于卸载清理等拿不到最新渲染值的场合——组件因工作区切换而卸载时，缓存已是触发这次提交的新值
+ */
+export function useReadActiveWorkspaceId(): () => string | undefined {
+  const client = useQueryClient()
+  return useCallback(() => client.getQueryData<Workspace>(queryKeys.activeWorkspace)?.id, [client])
 }
 
 export interface WorkspaceActions {

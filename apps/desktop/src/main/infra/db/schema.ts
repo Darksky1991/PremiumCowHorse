@@ -45,9 +45,21 @@ export interface IndexTargetsTable {
   created_at: number
 }
 
+/**
+ * 打开方式检测结果（主键 (machine, ext)）；machine 为检测所在机器的主机名，
+ * data 为 LaunchCapabilities 的 JSON，detected_at 为 UNIX 毫秒
+ */
+export interface LaunchCapabilitiesTable {
+  machine: string
+  ext: string
+  data: string
+  detected_at: number
+}
+
 export interface DB {
   settings: SettingsTable
   workspaces: WorkspacesTable
   workspace_entries: WorkspaceEntriesTable
   index_targets: IndexTargetsTable
+  launch_capabilities: LaunchCapabilitiesTable
 }

@@ -7,7 +7,8 @@ import {
   type ResourceInfo
 } from '@pch/plugin-sdk'
 import {
-  canViewAs,
+  associationFor,
+  candidatesFor,
   needsSniff,
   pickPlugin,
   pluginById,
@@ -172,30 +173,120 @@ describe('textLike plugins (sniffed text files)', () => {
   })
 })
 
-describe('view-as overrides', () => {
+describe('viewer selection', () => {
+  const HTML_ID = 'pch.preview.html'
+  const OFFICE_ID = 'pch.preview.office'
   const fallback = plugin(FALLBACK_PLUGIN_ID, manifest({}))
   const folder = plugin('pch.preview.folder', manifest({ kinds: ['directory'] }))
-  const text = plugin(TEXT_PLUGIN_ID, manifest({ kinds: ['file'], extensions: ['txt'] }))
-  const all = [folder, text, fallback]
+  const text = plugin(
+    TEXT_PLUGIN_ID,
+    manifest({ kinds: ['file'], extensions: ['txt', 'log'], textLike: true })
+  )
+  const html = plugin(HTML_ID, manifest({ kinds: ['file'], extensions: ['html'] }, { priority: 1 }))
+  const office = plugin(OFFICE_ID, manifest({ kinds: ['file'], extensions: ['xlsx', 'docx'] }))
+  const ids = (list: readonly AnyPreviewPlugin[]): string[] => list.map((p) => p.manifest.id)
 
-  it('resolvePlugin: info → fallback, text → the text plugin, null → normal selection', () => {
-    expect(resolvePlugin(all, file('a.bin'), 'text')).toBe(text)
-    expect(resolvePlugin(all, file('a.txt'), 'info')).toBe(fallback)
-    expect(resolvePlugin(all, file('a.txt'), null)).toBe(text)
-    // 文本插件未注册（Task 6 之前）：退回 fallback
-    expect(resolvePlugin([folder, fallback], file('a.bin'), 'text')).toBe(fallback)
+  describe('candidatesFor', () => {
+    it('html file: the matching plugin, then text (always for files), then fallback', () => {
+      const all = [folder, html, text, fallback]
+      expect(ids(candidatesFor(all, file('a.html')))).toEqual([
+        HTML_ID,
+        TEXT_PLUGIN_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+    })
+
+    it('xlsx file: text is offered even though it does not match by extension', () => {
+      const all = [folder, office, text, fallback]
+      expect(ids(candidatesFor(all, file('a.xlsx')))).toEqual([
+        OFFICE_ID,
+        TEXT_PLUGIN_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+    })
+
+    it('directory: folder, then fallback (no text)', () => {
+      const all = [folder, html, text, fallback]
+      expect(ids(candidatesFor(all, dir))).toEqual(['pch.preview.folder', FALLBACK_PLUGIN_ID])
+    })
+
+    it('has no duplicates and orders matches by score', () => {
+      const all = [folder, text, html, fallback]
+      expect(ids(candidatesFor(all, file('a.txt')))).toEqual([TEXT_PLUGIN_ID, FALLBACK_PLUGIN_ID])
+      expect(ids(candidatesFor(all, file('a.out', { textLike: true })))).toEqual([
+        TEXT_PLUGIN_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+      const low = plugin('low', manifest({ kinds: ['file'], extensions: ['html'] }))
+      expect(ids(candidatesFor([low, html, text, fallback], file('a.html')))).toEqual([
+        HTML_ID,
+        'low',
+        TEXT_PLUGIN_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+    })
+
+    it('omits text when the text plugin is not registered', () => {
+      expect(ids(candidatesFor([html, fallback], file('a.html')))).toEqual([
+        HTML_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+    })
   })
 
-  it('canViewAs: text only for files, when registered and not already shown', () => {
-    expect(canViewAs(all, file('a.bin'), FALLBACK_PLUGIN_ID, 'text')).toBe(true)
-    expect(canViewAs(all, file('a.txt'), TEXT_PLUGIN_ID, 'text')).toBe(false)
-    expect(canViewAs(all, dir, FALLBACK_PLUGIN_ID, 'text')).toBe(false)
-    expect(canViewAs([folder, fallback], file('a.bin'), FALLBACK_PLUGIN_ID, 'text')).toBe(false)
+  describe('associationFor', () => {
+    it('picks the longest matching extension', () => {
+      expect(associationFor('a.tar.gz', { gz: 'x', 'tar.gz': 'y' })).toBe('y')
+      expect(associationFor('a.gz', { gz: 'x', 'tar.gz': 'y' })).toBe('x')
+    })
+    it('is null without an extension or a match', () => {
+      expect(associationFor('README', {})).toBeNull()
+      expect(associationFor('README', { md: 'x' })).toBeNull()
+      expect(associationFor('a.txt', {})).toBeNull()
+    })
+    it('is case-insensitive on both sides', () => {
+      expect(associationFor('A.HTML', { html: 'x' })).toBe('x')
+      expect(associationFor('a.html', { HTML: 'x' })).toBe('x')
+    })
   })
 
-  it('canViewAs: info unless the fallback is already shown', () => {
-    expect(canViewAs(all, file('a.txt'), TEXT_PLUGIN_ID, 'info')).toBe(true)
-    expect(canViewAs(all, dir, 'pch.preview.folder', 'info')).toBe(true)
-    expect(canViewAs(all, file('a.bin'), FALLBACK_PLUGIN_ID, 'info')).toBe(false)
+  describe('resolvePlugin', () => {
+    const all = [folder, html, office, text, fallback]
+    const none = {}
+    it('uses the viewer when it is a candidate', () => {
+      expect(
+        resolvePlugin(all, file('a.html'), {
+          viewer: TEXT_PLUGIN_ID,
+          associations: { html: OFFICE_ID }
+        })
+      ).toBe(text)
+      expect(
+        resolvePlugin(all, file('a.txt'), { viewer: FALLBACK_PLUGIN_ID, associations: none })
+      ).toBe(fallback)
+    })
+    it('ignores a viewer that is not a candidate and looks at associations', () => {
+      expect(
+        resolvePlugin(all, file('a.html'), {
+          viewer: OFFICE_ID,
+          associations: { html: TEXT_PLUGIN_ID }
+        })
+      ).toBe(text)
+      expect(resolvePlugin(all, file('a.html'), { viewer: 'gone', associations: none })).toBe(html)
+    })
+    it('ignores an association pointing to a non-candidate plugin', () => {
+      expect(
+        resolvePlugin(all, file('a.html'), { viewer: null, associations: { html: OFFICE_ID } })
+      ).toBe(html)
+      expect(
+        resolvePlugin(all, file('a.html'), { viewer: null, associations: { html: 'gone' } })
+      ).toBe(html)
+    })
+    it('uses a valid association, else normal selection', () => {
+      expect(
+        resolvePlugin(all, file('a.html'), { viewer: null, associations: { html: TEXT_PLUGIN_ID } })
+      ).toBe(text)
+      expect(resolvePlugin(all, file('a.xlsx'), { viewer: null, associations: none })).toBe(office)
+      expect(resolvePlugin(all, file('a.bin'), { viewer: null, associations: none })).toBe(fallback)
+    })
   })
 })

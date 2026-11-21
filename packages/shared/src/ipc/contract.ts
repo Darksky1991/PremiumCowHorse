@@ -23,6 +23,8 @@ import {
 import type { SearchResult } from '../search/types'
 import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
+import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
+import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
 export const VFS_INTEREST_VISIBLE_MAX = 2000
@@ -30,6 +32,15 @@ export const VFS_INTEREST_OFFSCREEN_MAX = 5000
 /** vfs.interest 的 tabs（标签中显示的目录）的上限 */
 export const VFS_INTEREST_TABS_MAX = 8
 export const VFS_REFRESH_MAX = 500
+
+/** 浏览器视图（web.*）的标签 id 与位置：DIP 整数，宿主自行取整（Electron 对小数隐式四舍五入，不依赖它） */
+const WebTabId = z.string().min(1).max(200)
+const WebBoundsInput = z.strictObject({
+  x: z.number().int(),
+  y: z.number().int(),
+  width: z.number().int().min(0),
+  height: z.number().int().min(0)
+})
 
 /** route<输出类型>()(输入 schema)：输入由 zod 运行时校验，输出只做类型约束 */
 const route =
@@ -167,6 +178,44 @@ export const ipcContract = {
   'system.selectPaths': route<string[]>()(
     z.strictObject({ kind: z.enum(['folder', 'file']), multiple: z.boolean() })
   ),
+  /**
+   * 浏览器视图（主进程 modules/web，doc 第 15 节）：每个（窗口, 标签）一个 WebContentsView，归属调用方窗口。
+   * web.attach：不存在则创建，存在则复用（URL 相同不重新加载）；放到 bounds 并显示。uri 必须在 scopeRoot 之下
+   * （否则 FS_INVALID_URI）。fragment（视图内链接带的 `?查询#锚点`，web.navigate 的 fragment）加载时拼到地址后
+   * （是否重新加载只看不含它的地址）。每窗口最多 8 个视图，超出时销毁最久未显示的（显示中的除外）。
+   * 其余通道对不存在的视图不做任何事（web.freeze 返回 `{ image: '', yielded: false }`；已在截图中时同样返回空图）
+   */
+  'web.attach': route<void>()(
+    z.strictObject({
+      tabId: WebTabId,
+      uri: z.string().min(1),
+      scopeRoot: z.string().min(1),
+      view: z.enum(['page', 'markdown']),
+      bounds: WebBoundsInput,
+      fragment: z.string().max(8192).regex(/^[?#]/).optional()
+    })
+  ),
+  /** 位置同步（高频） */
+  'web.setBounds': route<void>()(z.strictObject({ tabId: WebTabId, bounds: WebBoundsInput })),
+  /** 隐藏（插件卸载：切换标签 / 查看器）；视图与页面状态保留 */
+  'web.hide': route<void>()(z.strictObject({ tabId: WebTabId })),
+  /** 销毁（标签关闭 / 当前位置不再使用网页查看器） */
+  'web.release': route<void>()(z.strictObject({ tabId: WebTabId })),
+  /** 重新加载（地址栏刷新 / F5） */
+  'web.reload': route<void>()(z.strictObject({ tabId: WebTabId })),
+  /**
+   * 截图替身：返回视图当前画面（data:image/png，物理像素）并隐藏视图；视图持有键盘焦点时交回应用界面
+   * （yielded 为真）。视图不存在 / 已在截图中 → 空图
+   */
+  'web.freeze': route<{ image: string; yielded: boolean }>()(z.strictObject({ tabId: WebTabId })),
+  /** 结束截图替身、恢复显示；refocus 为真时把焦点还给视图（渲染端判断用户没有在应用中操作） */
+  'web.unfreeze': route<void>()(z.strictObject({ tabId: WebTabId, refocus: z.boolean() })),
+  /** Office 等文件的打开方式检测（按扩展名缓存）/ 按方式启动 / 清缓存重新检测（doc 第 10 节）。均不修改文件 */
+  'launcher.capabilities': route<LaunchCapabilities>()(z.strictObject({ uri: z.string().min(1) })),
+  'launcher.open': route<void>()(
+    z.strictObject({ uri: z.string().min(1), mode: z.enum(LAUNCH_MODES) })
+  ),
+  'launcher.redetect': route<void>()(z.void()),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -206,6 +255,17 @@ export interface IpcEvents {
   'doc.progress': DocProgressEvent
   /** 文档对应的文件有变化（只发给文档所属的窗口） */
   'doc.changed': DocChangedEvent
+  /** 浏览器视图的页面状态（以下 web.* 只发给视图所属的窗口） */
+  'web.state': WebViewState
+  /**
+   * 视图内的链接指向范围内的资源：应用在该标签（newTab 时在新标签）打开 uri。
+   * fragment：链接的 `?查询#锚点`（不进入标签的 uri；在该标签打开时交给下一次 web.attach），没有时为空字符串
+   */
+  'web.navigate': { tabId: string; uri: string; newTab: boolean; fragment: string }
+  /** 视图内被阻止的动作（范围外 / 下载 / 不支持的协议） */
+  'web.notice': { tabId: string; notice: WebNotice }
+  /** 焦点在视图中时按下的应用快捷键（以及鼠标侧键 → Alt+←/→），由应用窗口执行 */
+  'web.shortcut': { tabId: string } & WebShortcut
 }
 export type IpcEventName = keyof IpcEvents
 

@@ -9,6 +9,8 @@ export interface AppPaths {
   logs: string
   /** 渲染端构建产物（生产模式下由 app:// 协议提供，位于 asar 内） */
   renderer: string
+  /** Markdown 查看脚本的构建产物（vite.markdown.config.ts；pch-asset 协议的根，位于 asar 内） */
+  webAssets: string
   preload: string
 }
 
@@ -32,6 +34,7 @@ export function createPaths(): AppPaths {
     indexDb: path.join(userData, 'cache', 'index.db'),
     logs: path.join(userData, 'logs'),
     renderer: path.join(outMain, '../renderer'),
+    webAssets: path.join(outMain, '../web-assets/markdown'),
     preload: path.join(outMain, '../preload/index.js')
   }
 }

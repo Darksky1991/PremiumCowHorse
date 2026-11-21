@@ -217,4 +217,67 @@ describe('LocalProvider', () => {
       expect(close).toHaveBeenCalledOnce()
     })
   })
+
+  describe('createReadStream', () => {
+    const bytes = Uint8Array.from({ length: 200_000 }, (_, i) => i % 251)
+    let file: string
+    beforeEach(() => {
+      file = path.join(dir, 'big.bin')
+      writeFileSync(file, bytes)
+    })
+
+    async function collect(stream: NodeJS.ReadableStream): Promise<Buffer> {
+      const chunks: Buffer[] = []
+      for await (const c of stream) chunks.push(Buffer.from(c as Uint8Array))
+      return Buffer.concat(chunks)
+    }
+
+    it('streams the whole file', async () => {
+      const data = await collect(await provider.createReadStream(url(file)))
+      expect(data.equals(Buffer.from(bytes))).toBe(true)
+    })
+
+    it('streams an inclusive byte range', async () => {
+      const data = await collect(await provider.createReadStream(url(file), { start: 10, end: 19 }))
+      expect(data.equals(Buffer.from(bytes.subarray(10, 20)))).toBe(true)
+    })
+
+    it('maps a missing file to FS_NOT_FOUND', async () => {
+      await expect(
+        provider.createReadStream(url(path.join(dir, 'nope.bin')))
+      ).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+    })
+
+    it('maps an already aborted signal to FS_CANCELLED', async () => {
+      const controller = new AbortController()
+      controller.abort()
+      await expect(
+        provider.createReadStream(url(file), undefined, controller.signal)
+      ).rejects.toMatchObject({ code: 'FS_CANCELLED' })
+    })
+
+    it('closes the file after the stream ends: the folder can be renamed at once', async () => {
+      await collect(await provider.createReadStream(url(file)))
+      renameSync(dir, path.join(root, '案件 B'))
+    })
+
+    it('closes the file when the stream is destroyed early', async () => {
+      const stream = await provider.createReadStream(url(file))
+      await new Promise<void>((resolve) => stream.once('data', () => resolve()))
+      ;(stream as unknown as { destroy(): void }).destroy()
+      await new Promise((r) => setTimeout(r, 50))
+      renameSync(dir, path.join(root, '案件 B'))
+    })
+
+    it('closes the file when the signal aborts while streaming', async () => {
+      const controller = new AbortController()
+      const stream = await provider.createReadStream(url(file), undefined, controller.signal)
+      await new Promise<void>((resolve) => stream.once('data', () => resolve()))
+      const closed = new Promise<void>((resolve) => stream.once('close', () => resolve()))
+      stream.on('error', () => undefined)
+      controller.abort()
+      await closed
+      renameSync(dir, path.join(root, '案件 B'))
+    })
+  })
 })

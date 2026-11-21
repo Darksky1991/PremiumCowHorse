@@ -17,9 +17,15 @@ interface TabsStore {
   open: (workspaceId: string, target: TabTarget) => void
   /**
    * 浏览器式的打开（设计 2.8）：在当前（激活）标签内导航，进入其历史；工作区没有激活标签时新建一个。
-   * newTab（中键 / Ctrl+单击 / 「在新标签页中打开」）时与 open 相同
+   * newTab（中键 / Ctrl+单击 / 「在新标签页中打开」）时与 open 相同。
+   * viewer：以该查看器（插件 id）打开，null / 省略 = 自动选择；当前标签已在该位置时，
+   * 指定 viewer（含 null）只换查看器、不入栈（见 layoutReducer 的 tab/navigate）
    */
-  openHere: (workspaceId: string, target: TabTarget, opts?: { newTab?: boolean }) => void
+  openHere: (
+    workspaceId: string,
+    target: TabTarget,
+    opts?: { newTab?: boolean; viewer?: string | null }
+  ) => void
   close: (id: string) => void
   activate: (id: string) => void
   /** 在同一标签内导航到另一位置（离开的位置进入该标签的后退栈） */
@@ -27,8 +33,16 @@ interface TabsStore {
   /** 该标签的历史中后退 / 前进（没有可去的位置时不变） */
   back: (id: string) => void
   forward: (id: string) => void
+  /**
+   * 标签仍在 uri 这个位置时后退一步（没有后退历史或已离开该位置时不变）。
+   * 从工作区一览切换到另一个工作区后，旧工作区中显示一览的标签据此回到之前的位置，
+   * 以后切回旧工作区时不会停在一览页
+   */
+  backFrom: (id: string, uri: string) => void
   /** uri：viewState 所属的位置（标签已离开它时写入刚离开的历史项，见 layoutReducer） */
   setViewState: (id: string, viewState: unknown, uri?: string) => void
+  /** 为标签当前位置选择查看器（插件 id；null = 恢复自动选择） */
+  setViewer: (id: string, viewer: string | null) => void
   /**
    * 标签 id → 刷新请求的序号（地址栏的刷新按钮 / F5 递增；不在 layoutReducer 中，不是布局状态）。
    * 标签内容（PreviewContainer）订阅其变化后刷新：目录重新确认并列出、文件重新 stat、总览重新取得条目
@@ -67,10 +81,20 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     open: (workspaceId, target) => dispatch(workspaceId, { type: 'tab/open', ...target }),
     openHere: (workspaceId, target, opts) => {
       const { activeId } = get().byWorkspace[workspaceId] ?? EMPTY
+      const viewer = opts?.viewer
       if (opts?.newTab === true || activeId === null) {
-        dispatch(workspaceId, { type: 'tab/open', ...target })
+        dispatch(workspaceId, {
+          type: 'tab/open',
+          ...target,
+          ...(viewer == null ? {} : { viewer })
+        })
       } else {
-        dispatch(workspaceId, { type: 'tab/navigate', id: activeId, ...target })
+        dispatch(workspaceId, {
+          type: 'tab/navigate',
+          id: activeId,
+          ...target,
+          ...(viewer === undefined ? {} : { viewer })
+        })
       }
     },
     close: (id) => dispatchById({ type: 'tab/close', id }),
@@ -78,6 +102,9 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
     back: (id) => dispatchById({ type: 'tab/back', id }),
     forward: (id) => dispatchById({ type: 'tab/forward', id }),
+    backFrom: (id, uri) => {
+      if (findTab(get(), id)?.uri === uri) dispatchById({ type: 'tab/back', id })
+    },
     setViewState: (id, viewState, uri) =>
       dispatchById({
         type: 'tab/viewState',
@@ -85,6 +112,7 @@ export const useTabsStore = create<TabsStore>((set, get) => {
         viewState,
         ...(uri !== undefined ? { uri } : {})
       }),
+    setViewer: (id, viewer) => dispatchById({ type: 'tab/viewer', id, viewer }),
     refreshSeq: {},
     requestRefresh: (id) => {
       const { refreshSeq } = get()
@@ -98,6 +126,19 @@ export const selectTabs =
   (workspaceId: string | undefined) =>
   (s: Pick<TabsStore, 'byWorkspace'>): TabsState =>
     (workspaceId === undefined ? undefined : s.byWorkspace[workspaceId]) ?? EMPTY
+
+/**
+ * 在所有工作区中按 id 找标签；不存在（已关闭）时为 null。
+ * 预览宿主据此在标签关闭 / 当前位置改变时销毁浏览器视图（web.release 由 features/preview 发出：
+ * 分层规则不允许 store 调用 IPC）
+ */
+export function findTab(s: Pick<TabsStore, 'byWorkspace'>, id: string): TabState | null {
+  for (const state of Object.values(s.byWorkspace)) {
+    const tab = state.tabs.find((t) => t.id === id)
+    if (tab) return tab
+  }
+  return null
+}
 
 /** 工作区的激活标签；没有工作区或没有标签时为 null（地址栏显示它的位置） */
 export const selectActiveTab =

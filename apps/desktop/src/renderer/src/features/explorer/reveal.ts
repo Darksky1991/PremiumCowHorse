@@ -118,6 +118,8 @@ export function revealRecheckUri(nodes: readonly TreeNode[], index: number): str
 export interface RevealEffects {
   /** 选中并滚动到该行、聚焦树 */
   select: (index: number) => void
+  /** 展开该节点本身（sync 找到的目标是目录时，设计 2.4） */
+  expand: (index: number) => void
   /** 顺带确认出错的那一层目录（只读，vfs.refresh） */
   confirm: (uri: string) => void
   /** 提示「在资源树中找不到」 */
@@ -125,7 +127,8 @@ export interface RevealEffects {
 }
 
 /**
- * 按进展结束定位：done 选中目标；failed 时 locate 选中最深的已出现祖先、确认出错的那一层目录
+ * 按进展结束定位：done 选中目标，sync 且目标是可展开的目录时还展开它本身（与目录视图显示的内容一致；
+ * 文件只展开祖先、选中文件行）；failed 时 locate 选中最深的已出现祖先、确认出错的那一层目录
  * （revealRecheckUri，设计 8.3）并提示，sync 什么都不做（位置不在树中时树保持原选中，设计 2.4）；
  * waiting 不做任何事。返回是否已结束。
  */
@@ -138,6 +141,9 @@ export function settleReveal(
   if (progress.state === 'waiting') return false
   if (progress.state === 'done' || mode === 'locate') {
     if (progress.index >= 0) effects.select(progress.index)
+  }
+  if (progress.state === 'done' && mode === 'sync' && nodes[progress.index]?.expandable) {
+    effects.expand(progress.index)
   }
   if (progress.state === 'failed' && mode === 'locate') {
     const uri = revealRecheckUri(nodes, progress.index)

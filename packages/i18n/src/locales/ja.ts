@@ -13,6 +13,8 @@ export default {
     themeDark: 'ダーク',
     followSystem: 'システムに従う',
     ready: '準備完了',
+    messages: '通知 {{count}} 件',
+    messagesRestore: '未確認の通知を表示',
     crashTitle: '画面の表示中に問題が発生しました',
     crashHint:
       '再読み込みしても解決しない場合は、ログファイル（main.log）を添えて担当者に連絡してください。',
@@ -118,7 +120,13 @@ export default {
     deleteDescription:
       'ワークスペースとその項目だけを削除します。ディスク上のファイルやフォルダーは削除されません。',
     delete: '削除',
-    createdNotActivated: '作成しましたが、切り替えに失敗しました'
+    createdNotActivated: '作成しましたが、切り替えに失敗しました',
+    manage: 'ワークスペースの管理…',
+    listPage: 'ワークスペース一覧',
+    current: '使用中',
+    lastOpened: '最終使用: {{time}}',
+    renameMenu: '名前の変更…',
+    deleteMenu: '削除…'
   },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
@@ -142,7 +150,10 @@ export default {
     back: '戻る',
     forward: '進む',
     up: '1 つ上へ',
-    refresh: '最新の情報に更新'
+    refresh: '最新の情報に更新',
+    viewer: '表示',
+    alwaysOpenWith: '.{{ext}} は常にこれで開く',
+    copyHint: 'クリックでパスをコピー'
   },
   tabs: {
     label: '開いているタブ',
@@ -186,6 +197,7 @@ export default {
     FS_TIMEOUT: '応答がないため中断しました',
     FS_UNAVAILABLE: '場所にアクセスできません',
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
-    DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください'
+    DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
+    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください'
   }
 }

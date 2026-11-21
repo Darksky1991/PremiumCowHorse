@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { notify } from '@renderer/stores/messages-store'
 import { AppError } from '@pch/shared'
 import { useEntryActions } from '@renderer/data/entries'
 import { fsEntryKind, type DropAction } from './drag-drop'
@@ -16,7 +16,7 @@ export function useDropExecutor(
   const entryActions = useEntryActions()
 
   const reportError = (e: unknown): void => {
-    toast.error(t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
 
   return async (action, nodes) => {

@@ -270,8 +270,8 @@ describe('settleReveal', () => {
   const settle = (
     nodes: TreeNode[],
     mode: 'locate' | 'sync' = 'locate'
-  ): { settled: boolean; select: Spy; confirm: Spy; warn: Spy } => {
-    const effects = { select: vi.fn(), confirm: vi.fn(), warn: vi.fn() }
+  ): { settled: boolean; select: Spy; expand: Spy; confirm: Spy; warn: Spy } => {
+    const effects = { select: vi.fn(), expand: vi.fn(), confirm: vi.fn(), warn: vi.fn() }
     const progress = revealProgress(nodes, path.chain, path.target)
     const settled = settleReveal(nodes, progress, effects, mode)
     return { settled, ...effects }
@@ -338,6 +338,37 @@ describe('settleReveal', () => {
     const r = settle(nodes, 'sync')
     expect(r.settled).toBe(true)
     expect(r.select).toHaveBeenCalledWith(nodes.findIndex((n) => n.id === path.target))
+    // 目标是文件：只展开祖先，不展开目标
+    expect(r.expand).not.toHaveBeenCalled()
+  })
+
+  it('同步（sync）找到的目标是目录：选中并展开它本身；定位（locate）不展开目标', () => {
+    const dirPath = revealNodeIds([proj], { entryId: 'proj', segments: ['a'] })
+    const nodes = buildVisibleNodes({
+      entries: [proj],
+      expanded: new Set(dirPath.chain),
+      directories: new Map([[projUri, ready([dir(projUri, 'a')])]]),
+      showHidden: false
+    })
+    const index = nodes.findIndex((n) => n.id === dirPath.target)
+    for (const mode of ['sync', 'locate'] as const) {
+      const effects = { select: vi.fn(), expand: vi.fn(), confirm: vi.fn(), warn: vi.fn() }
+      const progress = revealProgress(nodes, dirPath.chain, dirPath.target)
+      expect(settleReveal(nodes, progress, effects, mode)).toBe(true)
+      expect(effects.select).toHaveBeenCalledWith(index)
+      if (mode === 'sync') expect(effects.expand).toHaveBeenCalledWith(index)
+      else expect(effects.expand).not.toHaveBeenCalled()
+    }
+  })
+
+  it('同步（sync）找不到目标：不展开任何节点', () => {
+    const nodes = nodesWith(
+      new Map([
+        [projUri, ready([dir(projUri, 'a')])],
+        [aUri, ready([])]
+      ])
+    )
+    expect(settle(nodes, 'sync').expand).not.toHaveBeenCalled()
   })
 
   it('连条目都不在树中：只提示（没有可选中、可确认的节点）', () => {

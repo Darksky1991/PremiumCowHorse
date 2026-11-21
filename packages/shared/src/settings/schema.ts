@@ -45,10 +45,6 @@ export const settingsSchema = z.object({
   /** 文件系统调用的超时（秒）：扫描进程按「没有进展的时间」计，VfsService 的一次性调用按总时长计 */
   'vfs.timeoutSec.local': z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network': z.number().int().min(10).max(120).default(10),
-  'launcher.officeExtensions': z
-    .array(z.string())
-    .default(['xlsx', 'xlsm', 'xls', 'xltx', 'docx', 'doc', 'dotx', 'pptx', 'ppt', 'potx']),
-  'launcher.officeDefaultAction': z.enum(['readOnly', 'edit', 'ask']).default('readOnly'),
   'launcher.autoUploadRemoteEdits': z.boolean().default(true)
 })
 

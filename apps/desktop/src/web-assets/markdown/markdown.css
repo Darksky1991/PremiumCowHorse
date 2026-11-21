@@ -1,0 +1,253 @@
+/* Markdown 查看器的样式（GitHub 风格的版式）。浅色 / 深色按 prefers-color-scheme（视图跟随应用主题，台账 S2） */
+:root {
+  color-scheme: light dark;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --border: #d1d9e0;
+  --border-muted: #d1d9e0b3;
+  --link: #0969da;
+  --mark: #fff8c5;
+  --error: #d1242f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f0f6fc;
+    --fg-muted: #9198a1;
+    --bg: #0d1117;
+    --bg-subtle: #151b23;
+    --border: #3d444d;
+    --border-muted: #3d444db3;
+    --link: #4493f8;
+    --mark: #bb800926;
+    --error: #f85149;
+  }
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  color: var(--fg);
+  background: var(--bg);
+  font-family:
+    'Segoe UI Variable Text', 'Segoe UI', 'Yu Gothic UI', 'Meiryo UI', 'Microsoft YaHei UI',
+    system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.markdown-body {
+  box-sizing: border-box;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 24px 0 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-muted);
+  font-size: 2em;
+}
+
+h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-muted);
+  font-size: 1.5em;
+}
+
+h3 {
+  font-size: 1.25em;
+}
+
+h4 {
+  font-size: 1em;
+}
+
+h5 {
+  font-size: 0.875em;
+}
+
+h6 {
+  color: var(--fg-muted);
+  font-size: 0.85em;
+}
+
+p,
+blockquote,
+ul,
+ol,
+dl,
+table,
+pre,
+details,
+.mermaid-diagram,
+.mermaid-error {
+  margin: 0 0 16px;
+}
+
+ul,
+ol {
+  padding-left: 2em;
+}
+
+li + li {
+  margin-top: 0.25em;
+}
+
+/* 任务列表（remark-gfm：li.task-list-item > input[type=checkbox]） */
+.contains-task-list {
+  padding-left: 1.5em;
+}
+
+.task-list-item {
+  list-style: none;
+}
+
+.task-list-item input[type='checkbox'] {
+  margin: 0 0.3em 0.2em -1.4em;
+  vertical-align: middle;
+}
+
+blockquote {
+  padding: 0 1em;
+  border-left: 0.25em solid var(--border);
+  color: var(--fg-muted);
+}
+
+hr {
+  height: 0.25em;
+  margin: 24px 0;
+  padding: 0;
+  border: 0;
+  background: var(--border);
+}
+
+img {
+  max-width: 100%;
+  box-sizing: content-box;
+}
+
+mark {
+  background: var(--mark);
+  color: inherit;
+}
+
+code,
+kbd,
+pre {
+  font-family: 'Cascadia Mono', 'BIZ UDGothic', Consolas, 'MS Gothic', monospace;
+  font-size: 0.875em;
+}
+
+code {
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+pre {
+  overflow: auto;
+  padding: 16px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  line-height: 1.45;
+}
+
+pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 1em;
+}
+
+table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+th,
+td {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+}
+
+th {
+  font-weight: 600;
+}
+
+tr:nth-child(2n) {
+  background: var(--bg-subtle);
+}
+
+/* 脚注（remark-rehype：section.footnotes，标题为 sr-only） */
+.footnotes {
+  margin-top: 32px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 0.875em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* 跳转到标题 / 脚注时留一点上边距 */
+[id] {
+  scroll-margin-top: 16px;
+}
+
+.mermaid-diagram {
+  overflow: auto;
+  text-align: center;
+}
+
+.mermaid-error {
+  padding: 8px 16px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+}
+
+.mermaid-error-message {
+  margin: 8px 0;
+  color: var(--error);
+  white-space: pre-wrap;
+}

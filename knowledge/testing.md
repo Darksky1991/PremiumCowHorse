@@ -146,6 +146,7 @@
 - 原因：当前登录会话没有可用的交互式桌面（屏幕锁定 / 显示器休眠 / 远程会话断开等），GDI 取不到屏幕 DC。
 - 解决：确认桌面可用（解锁）后重试；无法解锁时退回 Playwright 的 `page.screenshot`（看不到系统绘制的窗口边框与按钮），并在报告中说明未做系统级截图。
 - 预防：做系统级截图前先用上面的最小命令探测。
+- 补充（2026-11-21，M2 反馈第 6–8 项）：同一会话中先后出现两种表现——先报 `The handle is invalid`，几分钟后 `CopyFromScreen` 不再报错、但保存的是**全白图像**（窗口区域没有任何内容）。不报错不等于截到了：截图后必须打开看一眼；全白时同样按上面退回 `page.screenshot`，并在报告中写明没有系统级截图。
 
 ### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
 
@@ -256,3 +257,48 @@
 - 原因：第二次运行时文件在系统的磁盘缓存中，按 1MB 块读取 + 找换行的索引对 50MB 只要一百毫秒左右，`doc.open` 返回后到第一次断言之间就结束了。
 - 解决：文件加大到约 200MB（`preview.maxTextSizeMB: 500` 保持全量模式；默认上限 50MB 以上只索引 4MB 的窗口），并在改名后断言状态栏出现「読み込みに失敗しました（ファイルまたはフォルダーが見つかりません）…」——改名后的下一块读取找不到文件，证明改名确实发生在索引进行中。`--repeat-each 3` 稳定。
 - 预防：「某操作发生在后台处理进行中」的用例要断言能证明「进行中」的可观察结果（这里是读取失败），不要只在操作前看一眼进度；数据量按磁盘缓存命中后的速度估计。
+
+### e2e：Playwright 的 `_electron.launch` 默认模拟浅色（`colorScheme: 'light'`），`nativeTheme` 切换在页面上看不到
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S2）主进程设 `nativeTheme.themeSource = 'dark'` 后，宿主页与 `WebContentsView` 页面的 `matchMedia('(prefers-color-scheme: dark)').matches` 仍为 `false`，也没有 `change` 事件，看起来像「视图不跟随系统主题」。
+- 原因：`_electron.launch` 的 `colorScheme` 选项默认 `'light'`，Playwright 对上下文中的所有页面（包括后来创建的 `WebContentsView` 页面）模拟 `prefers-color-scheme`（`playwright-core` 类型定义：「Passing `null` resets emulation to system defaults. Defaults to `'light'`」）。
+- 解决：`_electron.launch({ …, colorScheme: null })` 后，视图与宿主页都随 `themeSource` 即时切换（不重新加载，`change` 事件正常）。
+- 预防：凡是断言深浅色、`prefers-color-scheme` 的 e2e，启动时传 `colorScheme: null`；「Playwright 下不成立」的主题类结论先排除模拟再下。
+
+### e2e：取 `WebContentsView` 的页面：按 URL 从 `electronApp.windows()` 中找
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S1）需要对主窗口中嵌入的 `WebContentsView` 页面做断言。
+- 解决：视图的页面与窗口页面一样出现在 `electronApp.windows()` / `context().pages()` 中，`Page` API（`locator`、`evaluate`、`title`）可直接使用：`app.windows().find((p) => p.url().startsWith('pch-web:'))`。Electron 模式下 `context().browser()` 为 `null`，不能开 Browser 级 CDP 会话。备选：`electronApp.evaluate` 中调 `view.webContents.executeJavaScript(...)`。
+- 预防：不要假设 `app.windows()` 的顺序，按 URL 找；视图同样受 Playwright 的各种模拟（颜色方案等）影响。
+
+### e2e：Playwright 的 `click` 在被阻止的导航上一直等待；锁屏时系统级输入不可用
+
+- 日期：2026-11-20
+- 症状（M2 Task 6 实机验证）：① 浏览器视图中点链接（主进程 `will-navigate` 里 `preventDefault`）后，`page.click` 卡在 `waiting for scheduled navigations to finish` 直到超时，`noWaitAfter` 也会让下一次操作卡在 `waiting for navigation to finish`。② 工作站锁屏时 PowerShell 的 `SetCursorPos` 返回 False、`GetForegroundWindow` 为 0，`mouse_event` / `keybd_event` 不送达任何窗口（系统级侧键、按键、系统截屏都无法进行）。
+- 解决：① 视图内的点击改为主进程 `webContents.sendInputEvent` 的 `mouseDown` / `mouseUp`（坐标取元素中心，经 `electronApp.evaluate`），按键同样用 `sendInputEvent`（`rawKeyDown` 会触发 `before-input-event`）。② 系统级输入与截屏需在用户未锁屏时进行；无法进行时在报告中写「未验证」。
+- 补充（M2 Task 7 e2e）：被阻止的导航**留在视图中**时（外部链接交给 `shell.openExternal`、其他范围的链接被阻止），之后对该 `Page` 的**任何** `locator` / `evaluate` 都会卡在 `waiting for navigation to finish`，连取元素坐标也不行。这类点击之后改用主进程 `webContents.executeJavaScript(...)` 读取页面（`e2e/web.spec.ts` 的 `evalIn`），视图的 URL 用主进程 `contentView.children[i].webContents.getURL()` 断言。导航被应用接手、视图随之销毁 / 重建的点击（同范围链接）不受影响：新页面是新的 `Page`。
+- 预防：系统级验证前先用 `GetForegroundWindow` 是否为 0 判断桌面是否可用。
+
+### e2e：Playwright 的 `page.keyboard` 不触发主进程的 `before-input-event`
+
+- 症状（M2 试用反馈第 1 项）：主进程在应用窗口 webContents 的 `before-input-event` 中记录「用户在应用中按了键」，e2e 用 `page.keyboard.press('Alt+ArrowRight')` 后应用确实后退 / 前进了，但主进程没有收到该事件，依赖它的逻辑不生效（焦点被拉进视图，断言失败）。
+- 原因：Playwright 的 `page.keyboard` 经 CDP 直接把按键事件送进页面，不经 Electron 的 `before-input-event`（与 `knowledge/electron.md` 中「不经系统焦点」同源）。
+- 解决：需要主进程看到按键时，用 `electronApp.evaluate` 调 `webContents.sendInputEvent`（`rawKeyDown` / `keyUp`，带 `modifiers`），它经过 `before-input-event`，与真实按键相同；最终行为再用系统级 `keybd_event` 确认。
+- 预防：主进程按 `before-input-event` / `before-mouse-event` 判断用户操作的功能，e2e 不要用 `page.keyboard` / `page.mouse` 模拟那一步。
+
+### vitest：单元测试是 node 环境、没有 jsdom——DOM 相关的逻辑注入环境再测
+
+- 日期：2026-11-20
+- 症状（M2 Task 7）：计划要求在 jsdom 中测试弹出层追踪（`MutationObserver` + Base UI 的 `data-open`），但仓库未安装 jsdom / happy-dom（`vitest.config.ts` 的 `environment: 'node'`），M2 允许的新依赖清单里也没有。
+- 解决：把判定与 DOM 访问分开：`lib/overlay-tracker.ts` 的 `createOverlayTracker({ candidates, observe })`（真实实现为 `body.querySelectorAll` 与 `MutationObserver`）与纯函数 `isOverlayPopup`，单元测试注入最小的假 DOM；`web-host.ts` 的 `ResizeObserver` / `requestAnimationFrame` / `window` 事件同样经 `WebHostEnv` 注入。真实 DOM（Base UI 弹出层的属性、选择器）由 e2e 覆盖。
+- 预防：要引入 DOM 测试环境（jsdom 等）属于新依赖，先向需求方确认；在此之前按上面的方式写可注入的实现。
+
+### vitest：在 `apps/desktop` 下运行时报 `Cannot find package '@renderer/...'`，部分文件却通过
+
+- 日期：2026-11-21
+- 症状（M2 试用反馈第 3 项）：在 `apps/desktop` 目录执行 `pnpm exec vitest run src/renderer/src/features/explorer/`，`reveal.test.ts`、`tree-model.test.ts` 报 `Cannot find package '@renderer/lib/file-uri' imported from .../tree-model.ts`，同目录其他测试文件（如 `open-target.test.ts`）通过，看起来像代码问题。
+- 原因：`@renderer` 别名只在仓库根目录的 `vitest.config.ts` 中配置；`apps/desktop` 下没有 vitest 配置，在那里运行时没有别名。只有类型导入（编译时擦除）或不经过别名的文件能通过。
+- 解决：在仓库根目录运行，路径写全：`pnpm exec vitest run apps/desktop/src/renderer/src/features/explorer/`。
+- 预防：单元测试一律在仓库根目录运行（`pnpm test` 或 `pnpm exec vitest run <从根开始的路径>`）。

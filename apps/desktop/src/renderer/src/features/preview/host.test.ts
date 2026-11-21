@@ -46,7 +46,15 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
       return () => refreshListeners.delete(listener)
     },
     doc: {} as PreviewHostDeps['doc'],
-    viewAs: { can: (mode) => mode === 'text', set: vi.fn() },
+    web: {} as PreviewHostDeps['web'],
+    viewer: {
+      candidates: () => [
+        { id: 'pch.preview.html', name: 'HTML', current: true },
+        { id: 'pch.preview.text', name: 'Text', current: false }
+      ],
+      set: vi.fn(),
+      selected: vi.fn(() => null)
+    },
     tabs: { open: vi.fn(), navigate: vi.fn() },
     confirmExecutable: vi.fn(async () => false),
     notify: vi.fn(),
@@ -112,6 +120,45 @@ describe('createPreviewHost: system', () => {
     host.system.revealInOs(TXT)
     await flush()
     expect(calls).toEqual([['system.revealInOs', { uri: TXT }]])
+  })
+})
+
+describe('createPreviewHost: launcher', () => {
+  const caps = { ext: 'xlsx', appName: 'Microsoft Excel', options: [] }
+
+  it('getLaunchCapabilities returns the detected capabilities', async () => {
+    const invoke = vi.fn(async () => caps) as unknown as PreviewHostDeps['invoke']
+    const { host } = setup({ invoke })
+    await expect(host.system.getLaunchCapabilities(TXT)).resolves.toEqual(caps)
+    expect(invoke).toHaveBeenCalledWith('launcher.capabilities', { uri: TXT })
+  })
+
+  it('getLaunchCapabilities notifies and returns null on failure', async () => {
+    const invoke = vi.fn(async () => {
+      throw new AppError({ code: 'FS_UNSUPPORTED_SCHEME' })
+    }) as unknown as PreviewHostDeps['invoke']
+    const { host, deps } = setup({ invoke })
+    await expect(host.system.getLaunchCapabilities(TXT)).resolves.toBeNull()
+    expect(deps.notify).toHaveBeenCalledWith('errors:FS_UNSUPPORTED_SCHEME', 'error')
+  })
+
+  it('launch calls launcher.open and does not reject on failure', async () => {
+    const { host, calls } = setup()
+    await host.system.launch(TXT, 'readOnly')
+    expect(calls).toEqual([['launcher.open', { uri: TXT, mode: 'readOnly' }]])
+
+    const invoke = vi.fn(async () => {
+      throw new AppError({ code: 'LAUNCH_FAILED' })
+    }) as unknown as PreviewHostDeps['invoke']
+    const failing = setup({ invoke })
+    await expect(failing.host.system.launch(TXT, 'edit')).resolves.toBeUndefined()
+    expect(failing.deps.notify).toHaveBeenCalledWith('errors:LAUNCH_FAILED', 'error')
+  })
+
+  it('redetectLaunchCapabilities calls launcher.redetect', async () => {
+    const { host, calls } = setup()
+    await host.system.redetectLaunchCapabilities()
+    expect(calls).toEqual([['launcher.redetect', undefined]])
   })
 })
 
@@ -288,15 +335,31 @@ describe('createPreviewHost: fs, i18n and settings', () => {
   })
 })
 
-describe('createPreviewHost: viewAs / doc', () => {
-  it('switches the view only when the container allows it', () => {
+describe('createPreviewHost: viewer / doc', () => {
+  it('lists the candidates given by the container', () => {
+    const { host } = setup()
+    expect(host.tabs.candidates().map((c) => c.id)).toEqual([
+      'pch.preview.html',
+      'pch.preview.text'
+    ])
+  })
+
+  it('reports the viewer chosen for the tab at call time (null while automatic)', () => {
+    let chosen: string | null = null
+    const { host } = setup({
+      viewer: { candidates: () => [], set: vi.fn(), selected: () => chosen }
+    })
+    expect(host.tabs.selectedViewer()).toBeNull()
+    chosen = 'pch.preview.fallback'
+    expect(host.tabs.selectedViewer()).toBe('pch.preview.fallback')
+  })
+
+  it('switches only to a candidate', () => {
     const { host, deps } = setup()
-    expect(host.tabs.canViewAs('text')).toBe(true)
-    expect(host.tabs.canViewAs('info')).toBe(false)
-    host.tabs.viewAs('info')
-    expect(deps.viewAs.set).not.toHaveBeenCalled()
-    host.tabs.viewAs('text')
-    expect(deps.viewAs.set).toHaveBeenCalledWith('text')
+    host.tabs.viewWith('pch.preview.office')
+    expect(deps.viewer.set).not.toHaveBeenCalled()
+    host.tabs.viewWith('pch.preview.text')
+    expect(deps.viewer.set).toHaveBeenCalledWith('pch.preview.text')
   })
 
   it('exposes the document API given by the container as is (stable across host rebuilds)', () => {

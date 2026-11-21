@@ -31,6 +31,7 @@ function entry(
 const group = entry('group', '分组', null)
 const ctx: LogicalPathContext = {
   workspace: { id: 'w1', name: '保守' },
+  workspacesTitle: 'ワークスペース一覧',
   entries: [
     group,
     // 放在分组之下：分组不出现在逻辑路径中
@@ -44,6 +45,11 @@ const ctx: LogicalPathContext = {
 const dir = (uri: string, title: string): TabLocation => ({ uri, kind: 'directory', title })
 const file = (uri: string, title: string): TabLocation => ({ uri, kind: 'file', title })
 const OVERVIEW: TabLocation = { uri: 'pch-workspace:w1', kind: 'workspace', title: '保守' }
+const WORKSPACES: TabLocation = {
+  uri: 'pch-workspaces:',
+  kind: 'workspaces',
+  title: 'ワークスペース一覧'
+}
 
 /** 段的简要形式：`种类:标签`（用于断言整个路径） */
 const brief = (loc: TabLocation): string[] =>
@@ -54,6 +60,14 @@ describe('logicalPath', () => {
     expect(logicalPath(OVERVIEW, ctx)).toEqual([
       { label: '保守', kind: 'workspace', target: OVERVIEW }
     ])
+  })
+
+  it('工作区一览：只有一览一段（标签为本地化的「工作区一览」），普通位置的路径不含这一段', () => {
+    expect(logicalPath({ ...WORKSPACES, title: '旧标题' }, ctx)).toEqual([
+      { label: 'ワークスペース一覧', kind: 'workspaces', target: WORKSPACES }
+    ])
+    expect(brief(OVERVIEW)).toEqual(['workspace:保守'])
+    expect(brief(dir(SEKKEI, '設計書'))[0]).toBe('workspace:保守')
   })
 
   it('条目内的目录：工作区 › 条目别名 › 相对路径各段（分组不出现，各段 URI 由原编码拼接）', () => {
@@ -177,8 +191,9 @@ describe('parentLocation', () => {
     expect(parentLocation(file(uri, '手順.docx'), ctx)).toEqual(OVERVIEW)
   })
 
-  it('工作区总览没有上一级', () => {
-    expect(parentLocation(OVERVIEW, ctx)).toBeNull()
+  it('工作区总览的上一级是工作区一览；一览没有上一级', () => {
+    expect(parentLocation(OVERVIEW, ctx)).toEqual(WORKSPACES)
+    expect(parentLocation(WORKSPACES, ctx)).toBeNull()
   })
 
   it('条目之外：退化为磁盘上的上级；驱动器 / 共享根的上一级是工作区总览', () => {

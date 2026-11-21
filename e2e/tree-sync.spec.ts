@@ -59,35 +59,47 @@ test.describe('the tree follows the tabs', () => {
       await expect(tabs(page)).toHaveText(['案件'])
       await expect(item(tree, '案件')).toHaveAttribute('aria-expanded', 'false')
 
-      // 目录视图进入子目录：树展开所需的祖先并选中它（子目录本身不展开），焦点留在目录视图
+      // 目录视图进入子目录（条目根折叠时）：树展开祖先、选中该目录并滚动到可见，该目录本身也展开
+      // （与目录视图显示的内容一致，第 5 项反馈）；焦点留在目录视图
       await row(page, '設計書').dblclick()
       await expect(tabs(page)).toHaveText(['設計書'])
       await expect(item(tree, '案件')).toHaveAttribute('aria-expanded', 'true')
       await expect(item(tree, '設計書')).toHaveAttribute('aria-selected', 'true')
-      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'false')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, '設計書')).toBeInViewport()
+      await expect(item(tree, 'v1')).toBeVisible()
+      // 再进入孙目录：同样选中并展开
       await row(page, 'v1').dblclick()
       await expect(item(tree, 'v1')).toHaveAttribute('aria-selected', 'true')
-      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, '仕様.txt')).toBeVisible()
       await expect(grid(page)).toBeFocused()
-      // 文件也一样：目录视图双击文件在当前标签打开，树选中该文件
+      // 文件：目录视图双击文件在当前标签打开，树只展开祖先、选中该文件
       await row(page, '仕様.txt').dblclick()
       await expect(tabs(page)).toHaveText(['仕様.txt'])
       await expect(item(tree, '仕様.txt')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'true')
       await expect(tree).not.toBeFocused()
 
-      // 后退 / 前进：树跟随
+      // 后退 / 前进：树跟随；离开的目录（跟随展开的）收起，后退时树不越展越多
       await button(page, 'Back').click()
       await expect(item(tree, 'v1')).toHaveAttribute('aria-selected', 'true')
       await page.keyboard.press('Alt+ArrowLeft')
       await expect(tabs(page)).toHaveText(['設計書'])
       await expect(item(tree, '設計書')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'false')
       await page.keyboard.press('Alt+ArrowRight')
       await expect(item(tree, 'v1')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'true')
       await expect(selectedName(tree)).toHaveCount(1)
 
-      // 地址栏点段：树跟随
+      // 地址栏点段：树跟随（跟随展开的 設計書、v1 收起；作为祖先展开的条目根保持展开）
       await bar(page).getByRole('listitem').getByRole('button', { name: '案件' }).click()
       await expect(item(tree, '案件')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '案件')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'false')
+      await expect(item(tree, 'v1')).toHaveCount(0)
 
       // 新标签与切换标签：树选中激活标签的位置
       await item(tree, 'c.txt').click({ button: 'middle' })
@@ -107,6 +119,111 @@ test.describe('the tree follows the tabs', () => {
       await page.waitForTimeout(300)
       await expect(item(tree, '案件')).toHaveAttribute('aria-selected', 'true')
       await expect(selectedName(tree)).toHaveCount(1)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('with the entry root already expanded the tree also follows into sub-directories; directories the user expanded stay open, a tree click on a directory still does not expand it', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const { tree } = await setup(page)
+      await toggleRow(item(tree, '案件'))
+      await expect(item(tree, '設計書')).toBeVisible()
+      await item(tree, '案件').click()
+      await expect(tabs(page)).toHaveText(['案件'])
+
+      await row(page, '設計書').dblclick()
+      await expect(tabs(page)).toHaveText(['設計書'])
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      await row(page, 'v1').dblclick()
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'true')
+      await expect(item(tree, '仕様.txt')).toBeInViewport()
+      await expect(tree).not.toBeFocused()
+
+      // 地址栏回到条目根：跟随展开的目录都收起
+      await bar(page).getByRole('listitem').getByRole('button', { name: '案件' }).click()
+      await expect(item(tree, '案件')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'false')
+
+      // 用户自己展开的目录：离开时不替用户收起
+      await toggleRow(item(tree, '設計書'))
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      await row(page, '設計書').dblclick()
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-selected', 'true')
+      await row(page, 'v1').dblclick()
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'true')
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(tabs(page)).toHaveText(['設計書'])
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'false')
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect(tabs(page)).toHaveText(['案件'])
+      await expect(item(tree, '案件')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+
+      // 树中单击目录：在当前标签打开、选中，但不展开（需求 7 不变）
+      await item(tree, 'v1').click()
+      await expect(tabs(page)).toHaveText(['v1'])
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-selected', 'true')
+      await page.waitForTimeout(300)
+      await expect(item(tree, 'v1')).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('a tree click moves no rows: the followed directory stays open until the next sync driven by the tab, which collapses it', async () => {
+    mkdirSync(path.join(project, '議事録', '2024'), { recursive: true })
+    const { app, page } = await launchFast(userData)
+    try {
+      const { tree } = await setup(page)
+      await item(tree, '案件').click()
+      await expect(tabs(page)).toHaveText(['案件'])
+      await row(page, '設計書').dblclick()
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+
+      // 树中单击另一个目录（同步跳过）：設計書 不在点击时收起（行不在指针下移动）
+      await item(tree, '議事録').click()
+      await expect(tabs(page)).toHaveText(['議事録'])
+      await page.waitForTimeout(300)
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'true')
+      // 之后经目录视图进入子目录（由标签驱动的同步）：跟随展开的 設計書 收起，树不越积越多
+      await row(page, '2024').dblclick()
+      await expect(item(tree, '2024')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '設計書')).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('directories the sync expanded as ancestors collapse again when the tab leaves them', async () => {
+    mkdirSync(path.join(project, '議事録', '2024'), { recursive: true })
+    const { app, page } = await launchFast(userData)
+    try {
+      const { tree } = await setup(page)
+      // 条目根由用户展开；树中单击 議事録（需求 7：不展开）
+      await toggleRow(item(tree, '案件'))
+      await item(tree, '案件').click()
+      await item(tree, '議事録').click()
+      await expect(tabs(page)).toHaveText(['議事録'])
+      await expect(item(tree, '議事録')).toHaveAttribute('aria-expanded', 'false')
+
+      // 目录视图进入 2024：議事録 作为祖先展开、2024 本身展开
+      await row(page, '2024').dblclick()
+      await expect(item(tree, '2024')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '議事録')).toHaveAttribute('aria-expanded', 'true')
+      // 后退到 議事録：2024 收起，議事録（目标）保持展开
+      await button(page, 'Back').click()
+      await expect(item(tree, '議事録')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '2024')).toHaveAttribute('aria-expanded', 'false')
+      await expect(item(tree, '議事録')).toHaveAttribute('aria-expanded', 'true')
+      // 再后退到条目根：同步展开的 議事録 也收起；用户展开的条目根保持
+      await button(page, 'Back').click()
+      await expect(item(tree, '案件')).toHaveAttribute('aria-selected', 'true')
+      await expect(item(tree, '議事録')).toHaveAttribute('aria-expanded', 'false')
+      await expect(item(tree, '案件')).toHaveAttribute('aria-expanded', 'true')
     } finally {
       await app.close()
     }

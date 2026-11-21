@@ -2,8 +2,9 @@ import type {
   HostSettings,
   PreviewDocApi,
   PreviewHost,
+  PreviewWebApi,
   ToastType,
-  ViewAsMode
+  ViewerCandidate
 } from '@pch/plugin-sdk'
 import {
   AppError,
@@ -37,8 +38,15 @@ export interface PreviewHostDeps {
   onRefresh: (listener: () => void) => () => void
   /** 文本文档 API（doc-session.ts；在标签内容存续期间是同一个对象） */
   doc: PreviewDocApi
-  /** 本标签的查看方式覆盖（preview-container 的按标签状态） */
-  viewAs: { can: (mode: ViewAsMode) => boolean; set: (mode: ViewAsMode) => void }
+  /** 浏览器视图（web-host.ts；在标签内容存续期间是同一个对象） */
+  web: PreviewWebApi
+  /** 本标签当前资源的查看器：候选（含当前）与选择（preview-container 注入，选择写入标签状态） */
+  viewer: {
+    candidates: () => ViewerCandidate[]
+    set: (pluginId: string) => void
+    /** 本标签当前位置选定的查看器；自动选择时为 null */
+    selected: () => string | null
+  }
   tabs: {
     open: (workspaceId: string, target: TabTarget) => void
     navigate: (id: string, target: TabTarget) => void
@@ -139,12 +147,14 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         deps.tabs.navigate(tabId, parent)
       },
       onRefresh: (listener) => deps.onRefresh(listener),
-      viewAs: (mode) => {
-        if (deps.viewAs.can(mode)) deps.viewAs.set(mode)
+      viewWith: (pluginId) => {
+        if (deps.viewer.candidates().some((c) => c.id === pluginId)) deps.viewer.set(pluginId)
       },
-      canViewAs: (mode) => deps.viewAs.can(mode)
+      candidates: () => deps.viewer.candidates(),
+      selectedViewer: () => deps.viewer.selected()
     },
     doc: deps.doc,
+    web: deps.web,
     system: {
       revealInOs: (uri) => {
         invoke('system.revealInOs', { uri }).catch(reportError)
@@ -162,6 +172,28 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
           const name = nameOfUri(uri)
           if (isExecutableExtension(name) && !(await deps.confirmExecutable(name))) return
           await invoke('system.openPath', { uri })
+        } catch (e) {
+          reportError(e)
+        }
+      },
+      getLaunchCapabilities: async (uri) => {
+        try {
+          return await invoke('launcher.capabilities', { uri })
+        } catch (e) {
+          reportError(e)
+          return null
+        }
+      },
+      launch: async (uri, mode) => {
+        try {
+          await invoke('launcher.open', { uri, mode })
+        } catch (e) {
+          reportError(e)
+        }
+      },
+      redetectLaunchCapabilities: async () => {
+        try {
+          await invoke('launcher.redetect', undefined)
         } catch (e) {
           reportError(e)
         }

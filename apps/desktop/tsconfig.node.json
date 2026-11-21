@@ -1,6 +1,12 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/scanner/**/*"],
+  "include": [
+    "electron.vite.config.*",
+    "vite.markdown.config.ts",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/scanner/**/*"
+  ],
   "compilerOptions": {
     "composite": true,
     "types": ["electron-vite/node"],

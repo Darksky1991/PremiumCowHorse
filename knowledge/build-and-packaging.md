@@ -65,3 +65,26 @@
 - 原因：警告列出的是其他平台的二进制包，本机平台的 `@koromix/koffi-win32-x64` 已打入，且 electron-builder 自动把 `.node` 放到 `resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node`（`asarUnpack` 只配置了 `resources/**`，不需要为 koffi 另加）。
 - 解决：主进程启动时按 `driveTypeStatus()` 记一条日志（`[vfs] drive type detection: native (koffi)`，失败时为警告并附原因）；扫描进程在就绪时记 `[scanner] index …, native enumeration: true`（失败时 `[enumerator] native enumeration unavailable …`）。打包实测：解压 zip 后以 `--user-data-dir=<临时目录>` 运行，main.log 中两条都为 native，资源树显示 `.dotfile`（按属性判断隐藏，回退模式会把它当作隐藏）。
 - 预防：任何原生模块的回退路径都要在日志中留下记录；打包后在 main.log 里确认每个加载它的进程都成功。
+
+### electron-vite：给 renderer 追加独立浏览器入口时，共享模块被拆进 `out/renderer/assets/`
+
+- 日期：2026-11-20
+- 症状：（M2 先行验证 S9）在 `renderer.build.rolldownOptions.input`（electron-vite 6 内部用 `rolldownOptions`，写 `rollupOptions` 结果相同）追加 Markdown 查看脚本入口后，产物 `viewer/markdown.js` import 了 `../assets/shared-*.js`（与渲染端共享的模块），动态分块也在 `assets/`：专用协议只能把整个 `out/renderer` 暴露给浏览器视图。
+- 解决：查看脚本用单独的 `vite build --config <config>`（`root` = 查看脚本目录、`base: './'`、`outDir` = `out/web-assets/markdown`、`chunkFileNames: 'chunks/[name]-[hash].js'`），产物自成一体；串在 `electron-vite build` 之后（electron-vite 只清空自己的输出目录）。开发模式不需要预构建：renderer dev server 以 `/@fs/<绝对路径>` 提供该入口，协议处理器把所有路径代理到 `ELECTRON_RENDERER_URL` 即可（import 都是根相对路径）。
+- 预防：给不可信页面使用的资源要单独构建、单独目录，不与应用渲染端共享分块；新增的构建配置文件要加进 `electron-builder.yml` 的 `files` 排除列表。
+
+### 开发模式首次打开 Markdown 时整个应用窗口重新加载（vite 依赖预构建）
+
+- 日期：2026-11-20
+- 症状：`pnpm dev` 中第一次打开 `.md`，dev server 输出 `optimized dependencies changed. reloading`，应用窗口重新加载（全部浏览器视图被销毁，主进程日志 `[web] loadURL … ERR_FAILED (-2)`）；之后再打开不再发生。
+- 原因：Markdown 查看脚本（`src/web-assets/markdown/main.ts`）经 renderer dev server 的 `/@fs/…` 提供（pch-asset 代理），但依赖扫描只从 renderer 的 `index.html` 出发，不知道 unified / mermaid 等依赖；第一次请求时才发现新依赖，重新预构建后 vite 让所有客户端整页重新加载。
+- 解决：`electron.vite.config.ts` 的 renderer 加 `optimizeDeps.entries: ['index.html', '../web-assets/markdown/main.ts']`（相对 renderer root，vite 用 tinyglobby、`cwd` = root）。之后启动时一次扫描出全部依赖，打开 Markdown 不再重新加载（CDP 连接 `--remote-debugging-port` 实测）。
+- 预防：经 dev server 提供、但不从 `index.html` 可达的入口，都要列进 `optimizeDeps.entries`。另：查看脚本中的 CSS import 在开发模式下会带入 vite 的 HMR 客户端，它的 websocket 被外壳的 CSP（`connect-src` 落到 `default-src`）阻止，控制台有一条报错，不影响显示。
+
+### `pnpm start` 不构建 Markdown 查看脚本，未 build 过时 Markdown 无法显示
+
+- 日期：2026-11-20
+- 症状：只运行 `pnpm start`（`electron-vite preview`）而没有先 `pnpm build` 时，打开 `.md` 文件，浏览器视图的脚本请求 `pch-asset://viewer/markdown.js` 返回 404，页面空白。
+- 原因：Markdown 查看脚本由单独的 vite 构建（`vite.markdown.config.ts`）产出 `out/web-assets/markdown`，只串在 `pnpm build` 脚本里；`electron-vite preview` 只运行已有产物，不构建任何东西。
+- 解决：先 `pnpm build` 再 `pnpm start`（README 已注明）。
+- 预防：新增的单独构建产物都要接进 `pnpm build`，并在 README 说明 `start` / `test:e2e` 依赖 build。

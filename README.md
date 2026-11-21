@@ -13,19 +13,19 @@
 
 ## 常用命令（在仓库根目录执行）
 
-| 命令             | 作用                                                                     |
-| ---------------- | ------------------------------------------------------------------------ |
-| `pnpm install`   | 安装依赖（会下载 Electron 二进制）                                       |
-| `pnpm dev`       | 开发模式（electron-vite）：渲染端热更新，主进程 / preload 改动后自动重启 |
-| `pnpm build`     | 类型检查 + 生产构建，产物在 `apps/desktop/out`                           |
-| `pnpm start`     | 以生产构建预览运行                                                       |
-| `pnpm dist`      | 打包 zip 免安装文件夹版 `apps/desktop/release/<版本>/*.zip`              |
-| `pnpm dist:dir`  | 只生成未压缩的目录 `apps/desktop/release/<版本>/win-unpacked`（调试用）  |
-| `pnpm typecheck` | 全部包类型检查                                                           |
-| `pnpm lint`      | ESLint（含模块边界规则）                                                 |
-| `pnpm format`    | Prettier 格式化                                                          |
-| `pnpm test`      | 单元测试（vitest）                                                       |
-| `pnpm test:e2e`  | Electron 端到端测试（Playwright，需先 `pnpm build`）                     |
+| 命令             | 作用                                                                                                                              |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`   | 安装依赖（会下载 Electron 二进制）                                                                                                |
+| `pnpm dev`       | 开发模式（electron-vite）：渲染端热更新，主进程 / preload 改动后自动重启                                                          |
+| `pnpm build`     | 类型检查 + 生产构建（electron-vite，再加 Markdown 查看脚本的单独 vite 构建 `vite.markdown.config.ts`），产物在 `apps/desktop/out` |
+| `pnpm start`     | 以生产构建预览运行（`electron-vite preview`；**不会**构建 Markdown 查看脚本，需先 `pnpm build`，否则 Markdown 无法显示）          |
+| `pnpm dist`      | 打包 zip 免安装文件夹版 `apps/desktop/release/<版本>/*.zip`                                                                       |
+| `pnpm dist:dir`  | 只生成未压缩的目录 `apps/desktop/release/<版本>/win-unpacked`（调试用）                                                           |
+| `pnpm typecheck` | 全部包类型检查                                                                                                                    |
+| `pnpm lint`      | ESLint（含模块边界规则）                                                                                                          |
+| `pnpm format`    | Prettier 格式化                                                                                                                   |
+| `pnpm test`      | 单元测试（vitest）                                                                                                                |
+| `pnpm test:e2e`  | Electron 端到端测试（Playwright，需先 `pnpm build`）                                                                              |
 
 开发数据保存在 `%APPDATA%\PremiumCowHorse-dev`，与正式版分开。开发窗口中 F12 打开 DevTools。
 日志位于 `<userData>\logs\main.log`（含渲染端未捕获的错误），用户反馈问题时请附上此文件。
