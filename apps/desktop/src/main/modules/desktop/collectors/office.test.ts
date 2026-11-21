@@ -55,6 +55,11 @@ describe('parseOfficeOutput', () => {
     expect(() => parseOfficeOutput('oops', windows)).toThrow()
     expect(parseOfficeOutput('', windows)).toEqual([])
   })
+
+  it('程序开着但没有文档（脚本输出空或空数组）时返回空而不是抛错', () => {
+    expect(parseOfficeOutput('[]', windows)).toEqual([])
+    expect(parseOfficeOutput('\r\n', windows)).toEqual([])
+  })
 })
 
 describe('createOfficeCollector', () => {

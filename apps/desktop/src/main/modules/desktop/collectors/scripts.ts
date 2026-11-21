@@ -52,7 +52,7 @@ if ($out.Count -gt 0) { ConvertTo-Json -InputObject @($out) -Depth 4 -Compress }
  * Office：输入 PCH_PIDS（逗号分隔的进程号）。
  * 对可见顶层窗口（XLMAIN / OpusApp / PPTFrameClass）的子窗口（EXCEL7 / _WwG / mdiClass）取 OBJID_NATIVEOM，
  * 再 .Application，按 pid 去重后枚举文档。输出 [{ app, path, readOnly, hwnd }]。
- * 取不到 Application 或 FullName 为空（弹着对话框）时输出 {"error":"busy"}。无完整路径的文档不输出。
+ * 找到子窗口但取不到 Application、或 FullName 为空（弹着对话框）时输出 {"error":"busy"}。无完整路径的文档不输出。
  */
 export const OFFICE_SCRIPT = `
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -83,13 +83,18 @@ foreach ($t in [PchOW]::Tops()) {
   if (-not $pids.ContainsKey($t[1]) -or -not $map.ContainsKey($t[2]) -or -not $t[3] -or $done.ContainsKey($t[1])) { continue }
   $m = $map[$t[2]]
   $app = $null
+  $found = $false
   foreach ($c in [PchOW]::Children([IntPtr]$t[0])) {
     if ($c[1] -eq $m[2]) {
+      $found = $true
       $oc = [PchOW]::NativeOM([IntPtr]$c[0])
-      if ($oc) { try { $app = $oc.Application; if ($app) { break } } catch {} }
+      if (-not $oc) { Busy }
+      try { $app = $oc.Application } catch { Busy }
+      if (-not $app) { Busy }
+      break
     }
   }
-  if (-not $app) { Busy }
+  if (-not $found) { continue }
   $done[$t[1]] = $true
   $col = $app.($m[0])
   $n = $col.Count
