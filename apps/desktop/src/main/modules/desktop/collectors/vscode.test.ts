@@ -87,6 +87,40 @@ describe('parseVscodeState', () => {
     expect(r[1]).toMatchObject({ bounds: null })
   })
 
+  it('字面 % 的本地文件夹名不抛错，其余项照常输出', () => {
+    const s = JSON.stringify({
+      windowsState: {
+        openedWindows: [
+          { folder: 'file:///c%3A/work/100%25' },
+          { folder: 'file:///c%3A/work/%2541' },
+          { folder: 'file:///c%3A/Users/x/proj' }
+        ]
+      }
+    })
+    const r = parseVscodeState(s, [
+      win(1, 'a - 100% - Visual Studio Code'),
+      win(2, 'a - %41 - Visual Studio Code'),
+      win(3, 'a - proj - Visual Studio Code')
+    ])
+    expect(r.map((i) => (i.kind === 'vscode' ? i.target : ''))).toEqual([
+      'c:\\work\\100%',
+      'c:\\work\\%41',
+      'c:\\Users\\x\\proj'
+    ])
+  })
+
+  it('缩放 175% 的最小化矩形（-18286）也退回 uiState', () => {
+    const r = parseVscodeState(storage, [
+      win(1, 'WS-B (Workspace) - Visual Studio Code', {
+        x: -18286,
+        y: -18286,
+        width: 90,
+        height: 15
+      })
+    ])
+    expect(r[0]).toMatchObject({ bounds: { x: 0, y: 0, width: 1286, height: 753 } })
+  })
+
   it('同名（不同路径）时优先 lastActiveWindow，否则取 openedWindows 中第一个', () => {
     const dup = JSON.stringify({
       windowsState: {

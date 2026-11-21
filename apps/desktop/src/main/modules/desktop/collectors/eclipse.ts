@@ -1,4 +1,4 @@
-import { dirname, win32 } from 'node:path'
+import { win32 } from 'node:path'
 import type { DesktopItem } from '@pch/shared'
 import type { runPowerShell } from '../../../infra/powershell'
 import type { WindowInfo } from '../window-list'
@@ -25,7 +25,7 @@ export function parseEclipseWorkspace(
   if (commandLine !== null) {
     const m = /(?:^|\s)-data\s+(?:"([^"]*)"|(\S+))/.exec(commandLine)
     const v = m ? (m[1] ?? m[2] ?? '') : ''
-    if (v !== '' && !v.startsWith('@')) return v
+    if (v !== '' && !v.startsWith('@') && !v.startsWith('-')) return v
   }
   if (prefs !== null) {
     const m = /^RECENT_WORKSPACES[ \t]*[=:][ \t]*(.*)$/m.exec(prefs)
@@ -75,7 +75,12 @@ export function createEclipseCollector(deps: {
           let prefs: string | null = null
           try {
             prefs = await deps.readFile(
-              win32.join(dirname(w.exe), 'configuration', '.settings', 'org.eclipse.ui.ide.prefs')
+              win32.join(
+                win32.dirname(w.exe),
+                'configuration',
+                '.settings',
+                'org.eclipse.ui.ide.prefs'
+              )
             )
           } catch {
             // prefs 不存在按没有处理

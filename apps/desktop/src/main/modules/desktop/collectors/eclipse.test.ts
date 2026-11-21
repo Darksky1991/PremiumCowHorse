@@ -27,6 +27,7 @@ describe('parseEclipseWorkspace', () => {
     expect(parseEclipseWorkspace(null, null)).toBeNull()
     expect(parseEclipseWorkspace('eclipse.exe', 'a=b\n')).toBeNull()
     expect(parseEclipseWorkspace('eclipse.exe -data @noDefault', null)).toBeNull()
+    expect(parseEclipseWorkspace('eclipse.exe -data -vmargs -Xmx2g', null)).toBeNull()
   })
 })
 

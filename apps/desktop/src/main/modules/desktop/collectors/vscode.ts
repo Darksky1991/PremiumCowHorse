@@ -9,12 +9,21 @@ export const readTextFile = (p: string): Promise<string> => readFile(p, 'utf8')
 
 const TITLE_SUFFIX = ' - Visual Studio Code'
 
+/** 解码失败（含字面 %）时按原文 */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
+}
+
 /** file: URI → 本地路径（含 UNC）；vscode-remote:// 原样；其他形态返回 null */
 function uriToTarget(uri: string): string | null {
   if (/^vscode-remote:\/\//i.test(uri)) return uri
   const m = /^file:\/\/([^/]*)(\/.*)?$/i.exec(uri)
   if (!m) return null
-  let path = decodeURIComponent(m[2] ?? '')
+  let path = safeDecode(m[2] ?? '')
   if (m[1] !== '' && m[1]!.toLowerCase() !== 'localhost') {
     return `\\\\${m[1]}${path.replace(/\//g, '\\')}` // UNC
   }
@@ -24,7 +33,9 @@ function uriToTarget(uri: string): string | null {
 
 /** 目标的「根名」：文件夹为最后一段，工作区为文件名去掉 .code-workspace；vscode-remote 同文件夹 */
 function rootNameOf(target: string): string {
-  const base = decodeURIComponent(target.split(/[\\/]/).filter(Boolean).pop() ?? '')
+  const seg = target.split(/[\\/]/).filter(Boolean).pop() ?? ''
+  // 本地路径已解码，只有 vscode-remote:// 的段还是 URI 编码
+  const base = /^vscode-remote:\/\//i.test(target) ? safeDecode(seg) : seg
   return base.replace(/\.code-workspace$/i, '')
 }
 
@@ -73,8 +84,8 @@ function titleMatches(head: string, e: Entry): boolean {
   return roots.some((root) => h === root || h.endsWith(` - ${root}`))
 }
 
-/** 最小化窗口的矩形被系统移到屏幕外（实测 -21333,-21333，158x26；经典值 -32000） */
-const isMinimizedRect = (b: WindowBounds): boolean => b.x <= -20000 && b.y <= -20000
+/** 最小化窗口的矩形被系统移到屏幕外（实测 -21333,-21333，158x26；经典值 -32000，缩放 175% 时约 -18286） */
+const isMinimizedRect = (b: WindowBounds): boolean => b.x <= -10000 && b.y <= -10000
 
 /**
  * storage.json 只在打开窗口后写入、关闭时不写，不能表示「现在开着什么」。
