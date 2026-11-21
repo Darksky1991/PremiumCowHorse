@@ -45,7 +45,9 @@ export const settingsSchema = z.object({
   /** 文件系统调用的超时（秒）：扫描进程按「没有进展的时间」计，VfsService 的一次性调用按总时长计 */
   'vfs.timeoutSec.local': z.number().int().min(1).max(60).default(5),
   'vfs.timeoutSec.network': z.number().int().min(10).max(120).default(10),
-  'launcher.autoUploadRemoteEdits': z.boolean().default(true)
+  'launcher.autoUploadRemoteEdits': z.boolean().default(true),
+  // 退出本应用时是否询问保存哪些桌面项目；false = 不询问、全部保存
+  'desktop.askOnExit': z.boolean().default(true)
 })
 
 export type Settings = z.infer<typeof settingsSchema>

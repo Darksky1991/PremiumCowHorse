@@ -36,3 +36,27 @@ export function isWorkspacesUri(uri: string): boolean {
 export function workspacesLocation(title: string): TabLocation {
   return { uri: WORKSPACES_URI, kind: 'workspaces', title }
 }
+
+/**
+ * 桌面记录页的内部 URI（M3）：`pch-desktop:<快照 id>` 或 `pch-desktop:current`（现场）。
+ * 与工作区一览同样不是文件系统（不发给扫描进程、不进 vfs.interest、树不定位它）
+ */
+export const DESKTOP_URI_SCHEME = 'pch-desktop:'
+
+/** 桌面记录页的 URI */
+export function desktopUri(id: number | 'current'): string {
+  return `${DESKTOP_URI_SCHEME}${id}`
+}
+
+/** 桌面记录 URI 中的快照 id（或 'current'）；不是桌面记录 URI 或 id 非法时为 null */
+export function desktopIdOfUri(uri: string): number | 'current' | null {
+  if (!uri.startsWith(DESKTOP_URI_SCHEME)) return null
+  const rest = uri.slice(DESKTOP_URI_SCHEME.length)
+  if (rest === 'current') return 'current'
+  return /^\d+$/.test(rest) ? Number(rest) : null
+}
+
+/** 桌面记录页的位置（title 为快照标题） */
+export function desktopLocation(id: number | 'current', title: string): TabLocation {
+  return { uri: desktopUri(id), kind: 'desktop', title }
+}

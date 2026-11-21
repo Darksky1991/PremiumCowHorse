@@ -22,7 +22,7 @@ import { DocumentService } from '../vfs/document/document-service'
 import { LaunchCapabilitiesRepo } from '../modules/launcher/launch-capabilities.repo'
 import { LauncherService } from '../modules/launcher/launcher.service'
 import { fakeRunPowerShell } from '../modules/launcher/fake-run'
-import { runPowerShell } from '../modules/launcher/powershell'
+import { runPowerShell } from '../infra/powershell'
 import { ScopeTable } from '../modules/web/scope'
 import { markdownShell, MARKDOWN_ASSET_BASE } from '../modules/web/markdown-shell'
 import {
