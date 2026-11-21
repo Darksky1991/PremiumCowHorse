@@ -165,36 +165,63 @@ export class DesktopSnapshotRepo {
   }
 
   /**
-   * 按保留规则清理本机快照：
-   * - auto：保留最近 keepAuto 份，以及有 auto 的最近 keepLogons 个不同 logon_at 各自 created_at 最大的一份
-   * - manual / exit：不删
-   * - exit-none：只保留最近 keepLogons 个登录内的（登录按本机全部快照的 logon_at 计）
+   * 原地更新一份 auto：替换创建时刻与全部项目（同一事务）。
+   * 快照不存在（被用户删除或已被清理）、不是本机的、或不是 auto 时什么也不做并返回 false
    */
-  async prune(keepAuto: number, keepLogons: number): Promise<void> {
+  async updateAuto(
+    id: number,
+    input: { createdAt: number; items: DesktopItem[] }
+  ): Promise<boolean> {
+    return this.db.transaction().execute(async (trx) => {
+      const res = await trx
+        .updateTable('desktop_snapshots')
+        .set({ created_at: input.createdAt })
+        .where('id', '=', id)
+        .where('machine', '=', this.machine)
+        .where('kind', '=', 'auto')
+        .executeTakeFirst()
+      if (Number(res.numUpdatedRows) === 0) return false
+      await trx.deleteFrom('desktop_items').where('snapshot_id', '=', id).execute()
+      if (input.items.length > 0) {
+        await trx
+          .insertInto('desktop_items')
+          .values(
+            input.items.map((item, sort) => ({
+              snapshot_id: id,
+              sort,
+              data: JSON.stringify(item)
+            }))
+          )
+          .execute()
+      }
+      return true
+    })
+  }
+
+  /** 删除本机全部快照（含 exit-none）；别的机器的不动 */
+  async deleteAll(): Promise<void> {
+    await this.db.deleteFrom('desktop_snapshots').where('machine', '=', this.machine).execute()
+  }
+
+  /**
+   * 按保留规则清理本机快照：
+   * - 可见快照（auto / manual / exit 及未知种类）按创建时刻保留最新 keepVisible 个；
+   *   protectId 指向的快照一定保留并计入这 keepVisible 个
+   * - exit-none（内部标记，不计入）只保留最新一个
+   */
+  async prune(keepVisible: number, protectId: number | null): Promise<void> {
     const rows = await this.summaries() // created_at 降序
-    const recent = (list: DesktopSnapshotSummary[]): Set<number> =>
-      new Set([...new Set(list.map((r) => r.logonAt))].sort((x, y) => y - x).slice(0, keepLogons))
-    const autos = rows.filter((r) => r.kind === 'auto')
-    // auto 的窗口只数有 auto 的登录；exit-none 的窗口数本机全部种类的登录
-    const recentAutoLogons = recent(autos)
-    const recentAllLogons = recent(rows)
-
+    const visible = rows.filter((r) => r.kind !== 'exit-none')
     const keep = new Set<number>()
-    for (const r of autos.slice(0, Math.max(0, keepAuto))) keep.add(r.id)
-    // rows 已按创建时刻降序，每个登录第一次出现的即其最后一份
-    const seenLogons = new Set<number>()
-    for (const r of autos) {
-      if (seenLogons.has(r.logonAt)) continue
-      seenLogons.add(r.logonAt)
-      if (recentAutoLogons.has(r.logonAt)) keep.add(r.id)
+    const protectedRow = protectId === null ? undefined : visible.find((r) => r.id === protectId)
+    if (protectedRow) keep.add(protectedRow.id)
+    for (const r of visible) {
+      if (keep.size >= Math.max(0, keepVisible)) break
+      keep.add(r.id)
     }
-
+    const latestNone = rows.find((r) => r.kind === 'exit-none')
     const remove = rows
-      .filter((r) => {
-        if (r.kind === 'auto') return !keep.has(r.id)
-        if (r.kind === 'exit-none') return !recentAllLogons.has(r.logonAt)
-        return false
-      })
+      .filter((r) => (r.kind === 'exit-none' ? r.id !== latestNone?.id : !keep.has(r.id)))
       .map((r) => r.id)
     await this.db.transaction().execute(async (trx) => {
       for (let i = 0; i < remove.length; i += DELETE_CHUNK) {

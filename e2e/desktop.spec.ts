@@ -60,6 +60,15 @@ test.describe('desktop snapshots', () => {
   /** 真实的窗口关闭（走 close 事件，触发退出拦截） */
   const closeWindow = (page: Page): Promise<unknown> => invoke(page, 'window.close')
 
+  /** 窗口在一段时间内持续存在（关闭是异步的，只查一次可能赶在关闭之前） */
+  const expectStaysOpen = async (page: Page, ms = 1500): Promise<void> => {
+    const until = Date.now() + ms
+    while (Date.now() < until) {
+      expect(page.isClosed()).toBe(false)
+      await page.waitForTimeout(100)
+    }
+  }
+
   const mainLog = (): string => readFileSync(path.join(userData, 'logs', 'main.log'), 'utf8')
 
   test('the activity bar shows the current items and save now adds a snapshot', async () => {
@@ -87,7 +96,14 @@ test.describe('desktop snapshots', () => {
       await expect(dialog(first.page)).toBeVisible()
       await expect(box(first.page, /a\.xlsx/)).toBeChecked()
       await expect(box(first.page, /b\.docx/)).toBeChecked()
+      // 点击卡片切换选中；Space 也能切换（卡片是 checkbox）
       await box(first.page, /b\.docx/).click()
+      await expect(box(first.page, /b\.docx/)).not.toBeChecked()
+      await box(first.page, /b\.docx/).focus()
+      await first.page.keyboard.press('Space')
+      await expect(box(first.page, /b\.docx/)).toBeChecked()
+      await box(first.page, /b\.docx/).click()
+      await expect(box(first.page, /b\.docx/)).not.toBeChecked()
       await dialog(first.page).getByRole('button', { name: 'Save and exit' }).click()
       await first.app.waitForEvent('close')
     } finally {
@@ -105,6 +121,36 @@ test.describe('desktop snapshots', () => {
       expect(mainLog()).not.toMatch(/\[desktop:fake\] spawn .*WINWORD\.EXE/i)
     } finally {
       await second.app.close()
+    }
+  })
+
+  test('restoring clears every snapshot and then rescans into a single new auto snapshot', async () => {
+    test.setTimeout(60_000)
+    const first = await start(1000, [EXCEL, WORD])
+    try {
+      await closeWindow(first.page)
+      await dialog(first.page).getByRole('button', { name: 'Save and exit' }).click()
+      await first.app.waitForEvent('close')
+    } finally {
+      await first.app.close().catch(() => undefined)
+    }
+
+    const second = await start(2000, [EXCEL])
+    try {
+      await expect(dialog(second.page)).toBeVisible()
+      await dialog(second.page).getByRole('button', { name: 'Restore' }).click()
+      await expect(dialog(second.page)).toBeHidden()
+      await second.page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      const list = second.page.getByRole('list', { name: 'Desktop snapshots' })
+      // 清空：只剩「Now」行；约 10 秒后重新扫描写入一份新的自动快照
+      await expect(list).toContainText('No snapshots yet')
+      await expect(list).not.toContainText('No snapshots yet', { timeout: 25_000 })
+      await expect(list.getByRole('listitem')).toHaveCount(2)
+      await expect(list).toContainText('Autosave')
+      await second.page.waitForTimeout(1000)
+      await expect(list.getByRole('listitem')).toHaveCount(2)
+    } finally {
+      await second.app.close().catch(() => undefined)
     }
   })
 
@@ -166,13 +212,13 @@ test.describe('desktop snapshots', () => {
       await closeWindow(page)
       await dialog(page).getByRole('button', { name: 'Cancel' }).click()
       await expect(dialog(page)).toBeHidden()
-      await expect.poll(() => page.isClosed()).toBe(false)
+      await expectStaysOpen(page)
       await closeWindow(page)
       await expect(dialog(page)).toBeVisible()
       // Esc = キャンセル
       await page.keyboard.press('Escape')
       await expect(dialog(page)).toBeHidden()
-      expect(page.isClosed()).toBe(false)
+      await expectStaysOpen(page)
     } finally {
       await app.close()
     }
@@ -208,6 +254,10 @@ test.describe('desktop snapshots', () => {
     // 上次登录有可恢复的快照；启动后立刻关闭（不等现场采集与恢复提示）
     const { app, page } = await launch(userData, env(2000, []))
     try {
+      // 渲染端订阅事件之前发出的关闭请求会丢：等界面就绪（侧栏出现）再关闭
+      await expect(
+        page.getByRole('button', { name: 'Desktop snapshots', includeHidden: true })
+      ).toBeAttached()
       await closeWindow(page)
       await expect(
         page.getByRole('dialog', { name: 'Save your desktop before exiting?' })

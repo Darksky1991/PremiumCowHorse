@@ -250,8 +250,8 @@ function createDesktop(deps: {
     now: Date.now,
     emit: (e) => windows.broadcast('desktop.changed', e),
     autoSaveMs: T.autoSaveMs,
-    keepAuto: T.keepAuto,
-    keepLogons: T.keepLogons,
+    keepVisible: T.keepVisible,
+    restoreRescanMs: T.restoreRescanMs,
     sessionFreezeMs: T.sessionFreezeMs,
     logger
   })

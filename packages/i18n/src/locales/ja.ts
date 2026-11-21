@@ -164,7 +164,7 @@ export default {
       vscode: 'VS Code',
       eclipse: 'Eclipse'
     },
-    selectGroup: '{{group}}をすべて選択',
+    groupSelected: '{{selected}} / {{total}} 選択中',
     checklistLabel: '項目の一覧',
     specialLocation: '特殊な場所',
     tabCount: '（{{count}} 個のタブ）',

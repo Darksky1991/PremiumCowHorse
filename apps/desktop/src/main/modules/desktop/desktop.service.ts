@@ -32,8 +32,10 @@ export interface DesktopServiceDeps {
   now: () => number
   emit: (e: IpcEvents['desktop.changed']) => void
   autoSaveMs: number
-  keepAuto: number
-  keepLogons: number
+  /** 可见快照最多保留几个 */
+  keepVisible: number
+  /** 恢复完成并清空快照后，等这么久再重新扫描 */
+  restoreRescanMs: number
   /** query-session-end 后冻结现场、暂停自动保存的时长（设计 5.3） */
   sessionFreezeMs: number
   logger: Logger
@@ -65,6 +67,11 @@ export class DesktopService {
   private logon: number | undefined
   /** start 时记下的恢复候选（在写任何本次快照之前）；restorePrompt 取走后为 null */
   private candidate: { snapshotId: number } | null = null
+  /** 本次启动时的恢复候选 id：本次运行期间不被清理（restorePrompt 取走 candidate 后仍保留） */
+  private protectId: number | null = null
+  /** 本次登录维护的那份 auto（原地更新）；被删除 / 清理后为 null 或失效，下次重新写入 */
+  private autoId: number | null = null
+  private rescanTimer: ReturnType<typeof setTimeout> | undefined
   /** 第一次完整读取已完成：之前的现场不完整，不写自动记录 */
   private ready = false
   private stopped = false
@@ -117,6 +124,7 @@ export class DesktopService {
       this.d.logger.warn(`desktop: cannot pick the restore candidate: ${firstLine(e)}`)
       this.candidate = null
     }
+    this.protectId = this.candidate?.snapshotId ?? null
     if (this.stopped) return
     monitor.start()
     if (await monitor.refreshAll()) {
@@ -170,7 +178,11 @@ export class DesktopService {
 
   /** 手动快照：当前现场中 key 在列表里的项目 */
   async saveManual(keys: string[], name: string | null): Promise<number> {
-    const id = await this.enqueue(() => this.insert('manual', this.pick(keys), name))
+    const id = await this.enqueue(async () => {
+      const newId = await this.insert('manual', this.pick(keys), name)
+      await this.d.repo.prune(this.d.keepVisible, this.protectId)
+      return newId
+    })
     this.d.emit({ scope: 'snapshots' })
     return id
   }
@@ -178,7 +190,11 @@ export class DesktopService {
   /** 退出时：save → exit（勾选的项目）；否则 exit-none（下次登录不提示，设计第 8 节） */
   async saveExit(save: boolean, keys: string[]): Promise<void> {
     const items = save ? this.pick(keys) : []
-    const id = await this.enqueue(() => this.insert(save ? 'exit' : 'exit-none', items, null))
+    const id = await this.enqueue(async () => {
+      const newId = await this.insert(save ? 'exit' : 'exit-none', items, null)
+      await this.d.repo.prune(this.d.keepVisible, this.protectId)
+      return newId
+    })
     this.d.logger.info(
       `desktop: ${save ? 'exit' : 'exit-none'} snapshot #${id} (${countsOf(items)})`
     )
@@ -215,7 +231,10 @@ export class DesktopService {
   }
 
   async delete(id: number): Promise<void> {
-    await this.enqueue(() => this.d.repo.delete(id))
+    await this.enqueue(async () => {
+      await this.d.repo.delete(id)
+      if (id === this.autoId) this.autoId = null
+    })
     this.d.emit({ scope: 'snapshots' })
   }
 
@@ -227,7 +246,37 @@ export class DesktopService {
     // 多次恢复依次执行：后一次按前一次结束时的现场判断「已开着」
     const run = this.restores.then(() => this.d.restore(items, this.openTargets()))
     this.restores = run.catch(() => undefined)
-    return run
+    const result = await run
+    // 启动全部完成之后：清空快照（含 exit-none），过一会儿重新扫描并写一份新的 auto（设计第 9 节）
+    await this.enqueue(async () => {
+      await this.d.repo.deleteAll()
+      this.autoId = null
+      this.protectId = null
+      this.lastAutoSig = null
+    })
+    this.d.emit({ scope: 'snapshots' })
+    this.scheduleRescan()
+    return result
+  }
+
+  /** restoreRescanMs 后完整读取一次并写一份新的 auto；连续恢复时以最后一次为准，stop 时取消 */
+  private scheduleRescan(): void {
+    if (this.stopped || !this.d.monitor) return
+    clearTimeout(this.rescanTimer)
+    this.rescanTimer = setTimeout(() => {
+      this.rescan().catch((e: unknown) =>
+        this.d.logger.error(`desktop: rescan after restore failed: ${firstLine(e)}`)
+      )
+    }, this.d.restoreRescanMs)
+  }
+
+  private async rescan(): Promise<void> {
+    const monitor = this.d.monitor
+    if (this.stopped || !monitor) return
+    // 枚举失败：现场不完整，不写；之后的自动保存 tick 会在读取成功后写（lastAutoSig 为 null）
+    if (!(await monitor.refreshAll()) || this.stopped) return
+    this.ready = true
+    await this.enqueue(() => this.writeAuto(this.d.live.retained(this.d.now())))
   }
 
   /** 停止监控与自动保存；进行中的写入用 idle() 等待 */
@@ -235,6 +284,8 @@ export class DesktopService {
     this.stopped = true
     clearInterval(this.timer)
     this.timer = undefined
+    clearTimeout(this.rescanTimer)
+    this.rescanTimer = undefined
     this.d.monitor?.stop()
   }
 
@@ -264,9 +315,16 @@ export class DesktopService {
   }
 
   private async writeAuto(items: DesktopItem[]): Promise<void> {
-    const id = await this.insert('auto', items, null)
+    // 每次登录只维护一份 auto：已有就原地更新（项目与时间），被删除 / 清理了就重新写入
+    let id = this.autoId
+    const updated =
+      id !== null && (await this.d.repo.updateAuto(id, { createdAt: this.d.now(), items }))
+    if (!updated) {
+      id = await this.insert('auto', items, null)
+      this.autoId = id
+    }
     this.lastAutoSig = signatureOf(items)
-    await this.d.repo.prune(this.d.keepAuto, this.d.keepLogons)
+    await this.d.repo.prune(this.d.keepVisible, this.protectId)
     this.d.logger.info(`desktop: auto snapshot #${id} (${countsOf(items)})`)
     this.d.emit({ scope: 'snapshots' })
   }

@@ -17,10 +17,10 @@ export const DESKTOP_TIMINGS = {
   removeAfterMs: 60_000,
   /** 自动保存间隔 */
   autoSaveMs: 300_000,
-  /** 自动记录保留最近几份 */
-  keepAuto: 20,
-  /** 另外保留最近几次登录各自的最后一份自动记录 */
-  keepLogons: 10,
+  /** 可见快照（auto / manual / exit）最多保留几个，超过删除最旧的（设计第 9 节） */
+  keepVisible: 3,
+  /** 恢复完成并清空快照后，等这么久（让刚启动的程序窗口出现）再重新扫描并写一份 auto */
+  restoreRescanMs: 10_000,
   /** query-session-end 后冻结现场、暂停自动保存的时长；到期视为关机被取消 */
   sessionFreezeMs: 300_000,
   /**

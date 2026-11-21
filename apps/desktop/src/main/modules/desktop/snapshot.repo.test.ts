@@ -46,7 +46,9 @@ describe('DesktopSnapshotRepo', () => {
     // 别的机器的快照不能被改名 / 删除 / 清理
     await a.rename(idB, 'x')
     await a.delete(idB)
-    await a.prune(0, 0)
+    await a.prune(0, null)
+    await a.deleteAll()
+    expect(await a.updateAuto(idB, { createdAt: 99, items: [] })).toBe(false)
     expect((await b.get(idB))?.name).toBeNull()
   })
 
@@ -109,63 +111,87 @@ describe('DesktopSnapshotRepo', () => {
     expect(snap?.items[0]?.item).toEqual(explorer('C:\\a'))
   })
 
-  it('prune(20, 10) keeps recent autos, last auto of recent logons, manual and exit', async () => {
-    const db = await memoryDb()
-    const repo = new DesktopSnapshotRepo(db, 'PC-A')
-    // 25 份 auto 分属 12 次登录：前 10 份各自一次登录，之后 7 份属第 11 次、最后 8 份属第 12 次
-    const autoIds: number[] = []
-    for (let i = 0; i < 25; i++) {
-      const logon = i < 10 ? i : i < 17 ? 10 : 11
-      autoIds.push(
-        await repo.insert({
-          kind: 'auto',
-          createdAt: 1000 + i,
-          logonAt: 100 + logon,
-          items: [explorer(`C:\\${i}`)]
-        })
-      )
-    }
-    const manual = await repo.insert({ kind: 'manual', createdAt: 1, logonAt: 100, items: [] })
-    const exit = await repo.insert({ kind: 'exit', createdAt: 2, logonAt: 100, items: [] })
-
-    await repo.prune(20, 10)
-
-    const left = (await repo.listByLogon()).map((s) => s.id).sort(byNumber)
-    // 最近 20 份：i = 5..24；最近 10 次登录（第 2..11 次）的最后一份：i = 2..9、16、24 → 并集 i = 2..24
-    const expected = [...autoIds.slice(2), manual, exit].sort(byNumber)
-    expect(left).toEqual(expected)
-    // 项目随快照级联删除
-    const items = await sql<{ n: number }>`select count(*) as n from desktop_items`.execute(db)
-    expect(items.rows[0]?.n).toBe(23)
-  })
-
-  it('prune keeps exit-none only within the most recent logons', async () => {
-    const db = await memoryDb()
-    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+  async function seed(
+    repo: DesktopSnapshotRepo,
+    kinds: ('auto' | 'manual' | 'exit' | 'exit-none')[]
+  ): Promise<number[]> {
     const ids: number[] = []
-    for (let k = 0; k < 4; k++) {
-      ids.push(
-        await repo.insert({ kind: 'exit-none', createdAt: 10 + k, logonAt: 100 + k, items: [] })
-      )
+    for (const [i, kind] of kinds.entries()) {
+      ids.push(await repo.insert({ kind, createdAt: 100 + i, logonAt: 1, items: [] }))
     }
-    await repo.prune(20, 2)
-    expect((await repo.listByLogon()).map((s) => s.id).sort(byNumber)).toEqual([ids[2], ids[3]])
-  })
+    return ids
+  }
 
-  it('prune counts auto logons separately from manual / exit-none logons', async () => {
+  it('prune(3, null) keeps the newest 3 visible snapshots and the newest exit-none', async () => {
     const db = await memoryDb()
     const repo = new DesktopSnapshotRepo(db, 'PC-A')
-    // 登录 0、1 只有 auto；较新的登录 2、3 只有 manual / exit-none
-    const old0 = await repo.insert({ kind: 'auto', createdAt: 1, logonAt: 100, items: [] })
-    const old1 = await repo.insert({ kind: 'auto', createdAt: 2, logonAt: 101, items: [] })
-    const manual = await repo.insert({ kind: 'manual', createdAt: 3, logonAt: 102, items: [] })
-    const none = await repo.insert({ kind: 'exit-none', createdAt: 4, logonAt: 103, items: [] })
-
-    await repo.prune(0, 2)
-
-    // auto 只数有 auto 的登录（100、101），各自最后一份保留；exit-none 在最近 2 个登录内
+    // 创建顺序：auto, none, manual, exit, auto, none, manual（5 个可见 + 2 个 exit-none）
+    const ids = await seed(repo, [
+      'auto',
+      'exit-none',
+      'manual',
+      'exit',
+      'auto',
+      'exit-none',
+      'manual'
+    ])
+    await repo.prune(3, null)
     expect((await repo.listByLogon()).map((s) => s.id).sort(byNumber)).toEqual(
-      [old0, old1, manual, none].sort(byNumber)
+      [ids[3]!, ids[4]!, ids[5]!, ids[6]!].sort(byNumber)
     )
+  })
+
+  it('prune keeps the protected snapshot even when it is the oldest, total stays 3', async () => {
+    const db = await memoryDb()
+    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+    const ids = await seed(repo, ['exit', 'manual', 'manual', 'auto', 'manual'])
+    await repo.prune(3, ids[0]!)
+    expect((await repo.list()).map((s) => s.id).sort(byNumber)).toEqual(
+      [ids[0]!, ids[3]!, ids[4]!].sort(byNumber)
+    )
+  })
+
+  it('prune with a protectId that no longer exists behaves like null', async () => {
+    const db = await memoryDb()
+    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+    const ids = await seed(repo, ['manual', 'manual', 'manual', 'manual'])
+    await repo.prune(3, 9999)
+    expect((await repo.list()).map((s) => s.id).sort(byNumber)).toEqual(ids.slice(1))
+  })
+
+  it('updateAuto replaces the items and created_at of an auto; refuses other kinds', async () => {
+    const db = await memoryDb()
+    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+    const auto = await repo.insert({
+      kind: 'auto',
+      createdAt: 1,
+      logonAt: 5,
+      items: [explorer('C:\\old1'), explorer('C:\\old2')]
+    })
+    const manual = await repo.insert({ kind: 'manual', createdAt: 2, logonAt: 5, items: [] })
+    expect(await repo.updateAuto(auto, { createdAt: 50, items: [explorer('C:\\new')] })).toBe(true)
+    const snap = await repo.get(auto)
+    expect(snap).toMatchObject({ createdAt: 50, logonAt: 5, itemCount: 1 })
+    expect(snap?.items.map((i) => i.item)).toEqual([explorer('C:\\new')])
+    expect(await repo.updateAuto(manual, { createdAt: 60, items: [] })).toBe(false)
+    expect((await repo.get(manual))?.createdAt).toBe(2)
+    const rows = await sql<{ n: number }>`select count(*) as n from desktop_items`.execute(db)
+    expect(rows.rows[0]?.n).toBe(1)
+  })
+
+  it('deleteAll removes every snapshot of this machine (incl. exit-none) but not others', async () => {
+    const db = await memoryDb()
+    const a = new DesktopSnapshotRepo(db, 'PC-A')
+    const b = new DesktopSnapshotRepo(db, 'PC-B')
+    await seed(a, ['auto', 'exit-none', 'manual'])
+    const idB = await b.insert({
+      kind: 'auto',
+      createdAt: 1,
+      logonAt: 1,
+      items: [explorer('C:\\b')]
+    })
+    await a.deleteAll()
+    expect(await a.listByLogon()).toEqual([])
+    expect((await b.get(idB))?.itemCount).toBe(1)
   })
 })

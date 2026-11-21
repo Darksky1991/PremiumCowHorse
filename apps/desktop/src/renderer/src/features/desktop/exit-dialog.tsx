@@ -17,14 +17,14 @@ import { notify } from '@renderer/stores/messages-store'
 import { errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
 
+/** desktop.exit 返回后窗口仍未关闭的等待时间 */
+const EXIT_IGNORED_MS = 2000
+
 /**
  * 退出时的「保存哪些」对话框（设计 5.7、第 8 节）：列出现场的项目（默认全选）。
  * 「保存して終了」「保存しないで終了」→ desktop.exit，主进程随后关闭窗口；
  * 「キャンセル」、Esc、点外部 → desktop.cancelExit。勾选「次回から確認しない」后两种退出都照传 dontAskAgain
  */
-/** desktop.exit 返回后窗口仍未关闭的等待时间 */
-const EXIT_IGNORED_MS = 2000
-
 export function ExitDialog({
   open,
   onClose

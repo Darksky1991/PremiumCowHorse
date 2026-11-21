@@ -165,7 +165,7 @@ export default {
       vscode: 'VS Code',
       eclipse: 'Eclipse'
     },
-    selectGroup: 'Select all in {{group}}',
+    groupSelected: '{{selected}} / {{total}} selected',
     checklistLabel: 'Items',
     specialLocation: 'Special location',
     tabCount: ' ({{count}} tab(s))',

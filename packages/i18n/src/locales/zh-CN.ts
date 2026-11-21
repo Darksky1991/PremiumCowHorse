@@ -158,7 +158,7 @@ export default {
       vscode: 'VS Code',
       eclipse: 'Eclipse'
     },
-    selectGroup: '全选“{{group}}”',
+    groupSelected: '已选 {{selected}} / {{total}}',
     checklistLabel: '项目列表',
     specialLocation: '特殊位置',
     tabCount: '（{{count}} 个标签）',
