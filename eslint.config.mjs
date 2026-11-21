@@ -152,6 +152,8 @@ export default defineConfig(
       'test-results',
       'playwright-report',
       '.claude',
+      // SDD 工作区（git 忽略，含 spike 脚本），不参与 lint
+      '.superpowers/**',
       // shadcn 生成的组件保持上游原样，便于用 CLI 对比和更新
       'packages/ui/src/components'
     ]
