@@ -166,36 +166,34 @@ export class DesktopSnapshotRepo {
 
   /**
    * 原地更新一份 auto：替换创建时刻与全部项目（同一事务）。
-   * 快照不存在（被用户删除或已被清理）、不是本机的、或不是 auto 时什么也不做并返回 false
+   * 快照不存在（被用户删除或已被清理）、不是本机的、或种类不在 from 中时什么也不做并返回 false。
+   * from 默认只接受 auto；同一登录内重启本应用时，服务把本次登录的 exit 接回来当作 auto（from 含 exit）
    */
-  async updateAuto(
+  updateAuto(
     id: number,
-    input: { createdAt: number; items: DesktopItem[] }
+    input: { createdAt: number; items: DesktopItem[] },
+    from: readonly DesktopSnapshotKind[] = ['auto']
   ): Promise<boolean> {
-    return this.db.transaction().execute(async (trx) => {
-      const res = await trx
-        .updateTable('desktop_snapshots')
-        .set({ created_at: input.createdAt })
-        .where('id', '=', id)
-        .where('machine', '=', this.machine)
-        .where('kind', '=', 'auto')
-        .executeTakeFirst()
-      if (Number(res.numUpdatedRows) === 0) return false
-      await trx.deleteFrom('desktop_items').where('snapshot_id', '=', id).execute()
-      if (input.items.length > 0) {
-        await trx
-          .insertInto('desktop_items')
-          .values(
-            input.items.map((item, sort) => ({
-              snapshot_id: id,
-              sort,
-              data: JSON.stringify(item)
-            }))
-          )
-          .execute()
-      }
-      return true
-    })
+    return this.rewrite(id, from, 'auto', input)
+  }
+
+  /**
+   * 「保存して終了」：把本次登录的 auto 原地改为 exit（种类、创建时刻、项目全部替换，同一事务），
+   * 使每次登录只占 1 个可见名额。只改本机、种类为 auto 的行；否则什么也不做并返回 false
+   */
+  convertToExit(id: number, input: { createdAt: number; items: DesktopItem[] }): Promise<boolean> {
+    return this.rewrite(id, ['auto'], 'exit', input)
+  }
+
+  /** 删除一份 auto（只删本机、种类为 auto 的行）；返回是否删除了 */
+  async deleteAuto(id: number): Promise<boolean> {
+    const res = await this.db
+      .deleteFrom('desktop_snapshots')
+      .where('id', '=', id)
+      .where('machine', '=', this.machine)
+      .where('kind', '=', 'auto')
+      .executeTakeFirst()
+    return Number(res.numDeletedRows) > 0
   }
 
   /** 删除本机全部快照（含 exit-none）；别的机器的不动 */
@@ -231,6 +229,39 @@ export class DesktopSnapshotRepo {
           .where('id', 'in', remove.slice(i, i + DELETE_CHUNK))
           .execute()
       }
+    })
+  }
+
+  /** 原地改写一份快照：种类、创建时刻与全部项目（同一事务）；条件不符时返回 false */
+  private rewrite(
+    id: number,
+    from: readonly DesktopSnapshotKind[],
+    kind: DesktopSnapshotKind,
+    input: { createdAt: number; items: DesktopItem[] }
+  ): Promise<boolean> {
+    return this.db.transaction().execute(async (trx) => {
+      const res = await trx
+        .updateTable('desktop_snapshots')
+        .set({ kind, created_at: input.createdAt })
+        .where('id', '=', id)
+        .where('machine', '=', this.machine)
+        .where('kind', 'in', [...from])
+        .executeTakeFirst()
+      if (Number(res.numUpdatedRows) === 0) return false
+      await trx.deleteFrom('desktop_items').where('snapshot_id', '=', id).execute()
+      if (input.items.length > 0) {
+        await trx
+          .insertInto('desktop_items')
+          .values(
+            input.items.map((item, sort) => ({
+              snapshot_id: id,
+              sort,
+              data: JSON.stringify(item)
+            }))
+          )
+          .execute()
+      }
+      return true
     })
   }
 

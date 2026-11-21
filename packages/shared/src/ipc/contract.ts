@@ -27,7 +27,7 @@ import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 import type {
   DesktopCurrent,
-  DesktopRestoreResult,
+  DesktopRestoreOutcome,
   DesktopSnapshot,
   DesktopSnapshotSummary
 } from '../desktop/types'
@@ -38,6 +38,12 @@ export const VFS_INTEREST_OFFSCREEN_MAX = 5000
 /** vfs.interest 的 tabs（标签中显示的目录）的上限 */
 export const VFS_INTEREST_TABS_MAX = 8
 export const VFS_REFRESH_MAX = 500
+
+/**
+ * desktop.save / desktop.exit 的项目 key 的长度上限：Explorer 的 key 由全部标签路径拼成，
+ * 多标签、长路径（最长约 32_767 字符）时会超过 4096；放宽为 65_536（只是输入上限，不影响存储）
+ */
+export const DESKTOP_KEY_MAX = 65_536
 
 /** 浏览器视图（web.*）的标签 id 与位置：DIP 整数，宿主自行取整（Electron 对小数隐式四舍五入，不依赖它） */
 const WebTabId = z.string().min(1).max(200)
@@ -232,7 +238,7 @@ export const ipcContract = {
   /** 手动快照：当前现场中 key 在列表里的项目；返回快照 id */
   'desktop.save': route<number>()(
     z.strictObject({
-      keys: z.array(z.string().max(4096)).max(500),
+      keys: z.array(z.string().max(DESKTOP_KEY_MAX)).max(500),
       name: z.string().max(100).nullable()
     })
   ),
@@ -244,7 +250,7 @@ export const ipcContract = {
    * 按快照恢复：只传快照 id 与项目 id，程序路径与参数由主进程从数据库取出（不属于该快照的项目 id 忽略）。
    * 已开着的项目跳过
    */
-  'desktop.restore': route<DesktopRestoreResult>()(
+  'desktop.restore': route<DesktopRestoreOutcome>()(
     z.strictObject({
       snapshotId: z.number().int().positive(),
       itemIds: z.array(z.number().int().positive()).max(500)
@@ -259,7 +265,7 @@ export const ipcContract = {
   'desktop.exit': route<void>()(
     z.strictObject({
       save: z.boolean(),
-      keys: z.array(z.string().max(4096)).max(500),
+      keys: z.array(z.string().max(DESKTOP_KEY_MAX)).max(500),
       dontAskAgain: z.boolean()
     })
   ),

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DesktopCollector, DesktopItem, DesktopRestoreResult } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 import { openDatabase, type Database } from '../../infra/db/client'
-import { DesktopService, type DesktopMonitorLike } from './desktop.service'
+import { DesktopService, type DesktopMonitorLike, type DesktopServiceDeps } from './desktop.service'
 import { LiveState } from './live-state'
 import { DesktopSnapshotRepo } from './snapshot.repo'
 
@@ -62,7 +62,7 @@ async function setup(
   const restore = vi.fn(async (): Promise<DesktopRestoreResult> => ({ launched: 0, skipped: [] }))
   const emit = vi.fn()
   const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }
-  const service = new DesktopService({
+  const deps: DesktopServiceDeps = {
     repo,
     monitor: opts.noMonitor ? null : monitor,
     live,
@@ -75,12 +75,29 @@ async function setup(
     restoreRescanMs: RESCAN_MS,
     sessionFreezeMs: FREEZE_MS,
     logger
-  })
+  }
+  const service = new DesktopService(deps)
+  /** 同一数据库上的另一个服务实例（模拟重启本应用 / 下一次登录）；logonAt 可换 */
+  const another = (logonAt: number = LOGON): DesktopService =>
+    new DesktopService({ ...deps, logonAt: async () => logonAt })
   /** 设置 office 类的当前结果（相当于一次采集） */
   const setOpen = (items: DesktopItem[]): boolean => live.apply('office', items, Date.now())
   const autos = async (): Promise<{ id: number; itemCount: number; logonAt: number }[]> =>
     (await repo.list()).filter((s) => s.kind === 'auto')
-  return { db, repo, live, monitor, state, restore, emit, logger, service, setOpen, autos }
+  return {
+    db,
+    repo,
+    live,
+    monitor,
+    state,
+    restore,
+    emit,
+    logger,
+    service,
+    another,
+    setOpen,
+    autos
+  }
 }
 
 describe('DesktopService', () => {
@@ -217,15 +234,195 @@ describe('DesktopService', () => {
     t.service.stop()
   })
 
-  it('saveExit(false) 写 exit-none；saveExit(true) 只写勾选的项目', async () => {
+  it('saveExit(true)：本次登录的 auto 原地改为 exit（只含勾选的项目），该登录只有 1 个可见快照', async () => {
     const t = await setup({ initial: [office('C:\\a.docx'), office('C:\\b.docx')] })
     await t.service.start()
+    const [auto] = await t.autos()
+    await vi.advanceTimersByTimeAsync(1000)
     await t.service.saveExit(true, ['office:c:\\b.docx', 'office:c:\\nope'])
+    const all = await t.repo.listByLogon()
+    expect(all.map((s) => [s.id, s.kind])).toEqual([[auto!.id, 'exit']])
+    const exit = (await t.repo.get(auto!.id))!
+    expect(exit.createdAt).toBe(T0 + 1000)
+    expect(pathsOf(exit.items)).toEqual(['C:\\b.docx'])
+    t.service.stop()
+  })
+
+  it('saveExit(true)：auto 已被删除时新写一份 exit', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    const [auto] = await t.autos()
+    await t.service.delete(auto!.id)
+    await t.service.saveExit(true, ['office:c:\\a.docx'])
+    const all = await t.repo.listByLogon()
+    expect(all.map((s) => [s.kind, s.itemCount])).toEqual([['exit', 1]])
+    t.service.stop()
+  })
+
+  it('saveExit(false)：删除本次登录的 auto，写 exit-none；手动快照不动', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    await t.service.saveManual(['office:c:\\a.docx'], 'm')
     await t.service.saveExit(false, ['office:c:\\a.docx'])
     const all = await t.repo.listByLogon()
-    expect(all.map((s) => s.kind)).toEqual(['exit-none', 'exit', 'auto'])
-    expect(all[0]!.itemCount).toBe(0)
-    expect(pathsOf((await t.repo.get(all[1]!.id))!.items)).toEqual(['C:\\b.docx'])
+    expect(all.map((s) => [s.kind, s.itemCount])).toEqual([
+      ['exit-none', 0],
+      ['manual', 1]
+    ])
+    t.service.stop()
+  })
+
+  it('退出保存后下一次登录提示那份 exit（只提示一次）；不保存则不提示', async () => {
+    const initial = [office('C:\\a.docx'), office('C:\\b.docx')]
+    const t = await setup({ initial })
+    await t.service.start()
+    const [auto] = await t.autos()
+    await t.service.saveExit(true, ['office:c:\\b.docx'])
+    t.service.stop()
+
+    // 重启后桌面上什么也没开
+    initial.length = 0
+    t.setOpen([])
+    const next = t.another(LOGON + 1)
+    await next.start()
+    const prompt = await next.restorePrompt()
+    expect(prompt?.id).toBe(auto!.id)
+    expect(pathsOf(prompt!.items)).toEqual(['C:\\b.docx'])
+    expect(await next.restorePrompt()).toBeNull()
+    await next.saveExit(false, [])
+    next.stop()
+
+    const third = t.another(LOGON + 2)
+    await third.start()
+    expect(await third.restorePrompt()).toBeNull()
+    third.stop()
+  })
+
+  it('同一登录内启动两次（重启本应用）：只有一份 auto，原地更新', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    const [first] = await t.autos()
+    t.service.stop()
+    t.setOpen([office('C:\\a.docx'), office('C:\\b.docx')])
+    const again = t.another()
+    await again.start()
+    const autos = await t.autos()
+    expect(autos.map((s) => [s.id, s.itemCount])).toEqual([[first!.id, 2]])
+    again.stop()
+  })
+
+  it('同一登录内退出保存后再启动：接回那份 exit 当作 auto，该登录仍只占 1 个可见名额', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    const [first] = await t.autos()
+    await t.service.saveExit(true, ['office:c:\\a.docx'])
+    t.service.stop()
+
+    const again = t.another()
+    await again.start()
+    expect((await t.repo.listByLogon()).map((s) => [s.id, s.kind])).toEqual([[first!.id, 'auto']])
+    await again.saveExit(true, ['office:c:\\a.docx'])
+    expect((await t.repo.listByLogon()).map((s) => [s.id, s.kind])).toEqual([[first!.id, 'exit']])
+    again.stop()
+  })
+
+  it('连续两天（每天一次登录 + 退出保存）后手动快照仍在：3 个 = 手动 + 前一天 exit + 当天 exit', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    const DAY = 86_400_000
+    // 第 1 天：手动保存一次，退出时保存
+    await t.service.start()
+    const manual = await t.service.saveManual(['office:c:\\a.docx'], 'm')
+    await vi.advanceTimersByTimeAsync(1000)
+    await t.service.saveExit(true, ['office:c:\\a.docx'])
+    t.service.stop()
+    expect((await t.service.list()).map((s) => s.kind)).toEqual(['exit', 'manual'])
+    // 第 2 天：新的登录，启动时写本次 auto（3 个），退出时改为 exit（仍 3 个）
+    await vi.advanceTimersByTimeAsync(DAY)
+    const day2 = t.another(LOGON + DAY)
+    await day2.start()
+    expect(await t.service.list()).toHaveLength(3)
+    await day2.saveExit(true, ['office:c:\\a.docx'])
+    day2.stop()
+    const list = await t.service.list()
+    expect(list.map((s) => [s.kind, s.logonAt])).toEqual([
+      ['exit', LOGON + DAY],
+      ['exit', LOGON],
+      ['manual', LOGON]
+    ])
+    expect(list.some((s) => s.id === manual)).toBe(true)
+    // 第 3 天启动时可见快照为 4 个，按「超过 3 个删除最旧的」最旧的手动快照被删
+    // （裁定 15 预期第 3 天后仍保留手动快照，与「删除最旧」矛盾，待控制者确认）
+    await vi.advanceTimersByTimeAsync(DAY)
+    const day3 = t.another(LOGON + 2 * DAY)
+    await day3.start()
+    expect((await t.service.list()).map((s) => s.kind)).toEqual(['auto', 'exit', 'exit'])
+    day3.stop()
+  })
+
+  it('第一次完整读取之前退出保存：不写 exit，本次登录已有的 auto 保留为下次的恢复候选', async () => {
+    const initial = [office('C:\\a.docx')]
+    const t = await setup({ initial })
+    await t.service.start()
+    const [auto] = await t.autos()
+    t.service.stop()
+    // 同一登录内重启，第一次完整读取失败（未就绪）时用户就退出了
+    t.state.enumerateOk = false
+    const again = t.another()
+    await again.start()
+    expect(again.current().ready).toBe(false)
+    await again.saveExit(true, [])
+    expect((await t.repo.listByLogon()).map((s) => [s.id, s.kind, s.itemCount])).toEqual([
+      [auto!.id, 'auto', 1]
+    ])
+    again.stop()
+    // 下一次登录：桌面上什么也没开
+    t.state.enumerateOk = true
+    initial.length = 0
+    t.setOpen([])
+    const next = t.another(LOGON + 1)
+    await next.start()
+    expect((await next.restorePrompt())?.id).toBe(auto!.id)
+    next.stop()
+  })
+
+  it('就绪时广播 current（退出对话框据此结束加载态）', async () => {
+    const t = await setup({ initial: [] })
+    expect(t.service.current().ready).toBe(false)
+    await t.service.start()
+    expect(t.service.current().ready).toBe(true)
+    expect(t.emit).toHaveBeenCalledWith({ scope: 'current' })
+    t.service.stop()
+  })
+
+  it('退出开始后不再自动保存 / 写 saveAutoNow，退出快照不被冲掉', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    await t.service.saveExit(true, ['office:c:\\a.docx'])
+    t.setOpen([office('C:\\a.docx'), office('C:\\b.docx')])
+    await vi.advanceTimersByTimeAsync(AUTO_MS * 2)
+    await t.service.querySessionEnd()
+    expect((await t.repo.listByLogon()).map((s) => [s.kind, s.itemCount])).toEqual([['exit', 1]])
+    t.service.stop()
+  })
+
+  it('恢复进行中开始退出：恢复完成后不清空、不重新扫描（exit 保留）', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    const id = await t.service.saveManual(['office:c:\\a.docx'], 'm')
+    let finish: () => void = noop
+    t.restore.mockImplementationOnce(
+      () =>
+        new Promise<DesktopRestoreResult>((r) => (finish = () => r({ launched: 1, skipped: [] })))
+    )
+    const restoring = t.service.restore(id, [])
+    await vi.advanceTimersByTimeAsync(0)
+    await t.service.saveExit(true, ['office:c:\\a.docx'])
+    t.monitor.refreshAll.mockClear()
+    finish()
+    expect(await restoring).toEqual({ launched: 1, skipped: [], cleared: false })
+    await vi.advanceTimersByTimeAsync(RESCAN_MS * 2)
+    expect(t.monitor.refreshAll).not.toHaveBeenCalled()
+    expect((await t.repo.listByLogon()).map((s) => s.kind).sort()).toEqual(['exit', 'manual'])
     t.service.stop()
   })
 
@@ -368,7 +565,12 @@ describe('DesktopService', () => {
     expect(t.service.enabled).toBe(false)
     await vi.advanceTimersByTimeAsync(AUTO_MS * 2)
     expect(await t.service.list()).toEqual([])
-    expect(t.service.current()).toEqual({ logonAt: LOGON, items: [], unreadable: [] })
+    expect(t.service.current()).toEqual({
+      logonAt: LOGON,
+      ready: false,
+      items: [],
+      unreadable: []
+    })
     expect(await t.service.restorePrompt()).toBeNull()
     t.service.stop()
   })
@@ -379,6 +581,7 @@ describe('DesktopService', () => {
     await t.service.start()
     expect(t.service.current()).toEqual({
       logonAt: LOGON,
+      ready: true,
       items: [{ key: 'office:c:\\a.docx', item: office('C:\\a.docx') }],
       unreadable: ['explorer']
     })
@@ -415,7 +618,7 @@ describe('DesktopService', () => {
     const t = await setup({ initial: [office('C:\\a.docx')] })
     await t.service.start()
     const manual = await t.service.saveManual(['office:c:\\a.docx'], 'm')
-    await t.service.saveExit(false, [])
+    await t.repo.insert({ kind: 'exit-none', createdAt: 1, logonAt: LOGON - 1, items: [] })
     const items = (await t.service.get(manual)).items
     t.emit.mockClear()
     t.monitor.refreshAll.mockClear()
@@ -424,7 +627,7 @@ describe('DesktopService', () => {
       manual,
       items.map((i) => i.id)
     )
-    expect(result).toEqual({ launched: 0, skipped: [] })
+    expect(result).toEqual({ launched: 0, skipped: [], cleared: true })
     // 清空：含 exit-none；广播
     expect(await t.repo.listByLogon()).toEqual([])
     expect(t.emit).toHaveBeenCalledWith({ scope: 'snapshots' })
@@ -442,6 +645,44 @@ describe('DesktopService', () => {
     const all = await t.repo.listByLogon()
     expect(all).toHaveLength(1)
     expect(all[0]).toMatchObject({ kind: 'auto', itemCount: 1, logonAt: LOGON })
+    t.service.stop()
+  })
+
+  it.each([
+    ['全部 unreachable', ['unreachable', 'unreachable'], false],
+    ['有一项 failed', ['open', 'failed'], false],
+    ['只有 open / missing 与成功', ['open', 'missing'], true],
+    ['全部成功', [], true]
+  ] as const)(
+    'restore 后是否清空（Ruling 14）：%s → %s；两种情况都在 10 秒后重新扫描',
+    async (_label, reasons, cleared) => {
+      const t = await setup({ initial: [office('C:\\a.docx')] })
+      await t.service.start()
+      const id = await t.service.saveManual(['office:c:\\a.docx'], 'm')
+      t.restore.mockResolvedValueOnce({
+        launched: 1,
+        skipped: reasons.map((reason, i) => ({ itemId: i + 1, reason }))
+      })
+      t.monitor.refreshAll.mockClear()
+      const result = await t.service.restore(id, [])
+      expect(result.cleared).toBe(cleared)
+      expect((await t.service.list()).some((s) => s.id === id)).toBe(!cleared)
+      await vi.advanceTimersByTimeAsync(RESCAN_MS)
+      expect(t.monitor.refreshAll).toHaveBeenCalledTimes(1)
+      // 不清空时：手动快照仍在，auto 原地更新（不多出一份）
+      expect(await t.autos()).toHaveLength(1)
+      t.service.stop()
+    }
+  )
+
+  it('restore 后清空失败：记 warn，恢复结果照常返回（cleared = false）', async () => {
+    const t = await setup({ initial: [office('C:\\a.docx')] })
+    await t.service.start()
+    const id = await t.service.saveManual([], 'm')
+    vi.spyOn(t.repo, 'deleteAll').mockRejectedValueOnce(new Error('db locked'))
+    expect(await t.service.restore(id, [])).toEqual({ launched: 0, skipped: [], cleared: false })
+    expect(t.logger.warn).toHaveBeenCalledWith(expect.stringContaining('db locked'))
+    expect((await t.service.list()).some((s) => s.id === id)).toBe(true)
     t.service.stop()
   })
 

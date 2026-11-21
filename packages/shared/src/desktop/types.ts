@@ -46,6 +46,8 @@ export interface DesktopSnapshot extends DesktopSnapshotSummary {
 export interface DesktopCurrent {
   /** 本次登录的时刻（与快照的 logonAt 不同 = 重启前的快照） */
   logonAt: number
+  /** 第一次完整读取已完成（之前 items 不完整；退出对话框据此显示加载中） */
+  ready: boolean
   items: { key: string; item: DesktopItem }[]
   unreadable: DesktopCollector[]
 }
@@ -55,4 +57,9 @@ export type DesktopSkipReason = 'open' | 'missing' | 'unreachable' | 'failed'
 export interface DesktopRestoreResult {
   launched: number
   skipped: { itemId: number; reason: DesktopSkipReason }[]
+}
+
+/** desktop.restore 的结果：cleared = 恢复后已清空全部快照（有连不上 / 启动失败的项目时不清空，Ruling 14） */
+export interface DesktopRestoreOutcome extends DesktopRestoreResult {
+  cleared: boolean
 }

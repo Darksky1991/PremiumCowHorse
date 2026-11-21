@@ -179,6 +179,55 @@ describe('DesktopSnapshotRepo', () => {
     expect(rows.rows[0]?.n).toBe(1)
   })
 
+  it('updateAuto with from = [auto, exit] turns an exit back into an auto (same id)', async () => {
+    const db = await memoryDb()
+    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+    const exit = await repo.insert({ kind: 'exit', createdAt: 1, logonAt: 5, items: [] })
+    expect(await repo.updateAuto(exit, { createdAt: 9, items: [] })).toBe(false)
+    expect(
+      await repo.updateAuto(exit, { createdAt: 9, items: [explorer('C:\\x')] }, ['auto', 'exit'])
+    ).toBe(true)
+    expect(await repo.get(exit)).toMatchObject({ kind: 'auto', createdAt: 9, itemCount: 1 })
+  })
+
+  it('convertToExit turns an auto of this machine into an exit in place; refuses others', async () => {
+    const db = await memoryDb()
+    const a = new DesktopSnapshotRepo(db, 'PC-A')
+    const b = new DesktopSnapshotRepo(db, 'PC-B')
+    const auto = await a.insert({
+      kind: 'auto',
+      createdAt: 1,
+      logonAt: 5,
+      items: [explorer('C:\\old1'), explorer('C:\\old2')]
+    })
+    const manual = await a.insert({ kind: 'manual', createdAt: 2, logonAt: 5, items: [] })
+    const other = await b.insert({ kind: 'auto', createdAt: 3, logonAt: 5, items: [] })
+    expect(await a.convertToExit(auto, { createdAt: 70, items: [explorer('C:\\kept')] })).toBe(true)
+    const snap = await a.get(auto)
+    expect(snap).toMatchObject({ kind: 'exit', createdAt: 70, logonAt: 5, itemCount: 1 })
+    expect(snap?.items.map((i) => i.item)).toEqual([explorer('C:\\kept')])
+    // 已是 exit、manual、别的机器的 auto：都不改
+    expect(await a.convertToExit(auto, { createdAt: 80, items: [] })).toBe(false)
+    expect(await a.convertToExit(manual, { createdAt: 80, items: [] })).toBe(false)
+    expect(await a.convertToExit(other, { createdAt: 80, items: [] })).toBe(false)
+    expect((await a.get(manual))?.kind).toBe('manual')
+    expect(await b.get(other)).toMatchObject({ kind: 'auto', createdAt: 3 })
+  })
+
+  it('deleteAuto deletes only an auto of this machine', async () => {
+    const db = await memoryDb()
+    const a = new DesktopSnapshotRepo(db, 'PC-A')
+    const b = new DesktopSnapshotRepo(db, 'PC-B')
+    const auto = await a.insert({ kind: 'auto', createdAt: 1, logonAt: 5, items: [] })
+    const exit = await a.insert({ kind: 'exit', createdAt: 2, logonAt: 5, items: [] })
+    const other = await b.insert({ kind: 'auto', createdAt: 3, logonAt: 5, items: [] })
+    expect(await a.deleteAuto(exit)).toBe(false)
+    expect(await a.deleteAuto(other)).toBe(false)
+    expect(await a.deleteAuto(auto)).toBe(true)
+    expect((await a.listByLogon()).map((s) => s.id)).toEqual([exit])
+    expect(await b.get(other)).not.toBeNull()
+  })
+
   it('deleteAll removes every snapshot of this machine (incl. exit-none) but not others', async () => {
     const db = await memoryDb()
     const a = new DesktopSnapshotRepo(db, 'PC-A')
