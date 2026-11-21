@@ -36,7 +36,7 @@ export function skippedByReason(
 /** 快照标签 / 页面的标题：「时间 名称或种类」 */
 export function snapshotTitle(
   snapshot: DesktopSnapshotSummary,
-  t: (key: string) => string,
+  t: TFunction,
   language: string
 ): string {
   const label = snapshot.name ?? t(`desktop:${kindKey(snapshot.kind)}`)

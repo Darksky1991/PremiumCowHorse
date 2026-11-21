@@ -9,15 +9,22 @@ import { call, subscribe } from '@renderer/lib/ipc'
 export function useRestorePrompt(): { snapshot: DesktopSnapshot | null; dismiss: () => void } {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null)
   const asked = useRef(false)
+  // 已收起（后で / 退出对话框出现）：之后才返回的候选不再弹出
+  const dismissed = useRef(false)
   useEffect(() => {
     if (asked.current) return
     asked.current = true
     call('desktop.restorePrompt', undefined).then(
-      (s) => setSnapshot(s),
+      (s) => {
+        if (!dismissed.current) setSnapshot(s)
+      },
       () => undefined
     )
   }, [])
-  const dismiss = useCallback(() => setSnapshot(null), [])
+  const dismiss = useCallback(() => {
+    dismissed.current = true
+    setSnapshot(null)
+  }, [])
   return { snapshot, dismiss }
 }
 
@@ -26,12 +33,13 @@ export function useRestorePrompt(): { snapshot: DesktopSnapshot | null; dismiss:
  * 对话框已开着时再次收到请求（用户又点了关闭），也要再调一次（主进程每次重发都重新开始确认计时）。
  * desktop.exitCancelled：主进程取消了询问，关闭对话框（不调用任何 IPC）
  */
-export function useExitRequest(): { open: boolean; close: () => void } {
+export function useExitRequest(onRequested: () => void): { open: boolean; close: () => void } {
   const [open, setOpen] = useState(false)
   // 每收到一次请求加一；对话框渲染提交后的 effect 中调用 exitShown
   const [requests, setRequests] = useState(0)
   useEffect(() => {
     const offRequested = subscribe('desktop.exitRequested', () => {
+      onRequested()
       setOpen(true)
       setRequests((n) => n + 1)
     })
@@ -40,7 +48,7 @@ export function useExitRequest(): { open: boolean; close: () => void } {
       offRequested()
       offCancelled()
     }
-  }, [])
+  }, [onRequested])
   useEffect(() => {
     if (requests === 0) return
     call('desktop.exitShown', undefined).catch(() => undefined)

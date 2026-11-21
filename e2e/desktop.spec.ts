@@ -166,8 +166,7 @@ test.describe('desktop snapshots', () => {
       await closeWindow(page)
       await dialog(page).getByRole('button', { name: 'Cancel' }).click()
       await expect(dialog(page)).toBeHidden()
-      await page.waitForTimeout(500)
-      expect(page.isClosed()).toBe(false)
+      await expect.poll(() => page.isClosed()).toBe(false)
       await closeWindow(page)
       await expect(dialog(page)).toBeVisible()
       // Esc = キャンセル
@@ -191,6 +190,33 @@ test.describe('desktop snapshots', () => {
       await page.waitForTimeout(12_000)
       await expect(dialog(page)).toBeVisible()
       expect(page.isClosed()).toBe(false)
+    } finally {
+      await app.close().catch(() => undefined)
+    }
+  })
+
+  test('closing right after start shows only the exit dialog, and cancel does not bring the restore dialog back', async () => {
+    const first = await start(1000, [EXCEL])
+    try {
+      await closeWindow(first.page)
+      await dialog(first.page).getByRole('button', { name: 'Save and exit' }).click()
+      await first.app.waitForEvent('close')
+    } finally {
+      await first.app.close().catch(() => undefined)
+    }
+
+    // 上次登录有可恢复的快照；启动后立刻关闭（不等现场采集与恢复提示）
+    const { app, page } = await launch(userData, env(2000, []))
+    try {
+      await closeWindow(page)
+      await expect(
+        page.getByRole('dialog', { name: 'Save your desktop before exiting?' })
+      ).toBeVisible()
+      await page.waitForTimeout(1500)
+      await expect(dialog(page)).toHaveCount(1)
+      await dialog(page).getByRole('button', { name: 'Cancel' }).click()
+      await page.waitForTimeout(1500)
+      await expect(dialog(page)).toHaveCount(0)
     } finally {
       await app.close().catch(() => undefined)
     }

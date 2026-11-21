@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@pch/ui/components/button'
 import { Checkbox } from '@pch/ui/components/checkbox'
@@ -22,6 +22,9 @@ import { ItemChecklist } from './item-checklist'
  * 「保存して終了」「保存しないで終了」→ desktop.exit，主进程随后关闭窗口；
  * 「キャンセル」、Esc、点外部 → desktop.cancelExit。勾选「次回から確認しない」后两种退出都照传 dontAskAgain
  */
+/** desktop.exit 返回后窗口仍未关闭的等待时间 */
+const EXIT_IGNORED_MS = 2000
+
 export function ExitDialog({
   open,
   onClose
@@ -36,6 +39,8 @@ export function ExitDialog({
 function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
 
   const cancel = async (): Promise<void> => {
     if (busy) return
@@ -71,7 +76,12 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
     try {
       const keys = save ? items.map((i) => i.id).filter((id) => selected.has(id)) : []
       await call('desktop.exit', { save, keys, dontAskAgain })
-      // 成功后主进程关闭窗口；对话框保持到那时
+      // 成功后主进程关闭窗口，对话框保持到那时；主进程忽略了回应（不在询问阶段）时窗口不会关闭，
+      // 过一会儿仍在则复位并关闭对话框，不把用户困在里面
+      timer.current = setTimeout(() => {
+        setBusy(false)
+        onClose()
+      }, EXIT_IGNORED_MS)
     } catch (e) {
       notify('error', errorText(t, e))
       setBusy(false)
