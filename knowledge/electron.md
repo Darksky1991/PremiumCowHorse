@@ -75,6 +75,7 @@
 - 解决：`vfs/document/document-owner.ts` 的 `bindDocumentOwner` 另外监听 `did-start-navigation`（只处理 `isMainFrame && !isSameDocument`；Electron 45 的第一个参数是带 `isMainFrame` / `isSameDocument` 的事件对象，其余位置参数已废弃）与 `render-process-gone`，调用 `DocumentService.resetOwner`：关闭全部文档并递增该 owner 的页面代号，旧页面发起、之后才完成的 `doc.open` 也关闭。与 `releaseOwner` 不同，之后的 open 照常受理（id 还会被新页面使用）。
 - 预防：主进程按窗口持有状态时，同时考虑「窗口销毁」与「同一 webContents 换了页面」两种生命周期。
 - 补充（2026-11-20，M2 Task 6 实测，修正上面的做法）：**被 `will-navigate` 阻止的导航也会先发出 `did-start-navigation`**（`isMainFrame && !isSameDocument` 同样为真）。应用窗口里点外部链接（`windows/security.ts` 阻止并交给 `openExternal`）时，按上面的写法会误清理该窗口的全部资源（实测：浏览器视图全部被销毁）。浏览器视图的 `bindWebViewOwner`（`modules/web/web-session.ts`）因此改用 `did-navigate`（主框架提交了新文档才发出；重新加载也会发出）。`bindDocumentOwner` 仍用 `did-start-navigation`，同样会在点外部链接时关闭全部文本文档——已报告，未修改。
+- 结论（2026-11-22，M3 Task 10 复审）：**判断主框架重新加载用 `did-navigate`**，不用 `did-start-navigation`。桌面记录的退出守卫（`windows/main-window-hooks.ts`，询问中页面重新加载 → 询问作废）照此实现，并有单元测试确认只有 `did-start-navigation` 的导航不触发重置。
 
 ### 渲染端：宿主对象在 useState 中惰性创建，卸载时 dispose，之后仍可使用（StrictMode）
 

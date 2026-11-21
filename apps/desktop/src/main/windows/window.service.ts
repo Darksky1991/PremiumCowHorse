@@ -8,19 +8,10 @@ import {
 } from '@pch/shared'
 import type { AppPaths } from '../infra/paths'
 import type { SettingsService } from '../modules/settings/settings.service'
+import { bindMainWindowHooks, type MainWindowHooks } from './main-window-hooks'
 import { createAppWindow, syncWindowChrome } from './window-factory'
 
-/** 主窗口的关闭与会话结束事件（由 bootstrap 接到退出守卫与桌面记录服务） */
-export interface MainWindowHooks {
-  /** close 事件；需要拦截时在其中 preventDefault */
-  close?: (event: Electron.Event) => void
-  /** Windows 的会话即将结束（关机、重启、注销） */
-  querySessionEnd?: (event: Electron.WindowSessionEndEvent) => void
-  /** Windows 的会话结束 */
-  sessionEnd?: (event: Electron.WindowSessionEndEvent) => void
-  /** 主窗口的页面重新开始加载（主框架的跨文档导航，含重新加载）或渲染进程退出 */
-  rendererReset?: () => void
-}
+export type { MainWindowHooks } from './main-window-hooks'
 
 /**
  * 窗口管理。M0 只有主窗口；标签弹出产生的 detached 窗口在 M3 由 LayoutService 驱动。
@@ -54,14 +45,7 @@ export class WindowService {
       language: resolveLanguage(settings['general.language'], app.getLocale()),
       settings
     })
-    win.on('close', (e) => this.hooks.close?.(e))
-    win.on('query-session-end', (e) => this.hooks.querySessionEnd?.(e))
-    win.on('session-end', (e) => this.hooks.sessionEnd?.(e))
-    // did-start-loading 不带框架信息，改用 did-start-navigation 只取主框架的跨文档导航
-    win.webContents.on('did-start-navigation', (details) => {
-      if (details.isMainFrame && !details.isSameDocument) this.hooks.rendererReset?.()
-    })
-    win.webContents.on('render-process-gone', () => this.hooks.rendererReset?.())
+    bindMainWindowHooks(win, () => this.hooks)
     win.on('closed', () => {
       this.main = null
     })

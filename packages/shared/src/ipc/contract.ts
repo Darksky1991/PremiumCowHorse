@@ -322,7 +322,8 @@ export interface IpcEvents {
   /**
    * 用户关闭主窗口、需要询问是否保存（只发给主窗口；询问中再次关闭会重发）：渲染端显示对话框后立即调用
    * desktop.exitShown，再以 desktop.exit 或 desktop.cancelExit 回应。10 秒内没有 exitShown 按「全部保存并退出」
-   * 处理；收到 exitShown 后无限等待。页面重新加载 / 渲染进程退出时询问作废
+   * 处理；收到 exitShown 后无限等待。对话框已开着时收到重复请求，也必须再调一次 desktop.exitShown（重发会重新开始
+   * 10 秒计时）。页面重新加载 / 渲染进程退出时询问作废
    */
   'desktop.exitRequested': Record<string, never>
   /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
