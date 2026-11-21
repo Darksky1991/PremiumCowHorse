@@ -166,41 +166,45 @@ export class DesktopSnapshotRepo {
 
   /**
    * 按保留规则清理本机快照：
-   * - auto：保留最近 keepAuto 份，以及最近 keepLogons 个不同 logon_at 各自 created_at 最大的一份
+   * - auto：保留最近 keepAuto 份，以及有 auto 的最近 keepLogons 个不同 logon_at 各自 created_at 最大的一份
    * - manual / exit：不删
    * - exit-none：只保留最近 keepLogons 个登录内的（登录按本机全部快照的 logon_at 计）
    */
   async prune(keepAuto: number, keepLogons: number): Promise<void> {
     const rows = await this.summaries() // created_at 降序
-    const recentLogons = new Set(
-      [...new Set(rows.map((r) => r.logonAt))].sort((a, b) => b - a).slice(0, keepLogons)
-    )
+    const recent = (list: DesktopSnapshotSummary[]): Set<number> =>
+      new Set([...new Set(list.map((r) => r.logonAt))].sort((x, y) => y - x).slice(0, keepLogons))
+    const autos = rows.filter((r) => r.kind === 'auto')
+    // auto 的窗口只数有 auto 的登录；exit-none 的窗口数本机全部种类的登录
+    const recentAutoLogons = recent(autos)
+    const recentAllLogons = recent(rows)
 
     const keep = new Set<number>()
-    const autos = rows.filter((r) => r.kind === 'auto')
     for (const r of autos.slice(0, Math.max(0, keepAuto))) keep.add(r.id)
     // rows 已按创建时刻降序，每个登录第一次出现的即其最后一份
     const seenLogons = new Set<number>()
     for (const r of autos) {
       if (seenLogons.has(r.logonAt)) continue
       seenLogons.add(r.logonAt)
-      if (recentLogons.has(r.logonAt)) keep.add(r.id)
+      if (recentAutoLogons.has(r.logonAt)) keep.add(r.id)
     }
 
     const remove = rows
       .filter((r) => {
         if (r.kind === 'auto') return !keep.has(r.id)
-        if (r.kind === 'exit-none') return !recentLogons.has(r.logonAt)
+        if (r.kind === 'exit-none') return !recentAllLogons.has(r.logonAt)
         return false
       })
       .map((r) => r.id)
-    for (let i = 0; i < remove.length; i += DELETE_CHUNK) {
-      await this.db
-        .deleteFrom('desktop_snapshots')
-        .where('machine', '=', this.machine)
-        .where('id', 'in', remove.slice(i, i + DELETE_CHUNK))
-        .execute()
-    }
+    await this.db.transaction().execute(async (trx) => {
+      for (let i = 0; i < remove.length; i += DELETE_CHUNK) {
+        await trx
+          .deleteFrom('desktop_snapshots')
+          .where('machine', '=', this.machine)
+          .where('id', 'in', remove.slice(i, i + DELETE_CHUNK))
+          .execute()
+      }
+    })
   }
 
   /** 本机全部快照及项目数（一次查询），创建时刻降序（同刻按 id 降序） */

@@ -151,4 +151,21 @@ describe('DesktopSnapshotRepo', () => {
     await repo.prune(20, 2)
     expect((await repo.listByLogon()).map((s) => s.id).sort(byNumber)).toEqual([ids[2], ids[3]])
   })
+
+  it('prune counts auto logons separately from manual / exit-none logons', async () => {
+    const db = await memoryDb()
+    const repo = new DesktopSnapshotRepo(db, 'PC-A')
+    // 登录 0、1 只有 auto；较新的登录 2、3 只有 manual / exit-none
+    const old0 = await repo.insert({ kind: 'auto', createdAt: 1, logonAt: 100, items: [] })
+    const old1 = await repo.insert({ kind: 'auto', createdAt: 2, logonAt: 101, items: [] })
+    const manual = await repo.insert({ kind: 'manual', createdAt: 3, logonAt: 102, items: [] })
+    const none = await repo.insert({ kind: 'exit-none', createdAt: 4, logonAt: 103, items: [] })
+
+    await repo.prune(0, 2)
+
+    // auto 只数有 auto 的登录（100、101），各自最后一份保留；exit-none 在最近 2 个登录内
+    expect((await repo.listByLogon()).map((s) => s.id).sort(byNumber)).toEqual(
+      [old0, old1, manual, none].sort(byNumber)
+    )
+  })
 })
