@@ -8,6 +8,8 @@ import {
   type DesktopSnapshotItem
 } from '@pch/shared'
 import type { runPowerShell } from '../../infra/powershell'
+import { toFileUri } from '../../vfs/input-path'
+import type { VfsService } from '../../vfs/vfs.service'
 import { EXPLORER_RESTORE_SCRIPT } from './collectors/scripts'
 
 export interface RestoreDeps {
@@ -45,6 +47,42 @@ export function spawnDetached(exe: string, args: string[]): Promise<void> {
       resolve()
     })
   })
+}
+
+let existsSeq = 0
+
+/**
+ * RestoreDeps.exists 的真实实现：VfsService.stat（file: URI）与 timeoutMs 赛跑，超时则取消该次 stat。
+ * FS_NOT_FOUND → no；超时 / FS_UNAVAILABLE / 其他错误（含无法转为 URI 的路径）→ unreachable
+ */
+export function existsViaVfs(
+  vfs: Pick<VfsService, 'stat' | 'cancel'>
+): (p: string, timeoutMs: number) => Promise<'yes' | 'no' | 'unreachable'> {
+  return async (p, timeoutMs) => {
+    let uri: string
+    try {
+      uri = toFileUri(p)
+    } catch {
+      return 'unreachable'
+    }
+    const requestId = `desktop-exists-${++existsSeq}`
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<'unreachable'>((resolve) => {
+      timer = setTimeout(() => {
+        vfs.cancel(requestId)
+        resolve('unreachable')
+      }, timeoutMs)
+    })
+    const stat = vfs.stat(uri, requestId).then(
+      () => 'yes' as const,
+      (e: unknown) => ((e as { code?: unknown }).code === 'FS_NOT_FOUND' ? 'no' : 'unreachable')
+    )
+    try {
+      return await Promise.race([stat, timeout])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 }
 
 class SkipError extends Error {

@@ -191,6 +191,7 @@ export default {
     FS_UNAVAILABLE: '无法访问该位置',
     INDEX_UNAVAILABLE: '索引不可用',
     DOC_NOT_FOUND: '文档已关闭，请重新打开',
-    LAUNCH_FAILED: '启动失败，请检查关联的应用程序'
+    LAUNCH_FAILED: '启动失败，请检查关联的应用程序',
+    DESKTOP_SNAPSHOT_NOT_FOUND: '找不到该桌面记录，可能已被删除'
   }
 } satisfies Resource

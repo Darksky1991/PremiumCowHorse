@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
-import { openTargetsOf, type DesktopItem, type DesktopSnapshotItem } from '@pch/shared'
-import { restoreItems, type RestoreDeps } from './restore'
+import { describe, expect, it, vi, type Mock } from 'vitest'
+import {
+  AppError,
+  openTargetsOf,
+  type DesktopItem,
+  type DesktopSnapshotItem,
+  type FileStat
+} from '@pch/shared'
+import { existsViaVfs, restoreItems, type RestoreDeps } from './restore'
 
 const EXPLORER = `${process.env.SystemRoot ?? 'C:\\Windows'}\\explorer.exe`
 
@@ -337,5 +343,55 @@ describe('restoreItems', () => {
     )
     expect(r).toEqual({ launched: 1, skipped: [{ itemId: 1, reason: 'failed' }] })
     expect(rec.calls).toHaveLength(2)
+  })
+})
+
+describe('existsViaVfs', () => {
+  const stat: FileStat = {
+    uri: 'file:///C:/work',
+    name: 'work',
+    kind: 'directory',
+    size: 0,
+    mtime: 0
+  }
+  type StatFn = (uri: string, requestId?: string) => Promise<FileStat>
+  const failing = (
+    code: 'FS_NOT_FOUND' | 'FS_UNAVAILABLE' | 'UNKNOWN'
+  ): { stat: Mock<StatFn>; cancel: Mock<(requestId: string) => void> } => ({
+    stat: vi.fn<StatFn>(() => Promise.reject(new AppError({ code }))),
+    cancel: vi.fn<(requestId: string) => void>()
+  })
+
+  it('stat 成功 → yes，参数为 file URI', async () => {
+    const vfs = { stat: vi.fn(async () => stat), cancel: vi.fn() }
+    expect(await existsViaVfs(vfs)('C:\\work', 3000)).toBe('yes')
+    expect(vfs.stat.mock.calls[0]).toEqual(['file:///C:/work', expect.any(String)])
+  })
+
+  it('FS_NOT_FOUND → no；FS_UNAVAILABLE / 其他错误 / 非绝对路径 → unreachable', async () => {
+    expect(await existsViaVfs(failing('FS_NOT_FOUND'))('C:\\x', 3000)).toBe('no')
+    expect(await existsViaVfs(failing('FS_UNAVAILABLE'))('\\\\nas\\s\\x', 3000)).toBe('unreachable')
+    expect(await existsViaVfs(failing('UNKNOWN'))('C:\\x', 3000)).toBe('unreachable')
+    const relative = failing('UNKNOWN')
+    expect(await existsViaVfs(relative)('relative', 3000)).toBe('unreachable')
+    expect(relative.stat).not.toHaveBeenCalled()
+  })
+
+  it('超时 → unreachable，并取消该次 stat', async () => {
+    vi.useFakeTimers()
+    try {
+      const vfs = {
+        stat: vi.fn<StatFn>(() => new Promise<FileStat>(() => undefined)),
+        cancel: vi.fn()
+      }
+      const r = existsViaVfs(vfs)('\\\\nas\\s\\x', 3000)
+      await vi.advanceTimersByTimeAsync(2999)
+      expect(vfs.cancel).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await r).toBe('unreachable')
+      expect(vfs.cancel).toHaveBeenCalledWith(vfs.stat.mock.calls[0]![1])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

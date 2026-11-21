@@ -25,6 +25,12 @@ import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
+import type {
+  DesktopCurrent,
+  DesktopRestoreResult,
+  DesktopSnapshot,
+  DesktopSnapshotSummary
+} from '../desktop/types'
 
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
 export const VFS_INTEREST_VISIBLE_MAX = 2000
@@ -216,6 +222,49 @@ export const ipcContract = {
     z.strictObject({ uri: z.string().min(1), mode: z.enum(LAUNCH_MODES) })
   ),
   'launcher.redetect': route<void>()(z.void()),
+  /**
+   * 桌面记录（M3，主进程 modules/desktop）。快照只含本机的；id 不存在 → DESKTOP_SNAPSHOT_NOT_FOUND。
+   * desktop.current：当前现场（开着的项目）与本轮无法读取的类别；非 Windows 为空
+   */
+  'desktop.list': route<DesktopSnapshotSummary[]>()(z.void()),
+  'desktop.get': route<DesktopSnapshot>()(z.strictObject({ id: z.number().int().positive() })),
+  'desktop.current': route<DesktopCurrent>()(z.void()),
+  /** 手动快照：当前现场中 key 在列表里的项目；返回快照 id */
+  'desktop.save': route<number>()(
+    z.strictObject({
+      keys: z.array(z.string().max(4096)).max(500),
+      name: z.string().max(100).nullable()
+    })
+  ),
+  'desktop.rename': route<void>()(
+    z.strictObject({ id: z.number().int().positive(), name: z.string().max(100).nullable() })
+  ),
+  'desktop.delete': route<void>()(z.strictObject({ id: z.number().int().positive() })),
+  /**
+   * 按快照恢复：只传快照 id 与项目 id，程序路径与参数由主进程从数据库取出（不属于该快照的项目 id 忽略）。
+   * 已开着的项目跳过
+   */
+  'desktop.restore': route<DesktopRestoreResult>()(
+    z.strictObject({
+      snapshotId: z.number().int().positive(),
+      itemIds: z.array(z.number().int().positive()).max(500)
+    })
+  ),
+  /** 启动时的恢复候选（items 已滤掉开着的）；没有可提示的 → null。每次启动只返回一次 */
+  'desktop.restorePrompt': route<DesktopSnapshot | null>()(z.void()),
+  /**
+   * 回应 desktop.exitRequested：save 为真时保存 keys 对应的项目，否则记为「不保存」；
+   * dontAskAgain 时写设置 desktop.askOnExit = false。之后主进程关闭主窗口
+   */
+  'desktop.exit': route<void>()(
+    z.strictObject({
+      save: z.boolean(),
+      keys: z.array(z.string().max(4096)).max(500),
+      dontAskAgain: z.boolean()
+    })
+  ),
+  /** 回应 desktop.exitRequested：取消退出 */
+  'desktop.cancelExit': route<void>()(z.void()),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -266,6 +315,13 @@ export interface IpcEvents {
   'web.notice': { tabId: string; notice: WebNotice }
   /** 焦点在视图中时按下的应用快捷键（以及鼠标侧键 → Alt+←/→），由应用窗口执行 */
   'web.shortcut': { tabId: string } & WebShortcut
+  /** 桌面记录有变化：current = 当前现场，snapshots = 快照列表（写入 / 改名 / 删除）。广播 */
+  'desktop.changed': { scope: 'current' | 'snapshots' }
+  /**
+   * 用户关闭主窗口、需要询问是否保存（只发给主窗口）：渲染端回应 desktop.exit 或 desktop.cancelExit；
+   * 30 秒内没有回应按「全部保存并退出」处理
+   */
+  'desktop.exitRequested': Record<string, never>
 }
 export type IpcEventName = keyof IpcEvents
 

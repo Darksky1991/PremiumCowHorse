@@ -198,6 +198,7 @@ export default {
     FS_UNAVAILABLE: '場所にアクセスできません',
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
     DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
-    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください'
+    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください',
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります'
   }
 }

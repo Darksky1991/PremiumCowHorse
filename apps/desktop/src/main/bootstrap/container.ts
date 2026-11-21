@@ -31,6 +31,24 @@ import {
   type AssetSource
 } from '../modules/web/web-protocol'
 import { WebViewManager } from '../modules/web/web-view-manager'
+import { DESKTOP_TIMINGS } from '../modules/desktop/constants'
+import { createExplorerCollector } from '../modules/desktop/collectors/explorer'
+import { createOfficeCollector } from '../modules/desktop/collectors/office'
+import { createVscodeCollector, readTextFile } from '../modules/desktop/collectors/vscode'
+import {
+  commandLineViaPowerShell,
+  createEclipseCollector
+} from '../modules/desktop/collectors/eclipse'
+import type { Collector } from '../modules/desktop/collectors/types'
+import { DesktopService } from '../modules/desktop/desktop.service'
+import { ExitGuard } from '../modules/desktop/exit-guard'
+import { createFakeDesktop } from '../modules/desktop/fake'
+import { LiveState } from '../modules/desktop/live-state'
+import { getLogonTime } from '../modules/desktop/logon'
+import { DesktopMonitor } from '../modules/desktop/monitor'
+import { existsViaVfs, restoreItems, spawnDetached } from '../modules/desktop/restore'
+import { DesktopSnapshotRepo } from '../modules/desktop/snapshot.repo'
+import { listWindowsLoadError, loadListWindows } from '../modules/desktop/window-list'
 import {
   configureWebSession,
   createWebContentsView,
@@ -51,6 +69,8 @@ export interface Container {
   windows: WindowService
   web: WebViewManager
   launcher: LauncherService
+  desktop: DesktopService
+  exitGuard: ExitGuard
 }
 
 /**
@@ -136,6 +156,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     repo: new LaunchCapabilitiesRepo(db, hostname())
   })
 
+  const { desktop, exitGuard } = createDesktop({ db, vfs, settings, windows, logger })
+
   return {
     paths,
     logger,
@@ -149,6 +171,103 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     i18n,
     windows,
     web,
-    launcher
+    launcher,
+    desktop,
+    exitGuard
   }
+}
+
+/**
+ * 桌面记录（设计 5.2–5.5）：按平台与 e2e 假模式选择依赖。
+ * 假模式与 PCH_E2E_FAKE_LAUNCHER 相同，打包后的应用绝不启用（只在未打包时读取环境变量）。
+ * 窗口枚举不可用（非 Windows、koffi 加载失败）时不监控，IPC 照常返回空结果
+ */
+function createDesktop(deps: {
+  db: Database
+  vfs: VfsService
+  settings: SettingsService
+  windows: WindowService
+  logger: Logger
+}): { desktop: DesktopService; exitGuard: ExitGuard } {
+  const { db, vfs, settings, windows, logger } = deps
+  const T = DESKTOP_TIMINGS
+  const fake =
+    !app.isPackaged && process.env.PCH_E2E_FAKE_DESKTOP === '1'
+      ? createFakeDesktop(process.env, logger)
+      : null
+  const live = new LiveState({ removeAfterMs: T.removeAfterMs })
+  const listWindows = fake ? fake.listWindows : loadListWindows()
+  if (!listWindows) {
+    logger.warn(
+      `desktop: window enumeration unavailable, monitoring disabled: ${listWindowsLoadError() ?? process.platform}`
+    )
+  }
+  const collectors: Collector[] = fake
+    ? fake.collectors
+    : [
+        createExplorerCollector(runPowerShell, T.collectorTimeoutMs),
+        createOfficeCollector(runPowerShell, T.collectorTimeoutMs),
+        createVscodeCollector({ readFile: readTextFile, appData: app.getPath('appData') }),
+        createEclipseCollector({
+          readFile: readTextFile,
+          commandLineOf: commandLineViaPowerShell(runPowerShell, T.collectorTimeoutMs)
+        })
+      ]
+  const monitor = listWindows
+    ? new DesktopMonitor({
+        listWindows,
+        collectors,
+        live,
+        timings: {
+          pollMs: T.pollMs,
+          debounceMs: T.debounceMs,
+          debounceOverrides: T.debounceOverrides,
+          fullRefreshMs: T.fullRefreshMs,
+          collectorTimeoutMs: T.collectorTimeoutMs
+        },
+        now: Date.now,
+        logger,
+        onChange: () => windows.broadcast('desktop.changed', { scope: 'current' })
+      })
+    : null
+  const restoreDeps = fake?.restoreDeps ?? {
+    spawnDetached,
+    runPowerShell,
+    exists: existsViaVfs(vfs)
+  }
+  const desktop = new DesktopService({
+    // 机器标识用主机名：数据库随漫游配置文件到别的机器时不列出、不提示那台机器的快照
+    repo: new DesktopSnapshotRepo(db, hostname()),
+    monitor,
+    live,
+    restore: (items, open) =>
+      restoreItems(items, open, {
+        ...restoreDeps,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        logger
+      }),
+    logonAt: fake ? fake.logonAt : getLogonTime,
+    now: Date.now,
+    emit: (e) => windows.broadcast('desktop.changed', e),
+    autoSaveMs: T.autoSaveMs,
+    keepAuto: T.keepAuto,
+    keepLogons: T.keepLogons,
+    sessionFreezeMs: T.sessionFreezeMs,
+    logger
+  })
+  const exitGuard = new ExitGuard({
+    enabled: () => desktop.enabled,
+    askOnExit: () => settings.get('desktop.askOnExit'),
+    setAskOnExit: (value) => settings.set({ 'desktop.askOnExit': value }),
+    rendererAlive: () => windows.mainRendererAlive(),
+    requestExit: () => windows.sendToMain('desktop.exitRequested', {}),
+    closeMain: () => windows.closeMain(),
+    saveExit: (save, keys) => desktop.saveExit(save, keys),
+    currentKeys: () => desktop.current().items.map((i) => i.key),
+    now: Date.now,
+    promptTimeoutMs: T.exitPromptTimeoutMs,
+    sessionFreezeMs: T.sessionFreezeMs,
+    logger
+  })
+  return { desktop, exitGuard }
 }
