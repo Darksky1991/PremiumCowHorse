@@ -185,7 +185,7 @@ export class LiveState {
   /** 该类本轮采集失败：不改动该类，也不开始移除计时 */
   markFailed(collector: DesktopCollector): void
   /** 会话结束期间冻结：untilMs 之前不移除任何项目（retained 不缩水），之后恢复正常（设计 5.3） */
-  freeze(untilMs: number): void
+  freeze(untilMs: number, now: number): void
   /** 此刻开着的项目（不含消失中的） */
   current(): { key: string; item: DesktopItem }[]
   /** 自动保存用：开着的 + 消失未满 removeAfterMs 的 */
@@ -463,7 +463,7 @@ export class DesktopService {
   - 为 false → `preventDefault`，`saveExit(true, current() 的全部 key)` 后标记已确认并 `close()`（设计第 8 节：不再询问 = 全部保存）。
   - 渲染端已崩溃 / 销毁 → 不拦截（`shutdown.ts` 的 `before-quit` 中照常 `stop()`）。
 - 会话结束：主窗口 `query-session-end` → `saveAutoNow()`（不 `preventDefault`）并进入「会话结束」状态；`session-end` → `monitor.stop()`。`shutdown.ts` 的 `before-quit` 中在 `c.db.destroy()` 之前 `c.desktop.stop()` 并等待进行中的写入。
-- 会话结束期间冻结（设计 5.3）：`query-session-end` 后 `LiveState` 不再移除项目、`DesktopService` 不再自动保存，持续 `300_000` ms 后自动解除（关机被取消）。Task 10 Step 1 追加测试「query-session-end 后 5 分钟内全部消失也不写缩水的自动记录，5 分钟后恢复」；`LiveState` 增加 `freeze(untilMs: number): void`（Task 4 一并实现并测试：冻结期内 `retained` 不移除）。
+- 会话结束期间冻结（设计 5.3）：`query-session-end` 后 `LiveState` 不再移除项目、`DesktopService` 不再自动保存，持续 `300_000` ms 后自动解除（关机被取消）。Task 10 Step 1 追加测试「query-session-end 后 5 分钟内全部消失也不写缩水的自动记录，5 分钟后恢复」；`LiveState` 增加 `freeze(untilMs: number, now: number): void`（Task 4 一并实现并测试：冻结期内 `retained` 不移除）。
 - e2e 假模式（同 `PCH_E2E_FAKE_LAUNCHER` 的条件：未打包且 `PCH_E2E_FAKE_DESKTOP=1`）：`listWindows` 返回空、采集器按环境变量 `PCH_E2E_DESKTOP_ITEMS`（JSON `DesktopItem[]`，全部归 `office` 类）返回、`spawnDetached` 只记日志 `[desktop:fake] spawn <exe> <args JSON>`、`logonAt` 取 `PCH_E2E_LOGON_AT`、`exists` 恒为 `yes`。
 
 - [ ] **Step 1：写失败的测试**（`desktop.service.test.ts`，内存库 + 假 monitor / live / 时钟）：`start` 后立即有一份本次登录的 auto；retained 不变时 `autoSaveMs` 到期不写新快照、变化后写；`restorePrompt` 在上次登录以 exit 结束时返回 exit 快照且只返回一次；`saveExit(false)` 写 `exit-none`；`saveAutoNow` 写出 retained；`stop` 后计时不再写。
