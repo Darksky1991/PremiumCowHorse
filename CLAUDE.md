@@ -27,7 +27,7 @@ doc 与代码不一致时，以代码为准核实，然后修正 doc（或在实
 - **报告中区分「已验证」与「未验证」**：说「完成 / 通过 / 可用」之前必须实际运行过对应检查并看到结果；没跑过的明确写「未验证」。
 - **系统绘制的东西页面截图看不到**（窗口按钮、边框）；系统处理的交互 Playwright 的页面事件验证不了（双击标题栏）。用 `scripts/os-screenshot.mjs` 与系统级鼠标事件验证，不要把肉眼确认推给需求方。
 - 结构性改动（技术栈、布局、打包）后看**整窗**截图，不只看局部。
-- 命令输出与预期矛盾时，先查清原因（`systematic-debugging`），不要猜测性修改。
+- 命令输出与预期矛盾时，先查清原因（`superpowers:systematic-debugging`），不要猜测性修改。
 
 ## 工作流程
 
@@ -81,3 +81,4 @@ pnpm test:e2e       # Playwright Electron（需先 build）
 - shadcn CLI 在含 `.` 的用户目录路径下失败 → `subst` 临时盘符（见 `knowledge/libraries.md`）。
 - 开发数据：`%APPDATA%\PremiumCowHorse-dev`；e2e 用 `PCH_USER_DATA_DIR` 指定临时目录。
 - Shell：Git Bash 与 PowerShell 均可用；系统代码页为 cp932，Python 输出中文需 `PYTHONIOENCODING=utf-8`。长 heredoc 易解析失败，批量修改改用脚本文件。
+- Claude Code：superpowers、frontend-design 以用户级插件安装（`claude-plugins-official`），不再复制进项目；`.claude/skills/` 只放项目级 skill，来源见其中的 `THIRD_PARTY_NOTICES.md`。
