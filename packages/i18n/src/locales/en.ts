@@ -129,6 +129,63 @@ export default {
     renameMenu: 'Rename…',
     deleteMenu: 'Delete…'
   },
+  desktop: {
+    title: 'Desktop snapshots',
+    listLabel: 'Desktop snapshots',
+    saveNow: 'Save now',
+    current: 'Now',
+    kind: {
+      auto: 'Autosave',
+      manual: 'Manual save',
+      exit: 'Saved on exit',
+      exitNone: 'Exited without saving'
+    },
+    beforeRestart: 'Before restart',
+    itemCount: 'Items: {{count}}',
+    renameMenu: 'Rename…',
+    deleteMenu: 'Delete…',
+    renameTitle: 'Rename snapshot',
+    renameDescription: 'Leave it empty to show the snapshot type instead.',
+    nameLabel: 'Name',
+    cancel: 'Cancel',
+    renameSubmit: 'Rename',
+    deleteTitle: 'Delete this snapshot?',
+    deleteDescription:
+      'Only the snapshot is deleted. Open files and folders, and files on disk, are not affected.',
+    deleteSubmit: 'Delete',
+    noSnapshots: 'No snapshots yet',
+    saved: 'Desktop saved (items: {{count}})',
+    nothingToSave: 'There is nothing to save',
+    category: {
+      explorer: 'File Explorer',
+      word: 'Word',
+      excel: 'Excel',
+      powerpoint: 'PowerPoint',
+      vscode: 'VS Code',
+      eclipse: 'Eclipse'
+    },
+    selectGroup: 'Select all in {{group}}',
+    checklistLabel: 'Items',
+    specialLocation: 'Special location',
+    tabCount: ' ({{count}} tab(s))',
+    readOnly: 'Read-only',
+    selectedCount: '{{selected}} of {{total}} selected',
+    unreadable: 'Could not read: {{names}}',
+    sharePointNote: 'Files on SharePoint / OneDrive are not recorded',
+    emptyCurrent: 'Nothing is open right now',
+    emptySnapshot: 'This snapshot has no items',
+    restoreSelected: 'Restore selected items',
+    saveSelected: 'Save',
+    restored: 'Restored items: {{count}}',
+    restoredNone: 'No items were restored',
+    skipped: 'Skipped: {{details}}',
+    skipReason: {
+      open: '{{count}} already open',
+      missing: '{{count}} not found',
+      unreachable: '{{count}} unreachable',
+      failed: '{{count}} failed to start'
+    }
+  },
   connections: {
     emptyTitle: 'No remote connections yet',
     emptyHint: 'Add an SMB, FTP or SFTP server once and use it from any workspace.'

@@ -128,6 +128,63 @@ export default {
     renameMenu: '名前の変更…',
     deleteMenu: '削除…'
   },
+  desktop: {
+    title: 'デスクトップ記録',
+    listLabel: 'デスクトップ記録の一覧',
+    saveNow: '今すぐ保存',
+    current: '現在',
+    kind: {
+      auto: '自動保存',
+      manual: '手動保存',
+      exit: '終了時に保存',
+      exitNone: '保存せずに終了'
+    },
+    beforeRestart: '再起動前',
+    itemCount: '{{count}} 件',
+    renameMenu: '名前の変更…',
+    deleteMenu: '削除…',
+    renameTitle: '記録の名前を変更',
+    renameDescription: '空にすると、種類名の表示に戻ります。',
+    nameLabel: '名前',
+    cancel: 'キャンセル',
+    renameSubmit: '変更',
+    deleteTitle: 'この記録を削除しますか？',
+    deleteDescription:
+      '記録だけを削除します。いま開いているファイルやフォルダー、ディスク上のファイルには影響しません。',
+    deleteSubmit: '削除',
+    noSnapshots: '記録はまだありません',
+    saved: 'デスクトップを保存しました（{{count}} 件）',
+    nothingToSave: '保存できる項目がありません',
+    category: {
+      explorer: 'エクスプローラー',
+      word: 'Word',
+      excel: 'Excel',
+      powerpoint: 'PowerPoint',
+      vscode: 'VS Code',
+      eclipse: 'Eclipse'
+    },
+    selectGroup: '{{group}}をすべて選択',
+    checklistLabel: '項目の一覧',
+    specialLocation: '特殊な場所',
+    tabCount: '（{{count}} 個のタブ）',
+    readOnly: '読み取り専用',
+    selectedCount: '{{selected}} / {{total}} 件を選択中',
+    unreadable: '読み取れません：{{names}}',
+    sharePointNote: 'SharePoint / OneDrive 上のファイルは記録されません',
+    emptyCurrent: '現在開いている項目はありません',
+    emptySnapshot: 'この記録には項目がありません',
+    restoreSelected: '選択した項目を復元',
+    saveSelected: '保存',
+    restored: '{{count}} 件を復元しました',
+    restoredNone: '復元した項目はありません',
+    skipped: 'スキップ：{{details}}',
+    skipReason: {
+      open: 'すでに開いている {{count}} 件',
+      missing: '見つからない {{count}} 件',
+      unreachable: '接続できない {{count}} 件',
+      failed: '起動に失敗した {{count}} 件'
+    }
+  },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
     emptyHint: 'SMB・FTP・SFTP サーバーを登録すると、どのワークスペースからでも参照できます。'

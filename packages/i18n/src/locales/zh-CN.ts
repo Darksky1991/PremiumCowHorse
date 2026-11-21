@@ -123,6 +123,62 @@ export default {
     renameMenu: '重命名…',
     deleteMenu: '删除…'
   },
+  desktop: {
+    title: '桌面记录',
+    listLabel: '桌面记录列表',
+    saveNow: '立即保存',
+    current: '当前',
+    kind: {
+      auto: '自动保存',
+      manual: '手动保存',
+      exit: '退出时保存',
+      exitNone: '退出时未保存'
+    },
+    beforeRestart: '重启前',
+    itemCount: '{{count}} 项',
+    renameMenu: '重命名…',
+    deleteMenu: '删除…',
+    renameTitle: '重命名记录',
+    renameDescription: '留空则恢复为按种类显示。',
+    nameLabel: '名称',
+    cancel: '取消',
+    renameSubmit: '修改',
+    deleteTitle: '删除这条记录？',
+    deleteDescription: '只删除记录本身，不影响当前打开的文件和文件夹，也不影响磁盘上的文件。',
+    deleteSubmit: '删除',
+    noSnapshots: '还没有记录',
+    saved: '已保存桌面（{{count}} 项）',
+    nothingToSave: '没有可保存的项目',
+    category: {
+      explorer: '资源管理器',
+      word: 'Word',
+      excel: 'Excel',
+      powerpoint: 'PowerPoint',
+      vscode: 'VS Code',
+      eclipse: 'Eclipse'
+    },
+    selectGroup: '全选“{{group}}”',
+    checklistLabel: '项目列表',
+    specialLocation: '特殊位置',
+    tabCount: '（{{count}} 个标签）',
+    readOnly: '只读',
+    selectedCount: '已选 {{selected}} / {{total}} 项',
+    unreadable: '无法读取：{{names}}',
+    sharePointNote: 'SharePoint / OneDrive 上的文件不会被记录',
+    emptyCurrent: '当前没有打开的项目',
+    emptySnapshot: '这条记录中没有项目',
+    restoreSelected: '恢复所选项目',
+    saveSelected: '保存',
+    restored: '已恢复 {{count}} 项',
+    restoredNone: '没有恢复任何项目',
+    skipped: '已跳过：{{details}}',
+    skipReason: {
+      open: '已打开 {{count}} 项',
+      missing: '找不到 {{count}} 项',
+      unreachable: '无法连接 {{count}} 项',
+      failed: '启动失败 {{count}} 项'
+    }
+  },
   connections: {
     emptyTitle: '还没有远程连接',
     emptyHint: '添加 SMB、FTP 或 SFTP 服务器后，任何工作区都可以引用。'

@@ -38,6 +38,15 @@ export function bridgeMainEvents(client: QueryClient): () => void {
       void client.invalidateQueries({ queryKey: queryKeys.entries(id) })
       void client.invalidateQueries({ queryKey: queryKeys.indexTargets(id) })
     }),
+    // 桌面记录：现场变化 → 现场失效；快照增删改 → 列表与各快照失效
+    subscribe('desktop.changed', ({ scope }) => {
+      if (scope === 'current') {
+        void client.invalidateQueries({ queryKey: queryKeys.desktopCurrent })
+      } else {
+        void client.invalidateQueries({ queryKey: queryKeys.desktopSnapshots })
+        void client.invalidateQueries({ queryKey: queryKeys.desktopSnapshotRoot })
+      }
+    }),
     // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）；
     // 该目录自身与其直接子项的 stat（预览标签显示的大小 / 时间）也失效。
     // 预览宿主的 fs.subscribe（features/preview/host.ts）同样订阅 vfs.changed，回调中的 fetchQuery
