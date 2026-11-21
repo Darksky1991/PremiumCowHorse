@@ -318,7 +318,7 @@ describe('DesktopService', () => {
     expect(t.service.enabled).toBe(false)
     await vi.advanceTimersByTimeAsync(AUTO_MS * 2)
     expect(await t.service.list()).toEqual([])
-    expect(t.service.current()).toEqual({ items: [], unreadable: [] })
+    expect(t.service.current()).toEqual({ logonAt: LOGON, items: [], unreadable: [] })
     expect(await t.service.restorePrompt()).toBeNull()
     t.service.stop()
   })
@@ -328,6 +328,7 @@ describe('DesktopService', () => {
     t.monitor.unreadable.mockReturnValue(['explorer'])
     await t.service.start()
     expect(t.service.current()).toEqual({
+      logonAt: LOGON,
       items: [{ key: 'office:c:\\a.docx', item: office('C:\\a.docx') }],
       unreadable: ['explorer']
     })

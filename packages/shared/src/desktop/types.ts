@@ -44,6 +44,8 @@ export interface DesktopSnapshot extends DesktopSnapshotSummary {
 
 /** 现场：当前桌面上开着的项目；unreadable 为本轮无法读取的采集器 */
 export interface DesktopCurrent {
+  /** 本次登录的时刻（与快照的 logonAt 不同 = 重启前的快照） */
+  logonAt: number
   items: { key: string; item: DesktopItem }[]
   unreadable: DesktopCollector[]
 }

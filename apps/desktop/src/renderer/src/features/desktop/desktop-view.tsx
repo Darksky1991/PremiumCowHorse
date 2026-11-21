@@ -1,8 +1,8 @@
-import { useMemo, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { CircleAlertIcon, MonitorIcon, PencilIcon, SaveIcon, Trash2Icon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
-import { AppError, desktopLocation, desktopIdOfUri, type DesktopSnapshotSummary } from '@pch/shared'
+import { desktopLocation, desktopIdOfUri, type DesktopSnapshotSummary } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
   ContextMenu,
@@ -15,14 +15,9 @@ import { saveDesktop, useDesktopCurrent, useDesktopSnapshots } from '@renderer/d
 import { useActiveWorkspace } from '@renderer/data/workspace'
 import { notify } from '@renderer/stores/messages-store'
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
+import { errorText } from './error-text'
 import { DeleteSnapshotDialog, RenameSnapshotDialog } from './desktop-dialogs'
-import {
-  formatSnapshotTime,
-  isBeforeRestart,
-  kindKey,
-  latestLogonAt,
-  snapshotTitle
-} from './snapshot-label'
+import { formatSnapshotTime, isBeforeRestart, kindKey, snapshotTitle } from './snapshot-label'
 
 type Pending = { type: 'rename' | 'delete'; snapshot: DesktopSnapshotSummary }
 
@@ -47,7 +42,8 @@ export function DesktopView(): JSX.Element {
   const [open, setOpen] = useState(false)
 
   const list = snapshots.data
-  const latest = useMemo(() => (list === undefined ? null : latestLogonAt(list)), [list])
+  // 本次登录的时刻：来自 desktop.current（取得前不标记）
+  const logonAt = current.data?.logonAt ?? null
 
   const saveNow = async (): Promise<void> => {
     const keys = (current.data?.items ?? []).map((i) => i.key)
@@ -60,7 +56,7 @@ export function DesktopView(): JSX.Element {
       await saveDesktop(keys, null)
       notify('success', t('desktop:saved', { count: keys.length }))
     } catch (e) {
-      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', errorText(t, e))
     } finally {
       setSaving(false)
     }
@@ -119,7 +115,7 @@ export function DesktopView(): JSX.Element {
             className="flex items-start gap-2 px-2 py-2 text-xs text-muted-foreground"
           >
             <CircleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            {t(`errors:${snapshots.error instanceof AppError ? snapshots.error.code : 'UNKNOWN'}`)}
+            {errorText(t, snapshots.error)}
           </li>
         ) : list === undefined ? (
           <li className="px-2 py-2">
@@ -132,7 +128,7 @@ export function DesktopView(): JSX.Element {
             <SnapshotRow
               key={s.id}
               snapshot={s}
-              beforeRestart={isBeforeRestart(s, latest)}
+              beforeRestart={isBeforeRestart(s, logonAt)}
               active={activeId === s.id}
               language={i18n.language}
               onOpen={() => openPage(s.id, snapshotTitle(s, t, i18n.language))}

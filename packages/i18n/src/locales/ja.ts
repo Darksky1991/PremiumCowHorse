@@ -153,6 +153,7 @@ export default {
       '記録だけを削除します。いま開いているファイルやフォルダー、ディスク上のファイルには影響しません。',
     deleteSubmit: '削除',
     noSnapshots: '記録はまだありません',
+    snapshotGone: 'この記録はもうありません。削除された可能性があります',
     saved: 'デスクトップを保存しました（{{count}} 件）',
     nothingToSave: '保存できる項目がありません',
     category: {

@@ -161,7 +161,11 @@ export class DesktopService {
   }
 
   current(): DesktopCurrent {
-    return { items: this.d.live.current(), unreadable: this.d.monitor?.unreadable() ?? [] }
+    return {
+      logonAt: this.logon ?? this.d.now(),
+      items: this.d.live.current(),
+      unreadable: this.d.monitor?.unreadable() ?? []
+    }
   }
 
   /** 手动快照：当前现场中 key 在列表里的项目 */

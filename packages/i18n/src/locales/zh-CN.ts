@@ -147,6 +147,7 @@ export default {
     deleteDescription: '只删除记录本身，不影响当前打开的文件和文件夹，也不影响磁盘上的文件。',
     deleteSubmit: '删除',
     noSnapshots: '还没有记录',
+    snapshotGone: '这条记录已不存在，可能已被删除',
     saved: '已保存桌面（{{count}} 项）',
     nothingToSave: '没有可保存的项目',
     category: {

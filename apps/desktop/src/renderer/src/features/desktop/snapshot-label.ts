@@ -15,20 +15,9 @@ export function formatSnapshotTime(ms: number, language: string): string {
   return new Intl.DateTimeFormat(language, { dateStyle: 'short', timeStyle: 'short' }).format(ms)
 }
 
-/**
- * 「本次登录」的登录时刻：渲染端不知道，取列表中最大的 logonAt
- * （本次登录至少有一份记录之前，最大值是上一次登录，「重启前」标记不会出现——可接受）
- */
-export function latestLogonAt(snapshots: readonly DesktopSnapshotSummary[]): number | null {
-  return snapshots.reduce<number | null>(
-    (max, s) => (max === null || s.logonAt > max ? s.logonAt : max),
-    null
-  )
-}
-
-/** 「重启前」：该快照属于比 latest 更早的登录 */
-export function isBeforeRestart(snapshot: DesktopSnapshotSummary, latest: number | null): boolean {
-  return latest !== null && snapshot.logonAt < latest
+/** 「重启前」：快照属于另一次登录（logonAt 为 desktop.current 返回的本次登录时刻；未取得时没有标记） */
+export function isBeforeRestart(snapshot: DesktopSnapshotSummary, logonAt: number | null): boolean {
+  return logonAt !== null && snapshot.logonAt !== logonAt
 }
 
 const SKIP_ORDER: readonly DesktopSkipReason[] = ['open', 'missing', 'unreachable', 'failed']

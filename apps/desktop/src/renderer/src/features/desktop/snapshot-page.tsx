@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { AppError, desktopIdOfUri, type DesktopItem, type TabState } from '@pch/shared'
+import { desktopIdOfUri, type DesktopItem, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
 import {
@@ -12,6 +12,7 @@ import {
 } from '@renderer/data/desktop'
 import { notify } from '@renderer/stores/messages-store'
 import { onTabRefresh } from '@renderer/stores/tabs-store'
+import { errorCode, errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
 import { formatSnapshotTime, kindKey, skippedByReason, snapshotTitle } from './snapshot-label'
 
@@ -168,15 +169,23 @@ function PageBody({
       // 按清单顺序传出（勾选集合与清单可能在等待期间变化，以点击时的值为准）
       await onAction(items.map((i) => i.id).filter((id) => selected.has(id)))
     } catch (e) {
-      notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      notify('error', errorText(t, e))
     } finally {
       setBusy(false)
     }
   }
 
+  // 快照已被删除：react-query 在重新取得失败后仍保留旧数据，要先判断，不再显示旧清单并禁用操作
+  const gone = query.isError && errorCode(query.error) === 'DESKTOP_SNAPSHOT_NOT_FOUND'
   let body: JSX.Element
-  if (query.isError && data === undefined) {
-    const code = query.error instanceof AppError ? query.error.code : 'UNKNOWN'
+  if (gone) {
+    body = (
+      <p role="alert" className="text-sm text-muted-foreground">
+        {t('desktop:snapshotGone')}
+      </p>
+    )
+  } else if (query.isError && data === undefined) {
+    const code = errorCode(query.error)
     body = (
       <div className="flex flex-col items-start gap-3">
         <p role="alert" className="text-sm text-muted-foreground">
@@ -215,7 +224,7 @@ function PageBody({
       title={title}
       subtitle={data?.subtitle ?? null}
       footer={
-        items === undefined ? null : (
+        items === undefined || gone ? null : (
           <>
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {t('desktop:selectedCount', { selected: selected.size, total: items.length })}

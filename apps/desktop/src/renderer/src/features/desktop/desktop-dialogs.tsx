@@ -1,6 +1,5 @@
 import { useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AppError } from '@pch/shared'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +24,7 @@ import { Field, FieldLabel } from '@pch/ui/components/field'
 import { Input } from '@pch/ui/components/input'
 import { Spinner } from '@pch/ui/components/spinner'
 import { deleteDesktop, renameDesktop } from '@renderer/data/desktop'
+import { errorCode, errorText } from './error-text'
 import { notify } from '@renderer/stores/messages-store'
 
 /** 与 desktop.rename 的 name 校验一致（最长 100 个字符） */
@@ -38,7 +38,7 @@ interface DialogProps {
 }
 
 function fail(t: (key: string) => string, e: unknown): void {
-  notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+  notify('error', errorText(t, e))
 }
 
 /** 改名：空白 = 恢复为无名称（按种类显示） */
@@ -91,7 +91,7 @@ function RenameForm({
     } catch (err) {
       fail(t, err)
       // 记录已被删除时无法重试
-      if (err instanceof AppError && err.code === 'DESKTOP_SNAPSHOT_NOT_FOUND') onDone()
+      if (errorCode(err) === 'DESKTOP_SNAPSHOT_NOT_FOUND') onDone()
     } finally {
       setPending(false)
     }
@@ -140,7 +140,7 @@ export function DeleteSnapshotDialog({ open, onOpenChange, id }: DialogProps): J
       onOpenChange(false)
     } catch (e) {
       fail(t, e)
-      if (e instanceof AppError && e.code === 'DESKTOP_SNAPSHOT_NOT_FOUND') onOpenChange(false)
+      if (errorCode(e) === 'DESKTOP_SNAPSHOT_NOT_FOUND') onOpenChange(false)
     } finally {
       setPending(false)
     }

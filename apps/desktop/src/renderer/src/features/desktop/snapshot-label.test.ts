@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DesktopSnapshotSummary } from '@pch/shared'
-import { isBeforeRestart, kindKey, latestLogonAt, skippedByReason } from './snapshot-label'
+import { isBeforeRestart, kindKey, skippedByReason } from './snapshot-label'
 
 function snap(id: number, logonAt: number): DesktopSnapshotSummary {
   return { id, kind: 'auto', createdAt: logonAt + 1, logonAt, name: null, itemCount: 1 }
@@ -14,15 +14,12 @@ describe('kindKey', () => {
 })
 
 describe('「重启前」', () => {
-  it('取最大的 logonAt 为本次登录，更早登录的快照带标记', () => {
+  it('logonAt 与本次登录不同的快照带标记', () => {
     const list = [snap(3, 300), snap(2, 300), snap(1, 100)]
-    const latest = latestLogonAt(list)
-    expect(latest).toBe(300)
-    expect(list.map((s) => isBeforeRestart(s, latest))).toEqual([false, false, true])
+    expect(list.map((s) => isBeforeRestart(s, 300))).toEqual([false, false, true])
   })
 
-  it('没有快照时没有标记', () => {
-    expect(latestLogonAt([])).toBeNull()
+  it('尚未取得本次登录时刻时没有标记', () => {
     expect(isBeforeRestart(snap(1, 100), null)).toBe(false)
   })
 })

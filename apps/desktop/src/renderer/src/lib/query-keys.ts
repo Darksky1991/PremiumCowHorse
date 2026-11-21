@@ -18,12 +18,12 @@ export const queryKeys = {
   /** 单个资源的 stat（预览标签的文件信息）；前缀用于按父目录失效 */
   statRoot: ['vfs', 'stat'] as const,
   stat: (uri: string) => ['vfs', 'stat', uri] as const,
-  /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   /** 桌面记录：快照列表、单个快照（含项目）、当前现场 */
   desktopSnapshots: ['desktop', 'list'] as const,
   desktopSnapshotRoot: ['desktop', 'snapshot'] as const,
   desktopSnapshot: (id: number) => ['desktop', 'snapshot', id] as const,
   desktopCurrent: ['desktop', 'current'] as const,
+  /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
     ['search', workspaceId, text, kind] as const
 }

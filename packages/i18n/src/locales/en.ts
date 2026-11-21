@@ -154,6 +154,7 @@ export default {
       'Only the snapshot is deleted. Open files and folders, and files on disk, are not affected.',
     deleteSubmit: 'Delete',
     noSnapshots: 'No snapshots yet',
+    snapshotGone: 'This snapshot no longer exists. It may have been deleted',
     saved: 'Desktop saved (items: {{count}})',
     nothingToSave: 'There is nothing to save',
     category: {
