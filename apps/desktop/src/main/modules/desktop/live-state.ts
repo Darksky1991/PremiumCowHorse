@@ -46,8 +46,16 @@ export class LiveState {
     void collector
   }
 
-  /** 会话结束期间冻结：untilMs 之前不移除任何项目，之后按原规则重新计 removeAfterMs */
-  freeze(untilMs: number): void {
+  /**
+   * 会话结束期间冻结：untilMs 之前不移除任何项目，之后按原规则重新计 removeAfterMs。
+   * 冻结前先按 now 丢弃已过期的项目，避免它们因 frozenUntil 变大而复活
+   */
+  freeze(untilMs: number, now: number): void {
+    for (const map of this.byCollector.values()) {
+      for (const [key, entry] of map) {
+        if (entry.goneAt !== undefined && this.expired(entry.goneAt, now)) map.delete(key)
+      }
+    }
     this.frozenUntil = Math.max(this.frozenUntil, untilMs)
   }
 
