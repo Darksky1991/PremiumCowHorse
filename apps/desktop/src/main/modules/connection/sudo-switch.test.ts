@@ -228,6 +228,8 @@ describe('classifySudoError / redact', () => {
     ).toBe('denied')
     expect(classifySudoError('pchuser is not in the sudoers file.')).toBe('denied')
     expect(classifySudoError('Sorry, user pchuser may not run sudo on h.')).toBe('denied')
+    // sudo-rs 的拒绝措辞
+    expect(classifySudoError("I'm sorry pchuser. I'm afraid I can't do that")).toBe('denied')
     expect(classifySudoError('sudo: sorry, you must have a tty to run sudo')).toBe('needs-tty')
     expect(classifySudoError('Sorry, try again.')).toBeNull()
     // 登录横幅里的泛泛之词不算
@@ -438,6 +440,19 @@ describe('openIdentityChannel（非终端方式）', () => {
     expect(e.code).toBe('CONN_SUDO_DENIED')
     expect(h.cmd.closed).toBe(true)
     expect(h.poll.closed).toBe(true)
+  })
+
+  it('sudo-rs 的拒绝措辞（跨 chunk）→ CONN_SUDO_DENIED', async () => {
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    h.cmd.err("I'm sorry pchuser. I'm afr")
+    await flush()
+    h.cmd.err("aid I can't do that\n")
+    const e = await appErrorOf(p)
+    expect(e.code).toBe('CONN_SUDO_DENIED')
   })
 
   it('requiretty → NeedsTtyError', async () => {

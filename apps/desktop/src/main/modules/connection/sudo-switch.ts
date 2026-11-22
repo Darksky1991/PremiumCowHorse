@@ -107,8 +107,9 @@ export function hasSuDescendant(psFrame: string, sudoPid: number): boolean {
 }
 
 // 只认 sudo 自己的措辞，避免登录横幅里的「... is not allowed」之类误判
+// （最后一句是 sudo-rs：`I'm sorry <user>. I'm afraid I can't do that`，只匹配其固定部分）
 const DENIED_PATTERN =
-  /is not allowed to (?:execute|run)|is not in the sudoers file|may not run sudo/i
+  /is not allowed to (?:execute|run)|is not in the sudoers file|may not run sudo|I'm afraid I can't do that/i
 const NEEDS_TTY_PATTERN = /must have a tty/i
 
 export function classifySudoError(text: string): 'denied' | 'needs-tty' | null {
