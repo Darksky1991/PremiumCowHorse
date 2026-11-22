@@ -10,6 +10,7 @@ import type { ConnectionRecord } from './connection.repo'
 import type { HostKeyGate } from './host-key-gate'
 import type { SecretBox } from './secret-box'
 import { connectSsh, type ExecChannel, type SshConnectConfig, type SshSession } from './ssh-session'
+import { IDENTITY_RETRY_COOLDOWN_MS } from './identity-sessions'
 import { NeedsTtyError, type SwitchDeps, type SwitchResult } from './sudo-switch'
 import { startFakeSftpServer, type FakeSftpServer } from './testing/fake-sftp-server'
 
@@ -640,6 +641,7 @@ describe('ConnectionPool: 身份会话', () => {
   })
 
   it('R10：失败被记住；后台请求直接失败不执行命令，用户操作才重试', async () => {
+    vi.useFakeTimers()
     const h = setup()
     h.identityPlan = async () => {
       throw new AppError({ code: 'CONN_SUDO_DENIED' })
@@ -652,7 +654,35 @@ describe('ConnectionPool: 身份会话', () => {
     await errorOf(h.pool.session(ROOT, opts(false)))
     expect(h.openIdentity).toHaveBeenCalledTimes(2)
     h.identityPlan = null
+    // 用户操作的重试要等过了突发保护的冷却时间（R16）
+    await vi.advanceTimersByTimeAsync(IDENTITY_RETRY_COOLDOWN_MS + 1000)
     await expect(h.pool.session(APP1, opts(true))).resolves.toBeDefined()
+    expect(h.openIdentity).toHaveBeenCalledTimes(3)
+  })
+
+  it('R16：失败后 30 秒内的用户操作不清除记忆、不执行命令；超过 30 秒才重试一次', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.identityPlan = async () => {
+      throw new AppError({ code: 'CONN_SUDO_DENIED' })
+    }
+    expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_DENIED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    // 启动时恢复的标签等：用户操作的请求在 30 秒内依次到达
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(5000)
+      expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_DENIED')
+    }
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    // 距失败 31 秒：重试一次；再次失败后冷却重新开始
+    await vi.advanceTimersByTimeAsync(6000)
+    expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_DENIED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(2)
+    expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_DENIED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(2)
+    // 其他身份不受影响
+    h.identityPlan = null
+    await expect(h.pool.session(ROOT, opts(true))).resolves.toBeDefined()
     expect(h.openIdentity).toHaveBeenCalledTimes(3)
   })
 
@@ -784,11 +814,14 @@ describe('ConnectionPool: 身份会话', () => {
   })
 
   it('探测输出没有 PS: 行（通道提前关闭）→ CONN_SUDO_FAILED，不缓存探测结果', async () => {
+    vi.useFakeTimers()
     const h = setup()
     h.probeOut.value = 'SFTP:/usr/lib/openssh/sftp-server\n'
     expect((await errorOf(h.pool.session(APP1, opts()))).code).toBe('CONN_SUDO_FAILED')
     expect(h.openIdentity).not.toHaveBeenCalled()
     h.sessions[0]!.probeOut = PROBE_OK
+    // CONN_SUDO_FAILED 被记住：用户操作的重试要等过了冷却时间（R16）
+    await vi.advanceTimersByTimeAsync(IDENTITY_RETRY_COOLDOWN_MS + 1000)
     await expect(h.pool.session(APP1, opts(true))).resolves.toBeDefined()
     expect(h.sessions[0]!.execs).toHaveLength(2)
   })

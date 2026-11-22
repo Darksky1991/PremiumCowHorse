@@ -169,10 +169,12 @@ describe('Scheduler: remote directories', () => {
       [CONN, 'offline'],
       [CONN, 'online']
     ])
-    // 恢复后该连接下的关注点以 P0 读取
-    expect(fs.calls.slice(n + 1)).toContainEqual(
-      expect.objectContaining({ op: 'list', uri: A, userAction: true })
-    )
+    // 恢复后该连接下的关注点以 P0 读取：系统派生，不是用户操作（不让连接池重试记住的身份失败）
+    const after = fs.calls.slice(n + 1).filter((c) => c.uri === A)
+    expect(after.map((c) => [c.op, c.userAction])).toEqual([
+      ['stat', false],
+      ['list', false]
+    ])
   })
 
   it('CONN_* errors mark the directory, not the connection', async () => {
@@ -214,5 +216,149 @@ describe('Scheduler: remote directories', () => {
     await clock.advance(0)
     await expect(p).resolves.toMatchObject({ state: 'fresh' })
     expect(fs.count('list', A)).toBe(1)
+  })
+})
+
+describe('Scheduler: remote directories (review fixes)', () => {
+  it('parent corrections derived from errors are not user actions', async () => {
+    const h = setup([remoteRoot])
+    const { clock, fs, s } = h
+    const P = fs.addDir(RR, 'p')
+    const D = fs.addDir(P, 'd')
+    const F = fs.addDir(P, 'f')
+    const old = clock.now() - 10 * MIN
+    for (const u of [RR, P, D, F]) prelist(h, u, old)
+    // P 的列表仍有 d / f：读取 d 得到 FS_NOT_FOUND、读取 f 得到 FS_NOT_A_DIRECTORY → 对 P 派生一次 P0
+    fs.rmdir(D)
+    fs.errors.set(F, 'FS_NOT_A_DIRECTORY')
+    const ofP = (from: number): boolean[] =>
+      fs.calls
+        .slice(from)
+        .filter((c) => c.uri === P)
+        .map((c) => c.userAction)
+
+    s.refresh([D])
+    await clock.advance(0)
+    expect(fs.calls.filter((c) => c.uri === D).map((c) => c.userAction)).toEqual([true])
+    expect(ofP(0)).toEqual([false, false])
+
+    const n = fs.calls.length
+    s.refresh([F])
+    await clock.advance(0)
+    expect(fs.calls.filter((c) => c.uri === F).map((c) => c.userAction)).toEqual([true])
+    expect(ofP(n)).toEqual([false, false])
+  })
+
+  it('a user P0 merged into a queued system P0 is a user action', async () => {
+    const OPT = `${RR}/opt`
+    const h = setup([remoteRoot], { indexTargets: [OPT] })
+    const { clock, fs, s } = h
+    const H = fs.addDir(RR, 'h')
+    fs.mkdir(OPT)
+    const D = fs.addDir(OPT, 'd')
+    // OPT 有列表（含 d），d 只有行（未列出）：后台读取 d 得到 FS_NOT_FOUND → 对 OPT 派生系统 P0
+    prelist(h, OPT, clock.now() - 10 * MIN)
+    fs.rmdir(D)
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    fs.gate = (_op, uri) => (uri === H ? held : undefined)
+    // 用户 P0 占住该连接的 P0 通道：派生的 P0 在队列中等待
+    const ph = s.listNow(H)
+    await clock.advance(1000)
+    expect(fs.count('stat', D)).toBe(1)
+    expect(fs.count('stat', OPT)).toBe(0)
+    // 用户展开 OPT：并入排队中的系统 P0，合并后为用户操作
+    await s.listNow(OPT)
+    release()
+    await clock.advance(0)
+    await ph
+    expect(fs.calls.filter((c) => c.uri === OPT).map((c) => c.userAction)).toEqual([true, true])
+  })
+
+  it('a user P0 does not join a running system P0', async () => {
+    const h = setup([remoteRoot])
+    const { clock, fs, s } = h
+    const P = fs.addDir(RR, 'p')
+    const D = fs.addDir(P, 'd')
+    const old = clock.now() - 10 * MIN
+    for (const u of [RR, P, D]) prelist(h, u, old)
+    fs.rmdir(D)
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    // 派生的系统 P0（P）在执行中挂起
+    fs.gate = (op, uri) => (uri === P && op === 'stat' ? held : undefined)
+    s.refresh([D])
+    await clock.advance(0)
+    expect(fs.count('stat', P)).toBe(1)
+    fs.gate = undefined
+    const p = s.listNow(P)
+    release()
+    await clock.advance(0)
+    await p
+    // 用户的请求另排一次（userAction 为 true），不沿用系统 P0 的结果
+    expect(fs.calls.filter((c) => c.uri === P && c.op === 'stat').map((c) => c.userAction)).toEqual(
+      [false, true]
+    )
+  })
+
+  it('a remote root misconfigured as "all" still has no background ranges', async () => {
+    const { clock, fs } = setup([root(RR, 'all', 'remote')])
+    fs.addDir(fs.addDir(RR, 'a'), 'b')
+    await clock.advance(40 * MIN)
+    expect(fs.calls).toEqual([])
+  })
+
+  it('identities of one connection share the concurrency group and the offline state', async () => {
+    const RA = 'sftp://app1@c1'
+    const { clock, fs, s, reach } = setup([remoteRoot, root(RA, 'passive', 'remote')])
+    const X = fs.addDir(RR, 'x')
+    const Y = fs.addDir(RA, 'y')
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    fs.gate = (_op, uri) => (uri === X ? held : undefined)
+    const px = s.listNow(X)
+    const py = s.listNow(Y)
+    await clock.advance(0)
+    // 同一连接的 P0 通道被登录用户的读取占着：app1 的读取等待
+    expect(fs.count('stat', Y)).toBe(0)
+    release()
+    await clock.advance(0)
+    await px
+    await py
+    expect(fs.count('list', Y)).toBe(1)
+    expect(fs.maxInFlight.get(CONN)).toBe(1)
+
+    // 一个身份的读取断线 = 整个连接断开
+    fs.gate = (op, uri) =>
+      op === 'stat' && uri === X
+        ? Promise.reject(new AppError({ code: 'FS_UNAVAILABLE', detail: uri }))
+        : undefined
+    s.refresh([X])
+    await clock.advance(0)
+    expect(reach).toEqual([[CONN, 'offline', clock.now()]])
+    expect(s.isOffline(Y)).toBe(true)
+    await expect(s.listNow(`${RA}/z`)).rejects.toMatchObject({ code: 'FS_UNAVAILABLE' })
+  })
+
+  it('a CONN_* error from a refresh while offline brings the connection online and stops probing', async () => {
+    const { clock, fs, s, reach } = setup([remoteRoot])
+    const A = fs.addDir(RR, 'a')
+    fs.errors.set(A, 'FS_UNAVAILABLE')
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(0)
+    expect(s.isOffline(A)).toBe(true)
+
+    fs.errors.set(A, 'CONN_AUTH_FAILED')
+    s.refresh([A])
+    await clock.advance(0)
+    expect(reach.map((r) => r.slice(0, 2))).toEqual([
+      [CONN, 'offline'],
+      [CONN, 'online']
+    ])
+    expect(s.isOffline(A)).toBe(false)
+    // 不再探测（退避时刻早已过去也不读取）
+    const n = fs.calls.length
+    await clock.advance(10 * MIN)
+    expect(fs.calls.length).toBe(n)
   })
 })

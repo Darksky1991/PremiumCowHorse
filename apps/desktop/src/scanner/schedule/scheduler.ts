@@ -99,6 +99,13 @@ interface Task {
   waiters: Waiter[]
   /** refresh：在共享断开时也尝试一次 */
   bypass: boolean
+  /**
+   * 用户操作发起的读取（listNow、refresh、关注点变化、标签中新显示的目录）。传给枚举器：
+   * 远程目录断线时重连并重试，连接池对记住的身份失败重试一次。系统派生的 P0（断开恢复、
+   * 父目录修正）、探测、定期确认、后台为 false——否则启动时恢复的 N 个标签各清除一次记忆、
+   * 各执行一次 sudo
+   */
+  userAction: boolean
 }
 
 type Outcome = { ok: true; entries: RawEntry[] | null; at: number } | { ok: false; error: AppError }
@@ -329,13 +336,13 @@ export class Scheduler {
     }
     if (o.focus !== null && o.focus !== prev?.focus) {
       this.cache.visit(o.focus, this.now())
-      this.requestP0(o.focus)
+      this.requestP0(o.focus, { userAction: true })
     }
     // 新显示在标签中的目录：与关注点一样立即完整读取一次
     for (const t of o.tabs) {
       if (t === o.focus || before.tabs.includes(t)) continue
       this.cache.visit(t, this.now())
-      this.requestP0(t)
+      this.requestP0(t, { userAction: true })
     }
     // 滚回视口的已展开目录：立即完整枚举一次（远程目录除外：只在展开 / 选中时读取）
     if (prev) {
@@ -385,11 +392,11 @@ export class Scheduler {
       const fresh = age !== null && age >= 0 && age <= FRESH_MS
       // 刚检查过（任何优先级，含定期确认发现变化后渲染端收到 vfs.changed 的重新列出）：不再排 P0，
       // 否则每次检测到变化都会多一次完整枚举
-      if (!fresh) this.requestP0(uri)
+      if (!fresh) this.requestP0(uri, { userAction: true })
       return Promise.resolve(this.listing(uri, fresh ? 'fresh' : 'cached', dir.checkedAt))
     }
     return new Promise((resolve, reject) =>
-      this.requestP0(uri, { waiter: { resolve, reject, since: this.now() } })
+      this.requestP0(uri, { waiter: { resolve, reject, since: this.now() }, userAction: true })
     )
   }
 
@@ -401,7 +408,8 @@ export class Scheduler {
   refresh(uris: string[]): void {
     if (this.disposed) return
     for (const u of uris) {
-      if (isValidUri(u)) this.requestP0(u, { bypass: this.isOffline(u), force: true })
+      if (isValidUri(u))
+        this.requestP0(u, { bypass: this.isOffline(u), force: true, userAction: true })
     }
   }
 
@@ -439,10 +447,11 @@ export class Scheduler {
 
   private requestP0(
     uri: string,
-    opts: { waiter?: Waiter; bypass?: boolean; force?: boolean } = {}
+    opts: { waiter?: Waiter; bypass?: boolean; force?: boolean; userAction?: boolean } = {}
   ): void {
-    // force：不与刚完成 / 正在执行的 P0 合并（它们读到的可能是更正之前的状态）
-    const { waiter, bypass = false, force = false } = opts
+    // force：不与刚完成 / 正在执行的 P0 合并（它们读到的可能是更正之前的状态）。
+    // userAction：见 Task.userAction；省略 = 系统派生的 P0
+    const { waiter, bypass = false, force = false, userAction = false } = opts
     if (this.disposed) {
       waiter?.reject(cancelled())
       return
@@ -455,10 +464,13 @@ export class Scheduler {
     if (queued) {
       if (waiter) queued.waiters.push(waiter)
       if (bypass) queued.bypass = true
+      // 合并后任一为用户操作即为用户操作
+      if (userAction) queued.userAction = true
       return
     }
     const running = this.running.get(uri)
-    if (running?.prio === 'P0' && !bypass && !force) {
+    // 用户操作不并入正在执行的系统 P0（它不会重试记住的失败）：另排一次
+    if (running?.prio === 'P0' && !bypass && !force && (running.userAction || !userAction)) {
       if (waiter) running.waiters.push(waiter)
       return
     }
@@ -468,7 +480,14 @@ export class Scheduler {
       const age = done === undefined ? null : this.now() - done
       if (age !== null && age >= 0 && age < P0_DEDUPE_MS) return
     }
-    this.p0.set(uri, { uri, prio: 'P0', full: true, waiters: waiter ? [waiter] : [], bypass })
+    this.p0.set(uri, {
+      uri,
+      prio: 'P0',
+      full: true,
+      waiters: waiter ? [waiter] : [],
+      bypass,
+      userAction
+    })
     this.requestPump()
   }
 
@@ -549,7 +568,17 @@ export class Scheduler {
       }
       if (this.running.has(off.probeUri) || !this.canStart(off.probeUri, 'bg')) continue
       off.probing = true
-      this.start({ uri: off.probeUri, prio: 'probe', full: false, waiters: [], bypass: true }, 'bg')
+      this.start(
+        {
+          uri: off.probeUri,
+          prio: 'probe',
+          full: false,
+          waiters: [],
+          bypass: true,
+          userAction: false
+        },
+        'bg'
+      )
     }
 
     // 定期确认：所有窗口失焦时暂停（重新获得焦点时关注点进入 P0）
@@ -574,7 +603,10 @@ export class Scheduler {
           continue
         }
         if (!this.canStart(uri, 'bg')) continue
-        this.start({ uri, prio: 'periodic', full: it.full, waiters: [], bypass: false }, 'bg')
+        this.start(
+          { uri, prio: 'periodic', full: it.full, waiters: [], bypass: false, userAction: false },
+          'bg'
+        )
         if (group !== null) {
           this.periodicNextAt.set(group, now + gap)
         }
@@ -635,7 +667,8 @@ export class Scheduler {
         } else if (it.full) cur.full = true
       }
       for (const h of r.background.hot) hotSet.add(h)
-      ranges.push(...r.background.ranges)
+      // 纵深防御：远程根的策略恒为 passive（scanner-config），万一配置错误也不让远程进入后台范围
+      ranges.push(...r.background.ranges.filter((sc) => !this.isRemote(sc.uri)))
       indexTargets = r.background.indexTargets
     }
 
@@ -702,7 +735,17 @@ export class Scheduler {
         continue
       }
       this.queue.take(group)
-      this.start({ uri: c.uri, prio: 'background', full: c.full, waiters: [], bypass: false }, 'bg')
+      this.start(
+        {
+          uri: c.uri,
+          prio: 'background',
+          full: c.full,
+          waiters: [],
+          bypass: false,
+          userAction: false
+        },
+        'bg'
+      )
     }
     return wakeAt
   }
@@ -839,8 +882,8 @@ export class Scheduler {
     const share = this.enumerator.shareKey(uri)
     let probe = true
     try {
-      // userAction：用户请求（P0）的远程读取在断线时重连并重试一次；后台与定期确认不重试
-      const userAction = task.prio === 'P0'
+      // userAction：用户操作的远程读取在断线时重连并重试一次；系统派生的 P0、后台与定期确认不重试
+      const { userAction } = task
       const { mtime } = await this.guard(uri, run, (signal) =>
         this.enumerator.statDir(uri, signal, { userAction })
       )
@@ -1005,6 +1048,7 @@ export class Scheduler {
     this.queue.invalidate()
     this.events.reachability(share, 'online', this.now())
     for (const o of this.owners.values()) {
+      // 系统派生的 P0（userAction 为 false）：恢复时不为每个目录各重试一次记住的身份失败
       for (const u of focusUris(o)) if (this.enumerator.shareKey(u) === share) this.requestP0(u)
     }
     this.requestPump()

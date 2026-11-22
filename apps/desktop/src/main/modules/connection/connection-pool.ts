@@ -109,7 +109,7 @@ export class ConnectionPool implements SftpSessionSource {
   private readonly untrusted = new Set<string>()
   /** R12：connectionId → 进行中的连接尝试（含已被丢弃的） */
   private readonly attempts = new Map<string, Promise<SshSession>>()
-  private readonly memory = new IdentityMemory()
+  private readonly memory: IdentityMemory
   private readonly identityDeps: IdentityDeps
   private readonly owners = new WeakMap<SftpSession, Owner>()
   /** 进行中的 auth_state 写入（dispose 等它们结束后才返回，之后才关闭数据库） */
@@ -117,6 +117,7 @@ export class ConnectionPool implements SftpSessionSource {
   private disposed = false
 
   constructor(private readonly deps: PoolDeps) {
+    this.memory = new IdentityMemory(() => deps.now())
     this.identityDeps = {
       repo: deps.repo,
       secrets: deps.secrets,

@@ -32,6 +32,13 @@ const REMEMBERED_FAILURES = new Set<string>([
   'CONN_SFTP_SERVER_NOT_FOUND'
 ])
 
+/**
+ * R16：记住的身份失败在此时长内不因用户操作而重试（直接以记住的错误失败，不执行任何命令）。
+ * 启动时恢复的 N 个标签、断开恢复后的 N 个关注点等成批到达的用户操作请求，只在冷却后重试一次，
+ * 不会在客户的 sudo 审计日志里各留一条记录
+ */
+export const IDENTITY_RETRY_COOLDOWN_MS = 30_000
+
 export interface OpenedIdentity {
   sftp: SftpSession
   channel: ExecChannel
@@ -198,21 +205,32 @@ export async function openIdentitySession(args: OpenIdentityArgs): Promise<Opene
 export class IdentityMemory {
   /** sudo 认证锁定（与 auth_state 同时写；写库失败或竞争中的请求也看得到） */
   readonly sudoLocked = new Set<string>()
-  private readonly failures = new Map<string, AppError>()
+  /** at：失败的时刻（R16 的冷却从它算起） */
+  private readonly failures = new Map<string, { error: AppError; at: number }>()
   /** requiretty 的「连接 + 身份」改用终端方式 */
   private readonly modes = new Map<string, SwitchMode>()
 
-  /** R10：有记住的失败时，后台请求以同一错误失败；用户操作清除记忆后重试 */
+  /** now：连接池注入的时钟 */
+  constructor(private readonly now: () => number) {}
+
+  /**
+   * R10：有记住的失败时，后台请求以同一错误失败；用户操作清除记忆后重试。
+   * R16：失败后 IDENTITY_RETRY_COOLDOWN_MS 之内的用户操作也以同一错误失败（时钟回拨、差为负时不算在冷却中）
+   */
   checkFailure(connectionId: string, identity: string, userAction: boolean): void {
     const key = idKey(connectionId, identity)
     const failure = this.failures.get(key)
     if (!failure) return
-    if (!userAction) throw new AppError(failure.toPayload())
+    const age = this.now() - failure.at
+    const cooling = age >= 0 && age < IDENTITY_RETRY_COOLDOWN_MS
+    if (!userAction || cooling) throw new AppError(failure.error.toPayload())
     this.failures.delete(key)
   }
 
   remember(connectionId: string, identity: string, err: AppError): void {
-    if (REMEMBERED_FAILURES.has(err.code)) this.failures.set(idKey(connectionId, identity), err)
+    if (REMEMBERED_FAILURES.has(err.code)) {
+      this.failures.set(idKey(connectionId, identity), { error: err, at: this.now() })
+    }
   }
 
   forget(connectionId: string, identity: string): void {
