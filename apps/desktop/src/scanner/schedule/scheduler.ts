@@ -58,7 +58,8 @@ export const LOCAL_LIMIT = 4
 export const PUMP_RETRY_MS = 1000
 /**
  * 每个位置组的非关注点定期确认（近 / 远层）之间的最小间隔：网络不超过 5 次 / 秒，本地 20 次 / 秒。
- * 关注点的确认不受此限。层的间隔因此是下限：到期的目录多时依次推后
+ * 关注点的确认不受此限。层的间隔因此是下限：到期的目录多时依次推后。
+ * 远程目录没有定期确认，remote 的值目前不会被用到（类型要求每种位置都有值）
  */
 export const PERIODIC_GAP_MS: Record<LocationKind, number> = {
   local: 50,
@@ -131,7 +132,7 @@ interface Offline {
 }
 
 interface Slot {
-  local: boolean
+  where: LocationKind
   group: string
   lane: Lane
 }
@@ -206,6 +207,11 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
  *   被看门狗中止的调用在真正返回之前继续占着名额（koffi 调用无法中途取消，线程仍被占用）。
  * - 看门狗：从调用开始与每次 onBatch 起计时，超过 timeoutSec 没有进展即中止。
  * - 断开：探测（statDir，或枚举的第一批之前）超时 / FS_UNAVAILABLE → 该共享断开，只按退避探测一个目录。
+ * - 远程目录（sftp:，设计 devDoc/2026-11-22-37 第 5.6 节）：只在用户操作时读取——listNow、关注点变化、
+ *   新显示在标签中、refresh、断开后恢复时的关注点 / 标签目录；定期确认、热点、窗口重新获得焦点、
+ *   滚回视口都不读取。后台只有「建立索引」的目录（距上次读取超过 remoteIndexIntervalSec）。
+ *   每次检查都完整列出（不比较目录修改时间）。远程读取经主进程进行、不占 libuv 线程：
+ *   不计入线程池与本地 / 网络的合计，只受每个连接 P0 1 个 + 后台 1 个的限制。
  */
 export class Scheduler {
   private readonly enumerator: Enumerator
@@ -242,6 +248,7 @@ export class Scheduler {
   private readonly runs = new Set<Run>()
   private readonly offline = new Map<string, Offline>()
 
+  /** 占用 libuv 线程的检查数（远程不计入） */
   private inFlight = { total: 0, local: 0, network: 0 }
   /** 位置组（groupKey）→ 各通道占用数 */
   private readonly groupLanes = new Map<string, Record<Lane, number>>()
@@ -330,10 +337,10 @@ export class Scheduler {
       this.cache.visit(t, this.now())
       this.requestP0(t)
     }
-    // 滚回视口的已展开目录：立即完整枚举一次
+    // 滚回视口的已展开目录：立即完整枚举一次（远程目录除外：只在展开 / 选中时读取）
     if (prev) {
       const wasOffscreen = new Set(prev.offscreen)
-      for (const v of o.visible) if (wasOffscreen.has(v)) this.requestP0(v)
+      for (const v of o.visible) if (wasOffscreen.has(v) && !this.isRemote(v)) this.requestP0(v)
     }
     this.invalidateScope()
   }
@@ -348,8 +355,8 @@ export class Scheduler {
     }
     const refocus = focused && !o.focused
     o.focused = focused
-    // 断开的共享不因切回窗口而重连（requestP0 对断开的共享不排队）
-    if (refocus) for (const u of focusUris(o)) this.requestP0(u)
+    // 断开的共享不因切回窗口而重连（requestP0 对断开的共享不排队）；远程目录不因切回窗口而读取
+    if (refocus) for (const u of focusUris(o)) if (!this.isRemote(u)) this.requestP0(u)
     this.requestPump()
   }
 
@@ -599,7 +606,8 @@ export class Scheduler {
    * 后台范围取并集。没有 owner 时按无关注点计算。
    */
   private recompute(): void {
-    const hot = this.cache.hot(HOT_K)
+    // 远程目录不作为热点（热点只用于定期确认的排序与后台范围，远程两者都不参与）
+    const hot = this.cache.hot(HOT_K).filter((u) => !this.isRemote(u))
     const children = (u: string): string[] => this.cache.childDirs(u)
     const interests: Interest[] = this.owners.size > 0 ? [...this.owners.values()] : [NO_INTEREST]
     const items = new Map<string, { tier: Tier; full: boolean }>()
@@ -619,6 +627,8 @@ export class Scheduler {
         children
       })
       for (const it of r.periodic) {
+        // 远程目录没有定期确认（含关注点与标签目录）
+        if (this.isRemote(it.uri)) continue
         const cur = items.get(it.uri)
         if (!cur || TIER_RANK[it.tier] < TIER_RANK[cur.tier]) {
           items.set(it.uri, { tier: it.tier, full: it.full || (cur?.full ?? false) })
@@ -653,7 +663,7 @@ export class Scheduler {
   /** 定期确认的间隔：按层与位置；出错的目录（权限、超时）按远层的间隔重试 */
   private intervalFor(uri: string, tier: Tier, dir = this.cache.getDir(uri)): number {
     const where = this.enumerator.location(uri)
-    // 远程没有定期确认；这里的间隔只作为建立索引的最小间隔（行为在后续任务中细化）
+    // 远程目录不进入定期确认（recompute 中滤掉），这里只为类型完整
     if (where === 'remote') return this.settings.remoteIndexIntervalSec * 1000
     const t = dir !== undefined && dir.state !== 'ok' ? 'far' : tier
     return this.settings.interval[t][where] * 1000
@@ -705,7 +715,7 @@ export class Scheduler {
   // ---- 并发 ----
 
   /**
-   * 并发分组：本地按卷（shareKey，如 'C:'），网络按主机（hostKey）。
+   * 并发分组：本地按卷（shareKey，如 'C:'），网络按主机（hostKey），远程按连接（hostKey = sftp://<id>）。
    * 一个卡住的卷 / 主机最多占 2 个线程（后台 1 + P0 1），不影响其他组。
    */
   private groupKey(uri: string): string {
@@ -717,34 +727,40 @@ export class Scheduler {
   /**
    * 每组定期确认 / 后台队列 / 探测共用 1 个 + P0 1 个；本地合计不超过 LOCAL_LIMIT；总数不超过线程池。
    * 本地合计、网络合计、单个组都不得占用最后一个线程（线程池 − 1），卡住的一方不会堵死另一方。
+   * 远程不占线程：不计入这些合计，只受每组的通道数限制。
    */
   private canStart(uri: string, lane: Lane): boolean {
+    const where = this.enumerator.location(uri)
+    const g = this.groupLanes.get(this.groupKey(uri))
+    // 远程：经主进程读取、不占 libuv 线程，只受每个连接 P0 1 个 + 后台 1 个的限制
+    if (where === 'remote') return !g || g[lane] < 1
     const cap = Math.max(1, this.threadPool - 1)
     if (this.inFlight.total >= this.threadPool) return false
-    if (this.enumerator.location(uri) === 'local') {
+    if (where === 'local') {
       if (this.inFlight.local >= Math.min(LOCAL_LIMIT, cap)) return false
     } else if (this.inFlight.network >= cap) return false
-    const g = this.groupLanes.get(this.groupKey(uri))
     if (!g) return true
     return g[lane] < 1 && g.p0 + g.bg < cap
   }
 
   private acquire(uri: string, lane: Lane): Slot {
-    const local = this.enumerator.location(uri) === 'local'
+    const where = this.enumerator.location(uri)
     const group = this.groupKey(uri)
-    this.inFlight.total += 1
-    if (local) this.inFlight.local += 1
-    else this.inFlight.network += 1
+    if (where !== 'remote') {
+      this.inFlight.total += 1
+      this.inFlight[where] += 1
+    }
     const g = this.groupLanes.get(group) ?? { p0: 0, bg: 0 }
     g[lane] += 1
     this.groupLanes.set(group, g)
-    return { local, group, lane }
+    return { where, group, lane }
   }
 
   private release(slot: Slot): void {
-    this.inFlight.total -= 1
-    if (slot.local) this.inFlight.local -= 1
-    else this.inFlight.network -= 1
+    if (slot.where !== 'remote') {
+      this.inFlight.total -= 1
+      this.inFlight[slot.where] -= 1
+    }
     const g = this.groupLanes.get(slot.group)
     if (g) {
       g[slot.lane] -= 1
@@ -835,8 +851,10 @@ export class Scheduler {
       if (task.prio === 'probe') return { ok: true, entries: null, at: t }
 
       const dir = this.cache.getDir(uri)
+      // 远程目录每次都完整列出（不比较目录修改时间；statDir 仍作为探测并确认它仍是目录）
       const needList =
         task.full ||
+        this.isRemote(uri) ||
         dir === undefined ||
         dir.listedAt === null ||
         dir.state !== 'ok' ||
@@ -1035,6 +1053,10 @@ export class Scheduler {
         }
       )
     })
+  }
+
+  private isRemote(uri: string): boolean {
+    return this.enumerator.location(uri) === 'remote'
   }
 
   private timeoutMs(uri: string): number {
