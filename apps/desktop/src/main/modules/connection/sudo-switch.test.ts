@@ -7,7 +7,7 @@ import {
   hasSuDescendant,
   NeedsTtyError,
   openIdentityChannel,
-  POLL_COMMAND,
+  pollCommand,
   PTY_PREPARE,
   redact,
   startCommand,
@@ -87,7 +87,7 @@ function harness(over: Partial<SwitchDeps> = {}, opts: { holdPoll?: boolean } = 
   const deps: SwitchDeps = {
     exec: async (command, o) => {
       commands.push({ command, pty: o.pty })
-      if (command === POLL_COMMAND) {
+      if (command.startsWith('while :;')) {
         await pollReady
         return poll
       }
@@ -153,10 +153,10 @@ afterEach(() => {
 describe('命令字符串', () => {
   it('sudoCommand：密码不进命令行；root 为 su -', () => {
     expect(sudoCommand('app1')).toBe(
-      "printf 'PCHPID:%s\\n' $$ >&2; exec sudo -k -S -p 'PCHSUDOPROMPT' su - app1"
+      "printf 'PCHPID:%s\\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p 'PCHSUDOPROMPT' su - app1"
     )
     expect(sudoCommand('root')).toBe(
-      "printf 'PCHPID:%s\\n' $$ >&2; exec sudo -k -S -p 'PCHSUDOPROMPT' su -"
+      "printf 'PCHPID:%s\\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p 'PCHSUDOPROMPT' su -"
     )
   })
 
@@ -170,6 +170,31 @@ describe('命令字符串', () => {
     expect(() => sudoCommand('app1; id')).toThrow()
     expect(() => startCommand('/bin/sh; id')).toThrow()
   })
+
+  it('pollCommand：间隔换算成服务器端 sleep 的秒数，PCHEND 分帧不变', () => {
+    expect(pollCommand(150)).toBe(
+      'while :; do ps -eo pid=,ppid=,comm=; echo PCHEND; sleep 0.15; done'
+    )
+    expect(pollCommand(1000)).toContain('sleep 1;')
+    expect(pollCommand(1500)).toContain('sleep 1.5;')
+    expect(pollCommand(0.2)).toContain('sleep 0.001;')
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1e22]) {
+      expect(() => pollCommand(bad)).toThrow()
+    }
+  })
+
+  it('openIdentityChannel 用 deps.pollIntervalMs 生成轮询命令；不合规的间隔不执行任何命令', async () => {
+    const h = harness({ pollIntervalMs: 300 })
+    const p = track(openIdentityChannel(h.deps))
+    await flush()
+    expect(h.commands[1]).toEqual({ command: pollCommand(300), pty: false })
+    h.cmd.close()
+    await errorOf(p.promise)
+
+    const h2 = harness({ pollIntervalMs: Number.NaN })
+    expect((await appErrorOf(openIdentityChannel(h2.deps))).code).toBe('CONN_SUDO_FAILED')
+    expect(h2.commands).toEqual([])
+  })
 })
 
 describe('hasSuDescendant', () => {
@@ -181,8 +206,14 @@ describe('hasSuDescendant', () => {
     expect(hasSuDescendant(psFrame(false), SUDO_PID)).toBe(false)
   })
 
-  it('sudo 自身、comm 含空格的行、畸形行不影响判定', () => {
-    expect(hasSuDescendant(' 10 1 su\n 11 10 Web Content\ngarbage\n', 10)).toBe(false)
+  it('sudo 不 fork、直接 exec 成 su（sudoPid 自身的 comm 为 su）→ true', () => {
+    expect(hasSuDescendant('    1     0 systemd\n 10 1 su\n 11 10 bash\n', 10)).toBe(true)
+    // 父进程是 su 不算（只看 sudoPid 自身及其子孙）
+    expect(hasSuDescendant(' 9 1 su\n 10 9 sudo\n', 10)).toBe(false)
+  })
+
+  it('comm 含空格的行、畸形行不影响判定', () => {
+    expect(hasSuDescendant(' 10 1 sudo\n 11 10 Web Content\ngarbage\n', 10)).toBe(false)
     expect(hasSuDescendant(' 10 1 sudo\n 11 10 Web Content\n 12 11 su\n', 10)).toBe(true)
     expect(hasSuDescendant(' 10 1 sudo\n 11 10 sudo\n 12 11 su-rs\n', 10)).toBe(false)
   })
@@ -224,7 +255,7 @@ describe('openIdentityChannel（非终端方式）', () => {
     await flush()
     expect(h.commands).toEqual([
       { command: sudoCommand('app1'), pty: false },
-      { command: POLL_COMMAND, pty: false }
+      { command: pollCommand(150), pty: false }
     ])
     h.cmd.err(`PCHPID:${SUDO_PID}\n`)
     h.cmd.err('PCHSUDOPROMPT')
@@ -462,6 +493,80 @@ describe('openIdentityChannel（非终端方式）', () => {
     expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
   })
 
+  it('交出密码后 stderr 出现以 su: 开头的行（su 已在运行）再关闭 → CONN_SUDO_FAILED', async () => {
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+    // 行首 su: 被拆在两个 chunk 中
+    h.cmd.err('s')
+    await flush()
+    h.cmd.err(
+      'u: user app1 does not exist or the user entry does not contain all the required fields\n'
+    )
+    await flush()
+    h.cmd.close()
+    const e = await appErrorOf(p)
+    expect(e.code).toBe('CONN_SUDO_FAILED')
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+  })
+
+  it('交出密码后 stdout 有输出（目标 shell 已在运行）再超时 → CONN_SUDO_FAILED，不写启动命令', async () => {
+    vi.useFakeTimers()
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    h.cmd.out('welcome\n')
+    await flush()
+    const caught = errorOf(p)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(((await caught) as AppError).code).toBe('CONN_SUDO_FAILED')
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+  })
+
+  it('行中间的 su: 不算迹象：交出密码后关闭仍为 CONN_SUDO_AUTH_FAILED', async () => {
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    h.cmd.err('sudo: su: something\n')
+    h.cmd.close()
+    expect((await appErrorOf(p)).code).toBe('CONN_SUDO_AUTH_FAILED')
+  })
+
+  it('提示先于 PID 行到达：先不写密码，PID 到达后写一次', async () => {
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err('PCHSUDOPROMPT')
+    await flush()
+    expect(h.cmd.writes).toEqual([])
+    h.cmd.err(`PCHPID:${SUDO_PID}\n`)
+    await flush()
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+    h.cmd.err('PCHSUDOPROMPT')
+    expect((await appErrorOf(p)).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+  })
+
+  it('PID 始终未知：不写密码，超时为 CONN_SUDO_FAILED', async () => {
+    vi.useFakeTimers()
+    const h = harness()
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err('PCHSUDOPROMPT')
+    await flush()
+    const caught = errorOf(p)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(((await caught) as AppError).code).toBe('CONN_SUDO_FAILED')
+    expect(h.cmd.writes).toEqual([])
+  })
+
   it('15 秒无结论 → CONN_SUDO_FAILED，两个通道都关闭', async () => {
     vi.useFakeTimers()
     const h = harness()
@@ -590,7 +695,7 @@ describe('openIdentityChannel（终端方式）', () => {
     const p = track(openIdentityChannel(h.deps))
     await flush()
     expect(h.commands[0]).toEqual({ command: sudoCommand('app1'), pty: true })
-    expect(h.commands[1]).toEqual({ command: POLL_COMMAND, pty: false })
+    expect(h.commands[1]).toEqual({ command: pollCommand(150), pty: false })
     // stderr 上的东西在终端方式下不作数
     h.cmd.err('PCHSUDOPROMPT')
     await flush()

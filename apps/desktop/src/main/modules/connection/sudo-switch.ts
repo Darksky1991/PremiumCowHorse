@@ -16,7 +16,7 @@ export interface SwitchDeps {
   sftpServerPath: string // 已按路径正则校验
   password: string | null // null：sudo 要密码即失败
   mode: SwitchMode
-  /** 轮询间隔（150）。轮询通道是长寿命的（POLL_COMMAND 在服务器端以 sleep 0.15 循环），本端不另设计时器 */
+  /** 轮询间隔（150）：换算成服务器端 pollCommand 的 sleep 秒数（长寿命通道，本端不另设计时器） */
   pollIntervalMs: number
   timeoutMs: number // 15_000
   signal?: AbortSignal
@@ -37,11 +37,14 @@ export class NeedsTtyError extends Error {
   }
 }
 
-/** `$$` 即随后被 exec 替换成的 sudo 的 PID；密码绝不进命令行 */
+/**
+ * `$$` 即随后被 exec 替换成的 sudo 的 PID（`exec env … sudo` 链不改变 PID）；密码绝不进命令行。
+ * LC_ALL=C：sudo 的错误信息不被本地化（ja_JP 等），classifySudoError 的英文措辞才认得出来。
+ */
 export function sudoCommand(identity: string): string {
   if (!IDENTITY_PATTERN.test(identity)) throw new Error('invalid identity')
   const su = identity === 'root' ? 'su -' : `su - ${identity}`
-  return `printf 'PCHPID:%s\\n' $$ >&2; exec sudo -k -S -p '${SUDO_PROMPT_MARKER}' ${su}`
+  return `printf 'PCHPID:%s\\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p '${SUDO_PROMPT_MARKER}' ${su}`
 }
 
 /** 标记用八进制写（\120 = P）：终端方式回显出的命令行里没有 PCHSTART 字样 */
@@ -53,11 +56,27 @@ export function startCommand(sftpServerPath: string): string {
 /** 终端方式：把终端切成透明模式（不回显、不转换换行、不处理控制字符） */
 export const PTY_PREPARE = 'stty raw -echo -ixon -ixoff -isig -icanon -opost min 1 time 0\n'
 
-/** 长寿命的轮询通道（D2）：每约 150ms 输出一帧进程表，以 PCHEND 行分帧 */
-export const POLL_COMMAND = 'while :; do ps -eo pid=,ppid=,comm=; echo PCHEND; sleep 0.15; done'
+/** 轮询间隔的上限（1 小时），防止换算出指数形式的数字 */
+const POLL_INTERVAL_MAX_MS = 3_600_000
+
+/**
+ * 长寿命的轮询通道（D2）：每 intervalMs 输出一帧进程表，以 PCHEND 行分帧。
+ * 间隔按毫秒取整后换算成秒（150 → 0.15）；非有限正数或超过上限时抛错。
+ */
+export function pollCommand(intervalMs: number): string {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0 || intervalMs > POLL_INTERVAL_MAX_MS) {
+    throw new Error('invalid poll interval')
+  }
+  const ms = Math.max(1, Math.round(intervalMs))
+  const sec = (ms / 1000).toFixed(3).replace(/\.?0+$/, '')
+  return `while :; do ps -eo pid=,ppid=,comm=; echo PCHEND; sleep ${sec}; done`
+}
 const POLL_FRAME_END = 'PCHEND'
 
-/** 一帧 ps 输出中，sudoPid 的子孙里是否有 comm 为 su 的进程（PAM 认证在 sudo 进程内完成，成功后才 fork） */
+/**
+ * 一帧 ps 输出中，sudoPid 自身或其子孙里是否有 comm 为 su 的进程。
+ * PAM 认证在 sudo 进程内完成，成功后才 fork（或在不 fork 的配置下直接 exec 成 su，此时 sudoPid 自身变为 su）。
+ */
 export function hasSuDescendant(psFrame: string, sudoPid: number): boolean {
   const children = new Map<number, number[]>()
   const comms = new Map<number, string>()
@@ -72,6 +91,7 @@ export function hasSuDescendant(psFrame: string, sudoPid: number): boolean {
     if (list) list.push(pid)
     else children.set(ppid, [pid])
   }
+  if (comms.get(sudoPid) === 'su') return true
   const seen = new Set<number>([sudoPid])
   const queue = [sudoPid]
   while (queue.length > 0) {
@@ -117,13 +137,15 @@ type Stage = 'auth' | 'start' | 'done'
  *
  * 状态：
  * - auth：命令通道执行 sudoCommand，轮询通道读进程表。控制文本（非终端方式为 stderr，终端方式为 stdout）中
- *   第一次出现提示 → 等轮询通道打开后写一次「密码\n」（password 为 null → CONN_SUDO_AUTH_FAILED）；
+ *   第一次出现提示 → 等轮询通道打开、且知道 sudo 的 PID 后写一次「密码\n」（password 为 null →
+ *   CONN_SUDO_AUTH_FAILED；PID 始终未知则不写，由超时报 CONN_SUDO_FAILED）；
  *   第二次出现提示 → 立即关闭，CONN_SUDO_AUTH_FAILED；sudoers 拒绝 → CONN_SUDO_DENIED；
  *   requiretty → NeedsTtyError（终端方式下为 CONN_SUDO_FAILED）。
- *   进程表中 sudo 的子孙出现 su → 关闭轮询通道，（终端方式先写 PTY_PREPARE）写 startCommand，进入 start。
+ *   进程表中 sudo 自身或其子孙出现 su → 关闭轮询通道，（终端方式先写 PTY_PREPARE）写 startCommand，进入 start。
  * - start：丢弃 PCHSTART 行之前的 stdout，之后的字节为 firstData → 成功。
  * - 通道关闭 / 超时：交出密码之后、判定成功之前 → CONN_SUDO_AUTH_FAILED（无法排除密码错误，按连接锁住、
- *   不重试，以免反复提交错误密码锁号）；其他 → CONN_SUDO_FAILED。signal 中止 → FS_CANCELLED。
+ *   不重试，以免反复提交错误密码锁号）。但非终端方式下交出密码后 stdout 有输出、或 stderr 有以 su: 开头的行
+ *   （认证已通过的迹象）→ CONN_SUDO_FAILED。其他 → CONN_SUDO_FAILED。signal 中止 → FS_CANCELLED。
  *
  * 成功时交接：stdout 不再有本函数的监听，且处于非流动状态，之后到达的数据留在流的缓冲中，
  * 调用方挂上 data 监听时开始流动（不丢不重）。stderr 保持流动、数据丢弃（ssh2 的 stdout 与 stderr
@@ -134,9 +156,11 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
   if (signal?.aborted) return Promise.reject(new AppError({ code: 'FS_CANCELLED' }))
   let sudoCmd: string
   let startCmd: string
+  let pollCmd: string
   try {
     sudoCmd = sudoCommand(deps.identity)
     startCmd = startCommand(deps.sftpServerPath)
+    pollCmd = pollCommand(deps.pollIntervalMs)
   } catch (e) {
     return Promise.reject(
       new AppError({ code: 'CONN_SUDO_FAILED', detail: e instanceof Error ? e.message : String(e) })
@@ -159,6 +183,15 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
     let prompts = 0
     let promptFrom = 0
     let passwordWritten = false
+    /**
+     * 交出密码之后、判定成功之前，出现了「认证已通过」的迹象（非终端方式：stdout 有任何字节，
+     * 或 stderr 有以 su: 开头的行——sudo -S 自己的消息以 sudo: / Sorry 开头）。
+     * 只影响失败时的分类（不再报 AUTH_FAILED），不改变写入时机
+     */
+    let authHint = false
+    /** 交出密码之后 stderr 的当前行（判断行首是否为 su:） */
+    let errLine = ''
+    let errLineAtStart = true
     /** auth 阶段的控制文本 */
     let ctl = ''
     /** 失败时 detail 用的输出摘要（每次追加后立即脱敏，再截断） */
@@ -211,7 +244,9 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
     /** 没有结论就结束（通道关闭 / 超时） */
     const undetermined = (reason: string): void => {
       const code =
-        stage === 'auth' && passwordWritten ? 'CONN_SUDO_AUTH_FAILED' : 'CONN_SUDO_FAILED'
+        stage === 'auth' && passwordWritten && !authHint
+          ? 'CONN_SUDO_AUTH_FAILED'
+          : 'CONN_SUDO_FAILED'
       fail(new AppError({ code, detail: detail(`${reason} (stage=${stage})`) }))
     }
 
@@ -226,8 +261,8 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
         )
         return
       }
-      // 轮询通道打开之前不交出密码：否则无法判定成功
-      if (!poll) return
+      // 轮询通道未打开、sudo 的 PID 未知时不交出密码：交出之后必须有判定成功的手段
+      if (!poll || sudoPid === null) return
       passwordWritten = true
       cmd.write(`${password}\n`)
     }
@@ -296,6 +331,9 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
     const handleOut = (chunk: Buffer): void => {
       const text = outDecoder.write(chunk)
       appendDiag(text)
+      if (stage === 'auth' && mode === 'nopty' && passwordWritten && chunk.length > 0) {
+        authHint = true
+      }
       if (stage === 'auth') {
         // 终端方式：stdout 即控制文本。非终端方式：认证阶段的 stdout 都在标记之前
         // （标记要在写入 startCommand 之后才输出），只留作诊断
@@ -312,10 +350,25 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
         handleOut(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
       }
     }
+    /** 交出密码之后的 stderr：逐行看行首是否为 su:（su 已在运行 = 认证已通过） */
+    const noteErrLines = (text: string): void => {
+      const lines = (errLine + text).split('\n')
+      errLine = lines.pop() ?? ''
+      for (const line of lines) {
+        if (errLineAtStart && line.startsWith('su:')) authHint = true
+        errLineAtStart = true
+      }
+      if (errLineAtStart && errLine.startsWith('su:')) authHint = true
+      if (errLine.length > 1024) {
+        errLine = ''
+        errLineAtStart = false
+      }
+    }
     const onErr = (d: Buffer): void => {
       if (stage === 'done') return
       const text = errDecoder.write(d)
       appendDiag(text)
+      if (stage === 'auth' && passwordWritten) noteErrLines(text)
       if (stage === 'auth') feedCtl(text)
     }
     const onPoll = (d: Buffer): void => {
@@ -373,7 +426,7 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
           if ((stage as Stage) !== 'done') undetermined('channel closed')
         })
         // 第 1 步命令发出后立即开始轮询（NOPASSWD 的环境没有提示也能判定成功）
-        deps.exec(POLL_COMMAND, { pty: false }).then(
+        deps.exec(pollCmd, { pty: false }).then(
           (p) => {
             if (stage === 'done') {
               p.close()
