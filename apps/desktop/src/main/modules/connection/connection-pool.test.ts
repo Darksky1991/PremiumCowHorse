@@ -510,6 +510,19 @@ describe('ConnectionPool: 认证锁定', () => {
     await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
   })
 
+  it('I1：交出密码后结果未定（超时 / 断开）→ 按认证失败锁定，后台请求不再以同一密码重试', async () => {
+    const h = setup()
+    h.authResult.value = new AppError({
+      code: 'CONN_AUTH_FAILED',
+      detail: 'undetermined after password (FS_TIMEOUT: client-timeout: Timed out)'
+    })
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'auth-failed')
+    expect(h.pool.state('c1')).toBe('auth-failed')
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_AUTH_FAILED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
   it('服务器没有可用的认证方式 → 不写锁定，状态 idle，下次照常尝试', async () => {
     const h = setup()
     h.authResult.value = new AppError({

@@ -192,6 +192,37 @@ describe('authentication is submitted once', () => {
     expect(s.kbdAnswers).toEqual([])
   })
 
+  it.each([
+    ['password', 'hang'],
+    ['keyboard-interactive', 'hang'],
+    ['password', 'close'],
+    ['keyboard-interactive', 'close']
+  ] as const)(
+    'I1：%s 已交出、结果返回前 %s（超时 / 断开）→ CONN_AUTH_FAILED（undetermined after password），连接池据此锁定',
+    async (authMethod, afterPassword) => {
+      const s = await server({ authMethod, afterPassword })
+      const err = await errorOf(connectSsh(cfg(s, { readyTimeoutMs: 1500 })))
+      expect(err.code).toBe('CONN_AUTH_FAILED')
+      expect(err.detail).toMatch(/^undetermined after password/)
+      expect(err.detail ?? '').not.toContain('Pch-pass1')
+      expect(s.authAttempts.filter((m) => PASSWORD_METHODS.includes(m))).toEqual([authMethod])
+    }
+  )
+
+  it('I1：交出密码之前超时（主机密钥确认中）→ 仍为 FS_TIMEOUT', async () => {
+    // 主机密钥确认迟迟不回答：认证尚未开始即 readyTimeout
+    const s = await server()
+    const err = await errorOf(
+      connectSsh(
+        cfg(s, {
+          readyTimeoutMs: 1500,
+          verifyHostKey: () => new Promise((r) => setTimeout(() => r(true), 3000))
+        })
+      )
+    )
+    expect(err.code).toBe('FS_TIMEOUT')
+  })
+
   it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_FAILED, password not handed over', async () => {
     const s = await server({
       authMethod: 'keyboard-interactive',

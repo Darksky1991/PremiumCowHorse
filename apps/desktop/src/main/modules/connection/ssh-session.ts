@@ -138,6 +138,8 @@ interface AuthRefusal {
   noMethod(detail: string): void
   /** 遇到不支持的提示：不交出密码，断开 */
   abort(detail: string): void
+  /** 即将交出密码（password，或 keyboard-interactive 的应答） */
+  submitted(): void
 }
 
 /**
@@ -167,6 +169,7 @@ function makeAuthHandler(
         : none()
     }
     if (methodsLeft.includes('password')) {
+      refuse.submitted()
       return { type: 'password', username, password: auth.password }
     }
     if (methodsLeft.includes('keyboard-interactive')) {
@@ -188,6 +191,7 @@ function makeAuthHandler(
           if (answered)
             return refuse.abort('keyboard-interactive: unsupported prompt (second round)')
           answered = true
+          refuse.submitted()
           finish(prompts.map(() => auth.password))
         }
       }
@@ -213,6 +217,20 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
     let settled = false
     /** 由我们决定的失败原因（主机密钥被拒、多余的认证提示），优先于 ssh2 的错误 */
     let failure: AppError | null = null
+    /** 已交出密码（I1）：之后在 ready 之前的超时 / 断开无法排除密码错误 */
+    let submitted = false
+    /**
+     * 交出密码之后、认证结果返回之前的超时或断开 → CONN_AUTH_FAILED（连接池据此锁定，不再以同一密码
+     * 反复探测）。ssh2 1.17.0 的 readyTimeout 覆盖认证阶段（只在 USERAUTH_SUCCESS 时清除，lib/client.js
+     * 第 368、1112–1118 行）
+     */
+    const undetermined = (e: AppError): AppError =>
+      submitted && e.code !== 'CONN_AUTH_FAILED'
+        ? new AppError({
+            code: 'CONN_AUTH_FAILED',
+            detail: `undetermined after password (${[e.code, e.detail].filter(Boolean).join(': ')})`
+          })
+        : e
 
     const fail = (e: AppError): void => {
       if (settled) return
@@ -255,14 +273,17 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
       abort: (detail) => {
         failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
         fail(failure)
+      },
+      submitted: () => {
+        submitted = true
       }
     })
 
     client.on('error', (err: Ssh2Error) => {
-      if (!settled) fail(failure ?? connectError(err))
+      if (!settled) fail(failure ?? undetermined(connectError(err)))
     })
     client.on('close', () => {
-      if (!settled) fail(failure ?? unavailable('connection closed before ready'))
+      if (!settled) fail(failure ?? undetermined(unavailable('connection closed before ready')))
     })
     client.once('ready', () => {
       if (settled) return

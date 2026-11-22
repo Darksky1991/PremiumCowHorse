@@ -38,6 +38,8 @@ export interface FakeSftpServerOptions {
   kbdPrompts?: { prompt: string; echo: boolean }[]
   /** 监听端口，默认 0（随机）；e2e 用同端口同密钥重启 */
   port?: number
+  /** 收到密码（password / keyboard-interactive 的应答）之后：hang = 不回应，close = 断开连接 */
+  afterPassword?: 'hang' | 'close'
 }
 
 const { STATUS_CODE } = utils.sftp
@@ -194,7 +196,12 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
     client.on('authentication', (ctx) => {
       authAttempts.push(ctx.method)
       const expected = opts.users[ctx.username]
+      const stall = (): boolean => {
+        if (opts.afterPassword === 'close') client.end()
+        return opts.afterPassword !== undefined
+      }
       if (ctx.method === 'password' && methods.includes('password')) {
+        if (stall()) return
         return expected !== undefined && sameSecret(ctx.password, expected)
           ? ctx.accept()
           : ctx.reject(methods)
@@ -202,6 +209,7 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
       if (ctx.method === 'keyboard-interactive' && methods.includes('keyboard-interactive')) {
         return ctx.prompt(kbdPrompts, (answers) => {
           kbdAnswers.push(answers)
+          if (stall()) return
           const a = answers[0]
           if (expected !== undefined && a !== undefined && sameSecret(a, expected)) ctx.accept()
           else ctx.reject(methods)
