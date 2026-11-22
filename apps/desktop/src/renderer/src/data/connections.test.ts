@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ConnectionSaveInput, PchBridge } from '@pch/shared'
 import {
   connectionNamesOf,
+  sameConnectionNames,
   countConnectionReferences,
   fetchConnectionReferenceCount,
   saveConnection,
@@ -140,5 +141,15 @@ describe('connectionNamesOf', () => {
       ])
     ).toEqual({ a: 'AP1', b: 'DB' })
     expect(connectionNamesOf(undefined)).toEqual({})
+  })
+})
+
+describe('sameConnectionNames', () => {
+  it('内容（id → 名称）相同即相同：connection.status 只改 state 时名称表不变', () => {
+    expect(sameConnectionNames({ a: 'AP1', b: 'DB' }, { b: 'DB', a: 'AP1' })).toBe(true)
+    expect(sameConnectionNames({}, {})).toBe(true)
+    expect(sameConnectionNames({ a: 'AP1' }, { a: 'AP2' })).toBe(false)
+    expect(sameConnectionNames({ a: 'AP1' }, { a: 'AP1', b: 'DB' })).toBe(false)
+    expect(sameConnectionNames({ a: 'AP1', b: 'DB' }, { a: 'AP1' })).toBe(false)
   })
 })

@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
-import { ChevronDownIcon, ServerCogIcon } from 'lucide-react'
+import { ServerCogIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AppError, formatSftpUri, type ConnectionDto } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
@@ -13,13 +13,6 @@ import {
   DialogTitle
 } from '@pch/ui/components/dialog'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger
-} from '@pch/ui/components/dropdown-menu'
-import {
   Field,
   FieldDescription,
   FieldError,
@@ -27,6 +20,13 @@ import {
   FieldLabel
 } from '@pch/ui/components/field'
 import { Input } from '@pch/ui/components/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@pch/ui/components/select'
 import { Spinner } from '@pch/ui/components/spinner'
 import { useConnectionHome, useConnections } from '@renderer/data/connections'
 import { useEntryActions } from '@renderer/data/entries'
@@ -41,8 +41,8 @@ export interface AddRemoteDialogProps {
   finalFocus: RefObject<HTMLElement | null>
 }
 
-/** 身份下拉的值：登录用户用空串表示（身份名不会是空串，IDENTITY_PATTERN） */
-const LOGIN = ''
+/** 身份下拉中「登录用户」的值（含 @，不会与身份名冲突：IDENTITY_PATTERN） */
+const LOGIN = '@login'
 
 /**
  * 「添加远程文件夹」（设计 devDoc/2026-11-22-37 第 5.8 节）：选连接（旁边「管理连接」跳到「远程连接」视图）、
@@ -200,7 +200,10 @@ function AddRemoteForm({
                     value: LOGIN,
                     label: t('explorer:remoteLoginUser', { name: connection.username })
                   },
-                  ...connection.identities.map((name) => ({ value: name, label: name }))
+                  // 与登录用户同名的身份就是登录用户（URI 不写 userinfo），不重复列出
+                  ...connection.identities
+                    .filter((name) => name !== connection.username)
+                    .map((name) => ({ value: name, label: name }))
                 ]}
                 onChange={changeIdentity}
               />
@@ -258,7 +261,7 @@ function AddRemoteForm({
   )
 }
 
-/** 单选的下拉（按钮显示当前项）：选项少、需要跟随按钮宽度时用菜单的单选组实现 */
+/** 单选的下拉（shadcn Select / Base UI）：触发按钮显示当前项（items 提供值 → 标签） */
 function Picker({
   id,
   value,
@@ -270,26 +273,24 @@ function Picker({
   options: readonly { value: string; label: string }[]
   onChange: (value: string) => void
 }): JSX.Element {
-  const current = options.find((o) => o.value === value)
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button id={id} type="button" variant="outline" className="w-full justify-between" />
-        }
-      >
-        <span className="truncate">{current?.label ?? ''}</span>
-        <ChevronDownIcon data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-(--anchor-width)">
-        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as string)}>
-          {options.map((o) => (
-            <DropdownMenuRadioItem key={o.value} value={o.value} closeOnClick>
-              <span className="truncate">{o.label}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Select
+      items={options}
+      value={value}
+      onValueChange={(v) => {
+        if (v !== null) onChange(v)
+      }}
+    >
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

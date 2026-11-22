@@ -6,6 +6,7 @@ import {
   LayersIcon,
   ServerIcon,
   UnplugIcon,
+  UserRoundPlusIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -257,19 +258,23 @@ function StatusContent({
           {t('explorer:retry')}
         </Button>
         {addAsOwner === null ? null : (
-          // 无权限、属主在登记的身份中：以属主身份把同一路径添加为新条目（不自动切换身份）
+          // 无权限、属主在登记的身份中：以属主身份把同一路径添加为新条目（不自动切换身份）。
+          // 侧栏窄、行内还有错误文字与「重试」：只放图标（名称在 aria-label / 悬停提示中）；
+          // 键盘经状态行的菜单（Shift+F10 / 菜单键）
           <Button
-            size="xs"
+            size="icon-xs"
             variant="ghost"
             className="shrink-0"
             tabIndex={-1}
+            aria-label={t('explorer:addAsOwner', { owner: addAsOwner })}
+            title={t('explorer:addAsOwner', { owner: addAsOwner })}
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               e.stopPropagation()
               onAddAsOwner()
             }}
           >
-            {t('explorer:addAsOwner', { owner: addAsOwner })}
+            <UserRoundPlusIcon />
           </Button>
         )}
       </>

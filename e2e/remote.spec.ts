@@ -35,14 +35,25 @@ test.describe('remote folders', () => {
     writeFileSync(path.join(home, 'd07', 'deep.txt'), 'deep')
     mkdirSync(path.join(root, 'opt', 'data'), { recursive: true })
     writeFileSync(path.join(root, 'opt', 'data', 'a b.txt'), 'a b')
+    // /opt/app1/log：属主 app1、登录用户无权限（「以属主身份添加为条目」用）
+    mkdirSync(path.join(root, 'opt', 'app1', 'log'), { recursive: true })
+    writeFileSync(path.join(root, 'opt', 'app1', 'log', 'app1.log'), 'secret')
     hostKeyPem = generateEd25519KeyPair().private
-    server = await startSftp(root, { hostKey: hostKeyPem })
+    server = await startSftp(root, sftpOptions())
   })
   test.afterEach(async () => {
     await app?.close()
     app = undefined
     await server.close()
     removeDirs(userData, root)
+  })
+
+  /** 假服务器的选项（重启时沿用同一密钥） */
+  const sftpOptions = (port?: number): Parameters<typeof startSftp>[1] => ({
+    hostKey: hostKeyPem,
+    ...(port !== undefined && { port }),
+    owner: (p) => (p === '/opt/app1' || p.startsWith('/opt/app1/') ? 'app1' : 'pchuser'),
+    deny: (p) => p === '/opt/app1/log'
   })
 
   /** 以英文界面启动 */
@@ -76,8 +87,10 @@ test.describe('remote folders', () => {
     await page.getByRole('button', { name: 'Explorer', exact: true }).click()
     await page.getByRole('button', { name: /^Add remote folder/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Add remote folder' })
-    await expect(dialog.getByRole('button', { name: 'Connection', exact: true })).toContainText(
-      'Fake server'
+    // 连接 / 身份为 Select（combobox），可访问名称来自字段标签，显示当前值
+    await expect(dialog.getByRole('combobox', { name: 'Connection' })).toContainText('Fake server')
+    await expect(dialog.getByRole('combobox', { name: 'Read as' })).toContainText(
+      'Login user (pchuser)'
     )
     await expect(dialog.getByLabel('Path', { exact: true })).toHaveValue(SFTP_HOME)
     await dialog.getByRole('button', { name: 'Add', exact: true }).click()
@@ -183,11 +196,93 @@ test.describe('remote folders', () => {
     await expect(disconnected).toBeVisible({ timeout: 30_000 })
 
     // 同端口同密钥重新启动 → 刷新后恢复
-    server = await startSftp(root, { port, hostKey: hostKeyPem })
+    server = await startSftp(root, sftpOptions(port))
     await expect(async () => {
       await tree.focus()
       await page.keyboard.press('F5')
       await expect(disconnected).toHaveCount(0, { timeout: 2000 })
     }).toPass({ timeout: 30_000 })
+  })
+  test('a permission-denied remote directory owned by a registered user offers "add entry as owner" (mouse and keyboard)', async () => {
+    const page = await start()
+    const id = await addTrustedConnection(page)
+    // 登记可切换的身份 app1（机密省略 = 不变）
+    await data(page, 'connection.save', {
+      id,
+      name: 'Fake server',
+      host: '127.0.0.1',
+      port: server.port,
+      username: 'pchuser',
+      auth: 'password',
+      keyPath: null,
+      identities: ['app1'],
+      sftpServerPath: null
+    })
+    const workspace = await data<{ id: string }>(page, 'workspace.active')
+    const group = await data<{ id: string }>(page, 'entry.add', {
+      kind: 'group',
+      workspaceId: workspace.id,
+      parentId: null,
+      label: 'Customer A'
+    })
+    await data(page, 'entry.add', {
+      kind: 'folder',
+      workspaceId: workspace.id,
+      parentId: group.id,
+      uri: `sftp://${id}/opt`
+    })
+
+    // entry.add 的调用记录（主进程 IPC 处理的包装，不新增产品 IPC）：以 app1 身份添加时，
+    // 主进程的 stat 要经 sudo 切换身份，假服务器不支持 exec，所以只断言请求的内容
+    await app!.evaluate(({ ipcMain }) => {
+      type Handler = (event: unknown, envelope: unknown) => unknown
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+        ._invokeHandlers
+      const original = handlers.get('pch:invoke')!
+      const calls: unknown[] = []
+      ;(globalThis as { __pchEntryAdds?: unknown[] }).__pchEntryAdds = calls
+      ipcMain.removeHandler('pch:invoke')
+      ipcMain.handle('pch:invoke', (event, envelope: unknown) => {
+        const e = envelope as { channel?: string; input?: unknown }
+        if (e.channel === 'entry.add') calls.push(e.input)
+        return original(event, envelope)
+      })
+    })
+    const entryAdds = (): Promise<unknown[]> =>
+      app!.evaluate(() => (globalThis as { __pchEntryAdds?: unknown[] }).__pchEntryAdds ?? [])
+    const expected = {
+      kind: 'folder',
+      workspaceId: workspace.id,
+      parentId: group.id,
+      uri: `sftp://app1@${id}/opt/app1/log`,
+      label: 'log'
+    }
+
+    await page.getByRole('button', { name: 'Explorer', exact: true }).click()
+    const tree = page.getByRole('tree')
+    await tree.getByRole('treeitem', { name: 'Customer A' }).click()
+    await toggleRow(tree.getByRole('treeitem', { name: 'Remote folder opt' }))
+    await toggleRow(tree.getByRole('treeitem', { name: 'app1', exact: true }))
+    await toggleRow(tree.getByRole('treeitem', { name: 'log', exact: true }))
+    const status = tree.getByRole('treeitem').filter({ hasText: 'Access denied' })
+    await expect(status).toBeVisible()
+    const button = status.getByRole('button', { name: 'Add entry as app1' })
+    await expect(button).toBeVisible()
+
+    // 键盘：选中状态行（↓），Shift+F10 打开菜单，只有「Add entry as app1」
+    await tree.getByRole('treeitem', { name: 'log', exact: true }).click()
+    await tree.focus()
+    await page.keyboard.press('ArrowDown')
+    await expect(status).toHaveAttribute('aria-selected', 'true')
+    await page.keyboard.press('Shift+F10')
+    const menu = page.getByRole('menu')
+    await expect(menu).toBeVisible()
+    await expect(menu.getByRole('menuitem')).toHaveCount(1)
+    await menu.getByRole('menuitem', { name: 'Add entry as app1' }).click()
+    await expect.poll(entryAdds).toEqual([expected])
+
+    // 鼠标：行内按钮
+    await button.click()
+    await expect.poll(entryAdds).toEqual([expected, expected])
   })
 })

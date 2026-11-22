@@ -164,6 +164,24 @@ describe('menuItemsFor', () => {
       []
     )
   })
+
+  it('无权限的远程状态行可以「以属主身份添加为条目」时，菜单只有这一项（键盘可达）', () => {
+    const denied = node({
+      id: 'fs:e1:log#status',
+      kind: 'directory',
+      source: 'fs',
+      uri: 'sftp://ID/opt/app1/log',
+      status: 'error',
+      errorCode: 'FS_PERMISSION_DENIED',
+      owner: 'app1'
+    })
+    expect(menuItemsFor(denied, { canAddAsOwner: true })).toEqual(['addAsOwner'])
+    expect(menuItemsFor(denied)).toEqual([])
+    // 只作用于状态行：普通节点不受影响
+    expect(menuItemsFor(node({ kind: 'folder' }), { canAddAsOwner: true })).not.toContain(
+      'addAsOwner'
+    )
+  })
 })
 
 describe('isEntryNode', () => {

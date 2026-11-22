@@ -9,6 +9,7 @@ export type MenuItemId =
   | 'addFolder'
   | 'addFile'
   | 'addRemoteFolder'
+  | 'addAsOwner'
   | 'reveal'
   | 'cacheStrategy'
   | 'buildIndex'
@@ -22,11 +23,16 @@ export type MenuItemId =
 /**
  * 节点对应的右键菜单项（可打开的节点以「在新标签页中打开」开头，设计 2.8）。node 为 null 表示树的空白处；状态行没有菜单（返回空数组）。
  * 全部是条目管理、只读操作或应用自身的设置（缓存策略、索引）：没有任何会修改磁盘文件的项。
- * 远程（非 file:）节点没有「在资源管理器中显示」与「缓存策略」（M4 设计 5.8：远程目录只在展开 / 选中 / 索引时读取）
+ * 远程（非 file:）节点没有「在资源管理器中显示」与「缓存策略」（M4 设计 5.8：远程目录只在展开 / 选中 / 索引时读取）。
+ * 状态行通常没有菜单；无权限的远程目录可以「以属主身份添加为条目」时（canAddAsOwner，owner-switch.ts）
+ * 菜单只有这一项——行内按钮只能用鼠标，菜单让键盘（Shift+F10 / 菜单键）也能用
  */
-export function menuItemsFor(node: TreeNode | null): MenuItemId[] {
+export function menuItemsFor(
+  node: TreeNode | null,
+  opts: { canAddAsOwner?: boolean } = {}
+): MenuItemId[] {
   if (node === null) return ['newGroup', 'separator', 'addFolder', 'addFile', 'addRemoteFolder']
-  if (isStatusNode(node)) return []
+  if (isStatusNode(node)) return opts.canAddAsOwner === true ? ['addAsOwner'] : []
   const items = itemsForNode(node)
   return node.uri !== null && !isLocalUri(node.uri)
     ? items.filter((id) => id !== 'reveal' && id !== 'cacheStrategy')

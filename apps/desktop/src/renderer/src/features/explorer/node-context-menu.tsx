@@ -12,6 +12,7 @@ import {
   ServerIcon,
   SquareArrowOutUpRightIcon,
   SquareMinusIcon,
+  UserRoundPlusIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -60,6 +61,9 @@ export interface NodeContextMenuProps {
   onAddPaths: (kind: 'folder' | 'file') => void
   /** 「添加远程文件夹…」（M4 设计 5.8） */
   onAddRemote: () => void
+  /** 无权限的远程状态行：可以「以属主身份添加为条目」时为属主名（owner-switch.ts），否则 null */
+  ownerSwitch: string | null
+  onAddAsOwner: () => void
   onRename: () => void
   onRemove: () => void
   onPin: () => void
@@ -71,6 +75,7 @@ const ICONS: Partial<Record<MenuItemId, LucideIcon>> = {
   addFolder: FolderPlusIcon,
   addFile: FilePlusIcon,
   addRemoteFolder: ServerIcon,
+  addAsOwner: UserRoundPlusIcon,
   reveal: FolderSearchIcon,
   cacheStrategy: RefreshCwIcon,
   buildIndex: DatabaseIcon,
@@ -93,12 +98,14 @@ export function NodeContextMenu({
   onNewGroup,
   onAddPaths,
   onAddRemote,
+  ownerSwitch,
+  onAddAsOwner,
   onRename,
   onRemove,
   onPin
 }: NodeContextMenuProps): JSX.Element | null {
   const { t } = useTranslation()
-  const items = menuItemsFor(node)
+  const items = menuItemsFor(node, { canAddAsOwner: ownerSwitch !== null })
   const { data: entries } = useEntries(workspaceId)
   const { data: indexTargets } = useIndexTargets(workspaceId)
   const { setCacheStrategy, setIndexTarget } = useEntryActions()
@@ -152,6 +159,7 @@ export function NodeContextMenu({
     addFolder: () => onAddPaths('folder'),
     addFile: () => onAddPaths('file'),
     addRemoteFolder: onAddRemote,
+    addAsOwner: onAddAsOwner,
     reveal,
     copyPath: () => {
       // 本地为 Windows 路径，远程为服务器上的绝对路径（「复制 URI」才含连接与身份）
@@ -171,6 +179,7 @@ export function NodeContextMenu({
     addFolder: t('explorer:menuAddFolder'),
     addFile: t('explorer:menuAddFile'),
     addRemoteFolder: t('explorer:menuAddRemoteFolder'),
+    addAsOwner: t('explorer:addAsOwner', { owner: ownerSwitch ?? '' }),
     reveal: t('explorer:reveal'),
     cacheStrategy: t('explorer:cacheStrategy'),
     buildIndex: t('explorer:buildIndex'),

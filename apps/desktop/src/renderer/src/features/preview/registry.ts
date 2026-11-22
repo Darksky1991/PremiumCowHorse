@@ -36,6 +36,17 @@ function mimeScore(patterns: readonly string[], mime: string | null): number {
   return best
 }
 
+/** manifest 的 kinds / schemes 是否接受该资源（得分与「文本插件总是候选」共用的前提条件） */
+function acceptsKindAndScheme(manifest: PreviewPluginManifest, resource: ResourceInfo): boolean {
+  const { kinds, schemes } = manifest.match
+  if (kinds && !kinds.includes(resource.kind)) return false
+  if (schemes) {
+    const scheme = schemeOf(resource.uri)
+    if (scheme === null || !schemes.some((s) => s.toLowerCase() === scheme)) return false
+  }
+  return true
+}
+
 /**
  * 插件对资源的匹配得分（doc 9.3）：扩展名命中 3 分、MIME 精确命中 2 分、MIME 通配命中 1 分，
  * 再加上 priority。kinds / schemes 不符、超过 maxSize、when 返回 false 时不匹配（null）；
@@ -47,12 +58,8 @@ export function scoreResource(
   manifest: PreviewPluginManifest,
   resource: ResourceInfo
 ): number | null {
-  const { kinds, extensions, mimeTypes, schemes, maxSize } = manifest.match
-  if (kinds && !kinds.includes(resource.kind)) return null
-  if (schemes) {
-    const scheme = schemeOf(resource.uri)
-    if (scheme === null || !schemes.some((s) => s.toLowerCase() === scheme)) return null
-  }
+  const { extensions, mimeTypes, maxSize } = manifest.match
+  if (!acceptsKindAndScheme(manifest, resource)) return null
   if (maxSize !== undefined && resource.size > maxSize) return null
 
   const ext = extensions?.some((e) => hasExtension(resource.name, e)) ? EXTENSION_SCORE : 0
@@ -112,7 +119,8 @@ export function pluginById(
 
 /**
  * 可用于资源的查看器（地址栏下拉、host.tabs.candidates）：按得分从高到低（同分先注册者在前）的匹配插件，
- * 文件另加文本插件（即使不按扩展名 / MIME 匹配，已注册时），最后是 fallback（文件信息）；无重复
+ * 文件另加文本插件（即使不按扩展名 / MIME 匹配，已注册且其 kinds / schemes 接受该资源时——远程文件不加，
+ * M4 设计 5.8），最后是 fallback（文件信息）；无重复。resolvePlugin 的 viewer / 关联只在候选中生效
  */
 export function candidatesFor(
   plugins: readonly AnyPreviewPlugin[],
@@ -128,7 +136,9 @@ export function candidatesFor(
   const result = scored.sort((x, y) => y.score - x.score).map((x) => x.plugin)
   if (resource.kind === 'file') {
     const text = pluginById(plugins, TEXT_PLUGIN_ID)
-    if (text !== null && !result.includes(text)) result.push(text)
+    if (text !== null && !result.includes(text) && acceptsKindAndScheme(text.manifest, resource)) {
+      result.push(text)
+    }
   }
   result.push(fallbackOf(plugins))
   return result

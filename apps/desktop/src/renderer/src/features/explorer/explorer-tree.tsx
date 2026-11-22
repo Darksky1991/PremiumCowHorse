@@ -325,13 +325,29 @@ export function ExplorerTree({
     setDialogOpen(true)
   }
 
+  /**
+   * 键盘打开菜单（Shift+F10 / 菜单键）：浏览器把 contextmenu 发给获得焦点的树本身（不是某一行），
+   * 此时菜单作用于选中的节点（activedescendant 模式下的「当前行」）
+   */
+  const keyboardMenu = useRef(false)
+
   const onContextMenu = (
     e: MouseEvent<HTMLDivElement> & { preventBaseUIHandler?: () => void }
   ): void => {
+    const byKeyboard = keyboardMenu.current
+    keyboardMenu.current = false
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]')
-    const node = row ? (nodes[Number(row.dataset.index)] ?? null) : null
-    if (node !== null && isStatusNode(node)) {
-      // 状态行没有菜单：交由浏览器默认行为（Electron 中不显示任何东西）
+    const node = byKeyboard
+      ? (nodes[selectedIndex] ?? null)
+      : row
+        ? (nodes[Number(row.dataset.index)] ?? null)
+        : null
+    if (
+      node !== null &&
+      isStatusNode(node) &&
+      ownerSwitchFor(node, entries, connections) === null
+    ) {
+      // 状态行没有菜单（无权限且可以「以属主身份添加」的除外）：交由浏览器默认行为（Electron 中不显示任何东西）
       e.preventBaseUIHandler?.()
       return
     }
@@ -449,6 +465,11 @@ export function ExplorerTree({
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     // 只处理树本身获得焦点时的按键：行内控件（「重试」按钮）上的 Enter / ↑↓ 交给控件自己
     if (e.target !== e.currentTarget) return
+    // 键盘打开菜单：不阻止默认动作（浏览器随后发出 contextmenu），只记下来源
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+      keyboardMenu.current = true
+      return
+    }
     const current = nodes[selectedIndex]
     // Ctrl+Enter：在新标签打开（默认查看器）
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
@@ -567,6 +588,12 @@ export function ExplorerTree({
           onNewGroup={() => openNewGroup(menuNode)}
           onAddPaths={(kind) => void addPaths(kind)}
           onAddRemote={() => openDialog({ type: 'addRemote' })}
+          ownerSwitch={
+            menuNode === null
+              ? null
+              : (ownerSwitchFor(menuNode, entries, connections)?.owner ?? null)
+          }
+          onAddAsOwner={() => menuNode && addAsOwner(menuNode)}
           onRename={() => menuNode && openRename(menuNode)}
           onRemove={() => menuNode && openRemove(menuNode)}
           onPin={() => menuNode && pin(menuNode)}

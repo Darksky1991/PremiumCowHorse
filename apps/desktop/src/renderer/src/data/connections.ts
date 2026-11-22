@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState } from 'react'
 import {
   useMutation,
   useQuery,
@@ -35,10 +35,27 @@ export function connectionNamesOf(
   return Object.fromEntries((list ?? []).map((c) => [c.id, c.name]))
 }
 
-/** 当前的连接名表（引用在连接列表不变时稳定） */
+/** 两个名称表的内容（id → 名称）是否相同 */
+export function sameConnectionNames(
+  a: Readonly<Record<string, string>>,
+  b: Readonly<Record<string, string>>
+): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => b[k] === a[k])
+}
+
+/**
+ * 当前的连接名表。按内容比较：connection.status 只改连接状态时列表会重新取得，
+ * 名称不变则返回同一对象（依赖它的预览宿主等不随状态变化重建）
+ */
 export function useConnectionNames(): Record<string, string> {
   const { data } = useConnections()
-  return useMemo(() => connectionNamesOf(data), [data])
+  const next = connectionNamesOf(data)
+  const [stable, setStable] = useState(next)
+  if (sameConnectionNames(stable, next)) return stable
+  // 根据渲染结果调整 state（React 推荐的写法，与 explorer 的 useStableDirectories 相同）
+  setStable(next)
+  return next
 }
 
 /**

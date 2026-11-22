@@ -3,7 +3,8 @@ import path from 'node:path'
 import { expect, type Page } from '@playwright/test'
 import {
   startFakeSftpServer,
-  type FakeSftpServer
+  type FakeSftpServer,
+  type FakeSftpServerOptions
 } from '../apps/desktop/src/main/modules/connection/testing/fake-sftp-server'
 import { data } from './support'
 
@@ -20,11 +21,12 @@ export const PASSWORD_METHODS = ['password', 'keyboard-interactive']
 
 /**
  * 在测试进程中启动假 SFTP 服务器（真实的 ssh2 Server，只监听 127.0.0.1），root 映射为服务器的 /。
- * opts：同端口重启（port）、指定主机密钥（PEM；缺省每次生成新的 ed25519）。用例结束时调用 close()
+ * opts：同端口重启（port）、指定主机密钥（PEM；缺省每次生成新的 ed25519）、属主列（owner）、
+ * 无权限的路径（deny）。用例结束时调用 close()
  */
 export async function startSftp(
   root: string,
-  opts: { port?: number; hostKey?: string } = {}
+  opts: Pick<FakeSftpServerOptions, 'port' | 'hostKey' | 'owner' | 'deny'> = {}
 ): Promise<FakeSftpServer> {
   mkdirSync(path.join(root, ...SFTP_HOME.split('/').filter(Boolean)), { recursive: true })
   return startFakeSftpServer({

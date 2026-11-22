@@ -29,6 +29,8 @@ export interface FakeSftpServerOptions {
   users: Record<string, string> // 用户名 → 密码
   home?: string // realpath('.') 的结果，默认 '/'
   owner?: (path: string) => string // longname 的属主列，默认 'pchuser'
+  /** 对返回 true 的服务器路径，OPENDIR / STAT 回 PERMISSION_DENIED（模拟无权限的目录） */
+  deny?: (path: string) => boolean
   hostKey?: string // PEM；默认每次生成 ed25519
   /** 提供的认证方式（数组 = 同时列出多种），默认 'password' */
   authMethod?: FakeAuthMethod | FakeAuthMethod[]
@@ -112,6 +114,8 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
     return { server, local: join(opts.root, ...segs) }
   }
 
+  const denied = (path: string): boolean => opts.deny?.(local(path).server) === true
+
   const serveSftp = (sftp: SFTPWrapper): void => {
     const dirs = new Map<number, { server: string; local: string; names: string[]; pos: number }>()
     let nextHandle = 0
@@ -128,6 +132,7 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
         )
       })
       .on('STAT', (reqid, path) => {
+        if (denied(path)) return reply(() => sftp.status(reqid, STATUS_CODE.PERMISSION_DENIED))
         stat(local(path).local).then(
           (s) => reply(() => sftp.attrs(reqid, attrsOf(s))),
           (e: unknown) => reply(() => sftp.status(reqid, statusOf(e)))
@@ -140,6 +145,7 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
         )
       })
       .on('OPENDIR', (reqid, path) => {
+        if (denied(path)) return reply(() => sftp.status(reqid, STATUS_CODE.PERMISSION_DENIED))
         const p = local(path)
         readdir(p.local).then(
           (names) => {
