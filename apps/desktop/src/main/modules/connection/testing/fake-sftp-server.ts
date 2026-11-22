@@ -13,11 +13,15 @@ export interface FakeSftpServer {
   hostKey: HostKeyInfo
   /** 收到的认证尝试（方法名），用于断言「只提交一次」 */
   authAttempts: string[]
+  /** keyboard-interactive 收到的应答（每轮一个数组），用于断言「不交出密码」 */
+  kbdAnswers: string[][]
   /** 停止响应（不关闭 TCP：模拟静默断线） */
   freeze(): void
   /** 关闭所有连接与监听 */
   close(): Promise<void>
 }
+
+export type FakeAuthMethod = 'password' | 'keyboard-interactive'
 
 export interface FakeSftpServerOptions {
   root: string // 本地目录，映射为服务器的 /
@@ -25,8 +29,10 @@ export interface FakeSftpServerOptions {
   home?: string // realpath('.') 的结果，默认 '/'
   owner?: (path: string) => string // longname 的属主列，默认 'pchuser'
   hostKey?: string // PEM；默认每次生成 ed25519
-  /** 唯一提供的认证方式，默认 'password' */
-  authMethod?: 'password' | 'keyboard-interactive'
+  /** 提供的认证方式（数组 = 同时列出多种），默认 'password' */
+  authMethod?: FakeAuthMethod | FakeAuthMethod[]
+  /** keyboard-interactive 的提示，默认 [{ prompt: 'Password: ', echo: false }]；第一个提示的应答与密码比较 */
+  kbdPrompts?: { prompt: string; echo: boolean }[]
   /** 监听端口，默认 0（随机）；e2e 用同端口同密钥重启 */
   port?: number
 }
@@ -80,7 +86,8 @@ function longnameOf(name: string, a: Attributes, owner: string): string {
 export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<FakeSftpServer> {
   const home = opts.home ?? '/'
   const ownerOf = opts.owner ?? (() => 'pchuser')
-  const method = opts.authMethod ?? 'password'
+  const methods: FakeAuthMethod[] = [opts.authMethod ?? 'password'].flat()
+  const kbdPrompts = opts.kbdPrompts ?? [{ prompt: 'Password: ', echo: false }]
   const hostKeyPem = opts.hostKey ?? utils.generateKeyPairSync('ed25519').private
   const parsed = utils.parseKey(hostKeyPem)
   if (parsed instanceof Error) throw parsed
@@ -92,6 +99,7 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
   }
 
   const authAttempts: string[] = []
+  const kbdAnswers: string[][] = []
   const sockets = new Set<Socket>()
   let frozen = false
 
@@ -178,19 +186,20 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
     client.on('authentication', (ctx) => {
       authAttempts.push(ctx.method)
       const expected = opts.users[ctx.username]
-      if (ctx.method === 'password' && method === 'password') {
+      if (ctx.method === 'password' && methods.includes('password')) {
         return expected !== undefined && sameSecret(ctx.password, expected)
           ? ctx.accept()
-          : ctx.reject([method])
+          : ctx.reject(methods)
       }
-      if (ctx.method === 'keyboard-interactive' && method === 'keyboard-interactive') {
-        return ctx.prompt([{ prompt: 'Password: ', echo: false }], (answers) => {
+      if (ctx.method === 'keyboard-interactive' && methods.includes('keyboard-interactive')) {
+        return ctx.prompt(kbdPrompts, (answers) => {
+          kbdAnswers.push(answers)
           const a = answers[0]
           if (expected !== undefined && a !== undefined && sameSecret(a, expected)) ctx.accept()
-          else ctx.reject([method])
+          else ctx.reject(methods)
         })
       }
-      ctx.reject([method])
+      ctx.reject(methods)
     })
     client.on('ready', () => {
       client.on('session', (accept) => {
@@ -221,6 +230,7 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
     port,
     hostKey,
     authAttempts,
+    kbdAnswers,
     freeze: () => {
       frozen = true
       // 不再读取：保活请求、SFTP 请求都得不到应答，TCP 保持打开

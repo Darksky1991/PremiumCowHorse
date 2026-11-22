@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { createServer, type Server as NetServer, type Socket } from 'node:net'
+import { createServer, Socket, type Server as NetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { utils, type ClientChannel } from 'ssh2'
 import { AppError, type HostKeyInfo } from '@pch/shared'
 import { sftpOverChannel } from './sftp-bridge'
+import { wrapSftp, type RawSftp } from './sftp-session'
 import {
   connectSsh,
   hostKeyInfo,
@@ -177,7 +178,49 @@ describe('authentication is submitted once', () => {
     )
     // 假服务器只提供 password：密钥能解析（不是 CONN_KEY_INVALID），但不提交任何密码类认证
     expect(err.code).toBe('CONN_AUTH_FAILED')
+    // 连接池（Task 8）据此区分「没有可用方式」与「凭据错误」
+    expect(err.detail).toContain('no acceptable method')
     expect(s.authAttempts.filter((m) => m !== 'none')).toEqual([])
+  })
+
+  it('server lists both password and keyboard-interactive: wrong password is still submitted once', async () => {
+    const s = await server({ authMethod: ['password', 'keyboard-interactive'] })
+    const err = await errorOf(connectSsh(cfg(s, { auth: { kind: 'password', password: 'wrong' } })))
+    expect(err.code).toBe('CONN_AUTH_FAILED')
+    expect(err.detail ?? '').not.toContain('no acceptable method')
+    expect(s.authAttempts.filter((m) => PASSWORD_METHODS.includes(m))).toEqual(['password'])
+    expect(s.kbdAnswers).toEqual([])
+  })
+
+  it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_FAILED, password not handed over', async () => {
+    const s = await server({
+      authMethod: 'keyboard-interactive',
+      kbdPrompts: [
+        { prompt: 'Password: ', echo: false },
+        { prompt: 'Verification code: ', echo: true }
+      ]
+    })
+    // 本端放弃认证的失败路径要真正销毁自己持有的套接字（ssh2 的 destroy() 在 end() 之后是空操作）
+    const orig = Socket.prototype.destroy
+    const destroyedRemotePorts: (number | undefined)[] = []
+    const spy = vi.spyOn(Socket.prototype, 'destroy').mockImplementation(function (
+      this: Socket,
+      error?: Error
+    ) {
+      destroyedRemotePorts.push(this.remotePort)
+      return orig.call(this, error)
+    })
+    let err: AppError
+    try {
+      err = await errorOf(connectSsh(cfg(s)))
+    } finally {
+      spy.mockRestore()
+    }
+    expect(destroyedRemotePorts).toContain(s.port)
+    expect(err.code).toBe('CONN_AUTH_FAILED')
+    expect(err.detail).toContain('unsupported prompt')
+    expect(err.detail ?? '').not.toContain('Pch-pass1')
+    expect(s.kbdAnswers).toEqual([])
   })
 })
 
@@ -282,6 +325,20 @@ describe('liveness', () => {
     console.info(`[freeze] keepaliveSec=1 → onClose after ${ms} ms`)
   }, 10_000)
 
+  it('close() on a silently dead server → onClose(null) within 4 s and the socket is destroyed', async () => {
+    const s = await server()
+    const session = await connect(cfg(s))
+    const closed = new Promise<AppError | null>((r) => session.onClose(r))
+    s.freeze()
+    const t0 = Date.now()
+    session.close()
+    expect(await closed).toBeNull()
+    expect(Date.now() - t0).toBeLessThan(4000)
+    // ssh2 内部的 _sock 即 connectSsh 自己创建并传入的套接字
+    const sock = (session.client as unknown as { _sock: Socket })._sock
+    expect(sock.destroyed).toBe(true)
+  }, 10_000)
+
   it('close() → onClose(null); exec after close → FS_UNAVAILABLE', async () => {
     const s = await server()
     const session = await connect(cfg(s))
@@ -291,6 +348,21 @@ describe('liveness', () => {
     // 关闭之后注册的回调也会收到
     expect(await new Promise((r) => session.onClose(r))).toBeNull()
     expect((await errorOf(session.exec('true', { pty: false }))).code).toBe('FS_UNAVAILABLE')
+  })
+})
+
+describe('wrapSftp', () => {
+  it('a malformed result from ssh2 rejects instead of throwing in the callback', async () => {
+    const raw = {
+      on: () => raw,
+      stat: () => {},
+      lstat: () => {},
+      realpath: () => {},
+      // ssh2 回调给出非数组（不应发生，但 map 抛出时必须以拒绝结束）
+      readdir: (_p: string, cb: (e: Error | undefined, v: unknown) => void) => cb(undefined, null)
+    } as unknown as RawSftp
+    const err = await errorOf(wrapSftp(raw).readdir('/', signal()))
+    expect(err.code).toBe('UNKNOWN')
   })
 })
 

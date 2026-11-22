@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { Socket } from 'node:net'
 import type { Duplex, Readable } from 'node:stream'
 import {
   Client,
@@ -131,25 +132,39 @@ export function toExecChannel(ch: ClientChannel): ExecChannel {
   }
 }
 
+/** 认证在本端被放弃的原因（优先于 ssh2 的通用错误消息） */
+interface AuthRefusal {
+  /** 服务器列出的方式里没有可用的（连接池据 detail 的 'no acceptable method' 区分，不同于凭据错误） */
+  noMethod(detail: string): void
+  /** 遇到不支持的提示：不交出密码，断开 */
+  abort(detail: string): void
+}
+
 /**
  * 认证方式的选择（设计 5.2「一次连接只用一种方式提交一次密码」）：
  * 第一次以 none 询问服务器接受的方式（不提交任何凭据），然后只选一种：
- * 密码 → 有 password 用它，否则 keyboard-interactive（以密码作答一轮提示）；私钥 → publickey。
+ * 密码 → 有 password 用它，否则 keyboard-interactive（只对 echo:false 的提示以密码作答一轮）；私钥 → publickey。
  * 选过一次后返回 false 结束（ssh2 以 client-authentication 报错，lib/client.js 第 863–866 行）。
  */
 function makeAuthHandler(
   username: string,
   auth: SshAuth,
   key: ParsedKey | null,
-  onExtraPrompt: () => void
+  refuse: AuthRefusal
 ) {
   let step = 0
   return (methodsLeft: AuthenticationType[] | null): AnyAuthMethod | false => {
     step++
     if (step === 1) return { type: 'none', username }
     if (step > 2 || !methodsLeft) return false
+    const none = (): false => {
+      refuse.noMethod(`no acceptable method (server offers: ${methodsLeft.join(',') || '-'})`)
+      return false
+    }
     if (auth.kind === 'key') {
-      return key && methodsLeft.includes('publickey') ? { type: 'publickey', username, key } : false
+      return key && methodsLeft.includes('publickey')
+        ? { type: 'publickey', username, key }
+        : none()
     }
     if (methodsLeft.includes('password')) {
       return { type: 'password', username, password: auth.password }
@@ -160,15 +175,24 @@ function makeAuthHandler(
         type: 'keyboard-interactive',
         username,
         prompt: (_name, _instructions, _lang, prompts: Prompt[], finish) => {
-          // 没有问题的一轮（OpenSSH PAM 常见）照常应答；第二轮带问题的提示不再交出密码
+          // 没有问题的一轮（OpenSSH PAM 常见）照常应答
           if (prompts.length === 0) return finish([])
-          if (answered) return onExtraPrompt()
+          // 回显的提示（用户名、OTP 等）不是密码：整轮都不作答，不交出密码
+          const echoed = prompts.find((p) => p.echo)
+          if (echoed) {
+            return refuse.abort(
+              `keyboard-interactive: unsupported prompt (echo): ${echoed.prompt.slice(0, 100)}`
+            )
+          }
+          // 第二轮带问题的提示不再交出密码
+          if (answered)
+            return refuse.abort('keyboard-interactive: unsupported prompt (second round)')
           answered = true
           finish(prompts.map(() => auth.password))
         }
       }
     }
-    return false
+    return none()
   }
 }
 
@@ -181,6 +205,10 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
   }
 
   const client = new Client()
+  // 自己创建并持有套接字（经 ssh2 的 sock 配置传入，lib/client.js 第 290、1159–1173 行）：
+  // client.end() 只发 DISCONNECT 并半关闭，ssh2 的 destroy() 在半关闭之后不再生效（第 1187–1189 行 isWritable），
+  // 对静默断线的服务器需要由我们强制销毁
+  const sock = new Socket()
   return new Promise<SshSession>((resolve, reject) => {
     let settled = false
     /** 由我们决定的失败原因（主机密钥被拒、多余的认证提示），优先于 ssh2 的错误 */
@@ -191,7 +219,7 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
       settled = true
       reject(e)
       client.end()
-      client.destroy()
+      sock.destroy()
     }
 
     const hostVerifier = (blob: Buffer, verify: (ok: boolean) => void): void => {
@@ -220,12 +248,14 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
       )
     }
 
-    const authHandler = makeAuthHandler(cfg.username, cfg.auth, key, () => {
-      failure = new AppError({
-        code: 'CONN_AUTH_FAILED',
-        detail: 'additional keyboard-interactive prompts are not answered'
-      })
-      client.end()
+    const authHandler = makeAuthHandler(cfg.username, cfg.auth, key, {
+      noMethod: (detail) => {
+        failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
+      },
+      abort: (detail) => {
+        failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
+        fail(failure)
+      }
     })
 
     client.on('error', (err: Ssh2Error) => {
@@ -237,7 +267,7 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
     client.once('ready', () => {
       if (settled) return
       settled = true
-      resolve(createSession(client))
+      resolve(createSession(client, sock))
     })
 
     const config: ConnectConfig = {
@@ -249,9 +279,16 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
       authHandler: authHandler as unknown as ConnectConfig['authHandler'],
       keepaliveInterval: cfg.keepaliveSec * 1000,
       keepaliveCountMax: 3,
-      readyTimeout: cfg.readyTimeoutMs
+      readyTimeout: cfg.readyTimeoutMs,
+      sock
     }
     try {
+      // 先发起 TCP 连接：传入时 connecting = true，ssh2 等待其 connect 事件再开始协议（lib/client.js 第 758–798、
+      // 1162–1167 行；connecting 为 false 时 ssh2 视为已连接、立即开始）。连接错误在之后的 tick 发出，
+      // 由 ssh2 同步挂上的 error 监听报告为 client-socket（第 801–805 行）
+      // 与 ssh2 自建套接字时相同（第 1136 行）：ssh2 在套接字上挂多个监听
+      sock.setMaxListeners(0)
+      sock.connect({ host: cfg.host, port: cfg.port })
       client.connect(config)
     } catch (e) {
       fail(new AppError({ code: 'UNKNOWN', detail: e instanceof Error ? e.message : String(e) }))
@@ -259,8 +296,11 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
   })
 }
 
+/** close() 发出 DISCONNECT 之后等待对端关闭的上限；到时强制销毁套接字 */
+const CLOSE_GRACE_MS = 2000
+
 /** 已认证的 Client → SshSession */
-function createSession(client: Client): SshSession {
+function createSession(client: Client, sock: Socket): SshSession {
   let closed = false
   let closedByUs = false
   let lastError: Ssh2Error | null = null
@@ -270,7 +310,9 @@ function createSession(client: Client): SshSession {
   client.on('error', (err: Ssh2Error) => {
     lastError = err
   })
+  let graceTimer: ReturnType<typeof setTimeout> | undefined
   client.on('close', () => {
+    clearTimeout(graceTimer)
     if (closed) return
     closed = true
     // 自己关闭 → null；保活超时 / 套接字错误 / 服务器断开 → FS_UNAVAILABLE（台账 T1-b）
@@ -327,6 +369,9 @@ function createSession(client: Client): SshSession {
       if (closed || closedByUs) return
       closedByUs = true
       client.end()
+      // 静默断线的服务器不会回应 DISCONNECT，也不会关闭 TCP：到时强制销毁（随后 ssh2 发出 close）
+      graceTimer = setTimeout(() => sock.destroy(), CLOSE_GRACE_MS)
+      graceTimer.unref()
     }
   }
 }

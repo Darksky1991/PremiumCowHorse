@@ -68,8 +68,13 @@ export function wrapSftp(raw: RawSftp): SftpSession {
         if (done) return
         done = true
         signal.removeEventListener('abort', onAbort)
-        if (err) reject(toError(err))
-        else resolve(map(value as R))
+        if (err) return reject(toError(err))
+        // map 不得在 ssh2 的回调里抛出（会冒泡进 ssh2 的协议解析）：出错时以拒绝结束
+        try {
+          resolve(map(value as R))
+        } catch (e) {
+          reject(toSftpAppError(e))
+        }
       }
       try {
         start((err, value) => finish(err, value))
