@@ -1233,6 +1233,133 @@ describe('ConnectionPool: test()', () => {
     const r = await h.pool.test('c1')
     expect(r.steps.map((s) => [s.step, s.ok])).toEqual([['connect', false]])
   })
+
+  it('C2：池的连接尝试进行中点测试 → 等它结束；它以认证失败结束 → 作为 auth 步骤的结果，只拨号 1 次', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED', detail: 'client-authentication' })
+    const p = h.pool.session(LOGIN, opts())
+    p.catch(() => undefined)
+    await flush()
+    const t = h.pool.test('c1')
+    await flush()
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    answer.resolve(true)
+    const r = await t
+    expect(r.steps.map((s) => [s.step, s.ok, s.error?.code])).toEqual([
+      ['connect', true, undefined],
+      ['hostKey', true, undefined],
+      ['auth', false, 'CONN_AUTH_FAILED']
+    ])
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    expect(h.repo.records.get('c1')!.authState).toBe('auth-failed')
+  })
+
+  it('C2：池的尝试以其他原因结束（连不上）→ 测试照常拨号', async () => {
+    const h = setup()
+    h.connect.mockRejectedValueOnce(new AppError({ code: 'FS_UNAVAILABLE' }))
+    await errorOf(h.pool.session(LOGIN, opts()))
+    const r = await h.pool.test('c1')
+    expect(h.connect).toHaveBeenCalledTimes(2)
+    expect(r.steps.every((s) => s.ok)).toBe(true)
+  })
+
+  it('C2：测试的拨号进行中，池的请求等它结束；测试认证失败 → 池不再拨号', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED', detail: 'client-authentication' })
+    const t = h.pool.test('c1')
+    await flush()
+    const p = h.pool.session(LOGIN, opts())
+    await flush()
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    answer.resolve(true)
+    await t
+    expect((await errorOf(p)).code).toBe('CONN_AUTH_FAILED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    expect(h.ask).toHaveBeenCalledTimes(1)
+  })
+
+  it('C2：池的身份打开进行中测试同一连接 → sudo 不并行；池的打开以 sudo 认证失败结束 → 测试不再交出 sudo 密码', async () => {
+    const h = setup()
+    const gate = deferred<void>()
+    let running = 0
+    let maxRunning = 0
+    h.identityPlan = async () => {
+      running++
+      maxRunning = Math.max(maxRunning, running)
+      try {
+        await gate.promise
+        throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+      } finally {
+        running--
+      }
+    }
+    const p = h.pool.session(APP1, opts())
+    p.catch(() => undefined)
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    const t = h.pool.test('c1')
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    gate.resolve()
+    const r = await t
+    expect(maxRunning).toBe(1)
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    expect(r.steps.at(-1)).toMatchObject({
+      step: 'identity',
+      identity: 'app1',
+      ok: false,
+      error: { code: 'CONN_SUDO_AUTH_FAILED' }
+    })
+    expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
+  })
+
+  it('C2：池的身份打开成功 → 测试的身份步骤在其后进行（不并行）', async () => {
+    const h = setup()
+    const gate = deferred<void>()
+    let running = 0
+    let maxRunning = 0
+    h.identityPlan = async (d) => {
+      running++
+      maxRunning = Math.max(maxRunning, running)
+      if (h.openIdentity.mock.calls.length === 1) await gate.promise
+      running--
+      return { channel: new FakeChannel(), firstData: Buffer.alloc(0), mode: d.mode }
+    }
+    const p = h.pool.session(APP1, opts())
+    await flush()
+    const t = h.pool.test('c1')
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    gate.resolve()
+    await p
+    const r = await t
+    expect(r.steps.every((s) => s.ok)).toBe(true)
+    expect(maxRunning).toBe(1)
+    expect(h.openIdentity).toHaveBeenCalledTimes(3)
+  })
+
+  it('C2：dispose 等进行中的测试结束（含其锁定写入）；dispose 之后测试 → FS_UNAVAILABLE', async () => {
+    const h = setup()
+    const gate = deferred<void>()
+    h.identityPlan = async () => {
+      await gate.promise
+      throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+    }
+    const t = h.pool.test('c1')
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    let done = false
+    const disposing = h.pool.dispose().then(() => (done = true))
+    await flush()
+    expect(done).toBe(false)
+    gate.resolve()
+    await disposing
+    await t
+    expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
+    expect((await errorOf(h.pool.test('c1'))).code).toBe('FS_UNAVAILABLE')
+  })
 })
 
 describe('ConnectionPool: 集成（fake sftp server + 真实 connectSsh）', () => {

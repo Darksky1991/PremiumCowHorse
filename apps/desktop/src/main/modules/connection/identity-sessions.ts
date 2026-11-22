@@ -209,9 +209,48 @@ export class IdentityMemory {
   private readonly failures = new Map<string, { error: AppError; at: number }>()
   /** requiretty 的「连接 + 身份」改用终端方式 */
   private readonly modes = new Map<string, SwitchMode>()
+  /** 每个连接的 sudo 锁定次数（test() 据此知道等待期间是否发生了 sudo 锁定） */
+  private readonly sudoLocks = new Map<string, number>()
+  /** 每个连接的身份切换队列的末尾（池的打开与 test() 的身份步骤共用，跨 SSH 连接） */
+  private readonly turns = new Map<string, Promise<void>>()
 
   /** now：连接池注入的时钟 */
   constructor(private readonly now: () => number) {}
+
+  lockSudo(connectionId: string): void {
+    this.sudoLocked.add(connectionId)
+    this.sudoLocks.set(connectionId, this.sudoLockGen(connectionId) + 1)
+  }
+
+  sudoLockGen(connectionId: string): number {
+    return this.sudoLocks.get(connectionId) ?? 0
+  }
+
+  /**
+   * 同一连接上的身份切换逐个进行（sudo 密码错误时只提交一次：并发打开 app1 / root、或测试与池同时打开，
+   * 会让一个错密码同时提交多次，pam_faillock 按登录用户计数）。排队中被中止 → FS_CANCELLED（前一个照常进行）
+   */
+  async withSudoTurn<T>(
+    connectionId: string,
+    signal: AbortSignal,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const prev = this.turns.get(connectionId) ?? Promise.resolve()
+    let release!: () => void
+    const mine = new Promise<void>((r) => (release = r))
+    // 下一个要等前一个与本次都结束（本次在排队中被中止时，前一个可能仍在进行）
+    const tail = prev.then(() => mine)
+    this.turns.set(connectionId, tail)
+    try {
+      await raceSignal(prev, signal)
+      return await fn()
+    } finally {
+      release()
+      void tail.then(() => {
+        if (this.turns.get(connectionId) === tail) this.turns.delete(connectionId)
+      })
+    }
+  }
 
   /**
    * R10：有记住的失败时，后台请求以同一错误失败；用户操作清除记忆后重试。
@@ -294,7 +333,6 @@ const unavailable = (): AppError =>
 export class ConnIdentities {
   private readonly entries = new Map<string, Entry>()
   private probe: Promise<ProbeResult> | null = null
-  private turn: Promise<void> = Promise.resolve()
   private closed = false
 
   constructor(
@@ -372,23 +410,17 @@ export class ConnIdentities {
   }
 
   /**
-   * 同一连接上的身份切换逐个进行：sudo 密码错误时只提交一次——并发打开 app1 / root 会让一个错密码
-   * 同时提交多次（pam_faillock 按登录用户计数），排在后面的在锁定检查处停下
+   * 同一连接上的身份切换逐个进行（IdentityMemory.withSudoTurn）：sudo 密码错误时只提交一次，
+   * 排在后面的在锁定检查处停下
    */
   private async open(identity: string, signal: AbortSignal): Promise<OpenedIdentity> {
-    const prev = this.turn
-    let release!: () => void
-    const mine = new Promise<void>((r) => (release = r))
-    // 下一个要等前一个与本次都结束（本次在排队中被中止时，前一个可能仍在进行）
-    this.turn = prev.then(() => mine)
     try {
-      await raceSignal(prev, signal)
-      return await this.openNow(identity, signal)
+      return await this.deps.memory.withSudoTurn(this.connectionId, signal, () =>
+        this.openNow(identity, signal)
+      )
     } catch (e) {
       const err = toAppError(e)
       throw err.code === 'FS_CANCELLED' && this.closed ? unavailable() : err
-    } finally {
-      release()
     }
   }
 
@@ -441,29 +473,38 @@ export class ConnIdentities {
 
 /**
  * 「测试连接」的身份步骤：逐个身份打开后立即关闭；第一次 sudo 认证失败即停止（锁定）并返回 true。
- * 成功的身份清除 R10 记忆。
+ * 成功的身份清除 R10 记忆。每个身份在按连接的 sudo 互斥中进行（C2：不与池的身份打开并行）；
+ * 拿到之后若测试开始以来发生过 sudo 锁定（sudoGen 变了：池的打开刚以 sudo 认证失败结束），
+ * 不再交出 sudo 密码，以该锁定结束
  */
 export async function testIdentitySteps(
   rec: ConnectionRecord,
   ssh: SshSession,
   deps: IdentityDeps,
-  steps: ConnectionTestStep[]
+  steps: ConnectionTestStep[],
+  sudoGen: number
 ): Promise<boolean> {
   const { memory } = deps
+  const never = new AbortController().signal
   let probe: Promise<ProbeResult> | null = null
   for (const identity of rec.identities) {
     try {
       probe ??= runProbe(ssh)
       const params = identityParams(rec, await probe, deps.secrets)
-      const opened = await openIdentitySession({
-        ssh,
-        openIdentity: deps.openIdentity,
-        bridge: deps.bridge,
-        identity,
-        ...params,
-        mode: memory.mode(rec.id, identity),
-        signal: new AbortController().signal,
-        onNeedsTty: () => memory.needsTty(rec.id, identity)
+      const opened = await memory.withSudoTurn(rec.id, never, async () => {
+        if (memory.sudoLockGen(rec.id) !== sudoGen) {
+          throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED', detail: 'locked' })
+        }
+        return openIdentitySession({
+          ssh,
+          openIdentity: deps.openIdentity,
+          bridge: deps.bridge,
+          identity,
+          ...params,
+          mode: memory.mode(rec.id, identity),
+          signal: never,
+          onNeedsTty: () => memory.needsTty(rec.id, identity)
+        })
       })
       opened.channel.close()
       memory.forget(rec.id, identity)
@@ -477,7 +518,8 @@ export async function testIdentitySteps(
       const err = toAppError(e)
       steps.push({ step: 'identity', identity, ok: false, error: err.toPayload() })
       if (err.code === 'CONN_SUDO_AUTH_FAILED') {
-        await deps.lockSudo(rec.id, rec)
+        // 等待期间别处已锁定：锁定已写入，不重复写
+        if (err.detail !== 'locked') await deps.lockSudo(rec.id, rec)
         return true
       }
     }

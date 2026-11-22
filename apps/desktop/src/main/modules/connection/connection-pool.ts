@@ -84,6 +84,12 @@ interface Owner {
   identity: string | null
 }
 
+/** 一次连接尝试（池的尝试或 test() 的拨号）；dialed：拨号时读到的记录（拨号之前失败为 null） */
+interface Attempt {
+  promise: Promise<SshSession>
+  dialed: ConnectionRecord | null
+}
+
 interface DialHooks {
   /** 状态变化（host-key-pending / connecting） */
   onState?(state: ConnectionState): void
@@ -100,6 +106,13 @@ const sameKey = (a: HostKeyInfo, b: HostKeyInfo): boolean =>
 const isNoMethod = (e: AppError): boolean =>
   e.code === 'CONN_AUTH_FAILED' && (e.detail ?? '').startsWith('no acceptable method')
 
+/** 交出了凭据且认证失败（不是锁定中拒绝拨号、也不是没有可用的认证方式） */
+const isCredentialFailure = (e: AppError): boolean =>
+  e.code === 'CONN_AUTH_FAILED' && e.detail !== 'locked' && !isNoMethod(e)
+
+const disposedError = (): AppError =>
+  new AppError({ code: 'FS_UNAVAILABLE', detail: 'pool disposed' })
+
 export class ConnectionPool implements SftpSessionSource {
   private readonly conns = new Map<string, Conn>()
   private readonly states = new Map<string, ConnectionState>()
@@ -108,8 +121,10 @@ export class ConnectionPool implements SftpSessionSource {
   private readonly authLocked = new Set<string>()
   /** 主机密钥被拒绝 / 确认超时 / 没有窗口（R13）：后台请求不再询问，用户操作才重新询问 */
   private readonly untrusted = new Set<string>()
-  /** R12：connectionId → 进行中的连接尝试（含已被丢弃的） */
-  private readonly attempts = new Map<string, Promise<SshSession>>()
+  /** R12 / C2：connectionId → 进行中的连接尝试（含已被丢弃的与 test() 的拨号） */
+  private readonly attempts = new Map<string, Attempt>()
+  /** 进行中的 test()（dispose 等它们结束） */
+  private readonly tests = new Set<Promise<unknown>>()
   private readonly memory: IdentityMemory
   private readonly identityDeps: IdentityDeps
   private readonly owners = new WeakMap<SftpSession, Owner>()
@@ -130,7 +145,7 @@ export class ConnectionPool implements SftpSessionSource {
         // 打开身份之后 sudo 凭据被编辑过：失败的是旧的凭据，不覆盖编辑的结果（C1）
         const cur = await deps.repo.get(id).catch(() => opened)
         if (cur === undefined || !sameSudoCredentials(cur, opened)) return
-        this.memory.sudoLocked.add(id)
+        this.memory.lockSudo(id)
         await this.writeAuthState(id, 'sudo-auth-failed')
       }
     }
@@ -145,7 +160,7 @@ export class ConnectionPool implements SftpSessionSource {
     const { connectionId: id, identity } = target
     const { signal } = opts
     if (signal.aborted) throw cancelled()
-    if (this.disposed) throw new AppError({ code: 'FS_UNAVAILABLE', detail: 'pool disposed' })
+    if (this.disposed) throw disposedError()
     const rec = await this.deps.repo.get(id)
     if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
     // 身份必须在该连接登记的 identities 中（编辑删去的身份随之不可用）：不连接、不执行 sudo
@@ -239,9 +254,28 @@ export class ConnectionPool implements SftpSessionSource {
     return s.realpath('.', signal)
   }
 
+  /**
+   * 「测试连接」（D3：锁定中也尝试一次）。C2：与池的连接尝试串行——先等进行中的尝试结束；那次尝试交出了
+   * 凭据并认证失败（且之后凭据没有被编辑）时，直接以它作为 auth 步骤的结果、不再拨号（否则用户输错一次，
+   * 服务器记 2 次）。测试的拨号也登记为连接尝试，池随后的尝试等它结束、再读锁定。
+   * 身份步骤与池的身份打开共用按连接的 sudo 互斥（IdentityMemory.withSudoTurn）
+   */
   async test(connectionId: string): Promise<ConnectionTestResult> {
-    const rec = await this.deps.repo.get(connectionId)
-    if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
+    if (this.disposed) throw disposedError()
+    const run = this.runTest(connectionId)
+    this.tests.add(run)
+    void run.then(
+      () => this.tests.delete(run),
+      () => this.tests.delete(run)
+    )
+    return run
+  }
+
+  private async runTest(connectionId: string): Promise<ConnectionTestResult> {
+    const first = await this.deps.repo.get(connectionId)
+    if (!first) throw new AppError({ code: 'CONN_NOT_FOUND' })
+    // 测试开始之后发生的 sudo 锁定（池的身份打开失败）：测试不再交出 sudo 密码
+    const sudoGen = this.memory.sudoLockGen(connectionId)
     const steps: ConnectionTestStep[] = []
     const fail = (step: ConnectionTestStep['step'], e: unknown): void => {
       steps.push({ step, ok: false, error: toAppError(e).toPayload() })
@@ -249,22 +283,66 @@ export class ConnectionPool implements SftpSessionSource {
 
     let reached = false
     let hostKeyOk: boolean | null = null
+    let reused: AppError | null = null
+    const mine: Attempt = { promise: Promise.resolve(null as unknown as SshSession), dialed: null }
+    const prev = this.attempts.get(connectionId)
+    mine.promise = (async (): Promise<SshSession> => {
+      if (prev) {
+        const prevError = await prev.promise.then(
+          () => null,
+          (e: unknown) => toAppError(e)
+        )
+        if (
+          prevError &&
+          isCredentialFailure(prevError) &&
+          prev.dialed &&
+          (await this.unchangedSince(prev.dialed))
+        ) {
+          reused = prevError
+          throw prevError
+        }
+      }
+      if (this.disposed) throw disposedError()
+      // 等待之后重新读取：凭据以最新为准
+      const rec = await this.deps.repo.get(connectionId)
+      if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
+      mine.dialed = rec
+      try {
+        return await this.dial(rec, {
+          onReached: () => {
+            if (reached) return
+            reached = true
+            steps.push({ step: 'connect', ok: true })
+          },
+          onHostKey: (e) => {
+            hostKeyOk = e === null
+            if (e) fail('hostKey', e)
+            else steps.push({ step: 'hostKey', ok: true })
+          }
+        })
+      } catch (e) {
+        const err = toAppError(e)
+        // 锁定在本尝试结束之前写入：池随后的尝试等它结束后重新读取，看到锁定不再拨号。
+        // 拨号之后凭据被编辑过：失败的是旧的凭据，不锁定（C1）
+        if (isCredentialFailure(err) && (await this.unchangedSince(rec))) {
+          await this.lockAuth(connectionId)
+        }
+        throw err
+      }
+    })()
+    this.track(connectionId, mine)
+
     let ssh: SshSession
     try {
-      ssh = await this.dial(rec, {
-        onReached: () => {
-          if (reached) return
-          reached = true
-          steps.push({ step: 'connect', ok: true })
-        },
-        onHostKey: (e) => {
-          hostKeyOk = e === null
-          if (e) fail('hostKey', e)
-          else steps.push({ step: 'hostKey', ok: true })
-        }
-      })
+      ssh = await mine.promise
     } catch (e) {
       const err = toAppError(e)
+      if (reused) {
+        // 池的尝试已到达服务器并通过了主机密钥检查（认证失败只发生在其后）；锁定已由池写入
+        steps.push({ step: 'connect', ok: true }, { step: 'hostKey', ok: true })
+        fail('auth', reused)
+        return { steps }
+      }
       if (!reached) {
         // 私钥 / 机密的问题发生在连接之前
         const local = err.code === 'CONN_KEY_INVALID' || err.code === 'CONN_SECRET_UNAVAILABLE'
@@ -273,7 +351,6 @@ export class ConnectionPool implements SftpSessionSource {
         fail('hostKey', err)
       } else if (hostKeyOk) {
         fail('auth', err)
-        if (err.code === 'CONN_AUTH_FAILED' && !isNoMethod(err)) await this.lockAuth(connectionId)
       }
       if (!this.conns.has(connectionId)) {
         // 池中没有连接时，状态反映测试的结果
@@ -291,7 +368,8 @@ export class ConnectionPool implements SftpSessionSource {
       this.authLocked.delete(connectionId)
       if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
       await this.testSftp(ssh, steps)
-      const sudoAuthFailed = await testIdentitySteps(rec, ssh, this.identityDeps, steps)
+      const rec = mine.dialed ?? first
+      const sudoAuthFailed = await testIdentitySteps(rec, ssh, this.identityDeps, steps, sudoGen)
       // sudo 认证失败已由 testIdentitySteps 锁定；其余情况解除锁定
       if (!sudoAuthFailed) {
         this.memory.sudoLocked.delete(connectionId)
@@ -309,7 +387,8 @@ export class ConnectionPool implements SftpSessionSource {
    */
   async dispose(): Promise<void> {
     this.disposed = true
-    const pending: Promise<unknown>[] = [...this.attempts.values()]
+    const pending: Promise<unknown>[] = [...this.attempts.values()].map((a) => a.promise)
+    pending.push(...this.tests)
     for (const conn of [...this.conns.values()]) pending.push(this.teardown(conn))
     await this.settleWithin(pending, DISPOSE_WAIT_MS)
     while (this.writes.size > 0) await Promise.allSettled([...this.writes])
@@ -345,20 +424,26 @@ export class ConnectionPool implements SftpSessionSource {
     const id = conn.id
     this.setState(id, 'connecting')
     const prev = this.attempts.get(id)
-    const mine = (async (): Promise<SshSession> => {
-      if (prev) await prev.catch(() => undefined)
-      return this.attempt(conn)
+    const mine: Attempt = { promise: Promise.resolve(null as unknown as SshSession), dialed: null }
+    mine.promise = (async (): Promise<SshSession> => {
+      if (prev) await prev.promise.catch(() => undefined)
+      return this.attempt(conn, mine)
     })()
-    this.attempts.set(id, mine)
-    void mine
-      .catch(() => undefined)
-      .finally(() => {
-        if (this.attempts.get(id) === mine) this.attempts.delete(id)
-      })
-    return mine
+    this.track(id, mine)
+    return mine.promise
   }
 
-  private async attempt(conn: Conn): Promise<SshSession> {
+  /** 登记为该连接最新的尝试；结束后若仍是最新的则移除 */
+  private track(id: string, a: Attempt): void {
+    this.attempts.set(id, a)
+    void a.promise
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.attempts.get(id) === a) this.attempts.delete(id)
+      })
+  }
+
+  private async attempt(conn: Conn, me: Attempt): Promise<SshSession> {
     const id = conn.id
     let locked = false
     let dialed: ConnectionRecord | null = null
@@ -372,6 +457,7 @@ export class ConnectionPool implements SftpSessionSource {
         throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'locked' })
       }
       dialed = rec
+      me.dialed = rec
       const ssh = await this.dial(rec, {
         onState: (s) => {
           if (!conn.discarded) this.setState(id, s)
