@@ -221,6 +221,54 @@ test.describe('remote connections', () => {
       .toEqual(server.hostKey)
   })
 
+  test('a key presented after the confirmation opened is not trusted; the dialog shows it instead', async () => {
+    const page = await start()
+    const id = await addConnection(page, server)
+    const row = connectionRow(page, 'Fake server')
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
+    await hostKeyPrompt(page).getByRole('button', { name: 'Trust and connect' }).click()
+    await expect(step(testResult(row), 'SFTP')).toHaveAttribute('data-ok', 'true')
+    const oldKey = server.hostKey
+
+    const port = server.port
+    await server.close()
+    server = await startSftp(root, { port })
+    const seen = server.hostKey
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(row).toContainText('Host key changed')
+    await row.getByRole('button', { name: 'Trust new key' }).click()
+    const confirm = page.getByRole('alertdialog', { name: 'Trust the new host key?' })
+    await expect(confirm).toContainText(seen.fingerprint)
+
+    // 确认框打开期间服务器又换了一把密钥（测试连接经 IPC 触发，记下最新出示的密钥）
+    await server.close()
+    server = await startSftp(root, { port })
+    const newer = server.hostKey
+    await data(page, 'connection.test', { id })
+    // 信任当时看到的密钥（seen）：已不是服务器最新出示的 → CONN_HOST_KEY_CHANGED，不保存
+    // （渲染端的竞争窗口很短，这里直接经 IPC 发送旧的密钥）
+    const res = await invoke(page, 'connection.trustHostKey', { id, key: seen })
+    expect(res).toMatchObject({ ok: false, error: { code: 'CONN_HOST_KEY_CHANGED' } })
+    const after = (await data<{ id: string; hostKey: unknown }[]>(page, 'connection.list')).find(
+      (c) => c.id === id
+    )
+    expect(after?.hostKey).toEqual(oldKey)
+    // 确认框显示列表中的最新值：换成最新出示的密钥
+    await expect(confirm).toContainText(newer.fingerprint)
+    await expect(confirm).not.toContainText(seen.fingerprint)
+
+    await confirm.getByRole('button', { name: 'Trust', exact: true }).click()
+    await expect(confirm).toBeHidden()
+    await expect
+      .poll(
+        async () =>
+          (await data<{ id: string; hostKey: unknown }[]>(page, 'connection.list')).find(
+            (c) => c.id === id
+          )?.hostKey
+      )
+      .toEqual(newer)
+  })
+
   test('the welcome page opens the view; key auth names the sudo choice NOPASSWD', async () => {
     const page = await start()
     await page.getByRole('button', { name: 'Connect to an SFTP server' }).click()

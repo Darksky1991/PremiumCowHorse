@@ -314,6 +314,7 @@ export default {
     oldKey: '原来的密钥',
     newKey: '新的密钥',
     trustSubmit: '信任',
+    trustKeyStale: '服务器出示的密钥与刚才显示的不同。请确认新的密钥后再信任。',
     promptTitle: '信任此服务器？',
     promptDescription: '首次连接“{{name}}”（{{address}}）。请先向管理员确认指纹无误，再选择信任。',
     algorithm: '算法',

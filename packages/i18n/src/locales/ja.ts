@@ -327,6 +327,8 @@ export default {
     oldKey: '以前のキー',
     newKey: '新しいキー',
     trustSubmit: '信頼する',
+    trustKeyStale:
+      'サーバーが提示しているキーが、表示していたものから変わりました。新しいキーを確認してから信頼してください。',
     promptTitle: 'このサーバーを信頼しますか？',
     promptDescription:
       '「{{name}}」（{{address}}）に初めて接続します。フィンガープリントが正しいことを管理者に確認してから信頼してください。',

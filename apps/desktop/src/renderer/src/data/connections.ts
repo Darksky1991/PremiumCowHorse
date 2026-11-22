@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   useMutation,
   useQuery,
+  useQueryClient,
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
@@ -10,6 +11,7 @@ import {
   type ConnectionDto,
   type ConnectionSaveInput,
   type ConnectionTestResult,
+  type ConnectionTrustHostKeyInput,
   type HostKeyPrompt,
   type WorkspaceEntry
 } from '@pch/shared'
@@ -67,23 +69,27 @@ export function saveConnection(input: ConnectionSaveInput): Promise<ConnectionDt
   return call('connection.save', input)
 }
 
-/** 以下操作的输入只有连接 id（不含机密），可以经 useMutation */
+/** 以下操作的输入只有连接 id（信任密钥另有用户看到的公开密钥；都不含机密），可以经 useMutation */
 export interface ConnectionActions {
   remove: UseMutationResult<void, Error, string>
   test: UseMutationResult<ConnectionTestResult, Error, string>
   reconnect: UseMutationResult<void, Error, string>
-  trustHostKey: UseMutationResult<void, Error, string>
+  trustHostKey: UseMutationResult<void, Error, ConnectionTrustHostKeyInput>
 }
 
 /** 写操作成功后主进程广播 connection.changed，列表由 query-client 的桥接失效 */
 export function useConnectionActions(): ConnectionActions {
+  const client = useQueryClient()
   const remove = useMutation({ mutationFn: (id: string) => call('connection.delete', { id }) })
   const test = useMutation({ mutationFn: (id: string) => call('connection.test', { id }) })
   const reconnect = useMutation({
     mutationFn: (id: string) => call('connection.reconnect', { id })
   })
   const trustHostKey = useMutation({
-    mutationFn: (id: string) => call('connection.trustHostKey', { id })
+    mutationFn: (input: ConnectionTrustHostKeyInput) => call('connection.trustHostKey', input),
+    // I4：服务器又出示了别的密钥（CONN_HOST_KEY_CHANGED）等失败时没有 connection.changed：
+    // 主动重新取得列表，确认框随之显示最新出示的密钥
+    onError: () => void client.invalidateQueries({ queryKey: queryKeys.connections })
   })
   return { remove, test, reconnect, trustHostKey }
 }

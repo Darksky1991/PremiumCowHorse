@@ -3,7 +3,8 @@ import {
   AppError,
   type ConnectionDto,
   type ConnectionSaveInput,
-  type ConnectionTestResult
+  type ConnectionTestResult,
+  type HostKeyInfo
 } from '@pch/shared'
 import type { ConnectionPool } from './connection-pool'
 import type { ConnectionRecord, ConnectionRepo } from './connection.repo'
@@ -145,11 +146,18 @@ export class ConnectionService {
     this.changed(id)
   }
 
-  /** 「信任新的密钥」：保存服务器出示的新密钥（disconnect 会清除它，所以先读出、写库，再断开） */
-  async trustHostKey(id: string): Promise<void> {
+  /**
+   * 「信任新的密钥」：保存用户看到的密钥 seen（disconnect 会清除出示的密钥，所以先比较、写库，再断开）。
+   * I4：与服务器最新出示的密钥不一致（确认框打开之后服务器又出示了别的密钥）→ CONN_HOST_KEY_CHANGED，
+   * 不保存用户没有看到的密钥；渲染端随之刷新列表、显示新的密钥
+   */
+  async trustHostKey(id: string, seen: HostKeyInfo): Promise<void> {
     const key = this.deps.pool.presentedHostKey(id)
     if (key === null)
       throw new AppError({ code: 'CONN_NOT_FOUND', detail: 'no presented host key' })
+    if (key.algorithm !== seen.algorithm || key.fingerprint !== seen.fingerprint) {
+      throw new AppError({ code: 'CONN_HOST_KEY_CHANGED', detail: key.fingerprint })
+    }
     await this.require(id)
     await this.deps.repo.setHostKey(id, key)
     this.deps.pool.disconnect(id)

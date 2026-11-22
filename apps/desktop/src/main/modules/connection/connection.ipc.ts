@@ -30,7 +30,7 @@ export function connectionHandlers(
     'connection.delete': ({ id }) => service.delete(id),
     'connection.test': ({ id }) => service.test(id),
     'connection.reconnect': ({ id }) => service.reconnect(id),
-    'connection.trustHostKey': ({ id }) => service.trustHostKey(id),
+    'connection.trustHostKey': ({ id, key }) => service.trustHostKey(id, key),
     'connection.answerHostKey': async ({ promptId, accept }) => hostKeys.answer(promptId, accept),
     'connection.pendingHostKeyPrompts': async () => hostKeys.pending(),
     'connection.home': ({ id, identity }) => service.home(id, identity)

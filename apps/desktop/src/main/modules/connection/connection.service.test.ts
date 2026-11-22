@@ -364,8 +364,29 @@ describe('ConnectionService', () => {
   it('trustHostKey：没有出示的新密钥 → CONN_NOT_FOUND，不写库', async () => {
     const dto = await service.save(input())
     await repo.setHostKey(dto.id, KEY)
-    expect((await errorOf(service.trustHostKey(dto.id))).code).toBe('CONN_NOT_FOUND')
+    expect((await errorOf(service.trustHostKey(dto.id, NEW_KEY))).code).toBe('CONN_NOT_FOUND')
     expect((await repo.get(dto.id))!.hostKey).toEqual(KEY)
+  })
+
+  it('I4：trustHostKey 的密钥与服务器最新出示的不一致 → CONN_HOST_KEY_CHANGED，不写库、不断开', async () => {
+    const dto = await service.save(input())
+    await repo.setHostKey(dto.id, KEY)
+    const NEWER: HostKeyInfo = { algorithm: 'ssh-ed25519', fingerprint: 'SHA256:newer' }
+    pool.presentedHostKey.mockReturnValue(NEWER)
+    pool.disconnect.mockClear()
+    emitChanged.mockClear()
+    for (const seen of [
+      NEW_KEY,
+      { algorithm: 'ecdsa-sha2-nistp256', fingerprint: 'SHA256:newer' }
+    ]) {
+      const e = await errorOf(service.trustHostKey(dto.id, seen))
+      expect(e.code).toBe('CONN_HOST_KEY_CHANGED')
+    }
+    expect((await repo.get(dto.id))!.hostKey).toEqual(KEY)
+    expect(pool.disconnect).not.toHaveBeenCalled()
+    expect(emitChanged).not.toHaveBeenCalled()
+    await service.trustHostKey(dto.id, NEWER)
+    expect((await repo.get(dto.id))!.hostKey).toEqual(NEWER)
   })
 
   it('trustHostKey：先读出示的密钥，再写库，再 disconnect（disconnect 会清除出示的密钥）', async () => {
@@ -379,7 +400,7 @@ describe('ConnectionService', () => {
     pool.disconnect.mockClear()
     onConnectionReset.mockClear()
     emitChanged.mockClear()
-    await service.trustHostKey(dto.id)
+    await service.trustHostKey(dto.id, NEW_KEY)
     expect((await repo.get(dto.id))!.hostKey).toEqual(NEW_KEY)
     expect(pool.disconnect).toHaveBeenCalledWith(dto.id)
     expect(onConnectionReset).toHaveBeenCalledWith(dto.id)

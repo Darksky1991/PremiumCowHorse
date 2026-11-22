@@ -29,3 +29,16 @@ export const ConnectionSaveInput = z.strictObject({
   sftpServerPath: z.string().regex(SFTP_SERVER_PATH_PATTERN).nullable()
 })
 export type ConnectionSaveInput = z.infer<typeof ConnectionSaveInput>
+
+/**
+ * 「信任新的密钥」的输入（I4）：用户在确认框中看到的密钥。主进程与服务器最新出示的密钥比较，
+ * 不一致即拒绝（CONN_HOST_KEY_CHANGED），不保存用户没有看到的密钥
+ */
+export const ConnectionTrustHostKeyInput = z.strictObject({
+  id: z.string().min(1),
+  key: z.strictObject({
+    algorithm: z.string().max(200),
+    fingerprint: z.string().min(1).max(200)
+  })
+})
+export type ConnectionTrustHostKeyInput = z.infer<typeof ConnectionTrustHostKeyInput>

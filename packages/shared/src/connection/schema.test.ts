@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ConnectionSaveInput } from './schema'
+import { ConnectionSaveInput, ConnectionTrustHostKeyInput } from './schema'
 
 const valid = {
   name: ' 本番 ',
@@ -34,5 +34,17 @@ describe('ConnectionSaveInput', () => {
   })
   it('username 大写失败', () => {
     expect(ok({ ...valid, username: 'Root' })).toBe(false)
+  })
+})
+
+describe('ConnectionTrustHostKeyInput（I4：信任用户看到的密钥）', () => {
+  const okTrust = (v: unknown): boolean => ConnectionTrustHostKeyInput.safeParse(v).success
+  it('id 与 key（algorithm / fingerprint）必需', () => {
+    const key = { algorithm: 'ssh-ed25519', fingerprint: 'SHA256:abc' }
+    expect(okTrust({ id: 'c1', key })).toBe(true)
+    expect(okTrust({ id: 'c1' })).toBe(false)
+    expect(okTrust({ id: 'c1', key: { algorithm: 'ssh-ed25519' } })).toBe(false)
+    expect(okTrust({ id: 'c1', key: { ...key, extra: 1 } })).toBe(false)
+    expect(okTrust({ id: '', key })).toBe(false)
   })
 })

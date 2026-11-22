@@ -51,7 +51,8 @@ export function ConnectionsView(): JSX.Element {
   const [editOpen, setEditOpen] = useState(false)
   const [deleting, setDeleting] = useState<ConnectionDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [trusting, setTrusting] = useState<ConnectionDto | null>(null)
+  /** 信任确认框的对象（id：确认框显示列表中的最新值，I4） */
+  const [trustingId, setTrustingId] = useState<string | null>(null)
   const [trustOpen, setTrustOpen] = useState(false)
   const [tests, setTests] = useState<Record<string, TestState>>({})
 
@@ -82,6 +83,7 @@ export function ConnectionsView(): JSX.Element {
     actions.reconnect.mutate(id, { onError: (e) => notify('error', errorText(t, e)) })
 
   const list = connections.data
+  const trusting = list?.find((c) => c.id === trustingId) ?? null
 
   return (
     <div className="flex h-full flex-col">
@@ -143,7 +145,7 @@ export function ConnectionsView(): JSX.Element {
               }}
               onReconnect={() => reconnect(c.id)}
               onTrust={() => {
-                setTrusting(c)
+                setTrustingId(c.id)
                 setTrustOpen(true)
               }}
             />

@@ -331,6 +331,8 @@ export default {
     oldKey: 'Previous key',
     newKey: 'New key',
     trustSubmit: 'Trust',
+    trustKeyStale:
+      'The key the server presents has changed from the one shown. Check the new key before trusting it.',
     promptTitle: 'Trust this server?',
     promptDescription:
       'Connecting to “{{name}}” ({{address}}) for the first time. Confirm the fingerprint with the administrator before trusting it.',

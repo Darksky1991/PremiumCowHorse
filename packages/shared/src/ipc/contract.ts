@@ -25,7 +25,7 @@ import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
-import { ConnectionSaveInput } from '../connection/schema'
+import { ConnectionSaveInput, ConnectionTrustHostKeyInput } from '../connection/schema'
 import type {
   ConnectionDto,
   ConnectionState,
@@ -304,8 +304,11 @@ export const ipcContract = {
   'connection.test': route<ConnectionTestResult>()(z.strictObject({ id: z.string().min(1) })),
   /** 「重新连接」：解除认证锁定并断开，之后的请求重新连接 */
   'connection.reconnect': route<void>()(z.strictObject({ id: z.string().min(1) })),
-  /** 「信任新的密钥」：保存服务器出示的新主机密钥（没有出示的密钥 → CONN_NOT_FOUND） */
-  'connection.trustHostKey': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /**
+   * 「信任新的密钥」：保存用户看到的新主机密钥 key（没有出示的密钥 → CONN_NOT_FOUND；
+   * 与服务器最新出示的密钥不一致 → CONN_HOST_KEY_CHANGED，不保存）
+   */
+  'connection.trustHostKey': route<void>()(ConnectionTrustHostKeyInput),
   /** 回答 connection.hostKeyPrompt；过期 / 未知的 promptId 不做任何事 */
   'connection.answerHostKey': route<void>()(
     z.strictObject({ promptId: z.string().min(1), accept: z.boolean() })

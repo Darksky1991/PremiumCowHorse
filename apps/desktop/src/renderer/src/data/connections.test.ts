@@ -27,6 +27,7 @@ function stubInvoke(): ReturnType<typeof vi.fn> {
 }
 
 const SECRET = 'plain-Secret-1'
+const KEY = { algorithm: 'ssh-ed25519', fingerprint: 'SHA256:seen' }
 const INPUT: ConnectionSaveInput = {
   name: 'AP1',
   host: '10.0.0.5',
@@ -78,13 +79,40 @@ describe('机密不留在 TanStack 缓存中（保存只经一次 IPC）', () =>
     const a = actions as ConnectionActions
     // 旧实现有 save（useMutation）：输入（含明文）作为 variables 留在 MutationCache 中直到 gcTime 到期
     expect(Object.keys(a).sort()).toEqual(['reconnect', 'remove', 'test', 'trustHostKey'])
-    for (const key of ['remove', 'test', 'reconnect', 'trustHostKey'] as const) {
+    for (const key of ['remove', 'test', 'reconnect'] as const) {
       await a[key].mutateAsync('c1')
     }
+    // I4：信任的是用户看到的密钥（公开信息，不是机密）
+    await a.trustHostKey.mutateAsync({ id: 'c1', key: KEY })
     for (const m of client.getMutationCache().getAll()) {
-      expect(typeof m.state.variables).toBe('string')
+      const v: unknown = m.state.variables
+      if (typeof v !== 'string') expect(v).toEqual({ id: 'c1', key: KEY })
     }
     expect(cachesContainSecret(client)).toBe(false)
+  })
+
+  it('I4：trustHostKey 发送用户看到的密钥；CONN_HOST_KEY_CHANGED（服务器又出示了别的密钥）→ 重新取得连接列表', async () => {
+    const invoke = vi.fn(async (channel: string) =>
+      channel === 'connection.trustHostKey'
+        ? { ok: false, error: { code: 'CONN_HOST_KEY_CHANGED', detail: 'SHA256:newer' } }
+        : { ok: true, data: [] }
+    )
+    vi.stubGlobal('window', {
+      pch: { invoke, on: () => () => undefined, getPathForFile: () => '', bootstrap: null }
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    let actions: ConnectionActions | undefined
+    const Probe = (): null => {
+      actions = useConnectionActions()
+      return null
+    }
+    renderToString(createElement(QueryClientProvider, { client }, createElement(Probe)))
+    await expect(
+      (actions as ConnectionActions).trustHostKey.mutateAsync({ id: 'c1', key: KEY })
+    ).rejects.toMatchObject({ code: 'CONN_HOST_KEY_CHANGED' })
+    expect(invoke).toHaveBeenCalledWith('connection.trustHostKey', { id: 'c1', key: KEY })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['connection', 'list'] })
   })
 })
 
