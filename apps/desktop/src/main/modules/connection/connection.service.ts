@@ -8,6 +8,7 @@ import {
 } from '@pch/shared'
 import type { ConnectionPool } from './connection-pool'
 import type { ConnectionRecord, ConnectionRepo } from './connection.repo'
+import { sameLoginCredentials, sameSudoCredentials } from './credentials'
 import type { SecretBox } from './secret-box'
 
 export interface ConnectionServiceDeps {
@@ -45,8 +46,10 @@ export class ConnectionService {
   /**
    * 新建（无 id）或编辑。secret / sudoSecret：省略 = 不变，空串 / null = 清除。
    * 编辑：host / port 变化时清除已信任的主机密钥（D6）。锁定只在对应的凭据有变化时解除（设计 5.3、C1）：
-   * - 登录锁定（auth-failed）：提交了 secret，或 host / port / username / auth / keyPath 有变化；
-   * - sudo 锁定（sudo-auth-failed）：提交了 sudoSecret，或 sudoSecret 为空且提交了 secret（登录密码兼作 sudo 密码）；
+   * - 登录锁定（auth-failed）：编辑前后 secret 密文 / host / port / username / auth / keyPath 不同
+   *   （credentials.ts 的 sameLoginCredentials，连接池同一套判定）；
+   * - sudo 锁定（sudo-auth-failed）：实际用作 sudo 密码的密文不同（sameSudoCredentials：另设的 sudo 密码，
+   *   否则密码登录的登录密码）；
    * - 未锁定时登录凭据有变化也写 ok：覆盖与本次编辑竞争写入的、旧凭据的锁定。
    * 只改名称 / 身份列表 / sftp-server 路径不解除——否则保存一次就以原来的错误密码重连一次。
    * 先写库，再断开连接（连接池按凭据字段判断拨号之后是否被编辑过，旧尝试的失败不再写锁定）；
@@ -88,15 +91,17 @@ export class ConnectionService {
       const existing = await repo.get(id)
       if (!existing) throw new AppError({ code: 'CONN_NOT_FOUND' })
       const moved = existing.host !== input.host || existing.port !== input.port
-      const loginChanged =
-        secret !== undefined ||
-        moved ||
-        existing.username !== input.username ||
-        existing.auth !== input.auth ||
-        existing.keyPath !== input.keyPath
-      const nextSudoSecret = sudoSecret === undefined ? existing.sudoSecret : sudoSecret
-      const sudoChanged =
-        sudoSecret !== undefined || (nextSudoSecret === null && secret !== undefined)
+      // R25：比较编辑前后的记录（与连接池同一套判定），不看字段是否出现在输入里——渲染端在「同登录密码」
+      // 模式下每次都发送 sudoSecret: null、私钥无口令时每次都发送 secret: ''（null 对 null = 未变）。
+      // 新提交的机密得到新的密文（safeStorage 每次加密的结果不同）→ 判为变化
+      const next: ConnectionRecord = {
+        ...existing,
+        ...fields,
+        secret: secret === undefined ? existing.secret : secret,
+        sudoSecret: sudoSecret === undefined ? existing.sudoSecret : sudoSecret
+      }
+      const loginChanged = !sameLoginCredentials(existing, next)
+      const sudoChanged = !sameSudoCredentials(existing, next)
       const unlock = existing.authState === 'sudo-auth-failed' ? sudoChanged : loginChanged
       reset =
         loginChanged ||

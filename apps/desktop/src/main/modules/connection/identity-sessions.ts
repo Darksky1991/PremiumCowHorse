@@ -513,16 +513,24 @@ export async function testIdentitySteps(
         if (memory.sudoLockGen(rec.id) !== sudoGen) {
           throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED', detail: 'locked' })
         }
-        return openIdentitySession({
-          ssh,
-          openIdentity: deps.openIdentity,
-          bridge: deps.bridge,
-          identity,
-          ...params,
-          mode: memory.mode(rec.id, identity),
-          signal: never,
-          onNeedsTty: () => memory.needsTty(rec.id, identity)
-        })
+        try {
+          return await openIdentitySession({
+            ssh,
+            openIdentity: deps.openIdentity,
+            bridge: deps.bridge,
+            identity,
+            ...params,
+            mode: memory.mode(rec.id, identity),
+            signal: never,
+            onNeedsTty: () => memory.needsTty(rec.id, identity)
+          })
+        } catch (e) {
+          // R25：锁定在互斥之内写入（与池的 openNow 相同）：排队的池身份打开拿到互斥时必定看到锁定，
+          // 不取决于两次读取记录的先后
+          const err = toAppError(e)
+          if (err.code === 'CONN_SUDO_AUTH_FAILED') await deps.lockSudo(rec.id, rec)
+          throw err
+        }
       })
       opened.channel.close()
       memory.forget(rec.id, identity)
@@ -535,11 +543,8 @@ export async function testIdentitySteps(
     } catch (e) {
       const err = toAppError(e)
       steps.push({ step: 'identity', identity, ok: false, error: err.toPayload() })
-      if (err.code === 'CONN_SUDO_AUTH_FAILED') {
-        // 等待期间别处已锁定：锁定已写入，不重复写
-        if (err.detail !== 'locked') await deps.lockSudo(rec.id, rec)
-        return true
-      }
+      // 锁定已在互斥之内写入（或等待期间别处已锁定）
+      if (err.code === 'CONN_SUDO_AUTH_FAILED') return true
     }
   }
   return false

@@ -237,6 +237,47 @@ describe('ConnectionService', () => {
       return dto.id
     }
 
+    // R25：渲染端（connection-form.ts 的 buildSaveInput）的实际输入——「同登录密码」模式每次都发送
+    // sudoSecret: null，私钥认证且无口令时每次都发送 secret: ''。这些不是凭据的变化
+    it('R25：sudo-auth-failed、「同登录密码」模式：只改 identities / 名称（sudoSecret: null）→ 锁定保留', async () => {
+      const id = await locked('sudo-auth-failed')
+      const dto = await service.save(
+        input({ id, secret: undefined, sudoSecret: null, identities: ['app1', 'root'] })
+      )
+      expect(dto.authState).toBe('sudo-auth-failed')
+      expect(pool.disconnect).toHaveBeenCalledWith(id, { keepAuthLock: true, keepSudoLock: true })
+      pool.disconnect.mockClear()
+      onConnectionReset.mockClear()
+      const renamed = await service.save(
+        input({
+          id,
+          name: 'AP1 改',
+          secret: undefined,
+          sudoSecret: null,
+          identities: ['app1', 'root']
+        })
+      )
+      expect(renamed.authState).toBe('sudo-auth-failed')
+      expect(pool.disconnect).not.toHaveBeenCalled()
+      expect(onConnectionReset).not.toHaveBeenCalled()
+    })
+
+    it('R25：auth-failed、私钥认证且无口令：只改名称（secret: ""）→ 锁定保留，不断开、不刷新', async () => {
+      const key = { auth: 'key' as const, keyPath: 'C:/keys/id', secret: '' }
+      const id = await locked('auth-failed', key)
+      const dto = await service.save(input({ id, name: 'AP1 改', ...key }))
+      expect(dto.authState).toBe('auth-failed')
+      expect(pool.disconnect).not.toHaveBeenCalled()
+      expect(onConnectionReset).not.toHaveBeenCalled()
+    })
+
+    it('R25：auth-failed、私钥认证：设置了口令 → 解除', async () => {
+      const key = { auth: 'key' as const, keyPath: 'C:/keys/id', secret: '' }
+      const id = await locked('auth-failed', key)
+      const dto = await service.save(input({ id, ...key, secret: 'kp' }))
+      expect(dto.authState).toBe('ok')
+    })
+
     it('auth-failed：只改名称 → 锁定保留，不断开、不重新检查条目根', async () => {
       const id = await locked('auth-failed')
       const dto = await service.save(input({ id, name: 'AP1 改', secret: undefined }))

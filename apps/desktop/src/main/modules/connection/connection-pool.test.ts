@@ -1496,6 +1496,39 @@ describe('ConnectionPool: test()', () => {
     expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
     expect((await errorOf(h.pool.test('c1'))).code).toBe('FS_UNAVAILABLE')
   })
+
+  it('R25：测试的身份步骤 sudo 失败 → 锁定在 sudo 互斥之内写入；排队的池身份打开（读记录较慢时）也不执行 sudo', async () => {
+    const h = setup()
+    const gate = deferred<void>()
+    /** 失败之后第一次读取记录延迟（修前即锁定写入的那次读取：池的打开在其完成前检查锁定） */
+    const delays: number[] = []
+    const get = h.repo.get.getMockImplementation() as (
+      id: string
+    ) => Promise<ConnectionRecord | undefined>
+    h.repo.get.mockImplementation(async (id: string) => {
+      const d = delays.shift()
+      if (d !== undefined) await new Promise((r) => setTimeout(r, d))
+      return get(id)
+    })
+    h.identityPlan = async () => {
+      await gate.promise
+      delays.push(50)
+      throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+    }
+    const t = h.pool.test('c1')
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    // 池的身份打开排在测试的身份步骤之后
+    const p = h.pool.session(APP1, opts())
+    p.catch(() => undefined)
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    gate.resolve()
+    await t
+    expect((await errorOf(p)).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
+  })
 })
 
 describe('ConnectionPool: 集成（fake sftp server + 真实 connectSsh）', () => {
