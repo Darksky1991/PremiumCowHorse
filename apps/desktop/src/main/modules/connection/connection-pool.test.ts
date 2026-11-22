@@ -982,10 +982,10 @@ describe('ConnectionPool: 断开', () => {
     expect(h.pool.state('c1')).toBe('idle')
   })
 
-  it('R10 的记忆在 SSH 断线时清除', async () => {
+  it('R10 的记忆（CONN_SUDO_FAILED）在 SSH 断线时清除', async () => {
     const h = setup()
     h.identityPlan = async () => {
-      throw new AppError({ code: 'CONN_SUDO_DENIED' })
+      throw new AppError({ code: 'CONN_SUDO_FAILED' })
     }
     await errorOf(h.pool.session(APP1, opts(false)))
     await errorOf(h.pool.session(APP1, opts(false)))
@@ -995,17 +995,120 @@ describe('ConnectionPool: 断开', () => {
     expect(h.openIdentity).toHaveBeenCalledTimes(2)
   })
 
-  it('R10 的记忆在空闲断开时清除', async () => {
+  it('R10 的记忆（CONN_SUDO_FAILED）在空闲断开时清除', async () => {
     vi.useFakeTimers()
     const h = setup({ settings: { idleDisconnectMin: 1 } })
     h.identityPlan = async () => {
-      throw new AppError({ code: 'CONN_SUDO_DENIED' })
+      throw new AppError({ code: 'CONN_SUDO_FAILED' })
     }
     await errorOf(h.pool.session(APP1, opts(false)))
     await vi.advanceTimersByTimeAsync(60_000)
     expect(h.sessions[0]!.close).toHaveBeenCalled()
     await errorOf(h.pool.session(APP1, opts(false)))
     expect(h.openIdentity).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['CONN_SUDO_DENIED', 'CONN_SFTP_SERVER_NOT_FOUND', 'CONN_PROCESS_LIST_HIDDEN'] as const)(
+    'Minor 2：%s 是服务器配置，不随 SSH 断线 / 空闲断开清除；编辑（disconnect）与 unlock 清除',
+    async (code) => {
+      vi.useFakeTimers()
+      const h = setup({ settings: { idleDisconnectMin: 1 } })
+      h.identityPlan = async () => {
+        throw new AppError({ code })
+      }
+      await errorOf(h.pool.session(APP1, opts(false)))
+      expect(h.openIdentity).toHaveBeenCalledTimes(1)
+      // 断线
+      h.sessions[0]!.fireClose(new AppError({ code: 'FS_UNAVAILABLE' }))
+      expect((await errorOf(h.pool.session(APP1, opts(false)))).code).toBe(code)
+      // 空闲断开（登录用户的会话让连接建立起来）
+      await h.pool.session(LOGIN, opts(false))
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(h.sessions[1]!.close).toHaveBeenCalled()
+      expect((await errorOf(h.pool.session(APP1, opts(false)))).code).toBe(code)
+      expect(h.openIdentity).toHaveBeenCalledTimes(1)
+      // 编辑连接（disconnect）清除
+      h.pool.disconnect('c1')
+      await errorOf(h.pool.session(APP1, opts(false)))
+      expect(h.openIdentity).toHaveBeenCalledTimes(2)
+      // unlock 清除
+      await h.pool.unlock('c1')
+      await errorOf(h.pool.session(APP1, opts(false)))
+      expect(h.openIdentity).toHaveBeenCalledTimes(3)
+    }
+  )
+
+  it('Minor 2：探测得到 PS:hidden 也不随 SSH 断线清除', async () => {
+    const h = setup()
+    h.probeOut.value = 'PS:hidden\n'
+    await errorOf(h.pool.session(APP1, opts(false)))
+    h.sessions[0]!.fireClose(new AppError({ code: 'FS_UNAVAILABLE' }))
+    expect((await errorOf(h.pool.session(APP1, opts(false)))).code).toBe('CONN_PROCESS_LIST_HIDDEN')
+    expect(h.sessions).toHaveLength(1)
+  })
+
+  it('Task 8 M1：没有等待者的身份打开过程计入进行中，空闲断开不在打开中途触发', async () => {
+    vi.useFakeTimers()
+    const h = setup({ settings: { idleDisconnectMin: 1 } })
+    const gate = deferred<void>()
+    h.identityPlan = async (d) => {
+      await gate.promise
+      const ch = new FakeChannel()
+      h.channels.push(ch)
+      return { channel: ch, firstData: Buffer.alloc(0), mode: d.mode }
+    }
+    await h.pool.session(LOGIN, opts())
+    const ac = new AbortController()
+    const p = h.pool.session(APP1, opts(true, ac.signal))
+    await flush()
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    ac.abort()
+    expect((await errorOf(p)).code).toBe('FS_CANCELLED')
+    // 打开过程（R11：不中止）仍在进行：超过空闲时间也不断开
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(h.sessions[0]!.close).not.toHaveBeenCalled()
+    gate.resolve()
+    await flush()
+    // 打开结束后照常按空闲断开
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.sessions[0]!.close).toHaveBeenCalled()
+    expect(h.channels[0]!.closed).toBe(true)
+  })
+
+  it('Minor 3：登录用户的 SFTP 子系统迟迟不就绪 → timeoutSec 后 FS_TIMEOUT；下一次请求重新打开', async () => {
+    vi.useFakeTimers()
+    const h = setup({ settings: { timeoutSec: 5 } })
+    h.connect.mockImplementationOnce(async (cfg: SshConnectConfig) => {
+      await cfg.verifyHostKey(h.presentKey.value)
+      const s = fakeSsh()
+      ;(s.sftp as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise(() => {}))
+      h.sessions.push(s)
+      return s
+    })
+    const p = h.pool.session(LOGIN, opts())
+    p.catch(() => undefined)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((await errorOf(p)).code).toBe('FS_TIMEOUT')
+    await expect(h.pool.session(LOGIN, opts())).resolves.toBeDefined()
+    expect(h.sessions[0]!.sftp).toHaveBeenCalledTimes(2)
+    expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('Minor 8：连接就绪后、请求继续之前连接被丢弃 → FS_UNAVAILABLE，不在丢弃的连接上打开身份', async () => {
+    const h = setup()
+    await h.pool.session(LOGIN, opts())
+    const ssh = h.sessions[0]!
+    const rec = await h.repo.get('c1')
+    const ready = Promise.resolve(rec)
+    // session() 读取记录之后（ensureConn 之后、等待 ready 的期间）连接被关闭
+    queueMicrotask(() => {
+      void ready.then(() => ssh.fireClose(new AppError({ code: 'FS_UNAVAILABLE' })))
+    })
+    h.repo.get.mockImplementationOnce(() => ready)
+    const e = await errorOf(h.pool.session(APP1, opts()))
+    expect(e.code).toBe('FS_UNAVAILABLE')
+    expect(ssh.execs).toEqual([])
+    expect(h.openIdentity).not.toHaveBeenCalled()
   })
 
   it('R10 的记忆在 unlock() 时清除', async () => {
@@ -1227,6 +1330,26 @@ describe('ConnectionPool: test()', () => {
       ['hostKey', false, 'CONN_HOST_KEY_CHANGED']
     ])
     expect(h.pool.presentedHostKey('c1')).toEqual(NEW_KEY)
+  })
+
+  it('Minor 3：测试的 SFTP 子系统迟迟不就绪 → sftp 步骤 FS_TIMEOUT，测试照常结束', async () => {
+    vi.useFakeTimers()
+    const h = setup({ settings: { timeoutSec: 5 } })
+    h.connect.mockImplementationOnce(async (cfg: SshConnectConfig) => {
+      await cfg.verifyHostKey(h.presentKey.value)
+      const s = fakeSsh()
+      ;(s.sftp as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise(() => {}))
+      h.sessions.push(s)
+      return s
+    })
+    const t = h.pool.test('c1')
+    await vi.advanceTimersByTimeAsync(5000)
+    const r = await t
+    expect(r.steps.find((s) => s.step === 'sftp')).toMatchObject({
+      ok: false,
+      error: { code: 'FS_TIMEOUT' }
+    })
+    expect(h.sessions[0]!.close).toHaveBeenCalled()
   })
 
   it('私钥读取失败 → auth ok:false（CONN_KEY_INVALID），不连接', async () => {

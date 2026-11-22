@@ -157,6 +157,18 @@ describe('SftpProvider.list', () => {
     ).rejects.toMatchObject({ code: 'FS_UNAVAILABLE' })
   })
 
+  it('T10: attrs without mtime / size → 0 (not NaN)', async () => {
+    const bare = { mode: REG } as unknown as SftpAttrs
+    const session = fakeSession(
+      { '/f': bare },
+      { '/d': [{ filename: 'f', longname: '', attrs: bare }] }
+    )
+    const p = new SftpProvider(sourceOf(session))
+    const [item] = await p.list(new URL(`sftp://${ID}/d`), sig)
+    expect(item).toMatchObject({ size: 0, mtime: 0 })
+    expect(await p.stat(new URL(`sftp://${ID}/f`), sig)).toMatchObject({ size: 0, mtime: 0 })
+  })
+
   it('invalid uri -> FS_INVALID_URI', async () => {
     await expect(mk().list(new URL('sftp:///x'), sig)).rejects.toMatchObject({
       code: 'FS_INVALID_URI'

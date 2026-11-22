@@ -189,9 +189,15 @@ export class ConnectionPool implements SftpSessionSource {
     this.clearIdle(conn)
     try {
       const ssh = await raceSignal(conn.ready, signal)
+      // 等待期间连接被丢弃（断线 / 空闲 / 编辑）：不在它上面建立会话（Minor 8）
+      if (conn.discarded) throw new AppError({ code: 'FS_UNAVAILABLE', detail: 'disconnected' })
       if (identity === null) return await raceSignal(this.loginSftp(conn, ssh), signal)
-      conn.identities ??= new ConnIdentities(id, ssh, this.identityDeps, (ident, s) =>
-        this.wrap(conn, ident, s)
+      conn.identities ??= new ConnIdentities(
+        id,
+        ssh,
+        this.identityDeps,
+        (ident, s) => this.wrap(conn, ident, s),
+        (fn) => this.busy(conn, fn)
       )
       return await conn.identities.session(identity, signal)
     } finally {
@@ -632,7 +638,7 @@ export class ConnectionPool implements SftpSessionSource {
   private onSshClosed(conn: Conn, err: AppError | null): void {
     if (this.conns.get(conn.id) !== conn) return
     void this.teardown(conn)
-    this.memory.clearFailures(conn.id)
+    this.memory.clearTransientFailures(conn.id)
     this.deps.log.info(`connection ${conn.id}: closed (${err ? err.code : 'normal'})`)
     this.setState(conn.id, err ? 'offline' : 'idle')
   }
@@ -680,23 +686,26 @@ export class ConnectionPool implements SftpSessionSource {
     const left = this.idleMs() - (this.deps.now() - conn.lastUsed)
     if (left > 0) return this.scheduleIdle(conn, left)
     void this.teardown(conn)
-    this.memory.clearFailures(conn.id)
+    this.memory.clearTransientFailures(conn.id)
     this.deps.log.info(`connection ${conn.id}: idle disconnect`)
     this.setState(conn.id, 'idle')
   }
 
+  /** fn 执行期间记为进行中（不空闲断开），结束后重新开始空闲计时 */
+  private async busy<T>(conn: Conn, fn: () => Promise<T>): Promise<T> {
+    conn.active++
+    this.clearIdle(conn)
+    try {
+      return await fn()
+    } finally {
+      conn.active--
+      this.touch(conn)
+    }
+  }
+
   /** 会话包装：记录进行中的请求与时刻（空闲判断），并用于 invalidate 找到归属 */
   private wrap(conn: Conn, identity: string | null, s: SftpSession): SftpSession {
-    const run = async <T>(fn: () => Promise<T>): Promise<T> => {
-      conn.active++
-      this.clearIdle(conn)
-      try {
-        return await fn()
-      } finally {
-        conn.active--
-        this.touch(conn)
-      }
-    }
+    const run = <T>(fn: () => Promise<T>): Promise<T> => this.busy(conn, fn)
     const w: SftpSession = {
       stat: (p, sig) => run(() => s.stat(p, sig)),
       lstat: (p, sig) => run(() => s.lstat(p, sig)),
@@ -715,7 +724,7 @@ export class ConnectionPool implements SftpSessionSource {
       promise: Promise.resolve(null as unknown as SftpSession),
       wrapper: null
     }
-    entry.promise = ssh.sftp().then(
+    entry.promise = this.sftpWithin(ssh).then(
       (raw) => {
         entry.wrapper = this.wrap(conn, null, raw)
         return entry.wrapper
@@ -730,13 +739,42 @@ export class ConnectionPool implements SftpSessionSource {
     return entry.promise
   }
 
+  /**
+   * 打开 SFTP 子系统，以 timeoutSec 为上限（Minor 3：ssh2 的 sftp() 没有超时，服务器不回应时永远挂起）。
+   * 超时 → FS_TIMEOUT；之后才就绪的会话被丢弃（不使用；通道随 SSH 连接关闭）
+   */
+  private sftpWithin(ssh: SshSession): Promise<SftpSession> {
+    return new Promise<SftpSession>((resolve, reject) => {
+      let done = false
+      const timer = this.deps.setTimer(() => {
+        if (done) return
+        done = true
+        reject(new AppError({ code: 'FS_TIMEOUT', detail: 'sftp subsystem' }))
+      }, this.deps.settings().timeoutSec * 1000)
+      ssh.sftp().then(
+        (s) => {
+          if (done) return
+          done = true
+          this.deps.clearTimer(timer)
+          resolve(s)
+        },
+        (e: unknown) => {
+          if (done) return
+          done = true
+          this.deps.clearTimer(timer)
+          reject(toAppError(e))
+        }
+      )
+    })
+  }
+
   // ---- test() 与状态 ----
 
   private async testSftp(ssh: SshSession, steps: ConnectionTestStep[]): Promise<void> {
     const ctrl = new AbortController()
     const timer = this.deps.setTimer(() => ctrl.abort(), this.deps.settings().timeoutSec * 1000)
     try {
-      const sftp = await ssh.sftp()
+      const sftp = await this.sftpWithin(ssh)
       const home = await sftp.realpath('.', ctrl.signal)
       steps.push({ step: 'sftp', ok: true, info: { home } })
     } catch (e) {

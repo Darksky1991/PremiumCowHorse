@@ -48,6 +48,9 @@ const S_IFMT = 0o170000
 const S_IFDIR = 0o040000
 const S_IFLNK = 0o120000
 
+/** T10：服务器可能省略 size / mtime（SFTP attrs 的各字段可选）；缺失或非有限数时为 0，避免 NaN 让整张列表被拒绝 */
+const num = (v: number | undefined): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+
 function kindOf(mode: number): FileKind {
   const t = mode & S_IFMT
   return t === S_IFDIR ? 'directory' : t === S_IFLNK ? 'symlink' : 'file'
@@ -96,8 +99,8 @@ export class SftpProvider implements FileSystemProvider {
         uri: uri.href,
         name: path === '/' ? '/' : path.slice(path.lastIndexOf('/') + 1),
         kind,
-        size: kind === 'file' ? a.size : 0,
-        mtime: a.mtime * 1000
+        size: kind === 'file' ? num(a.size) : 0,
+        mtime: num(a.mtime) * 1000
       }
     } catch (e) {
       throw toSftpAppError(e)
@@ -118,8 +121,8 @@ export class SftpProvider implements FileSystemProvider {
             uri: sftpChildUri(uri.href, d.filename),
             name: d.filename,
             kind,
-            size: kind === 'file' ? d.attrs.size : 0,
-            mtime: d.attrs.mtime * 1000,
+            size: kind === 'file' ? num(d.attrs.size) : 0,
+            mtime: num(d.attrs.mtime) * 1000,
             hidden: d.filename.startsWith('.')
           }
           const owner = ownerOfLongname(d.longname)

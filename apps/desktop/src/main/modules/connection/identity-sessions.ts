@@ -31,6 +31,11 @@ const REMEMBERED_FAILURES = new Set<string>([
   'CONN_PROCESS_LIST_HIDDEN',
   'CONN_SFTP_SERVER_NOT_FOUND'
 ])
+/**
+ * 其中可能是一时的（超时、通道提前关闭等）：SSH 断线 / 空闲断开时清除。其余是服务器配置（sudoers、
+ * sftp-server、hidepid），重连不会改变——只在用户操作重试（受冷却约束）、unlock、编辑连接时清除（Minor 2）
+ */
+const TRANSIENT_FAILURES = new Set<string>(['CONN_SUDO_FAILED'])
 
 /**
  * R16：记住的身份失败在此时长内不因用户操作而重试（直接以记住的错误失败，不执行任何命令）。
@@ -276,9 +281,17 @@ export class IdentityMemory {
     this.failures.delete(idKey(connectionId, identity))
   }
 
-  /** SSH 连接断开 / 空闲断开 / disconnect / unlock 时清除该连接的失败记忆 */
+  /** disconnect（编辑 / 删除 / 重新连接）/ unlock 时清除该连接的全部失败记忆 */
   clearFailures(connectionId: string): void {
     this.dropKeys(this.failures, connectionId)
+  }
+
+  /** SSH 断线 / 空闲断开时只清除可能是一时的失败（Minor 2） */
+  clearTransientFailures(connectionId: string): void {
+    const prefix = `${connectionId}\0`
+    for (const [k, f] of [...this.failures]) {
+      if (k.startsWith(prefix) && TRANSIENT_FAILURES.has(f.error.code)) this.failures.delete(k)
+    }
   }
 
   clearModes(connectionId: string): void {
@@ -340,7 +353,12 @@ export class ConnIdentities {
     private readonly ssh: SshSession,
     private readonly deps: IdentityDeps,
     /** 包装会话（连接池记录进行中的请求与归属） */
-    private readonly wrap: (identity: string, s: SftpSession) => SftpSession
+    private readonly wrap: (identity: string, s: SftpSession) => SftpSession,
+    /**
+     * 打开过程期间记为进行中（Task 8 M1：请求取消后没有等待者的打开过程也不能被空闲断开中途打断——
+     * 交出密码后断开会误判为 sudo 认证失败而锁定）
+     */
+    private readonly busy: <T>(fn: () => Promise<T>) => Promise<T> = (fn) => fn()
   ) {}
 
   async session(identity: string, signal: AbortSignal): Promise<SftpSession> {
@@ -385,7 +403,7 @@ export class ConnIdentities {
       opened: null,
       wrapper: null
     }
-    entry.promise = this.open(identity, ctrl.signal).then(
+    entry.promise = this.busy(() => this.open(identity, ctrl.signal)).then(
       (opened) => {
         if (this.closed || this.entries.get(identity) !== entry) {
           opened.channel.close()

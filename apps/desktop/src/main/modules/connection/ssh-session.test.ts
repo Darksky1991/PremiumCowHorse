@@ -223,6 +223,21 @@ describe('authentication is submitted once', () => {
     expect(err.code).toBe('FS_TIMEOUT')
   })
 
+  it('Minor 1：keyboard-interactive 一轮有多个非回显提示 → CONN_AUTH_FAILED（unsupported prompt），不交出密码', async () => {
+    const s = await server({
+      authMethod: 'keyboard-interactive',
+      kbdPrompts: [
+        { prompt: 'Password: ', echo: false },
+        { prompt: 'OTP: ', echo: false }
+      ]
+    })
+    const err = await errorOf(connectSsh(cfg(s)))
+    expect(err.code).toBe('CONN_AUTH_FAILED')
+    expect(err.detail).toContain('unsupported prompt')
+    expect(err.detail ?? '').not.toContain('Pch-pass1')
+    expect(s.kbdAnswers).toEqual([])
+  })
+
   it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_FAILED, password not handed over', async () => {
     const s = await server({
       authMethod: 'keyboard-interactive',

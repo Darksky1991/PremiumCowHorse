@@ -145,7 +145,7 @@ interface AuthRefusal {
 /**
  * 认证方式的选择（设计 5.2「一次连接只用一种方式提交一次密码」）：
  * 第一次以 none 询问服务器接受的方式（不提交任何凭据），然后只选一种：
- * 密码 → 有 password 用它，否则 keyboard-interactive（只对 echo:false 的提示以密码作答一轮）；私钥 → publickey。
+ * 密码 → 有 password 用它，否则 keyboard-interactive（只对恰好 1 个 echo:false 的提示以密码作答一轮）；私钥 → publickey。
  * 选过一次后返回 false 结束（ssh2 以 client-authentication 报错，lib/client.js 第 863–866 行）。
  */
 function makeAuthHandler(
@@ -187,12 +187,18 @@ function makeAuthHandler(
               `keyboard-interactive: unsupported prompt (echo): ${echoed.prompt.slice(0, 100)}`
             )
           }
+          // 一轮有多个（非回显的）提示：不知道哪个是密码，不交出（Minor 1）
+          if (prompts.length > 1) {
+            return refuse.abort(
+              `keyboard-interactive: unsupported prompt (${prompts.length} prompts in one round)`
+            )
+          }
           // 第二轮带问题的提示不再交出密码
           if (answered)
             return refuse.abort('keyboard-interactive: unsupported prompt (second round)')
           answered = true
           refuse.submitted()
-          finish(prompts.map(() => auth.password))
+          finish([auth.password])
         }
       }
     }
