@@ -232,3 +232,26 @@
 - 原因：koffi 的类型注册表是进程全局的，`koffi.struct('X', …)` / `koffi.proto('… X(…)')` 对已存在的名字抛 `Duplicate type name 'X'`（koffi 3.3.8，Node 26 实测）。
 - 解决：原生声明在进程内只做一次（`modules/desktop/window-list.ts`、`logon.ts` 用模块级变量缓存声明结果，失败也只记一次）。
 - 预防：koffi 的声明放在模块级的「首次使用时初始化」函数里，不要放在每次调用的路径上；单元测试里多次调用加载函数，确认第二次的结果与第一次相同。
+
+### sudo `-S`：密码后紧接着写入后续输入，输错一次会被记为 2 次失败
+
+- 日期：2026-11-22
+- 症状（M4 先行试验）：经 SSH 命令通道执行 `sudo -k -S su - app1`，写入密码后立刻写入要交给目标 shell 的命令行；密码错误时 sudo 日志为 `2 incorrect password attempts`。
+- 原因：sudo 认证失败后重新提示并从标准输入读下一行，已写入的命令行被当成第二次密码。认证成功时 sudo 不输出任何东西，无法据输出判断何时可以写后续输入。「先 `sudo -v` 再 `sudo -n`」也不可行：没有 tty 时 sudo 不缓存凭据（`a password is required`）。
+- 解决：认证成功后才写后续输入。判定办法：另开通道轮询进程表，sudo（`exec` 前打印 `$$` 得到其 PID）的子孙中出现 `su` 即成功（PAM 认证在 sudo 进程内完成，成功后才 fork）；再次出现提示即失败，立即关闭通道。Debian 13、AlmaLinux 9、openSUSE Leap 16.1、Ubuntu 26.04（sudo-rs）实测失败只记 1 次（`devDoc/2026-11-22-37-m4-sftp-design.md` 第 5.4、7 节）。
+- 预防：自动输入密码的流程都要考虑「输错时多余的输入被当成密码」；开了 `pam_faillock` 的环境连续 3 次失败即锁号。
+
+### sudo-rs（Ubuntu 26.04 默认）：提示格式不同、不支持 `requiretty`
+
+- 日期：2026-11-22
+- 症状：`sudo -p 'PCHPW:'` 的提示显示为 `[sudo: PCHPW:] Password: `；sudoers 中写 `Defaults:pchuser requiretty` 报 `unknown setting: 'requiretty'`。
+- 原因：Ubuntu 26.04 的 `sudo` 是 Rust 重写的 sudo-rs（0.2.13），与传统 sudo 不完全兼容。
+- 解决：检测提示时用「包含标记」而非「等于标记」；`requiretty` 只会出现在传统 sudo 的环境。
+- 预防：对 sudo 输出的解析按 sudo / sudo-rs 两种实现都验证。
+
+### ssh2：不设置 `hostVerifier` 时自动接受任何主机密钥；没有在 exec 通道上走 SFTP 的公开 API
+
+- 日期：2026-11-22
+- 症状 / 事实：`ssh2` 1.17.0 README：`hostVerifier` 默认「auto-accept if hostVerifier is not set」；`client.sftp()` 只能经 `sftp` 子系统开通道（`lib/client.js` 的 `reqSubsystem`）。
+- 解决：始终设置 `hostVerifier`（支持 `(key, callback)` 异步确认）。要在 `sudo su - x` 之后的命令通道上走 SFTP，借用内部类 `ssh2/lib/protocol/SFTP.js`：它只通过 `client._protocol.channelData(id, data)` 写出、经 `push(data)` 收入，可桥接到任意双工流（`scripts/wsl-sftp/reference/sudo-sftp-spike.mjs` 的 `sftpOverStream`）。文件名按 UTF-8 编解码（`readString(true)` / `utf8Write`），非 UTF-8 文件名无法往返。
+- 预防：借用内部 API 时固定精确版本，并用测试覆盖；升级 `ssh2` 时先跑这些测试。

@@ -9,3 +9,5 @@ allowBuilds:
   esbuild: true
   koffi: true
   electron-winstaller: false
+  ssh2: false
+  cpu-features: false
