@@ -27,6 +27,9 @@ export interface ConnectionServiceDeps {
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i])
+
 /**
  * 远程连接的管理（设计 devDoc/2026-11-22-37 第 5.2、5.3 节）。
  * 机密只在主进程：DTO 只有 hasSecret / hasSudoSecret；保存时收到的明文立即加密，不进错误信息与日志。
@@ -40,8 +43,13 @@ export class ConnectionService {
 
   /**
    * 新建（无 id）或编辑。secret / sudoSecret：省略 = 不变，空串 / null = 清除。
-   * 编辑：host / port 变化时清除已信任的主机密钥（D6）；解除认证锁定（authState = ok）并更新 updatedAt
-   * （连接池据此判断拨号之后记录被编辑过，旧尝试的失败不再写锁定）——先写库，再断开连接
+   * 编辑：host / port 变化时清除已信任的主机密钥（D6）。锁定只在对应的凭据有变化时解除（设计 5.3、C1）：
+   * - 登录锁定（auth-failed）：提交了 secret，或 host / port / username / auth / keyPath 有变化；
+   * - sudo 锁定（sudo-auth-failed）：提交了 sudoSecret，或 sudoSecret 为空且提交了 secret（登录密码兼作 sudo 密码）；
+   * - 未锁定时登录凭据有变化也写 ok：覆盖与本次编辑竞争写入的、旧凭据的锁定。
+   * 只改名称 / 身份列表 / sftp-server 路径不解除——否则保存一次就以原来的错误密码重连一次。
+   * 先写库，再断开连接（连接池按凭据字段判断拨号之后是否被编辑过，旧尝试的失败不再写锁定）；
+   * 只改名称时不断开、不重新检查条目根
    */
   async save(input: ConnectionSaveInput): Promise<ConnectionDto> {
     const { repo, pool } = this.deps
@@ -56,16 +64,18 @@ export class ConnectionService {
       auth: input.auth,
       keyPath: input.keyPath,
       identities: input.identities,
-      sftpServerPath: input.sftpServerPath,
-      authState: 'ok' as const
+      sftpServerPath: input.sftpServerPath
     }
 
     let id: string
+    /** 连接需要重置（断开并重新检查条目根）：新建，或编辑了名称以外的字段 */
+    let reset = true
     if (input.id === undefined) {
       id = randomUUID()
       await repo.insert({
         id,
         ...fields,
+        authState: 'ok',
         secret: secret ?? null,
         sudoSecret: sudoSecret ?? null,
         hostKey: null,
@@ -77,19 +87,36 @@ export class ConnectionService {
       const existing = await repo.get(id)
       if (!existing) throw new AppError({ code: 'CONN_NOT_FOUND' })
       const moved = existing.host !== input.host || existing.port !== input.port
+      const loginChanged =
+        secret !== undefined ||
+        moved ||
+        existing.username !== input.username ||
+        existing.auth !== input.auth ||
+        existing.keyPath !== input.keyPath
+      const nextSudoSecret = sudoSecret === undefined ? existing.sudoSecret : sudoSecret
+      const sudoChanged =
+        sudoSecret !== undefined || (nextSudoSecret === null && secret !== undefined)
+      const unlock = existing.authState === 'sudo-auth-failed' ? sudoChanged : loginChanged
+      reset =
+        loginChanged ||
+        sudoChanged ||
+        existing.sftpServerPath !== input.sftpServerPath ||
+        !sameList(existing.identities, input.identities)
       await repo.update(id, {
         ...fields,
         ...(secret === undefined ? {} : { secret }),
         ...(sudoSecret === undefined ? {} : { sudoSecret }),
         ...(moved ? { hostKey: null } : {}),
+        ...(unlock ? { authState: 'ok' as const } : {}),
         // 同一毫秒内的编辑也必须得到新的 updatedAt
         updatedAt: Math.max(now, existing.updatedAt + 1)
       })
-      pool.disconnect(id)
+      if (reset) pool.disconnect(id, { keepAuthLock: !loginChanged, keepSudoLock: !sudoChanged })
     }
     const saved = await repo.get(id)
     if (!saved) throw new AppError({ code: 'CONN_NOT_FOUND' })
-    this.changed(id)
+    if (reset) this.changed(id)
+    else this.deps.emitChanged()
     return this.toDto(saved)
   }
 

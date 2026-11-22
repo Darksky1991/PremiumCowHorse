@@ -293,7 +293,8 @@ export const ipcContract = {
    * 远程连接（M4，主进程 modules/connection）。按 connectionId 操作，不受条目范围（K17）限制；
    * id 不存在 → CONN_NOT_FOUND。返回的 ConnectionDto 不含机密（只有 hasSecret / hasSudoSecret）。
    * connection.save：无 id = 新建；secret / sudoSecret 省略 = 不变、空串 / null = 清除；
-   * 机密无法加密保存 → CONN_SECRET_UNAVAILABLE。编辑解除认证锁定并断开该连接
+   * 机密无法加密保存 → CONN_SECRET_UNAVAILABLE。编辑只在对应的凭据有变化时解除认证锁定（登录：密码 / 主机 /
+   * 端口 / 用户名 / 认证方式 / 私钥；sudo：sudo 密码，或未另设时的登录密码）；只改名称时不断开该连接
    */
   'connection.list': route<ConnectionDto[]>()(z.void()),
   'connection.save': route<ConnectionDto>()(ConnectionSaveInput),

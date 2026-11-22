@@ -7,10 +7,11 @@ import {
 } from '@pch/shared'
 import { openDatabase, type Database } from '../../infra/db/client'
 import type { Logger } from '../../infra/logger'
-import type { ConnectionPool } from './connection-pool'
+import { ConnectionPool, type PoolDeps } from './connection-pool'
 import { ConnectionRepo } from './connection.repo'
 import { ConnectionService } from './connection.service'
 import type { SecretBox } from './secret-box'
+import type { SshSession } from './ssh-session'
 
 const noop = (): void => undefined
 const silent: Logger = { error: noop, warn: noop, info: noop, debug: noop }
@@ -206,18 +207,120 @@ describe('ConnectionService', () => {
     expect(edited.authState).toBe('ok')
     expect(edited.updatedAt).toBeGreaterThan(dto.updatedAt)
     expect(edited.createdAt).toBe(dto.createdAt)
-    expect(pool.disconnect).toHaveBeenCalledWith(dto.id)
+    expect(pool.disconnect).toHaveBeenCalledWith(dto.id, {
+      keepAuthLock: false,
+      keepSudoLock: false
+    })
     await new Promise((r) => setTimeout(r, 0))
     expect(atDisconnect!.authState).toBe('ok')
     expect(atDisconnect!.updatedAt).toBe(edited.updatedAt)
     expect(emitChanged).toHaveBeenCalledTimes(1)
     expect(onConnectionReset).toHaveBeenCalledWith(dto.id)
-    // sudo 锁定同样解除
+    // sudo 锁定：改了 sudo 密码才解除
     await repo.setAuthState(dto.id, 'sudo-auth-failed')
     clock = 5000
-    const again = await service.save(input({ id: dto.id, secret: undefined }))
+    const again = await service.save(input({ id: dto.id, secret: undefined, sudoSecret: 'sp' }))
     expect(again.authState).toBe('ok')
     expect(again.updatedAt).toBe(5000)
+  })
+
+  describe('C1：编辑只在凭据有变化时解除锁定（设计 5.3）', () => {
+    const locked = async (
+      state: 'auth-failed' | 'sudo-auth-failed',
+      over: Partial<ConnectionSaveInput> = {}
+    ): Promise<string> => {
+      const dto = await service.save(input(over))
+      await repo.setAuthState(dto.id, state)
+      pool.disconnect.mockClear()
+      onConnectionReset.mockClear()
+      emitChanged.mockClear()
+      return dto.id
+    }
+
+    it('auth-failed：只改名称 → 锁定保留，不断开、不重新检查条目根', async () => {
+      const id = await locked('auth-failed')
+      const dto = await service.save(input({ id, name: 'AP1 改', secret: undefined }))
+      expect(dto.authState).toBe('auth-failed')
+      expect(pool.disconnect).not.toHaveBeenCalled()
+      expect(onConnectionReset).not.toHaveBeenCalled()
+      expect(emitChanged).toHaveBeenCalledTimes(1)
+    })
+
+    it('auth-failed：只改 identities / sftp-server 路径 → 锁定保留；断开时保留内存中的锁定', async () => {
+      const id = await locked('auth-failed')
+      const dto = await service.save(input({ id, secret: undefined, identities: ['app1', 'root'] }))
+      expect(dto.authState).toBe('auth-failed')
+      expect(pool.disconnect).toHaveBeenCalledWith(id, { keepAuthLock: true, keepSudoLock: true })
+      const dto2 = await service.save(
+        input({ id, secret: undefined, sftpServerPath: '/usr/lib/openssh/sftp-server' })
+      )
+      expect(dto2.authState).toBe('auth-failed')
+    })
+
+    it.each([
+      ['secret', { secret: 'new-pass' }],
+      ['host', { secret: undefined, host: 'ap1b.example' }],
+      ['port', { secret: undefined, port: 2222 }],
+      ['username', { secret: undefined, username: 'ops2' }],
+      ['auth / keyPath', { secret: undefined, auth: 'key' as const, keyPath: 'C:\\k' }]
+    ])('auth-failed：改 %s → 解除', async (_what, over) => {
+      const id = await locked('auth-failed')
+      const dto = await service.save(input({ id, ...over }))
+      expect(dto.authState).toBe('ok')
+      expect(pool.disconnect).toHaveBeenCalledWith(
+        id,
+        expect.objectContaining({ keepAuthLock: false })
+      )
+      expect(onConnectionReset).toHaveBeenCalledWith(id)
+    })
+
+    it('auth-failed：只改 sudo 密码 → 登录锁定保留', async () => {
+      const id = await locked('auth-failed')
+      const dto = await service.save(input({ id, secret: undefined, sudoSecret: 'sp' }))
+      expect(dto.authState).toBe('auth-failed')
+      expect(pool.disconnect).toHaveBeenCalledWith(id, { keepAuthLock: true, keepSudoLock: false })
+    })
+
+    it('sudo-auth-failed：只改名称 / identities → 保留', async () => {
+      const id = await locked('sudo-auth-failed')
+      expect((await service.save(input({ id, name: 'x', secret: undefined }))).authState).toBe(
+        'sudo-auth-failed'
+      )
+      const dto = await service.save(input({ id, secret: undefined, identities: ['root'] }))
+      expect(dto.authState).toBe('sudo-auth-failed')
+      expect(pool.disconnect).toHaveBeenLastCalledWith(id, {
+        keepAuthLock: true,
+        keepSudoLock: true
+      })
+    })
+
+    it('sudo-auth-failed：改 sudo 密码（含清除）→ 解除', async () => {
+      const id = await locked('sudo-auth-failed', { sudoSecret: 'sp' })
+      expect(
+        (await service.save(input({ id, secret: undefined, sudoSecret: 'sp2' }))).authState
+      ).toBe('ok')
+      await repo.setAuthState(id, 'sudo-auth-failed')
+      expect(
+        (await service.save(input({ id, secret: undefined, sudoSecret: null }))).authState
+      ).toBe('ok')
+    })
+
+    it('sudo-auth-failed：未另设 sudo 密码时改登录密码 → 解除；另设了 sudo 密码时改登录密码 → 保留', async () => {
+      const id = await locked('sudo-auth-failed')
+      const dto = await service.save(input({ id, secret: 'new-pass' }))
+      expect(dto.authState).toBe('ok')
+      expect(pool.disconnect).toHaveBeenLastCalledWith(id, {
+        keepAuthLock: false,
+        keepSudoLock: false
+      })
+      const id2 = await locked('sudo-auth-failed', { sudoSecret: 'sp' })
+      const dto2 = await service.save(input({ id: id2, secret: 'new-pass' }))
+      expect(dto2.authState).toBe('sudo-auth-failed')
+      expect(pool.disconnect).toHaveBeenLastCalledWith(id2, {
+        keepAuthLock: false,
+        keepSudoLock: true
+      })
+    })
   })
 
   it('delete：先 disconnect 再删除；通知变化', async () => {
@@ -302,6 +405,59 @@ describe('ConnectionService', () => {
     expect(pool.test.mock.invocationCallOrder[0]).toBeLessThan(
       onConnectionReset.mock.invocationCallOrder[0]!
     )
+  })
+
+  it('C1（真实连接池）：锁定后只改名称 / identities 并保存 → 之后的读取不拨号；改密码 → 拨号', async () => {
+    const connect = vi.fn(async (): Promise<SshSession> => {
+      throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'client-authentication' })
+    })
+    const realPool = new ConnectionPool({
+      repo,
+      secrets,
+      connect,
+      openIdentity: vi.fn() as unknown as PoolDeps['openIdentity'],
+      bridge: vi.fn() as unknown as PoolDeps['bridge'],
+      readKeyFile: async () => Buffer.alloc(0),
+      hostKeys: { ask: async () => true, answer: () => undefined, pending: () => [] },
+      settings: () => ({ keepaliveSec: 15, idleDisconnectMin: 5, timeoutSec: 20 }),
+      onStatus: () => undefined,
+      now: () => clock,
+      setTimer: setTimeout,
+      clearTimer: clearTimeout,
+      log: silent
+    })
+    // 组合根的 onConnectionReset：重新检查条目根 = 以用户操作读取
+    const reads: Promise<unknown>[] = []
+    service = new ConnectionService({
+      repo,
+      secrets,
+      pool: realPool,
+      emitChanged,
+      onConnectionReset: (id) => {
+        const p = realPool.session(
+          { connectionId: id, identity: null },
+          { userAction: true, signal: new AbortController().signal }
+        )
+        p.catch(() => undefined)
+        reads.push(p)
+      },
+      now: () => clock
+    })
+    const dto = await service.save(input())
+    await Promise.allSettled(reads)
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect((await repo.get(dto.id))!.authState).toBe('auth-failed')
+
+    await service.save(input({ id: dto.id, name: 'AP1 改', secret: undefined }))
+    await service.save(input({ id: dto.id, secret: undefined, identities: ['app1', 'root'] }))
+    await Promise.allSettled(reads)
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect((await repo.get(dto.id))!.authState).toBe('auth-failed')
+
+    await service.save(input({ id: dto.id, secret: 'new-pass' }))
+    await Promise.allSettled(reads)
+    expect(connect).toHaveBeenCalledTimes(2)
+    await realPool.dispose()
   })
 
   it('home：按连接与身份取连接池的 home', async () => {

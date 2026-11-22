@@ -267,8 +267,11 @@ export interface IdentityDeps {
   bridge: typeof sftpOverChannel
   log: Logger
   memory: IdentityMemory
-  /** sudo 认证失败：按连接锁住全部身份（内存 + auth_state） */
-  lockSudo(connectionId: string): Promise<void>
+  /**
+   * sudo 认证失败：按连接锁住全部身份（内存 + auth_state）。opened：打开时读到的记录——之后 sudo 凭据
+   * 被编辑过时不锁定（C1）
+   */
+  lockSudo(connectionId: string, opened: ConnectionRecord): Promise<void>
 }
 
 interface Entry {
@@ -393,9 +396,10 @@ export class ConnIdentities {
     const { deps, connectionId: id } = this
     const { memory } = deps
     let locked = false
+    let rec: ConnectionRecord | undefined
     try {
       // 重新读取：sudo 锁定与 sudo 密码以最新为准
-      const rec = await deps.repo.get(id)
+      rec = await deps.repo.get(id)
       if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
       if (rec.authState === 'sudo-auth-failed' || memory.sudoLocked.has(id)) {
         locked = true
@@ -418,7 +422,7 @@ export class ConnIdentities {
       deps.log.warn(`connection ${id}: identity open failed (${err.code})`)
       // 按连接锁住全部身份（pam_faillock 按登录用户计数）；登录用户自己的 SFTP 不受影响。
       // 连接已被丢弃时也要锁：交出密码后断线同样无法排除密码错误
-      if (err.code === 'CONN_SUDO_AUTH_FAILED') await deps.lockSudo(id)
+      if (err.code === 'CONN_SUDO_AUTH_FAILED' && rec) await deps.lockSudo(id, rec)
       else if (!this.closed) memory.remember(id, identity, err)
       throw err
     }
@@ -473,7 +477,7 @@ export async function testIdentitySteps(
       const err = toAppError(e)
       steps.push({ step: 'identity', identity, ok: false, error: err.toPayload() })
       if (err.code === 'CONN_SUDO_AUTH_FAILED') {
-        await deps.lockSudo(rec.id)
+        await deps.lockSudo(rec.id, rec)
         return true
       }
     }

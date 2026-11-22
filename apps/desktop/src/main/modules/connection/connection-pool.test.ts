@@ -408,6 +408,78 @@ describe('ConnectionPool: 认证锁定', () => {
     })
   })
 
+  it('C1：拨号之后只改名称 / identities（updatedAt 变化），旧尝试认证失败 → 仍写锁定', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    const a = h.pool.session(LOGIN, opts())
+    await flush()
+    const r = h.repo.records.get('c1')!
+    r.name = 'AP1 改'
+    r.identities = ['app1']
+    r.updatedAt = 2
+    answer.resolve(true)
+    expect((await errorOf(a)).code).toBe('CONN_AUTH_FAILED')
+    expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'auth-failed')
+    expect((await errorOf(h.pool.session(LOGIN, opts()))).code).toBe('CONN_AUTH_FAILED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('C1：拨号之后改了密码（updatedAt 不变）、旧尝试中途被 disconnect 后认证失败 → 不写锁定', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    const a = h.pool.session(LOGIN, opts())
+    await flush()
+    h.repo.records.get('c1')!.secret = 'enc:new-pass'
+    h.pool.disconnect('c1')
+    answer.resolve(true)
+    expect((await errorOf(a)).code).toBe('CONN_AUTH_FAILED')
+    expect(h.repo.setAuthState).not.toHaveBeenCalled()
+  })
+
+  it('C1：身份打开中途改了 sudo 密码 → 旧的 sudo 失败不写锁定；只改名称 → 仍锁定', async () => {
+    for (const edit of ['sudo', 'name'] as const) {
+      const h = setup()
+      const gate = deferred<void>()
+      h.identityPlan = async () => {
+        await gate.promise
+        throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+      }
+      const a = h.pool.session(APP1, opts())
+      await flush()
+      expect(h.openIdentity).toHaveBeenCalledTimes(1)
+      const r = h.repo.records.get('c1')!
+      if (edit === 'sudo') r.sudoSecret = 'enc:new-sudo'
+      else r.name = 'AP1 改'
+      r.updatedAt = 2
+      gate.resolve()
+      expect((await errorOf(a)).code).toBe('CONN_SUDO_AUTH_FAILED')
+      if (edit === 'sudo') {
+        expect(h.repo.setAuthState).not.toHaveBeenCalled()
+        h.identityPlan = null
+        await expect(h.pool.session(ROOT, opts())).resolves.toBeDefined()
+      } else {
+        expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'sudo-auth-failed')
+        expect((await errorOf(h.pool.session(ROOT, opts()))).code).toBe('CONN_SUDO_AUTH_FAILED')
+      }
+    }
+  })
+
+  it('C1：disconnect 可保留内存中的锁定（编辑没有改凭据时）', async () => {
+    const h = setup()
+    // auth_state 写入失败：锁定只在内存中
+    h.repo.setAuthState.mockRejectedValue(new Error('disk full'))
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    await errorOf(h.pool.session(LOGIN, opts()))
+    h.pool.disconnect('c1', { keepAuthLock: true, keepSudoLock: true })
+    expect((await errorOf(h.pool.session(LOGIN, opts()))).code).toBe('CONN_AUTH_FAILED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    h.pool.disconnect('c1')
+    h.authResult.value = null
+    await expect(h.pool.session(LOGIN, opts())).resolves.toBeDefined()
+  })
+
   it('R13：主机密钥被拒绝后，后台请求不再询问；用户操作重新询问；disconnect 清除', async () => {
     const h = setup({ records: [record({ hostKey: null })], ask: async () => false })
     expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_HOST_KEY_REJECTED')

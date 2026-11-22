@@ -17,6 +17,7 @@ import {
 import type { Logger } from '../../infra/logger'
 import type { SftpSession, SftpSessionSource, SftpTarget } from '../../vfs/providers/sftp.provider'
 import type { ConnectionRecord, ConnectionRepo } from './connection.repo'
+import { sameLoginCredentials, sameSudoCredentials } from './credentials'
 import type { HostKeyGate } from './host-key-gate'
 import {
   cancelled,
@@ -125,7 +126,10 @@ export class ConnectionPool implements SftpSessionSource {
       bridge: deps.bridge,
       log: deps.log,
       memory: this.memory,
-      lockSudo: async (id) => {
+      lockSudo: async (id, opened) => {
+        // 打开身份之后 sudo 凭据被编辑过：失败的是旧的凭据，不覆盖编辑的结果（C1）
+        const cur = await deps.repo.get(id).catch(() => opened)
+        if (cur === undefined || !sameSudoCredentials(cur, opened)) return
         this.memory.sudoLocked.add(id)
         await this.writeAuthState(id, 'sudo-auth-failed')
       }
@@ -200,14 +204,21 @@ export class ConnectionPool implements SftpSessionSource {
     return this.presented.get(connectionId) ?? null
   }
 
-  disconnect(connectionId: string): void {
+  /**
+   * keepAuthLock / keepSudoLock：编辑没有改对应的凭据时保留内存中的锁定（C1；auth_state 写入失败时
+   * 锁定只在内存中，不能因编辑名称等而丢失）
+   */
+  disconnect(
+    connectionId: string,
+    opts: { keepAuthLock?: boolean; keepSudoLock?: boolean } = {}
+  ): void {
     const conn = this.conns.get(connectionId)
     if (conn) void this.teardown(conn)
     // 编辑 / 删除 / 重新连接都是用户的明确操作：内存中的记忆一并清除（持久的锁定以 auth_state 为准）
     this.memory.clearFailures(connectionId)
     this.memory.clearModes(connectionId)
-    this.memory.sudoLocked.delete(connectionId)
-    this.authLocked.delete(connectionId)
+    if (!opts.keepSudoLock) this.memory.sudoLocked.delete(connectionId)
+    if (!opts.keepAuthLock) this.authLocked.delete(connectionId)
     this.untrusted.delete(connectionId)
     this.presented.delete(connectionId)
     this.setState(connectionId, 'idle')
@@ -466,12 +477,12 @@ export class ConnectionPool implements SftpSessionSource {
   }
 
   /**
-   * 拨号时的记录之后没有被编辑（R12：updatedAt 相同）。读取失败时按「未编辑」处理（偏向锁定）；
-   * 记录已删除时无需锁定
+   * 拨号时的登录凭据之后没有被编辑（R12 / C1：比较凭据相关字段，不比较 updatedAt——拨号中途只改名称时
+   * 错误的密码仍要锁定）。读取失败时按「未编辑」处理（偏向锁定）；记录已删除时无需锁定
    */
   private async unchangedSince(dialed: ConnectionRecord): Promise<boolean> {
     const cur = await this.deps.repo.get(dialed.id).catch(() => dialed)
-    return cur !== undefined && cur.updatedAt === dialed.updatedAt
+    return cur !== undefined && sameLoginCredentials(cur, dialed)
   }
 
   private async connectFailed(
