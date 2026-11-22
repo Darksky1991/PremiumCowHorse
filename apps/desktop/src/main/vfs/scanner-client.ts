@@ -332,7 +332,8 @@ export class ScannerClient {
   /** 执行扫描进程的远程读取，结果以 remoteResult 回给发出请求的那个进程（已取消 / 进程已换则丢弃） */
   private runRemoteOp(m: Extract<ScannerToMain, { type: 'remoteOp' }>): void {
     const port = this.port
-    if (!port) return
+    // dispose 中（等待进程退出期间）仍可能收到消息：不再发起远程读取
+    if (!port || this.state !== 'running') return
     const { id, op, uri, userAction } = m
     const remoteOp = this.opts.remoteOp
     if (!remoteOp) {

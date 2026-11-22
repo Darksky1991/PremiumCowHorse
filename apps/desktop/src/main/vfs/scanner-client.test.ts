@@ -437,3 +437,17 @@ describe('ScannerClient: remote requests from the scanner', () => {
     expect(remote.calls[0]!.signal.aborted).toBe(true)
   })
 })
+
+describe('ScannerClient: remote requests during dispose', () => {
+  it('does not start remote reads after dispose began', async () => {
+    const remoteOp = vi.fn(async () => ({ mtime: 1 }))
+    const { client, port } = setup({ remoteOp })
+    port().exitOnShutdown = false
+    const done = client.dispose()
+    port().emit({ type: 'remoteOp', id: 1, op: 'stat', uri: 'sftp://c1/a', userAction: false })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(remoteOp).not.toHaveBeenCalled()
+    port().exit(0)
+    await done
+  })
+})
