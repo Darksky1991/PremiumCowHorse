@@ -180,7 +180,9 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   offlineRefresh = createOfflineRefresher({
     rootsOf: (id) => remoteRootsOf(workspaces, id),
     refresh: (roots) => scanner.refresh(roots),
-    onError: (id, e) => logger.error(`[connection] refresh roots of ${id} failed`, e)
+    onError: (id, e) => logger.error(`[connection] refresh roots of ${id} failed`, e),
+    now: Date.now,
+    stableMs: () => settings.get('remote.keepaliveSec') * 1000
   })
   const connections = new ConnectionService({
     repo: connectionRepo,
