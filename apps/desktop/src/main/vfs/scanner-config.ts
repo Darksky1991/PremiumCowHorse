@@ -1,5 +1,12 @@
 import { normalizeRootUri } from '@pch/shared'
-import type { RootConfig, ScanSettings, ScannerConfig, Settings, WorkspaceEntry } from '@pch/shared'
+import type {
+  LocationKind,
+  RootConfig,
+  ScanSettings,
+  ScannerConfig,
+  Settings,
+  WorkspaceEntry
+} from '@pch/shared'
 
 /**
  * 构造下发给扫描进程的配置（设计 4.5 / 4.9），纯函数：
@@ -15,7 +22,7 @@ export function buildScannerConfig(input: {
   allFolderEntries: readonly WorkspaceEntry[]
   indexTargets: readonly { workspaceId: string; uri: string }[]
   settings: Settings
-  location: (uri: string) => 'local' | 'network'
+  location: (uri: string) => LocationKind
 }): ScannerConfig {
   const { settings } = input
   const active = new Set(input.activeWorkspaceIds)
@@ -26,7 +33,7 @@ export function buildScannerConfig(input: {
   for (const e of folders) {
     if (!active.has(e.workspaceId)) continue
     const uri = normalizeRootUri(e.uri)
-    let location: 'local' | 'network'
+    let location: LocationKind
     try {
       location = input.location(uri)
     } catch {
@@ -37,7 +44,11 @@ export function buildScannerConfig(input: {
       entryId: e.id,
       workspaceId: e.workspaceId,
       uri,
-      strategy: e.cacheStrategy ?? settings[`cache.strategy.${location}`],
+      // 远程根恒为消极（不做定期确认，不受条目级与全局策略影响）
+      strategy:
+        location === 'remote'
+          ? 'passive'
+          : (e.cacheStrategy ?? settings[`cache.strategy.${location}`]),
       location
     })
   }
@@ -62,9 +73,15 @@ export function toScanSettings(s: Settings): ScanSettings {
     },
     backgroundGapMs: {
       local: s['cache.backgroundGapMs.local'],
-      network: s['cache.backgroundGapMs.network']
+      network: s['cache.backgroundGapMs.network'],
+      remote: s['cache.backgroundGapMs.remote']
     },
-    timeoutSec: { local: s['vfs.timeoutSec.local'], network: s['vfs.timeoutSec.network'] },
+    timeoutSec: {
+      local: s['vfs.timeoutSec.local'],
+      network: s['vfs.timeoutSec.network'],
+      remote: s['vfs.timeoutSec.remote']
+    },
+    remoteIndexIntervalSec: s['cache.remoteIndexIntervalMin'] * 60,
     activeDepth: s['cache.activeDepth']
   }
 }

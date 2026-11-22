@@ -405,3 +405,36 @@ describe('分组抽屉（设计 2.7）', () => {
     expect(drawerIds(entries)).toEqual(['entry:g1', 'entry:g2'])
   })
 })
+
+describe('远程目录的属主（「以属主身份添加为条目」用）', () => {
+  const REMOTE = 'sftp://ID/home/pchuser'
+
+  it('真实子项带列表中的 owner；其状态行沿用它，条目节点没有', () => {
+    const f = entry('r', 'folder', { uri: REMOTE })
+    const secret = item(REMOTE, 'secret', 'directory', { owner: 'app1' })
+    const nodes = build(
+      [f],
+      ['entry:r', 'fs:r:secret'],
+      [
+        [REMOTE, ready([secret])],
+        [secret.uri, { status: 'error', code: 'FS_PERMISSION_DENIED' }]
+      ]
+    )
+    const byId = new Map(nodes.map((n) => [n.id, n]))
+    expect(byId.get('entry:r')?.owner).toBeUndefined()
+    expect(byId.get('fs:r:secret')?.owner).toBe('app1')
+    expect(byId.get('fs:r:secret#status')).toMatchObject({
+      status: 'error',
+      errorCode: 'FS_PERMISSION_DENIED',
+      owner: 'app1',
+      uri: secret.uri
+    })
+  })
+
+  it('本地列表没有 owner 时节点也没有', () => {
+    const f = entry('f', 'folder')
+    const uri = f.uri as string
+    const nodes = build([f], ['entry:f'], [[uri, ready([item(uri, 'a', 'directory')])]])
+    expect(nodes[1]).not.toHaveProperty('owner')
+  })
+})

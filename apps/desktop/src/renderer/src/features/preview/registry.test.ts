@@ -167,6 +167,10 @@ describe('textLike plugins (sniffed text files)', () => {
     expect(needsSniff(all, file('app.out', { textLike: false }))).toBe(false)
   })
 
+  it('needsSniff: never for remote resources (they offer no read; design 5.8)', () => {
+    expect(needsSniff(all, file('app.out', { uri: 'sftp://ID/var/app.out' }))).toBe(false)
+  })
+
   it('pluginById finds a registered plugin, or null', () => {
     expect(pluginById(all, 'pch.preview.text')).toBe(text)
     expect(pluginById([folder, fallback], 'pch.preview.text')).toBeNull()
@@ -224,6 +228,41 @@ describe('viewer selection', () => {
         TEXT_PLUGIN_ID,
         FALLBACK_PLUGIN_ID
       ])
+    })
+
+    it('remote files: only the fallback when text / html / office are limited to file: (design M4 5.8)', () => {
+      const local = { schemes: ['file'] }
+      const textLocal = plugin(
+        TEXT_PLUGIN_ID,
+        manifest({ kinds: ['file'], extensions: ['txt', 'log'], textLike: true, ...local })
+      )
+      const htmlLocal = plugin(
+        HTML_ID,
+        manifest({ kinds: ['file'], extensions: ['html'], ...local })
+      )
+      const all = [folder, htmlLocal, textLocal, fallback]
+      const remote = (name: string): ResourceInfo => file(name, { uri: `sftp://ID/var/${name}` })
+      expect(ids(candidatesFor(all, remote('app.log')))).toEqual([FALLBACK_PLUGIN_ID])
+      expect(ids(candidatesFor(all, remote('a.html')))).toEqual([FALLBACK_PLUGIN_ID])
+      // 本地照旧：文本插件总是候选
+      expect(ids(candidatesFor(all, file('a.html')))).toEqual([
+        HTML_ID,
+        TEXT_PLUGIN_ID,
+        FALLBACK_PLUGIN_ID
+      ])
+      // 关联到文本插件的扩展名在远程上仍选 fallback；用户选的 viewer 也一样
+      const opts = { viewer: TEXT_PLUGIN_ID, associations: { out: TEXT_PLUGIN_ID } }
+      expect(resolvePlugin(all, remote('app.out'), opts).manifest.id).toBe(FALLBACK_PLUGIN_ID)
+      expect(
+        resolvePlugin(all, remote('app.out'), {
+          viewer: null,
+          associations: { out: TEXT_PLUGIN_ID }
+        }).manifest.id
+      ).toBe(FALLBACK_PLUGIN_ID)
+      expect(
+        resolvePlugin(all, file('app.out'), { viewer: null, associations: { out: TEXT_PLUGIN_ID } })
+          .manifest.id
+      ).toBe(TEXT_PLUGIN_ID)
     })
 
     it('omits text when the text plugin is not registered', () => {

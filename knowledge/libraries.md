@@ -232,3 +232,61 @@
 - 原因：koffi 的类型注册表是进程全局的，`koffi.struct('X', …)` / `koffi.proto('… X(…)')` 对已存在的名字抛 `Duplicate type name 'X'`（koffi 3.3.8，Node 26 实测）。
 - 解决：原生声明在进程内只做一次（`modules/desktop/window-list.ts`、`logon.ts` 用模块级变量缓存声明结果，失败也只记一次）。
 - 预防：koffi 的声明放在模块级的「首次使用时初始化」函数里，不要放在每次调用的路径上；单元测试里多次调用加载函数，确认第二次的结果与第一次相同。
+
+### sudo `-S`：密码后紧接着写入后续输入，输错一次会被记为 2 次失败
+
+- 日期：2026-11-22
+- 症状（M4 先行试验）：经 SSH 命令通道执行 `sudo -k -S su - app1`，写入密码后立刻写入要交给目标 shell 的命令行；密码错误时 sudo 日志为 `2 incorrect password attempts`。
+- 原因：sudo 认证失败后重新提示并从标准输入读下一行，已写入的命令行被当成第二次密码。认证成功时 sudo 不输出任何东西，无法据输出判断何时可以写后续输入。「先 `sudo -v` 再 `sudo -n`」也不可行：没有 tty 时 sudo 不缓存凭据（`a password is required`）。
+- 解决：认证成功后才写后续输入。判定办法：另开通道轮询进程表，sudo（`exec` 前打印 `$$` 得到其 PID）的子孙中出现 `su` 即成功（PAM 认证在 sudo 进程内完成，成功后才 fork）；再次出现提示即失败，立即关闭通道。Debian 13、AlmaLinux 9、openSUSE Leap 16.1、Ubuntu 26.04（sudo-rs）实测失败只记 1 次（`devDoc/2026-11-22-37-m4-sftp-design.md` 第 5.4、7 节）。
+- 预防：自动输入密码的流程都要考虑「输错时多余的输入被当成密码」；开了 `pam_faillock` 的环境连续 3 次失败即锁号。
+
+### sudo-rs（Ubuntu 26.04 默认）：提示格式不同、不支持 `requiretty`
+
+- 日期：2026-11-22
+- 症状：`sudo -p 'PCHPW:'` 的提示显示为 `[sudo: PCHPW:] Password: `；sudoers 中写 `Defaults:pchuser requiretty` 报 `unknown setting: 'requiretty'`。
+- 原因：Ubuntu 26.04 的 `sudo` 是 Rust 重写的 sudo-rs（0.2.13），与传统 sudo 不完全兼容。
+- 解决：检测提示时用「包含标记」而非「等于标记」；`requiretty` 只会出现在传统 sudo 的环境。
+- 预防：对 sudo 输出的解析按 sudo / sudo-rs 两种实现都验证。
+- 补充（2026-11-23，M4 Task 14a / 14-fix 实机）：
+  - **拒绝的措辞不同、且不先提示密码**：sudoers 不允许时 sudo-rs 0.2.13 直接输出 `sudo: I'm sorry pchuser. I'm afraid I can't do that` 并以 1 退出（`LC_ALL=C sudo -k -S -p PCHP su - app2` 实测，未提示密码）；传统 sudo 先提示、交出密码后才报 `Sorry, user pchuser is not allowed to execute '/usr/bin/su - app2' as root …`。只匹配传统措辞时 sudo-rs 的拒绝落入「通道提前关闭」（`CONN_SUDO_FAILED`）。`sudo-switch.ts` 的 `DENIED_PATTERN` 已加入固定部分 `I'm afraid I can't do that`（不匹配泛泛的 `sorry`），并有跨 chunk 的单元测试。
+  - **不支持 `Defaults logfile=`**（同 `requiretty` / `targetpw`）：`visudo -cf` 拒绝。数失败次数改用 journald 中 PAM 的 `pam_unix(sudo:auth): authentication failure` 行（`journalctl --since @<秒>`；sudo-rs 与传统 sudo 都记），见 `scripts/wsl-sftp/README.md`。
+
+### ssh2：不设置 `hostVerifier` 时自动接受任何主机密钥；没有在 exec 通道上走 SFTP 的公开 API
+
+- 日期：2026-11-22
+- 症状 / 事实：`ssh2` 1.17.0 README：`hostVerifier` 默认「auto-accept if hostVerifier is not set」；`client.sftp()` 只能经 `sftp` 子系统开通道（`lib/client.js` 的 `reqSubsystem`）。
+- 解决：始终设置 `hostVerifier`（支持 `(key, callback)` 异步确认）。要在 `sudo su - x` 之后的命令通道上走 SFTP，借用内部类 `ssh2/lib/protocol/SFTP.js`：它只通过 `client._protocol.channelData(id, data)` 写出、经 `push(data)` 收入，可桥接到任意双工流（`scripts/wsl-sftp/reference/sudo-sftp-spike.mjs` 的 `sftpOverStream`）。文件名按 UTF-8 编解码（`readString(true)` / `utf8Write`），非 UTF-8 文件名无法往返。
+- 预防：借用内部 API 时固定精确版本，并用测试覆盖；升级 `ssh2` 时先跑这些测试。
+
+### ssh2 `utils.generateKeyPairSync('ed25519')`：约 1/256 生成畸形密钥（`Malformed OpenSSH private key`）
+
+- 日期：2026-11-22
+- 症状（M4 Task 5）：`ssh-session.test.ts` 偶发失败，单独连跑 5 次约失败 1 次：`Error: Malformed OpenSSH private key`，栈指向假服务器 `startFakeSftpServer` 中对刚生成的主机密钥调用 `utils.parseKey`（`keyParser.js` 第 728 行，`parseOpenSSHPrivKeys`）。
+- 原因：`ssh2` 1.17.0 的 `lib/keygen.js` 第 290–297 行从 SPKI DER 的 BIT STRING 取 ed25519 公钥时「去掉**所有**前导 0x00」。本意只是去掉 BIT STRING 的「未用位数」字节（恒为 0x00），但公钥本身以 0x00 开头时（概率 1/256）也被截掉，生成 31 字节的公钥，ssh2 自己的解析器要求 32 字节（第 726–728 行的长度判断）而拒绝。实测 10 000 个中 46 个畸形，公钥长度全为 31。**解析器没有问题**：真实 `ssh-keygen`（Windows 自带 OpenSSH）生成的公钥以 0x00 开头的密钥（未加密 / 加密）都能被 `parseKey` 正确解析。ECDSA 不受影响（公钥点以 0x04 开头）。
+- 解决：测试夹具改用 `modules/connection/testing/test-keys.ts` 的 `generateEd25519KeyPair()`，按根因检查输出（公钥必须是 32 字节），只丢弃有缺陷的输出；另以测试固定「公钥以 0x00 开头的合法密钥能被 `parsePrivateKey` 接受」。
+- 预防：产品代码不要用 `ssh2` 的 `generateKeyPairSync` 生成 ed25519 密钥（需要时用 `node:crypto` 生成后自行按 OpenSSH 格式组装）；随机生成的夹具要考虑「低概率的边界值」，在测试中大量生成并逐个校验，避免偶发失败。升级 `ssh2` 时确认该问题是否已修复。
+
+### ssh2 `readyTimeout`：计时覆盖认证阶段（与主机密钥确认的等待）；与保活超时同为 `client-timeout`
+
+- 日期：2026-11-23
+- 症状（M4 Task 1 核实、整体审查 I1）：`readyTimeout`（默认 20000 ms）超时时 `error.level = 'client-timeout'`、消息 `Timed out while waiting for handshake`；保活超时的 level 也是 `client-timeout`（消息 `Keepalive timeout`）。用户在主机密钥确认框前犹豫、或服务器认证很慢（PAM 失败有约 2 秒延迟）时，同样以握手超时结束。
+- 原因：`ssh2` 1.17.0 `lib/client.js` 的 `startTimeout`（第 1110–1118 行）在连接时开始计时，只在 `USERAUTH_SUCCESS`（第 368 行）或握手层错误时清除——计时包含异步 `hostVerifier` 的等待与整个认证阶段。
+- 解决：按 `message` 区分握手超时（`FS_TIMEOUT`）与保活超时（断开）；主机密钥尚未信任的首次连接把 `readyTimeout` 设为 `max(vfs.timeoutSec.remote × 1000, 300_000)`（`connection-pool.ts` 的 `FIRST_CONNECT_READY_MS`，R5）；**已交出密码之后**、`ready` 之前的超时 / 断开不当作「断开」，而按认证失败锁定（`ssh-session.ts`，detail `undetermined after password (…)`，否则后台退避探测会以同一个可能错误的密码反复提交）。
+- 预防：不要把 `readyTimeout` 理解为「TCP + 密钥交换」的超时；涉及「交出密码后结果未定」的分支一律按失败处理（反目标：账号被锁）。
+
+### OpenSSH 的会话命令：SIGPIPE 为默认处理（Debian 13 实测）；服务器上的轮询循环仍要自己能结束
+
+- 日期：2026-11-23
+- 症状 / 担心（M4 整体审查 I2b）：身份切换时在服务器上常驻 `while :; do ps …; echo PCHEND; sleep 0.15; done` 轮询进程表。客户端关闭通道后，循环只能靠写失败时的 SIGPIPE 结束；若会话命令继承了被忽略的 SIGPIPE（systemd 服务默认 `IgnoreSIGPIPE=yes`），内建 `echo` 写失败只返回非零，循环会在客户服务器上永久运行。
+- 事实（实测）：Debian 13（OpenSSH_10.0p2 Debian-7+deb13u4）以 `bash -c "trap '' PIPE; … exec /usr/sbin/sshd -D -e -p 2299 …"` 启动临时 sshd（监听进程 `SigIgn: 0000000000001000`，SIGPIPE 被忽略），会话中的轮询 bash 为 `SigIgn: 0x4`——**OpenSSH 的会话子进程恢复了 SIGPIPE 的默认处理**，关闭通道后无残留（修前也是 0 个）。在轮询命令前加 `trap '' PIPE;` 模拟「继承了被忽略的 SIGPIPE」时（SigIgn `0x1004`），修前 6.5 秒后残留 1 个循环。WSL 中的 sshd 由脚本直接启动、不经 systemd，systemd 下的 sshd 与其他发行版未用这种方法验证。
+- 解决：`sudo-switch.ts` 的 `pollCommand`：`i=0; while [ $i -lt N ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep S; i=$((i+1)); done`，N = ceil(2 × 切换超时 / 间隔)（150 ms、15 秒 → 200 次 ≈ 30 秒）。修后模拟情形也无残留；`wsl.test.ts` 断言切换后 `pgrep -a -f '[P]CHEND'` 为空。
+- 预防：在别人的服务器上启动的循环必须「写失败即退出 + 次数上限」，不依赖信号的默认处理。
+
+### ssh2 的 `.ppk`：只支持 PPK v2（RSA / DSA），未加密的 `.ppk` 不能传口令
+
+- 日期：2026-11-22
+- 症状（M4 Task 1）：PuTTY 0.75+ 默认导出的 PPK v3、以及 Ed25519 的 `.ppk`，`utils.parseKey` 返回 `Error: Unsupported key format`；对未加密（`Encryption: none`）的 PPK v2 传入任何非空口令返回 `Error: PPK private key integrity check failed`。
+- 原因：`ssh2` 1.17.0 `lib/protocol/keyParser.js` 的 PPK 解析正则只认 `PuTTY-User-Key-File-2: ssh-(rsa|dss)` 与 `Encryption: aes256-cbc|none`；口令参与 Private-MAC 的计算。`parseKey` 以**返回** `Error` 表示失败（不抛出），对 OpenSSH 新格式可能返回数组。
+- 解决：先不带口令解析，提示需要口令（加密）时再带口令；不支持的格式映射为 `CONN_KEY_INVALID`（本机错误，不连接、不锁定），界面提示用 PuTTYgen 转换为 OpenSSH 格式。
+- 预防：加密的 PPK v2（`aes256-cbc`）与真实 PuTTYgen 导出的文件未验证（无样本）；遇到用户的 `.ppk` 问题先确认版本行与 `Encryption:` 行。

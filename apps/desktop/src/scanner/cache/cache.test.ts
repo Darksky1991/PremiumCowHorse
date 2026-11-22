@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Cache, isUnder, queueQuery } from './cache'
+import { Cache, childUri, isUnder, queueQuery } from './cache'
 import type { RawEntry } from '../enum/types'
 
 const file = (name: string, size = 1, mtime = 1000): RawEntry => ({
@@ -738,10 +738,76 @@ describe('Cache on disk', () => {
     again.close()
   })
 
+  it('open rebuilds a CACHE_VERSION 5 database (entries without owner)', () => {
+    const f = path.join(tmp, 'index.db')
+    const first = track(Cache.open(f))
+    first.setRoots(['file:///C:/a'])
+    first.applyListing('file:///C:/a', 1, [file('x')], 1)
+    first.close()
+    const old = track(new DatabaseSync(f))
+    old.exec('PRAGMA user_version = 5')
+    old.close()
+    const again = track(Cache.open(f))
+    again.setRoots(['file:///C:/a'])
+    expect(again.getDir('file:///C:/a')).toBeUndefined()
+    expect(again.select('SELECT name FROM pragma_table_info(?)', 'entries')).toContainEqual({
+      name: 'owner'
+    })
+    again.close()
+  })
+
   it('open closes the database when the file is not a database (so it can be deleted)', () => {
     const f = path.join(tmp, 'index.db')
     writeFileSync(f, 'not a sqlite database '.repeat(200))
     expect(() => Cache.open(f)).toThrow(/not a database/)
     expect(() => rmSync(f)).not.toThrow()
+  })
+})
+
+describe('Cache: sftp URIs', () => {
+  const S = 'sftp://ID/a'
+  const C = 'sftp://ID/a/b%20c'
+
+  it('childUri encodes names', () => {
+    expect(childUri(S, 'b c')).toBe(C)
+  })
+
+  it('applyListing links child directories to their parent', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [dir('b c')], 1)
+    cache.applyListing(C, 1, [], 2)
+    expect(cache.getDir(C)?.parentUri).toBe(S)
+    cache.close()
+  })
+
+  it('stores and returns the owner of entries', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [{ ...file('log.txt'), owner: 'app1' }, dir('d')], 1)
+    expect(cache.getEntries(S)).toEqual([dir('d'), { ...file('log.txt'), owner: 'app1' }])
+    cache.close()
+  })
+
+  it('reports changed when only the owner differs', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [{ ...file('log.txt'), owner: 'app1' }], 1)
+    expect(cache.applyListing(S, 1, [{ ...file('log.txt'), owner: 'app1' }], 2).changed).toBe(false)
+    expect(cache.applyListing(S, 1, [{ ...file('log.txt'), owner: 'root' }], 3).changed).toBe(true)
+    expect(cache.getEntries(S)[0]?.owner).toBe('root')
+    expect(cache.applyListing(S, 1, [file('log.txt')], 4).changed).toBe(true)
+    expect(cache.getEntries(S)[0]).not.toHaveProperty('owner')
+    cache.close()
+  })
+
+  it('removeMissing deletes the entry from the parent listing', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [dir('b c'), dir('d')], 1)
+    cache.applyListing(C, 1, [], 2)
+    expect(cache.removeMissing(C).parentChanged).toBe(true)
+    expect(cache.getEntries(S).map((e) => e.name)).toEqual(['d'])
+    cache.close()
   })
 })

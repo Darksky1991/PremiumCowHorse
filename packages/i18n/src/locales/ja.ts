@@ -28,7 +28,6 @@ export default {
     emptyTitle: 'ワークスペースは空です',
     emptyHint: 'フォルダーやファイルをここにドラッグするか、下のボタンから追加してください。',
     addFolder: 'フォルダーを追加',
-    addConnection: 'リモート接続を追加',
     title: 'エクスプローラー',
     refresh: '最新の情報に更新',
     collapseAll: 'すべて折りたたむ',
@@ -76,7 +75,25 @@ export default {
     revealNotInWorkspace: 'この項目は現在のワークスペースのどの項目にも含まれていません',
     revealNotFound:
       'ツリーに見つかりません。フォルダーの内容が変わった可能性があります（F5 で最新の情報に更新）',
-    revealTimeout: 'フォルダーの読み込みに時間がかかっているため、途中まで展開しました'
+    revealTimeout: 'フォルダーの読み込みに時間がかかっているため、途中まで展開しました',
+    addRemoteFolder: 'リモートフォルダーを追加',
+    menuAddRemoteFolder: 'リモートフォルダーを追加…',
+    remoteFolder: 'リモートフォルダー',
+    addRemoteTitle: 'リモートフォルダーを追加',
+    addRemoteDescription:
+      'SFTP サーバー上のフォルダーを読み取り専用の項目として追加します。サーバー上のファイルは変更しません。',
+    remoteConnection: '接続',
+    remoteNoConnections: 'リモート接続がありません。「接続の管理」から登録してください。',
+    manageConnections: '接続の管理',
+    remoteIdentity: '読み取るユーザー',
+    remoteLoginUser: 'ログインユーザー（{{name}}）',
+    remoteIdentityHint: '切り替えユーザーは sudo で読み取ります。既定のパスは / です。',
+    remotePath: 'パス',
+    remotePathInvalid: '/ で始まる絶対パスを入力してください（. や .. は使えません）',
+    remoteHomeLoading: 'ホームフォルダーを取得しています…',
+    add: '追加',
+    addAsOwner: '{{owner}} として項目に追加',
+    addedAsOwner: '「{{label}}」を {{owner}} として追加しました'
   },
   search: {
     title: '検索',
@@ -208,8 +225,117 @@ export default {
     }
   },
   connections: {
+    title: 'リモート接続',
+    listLabel: 'リモート接続の一覧',
+    add: '新規接続',
     emptyTitle: 'リモート接続はまだありません',
-    emptyHint: 'SMB・FTP・SFTP サーバーを登録すると、どのワークスペースからでも参照できます。'
+    emptyHint: 'SFTP サーバーを登録すると、どのワークスペースからでも参照できます。',
+    status: {
+      online: 'オンライン',
+      idle: '未接続',
+      connecting: '接続中',
+      offline: 'オフライン',
+      authFailed: '認証失敗',
+      sudoAuthFailed: 'sudo 認証失敗',
+      hostKeyPending: 'ホストキーの確認待ち',
+      hostKeyChanged: 'ホストキー変更'
+    },
+    identitiesLine: '切り替えユーザー: {{list}}',
+    test: 'テスト',
+    edit: '編集',
+    delete: '削除',
+    reconnect: '再接続',
+    trustNewKey: '新しいキーを信頼',
+    newTitle: '新規接続',
+    editTitle: '接続の編集',
+    dialogDescription:
+      'SFTP（SSH）で読み取り専用で接続します。パスワードは暗号化してこの PC に保存されます。',
+    name: '名前',
+    namePlaceholder: '例: 顧客A 本番 AP1',
+    host: 'ホスト',
+    port: 'ポート',
+    username: 'ユーザー名',
+    auth: '認証方式',
+    authPassword: 'パスワード認証',
+    authKey: '秘密鍵認証',
+    password: 'パスワード',
+    secretSaved: '保存済み（変更しない）',
+    keyPath: '秘密鍵ファイル',
+    browse: '参照…',
+    keyHint: 'OpenSSH / PEM 形式と PuTTY の PPK v2（RSA / DSA）に対応しています。',
+    passphrase: 'パスフレーズ',
+    passphraseNone: 'なし',
+    identities: '切り替えユーザー',
+    identitiesHint: 'sudo で切り替えて読み取るユーザー（例: app1、root）。Enter で追加します。',
+    identityPlaceholder: 'ユーザー名を入力',
+    removeIdentity: '{{name}} を削除',
+    sudo: 'sudo パスワード',
+    sudoSame: 'ログインパスワードと同じ',
+    sudoNone: 'sudo パスワードを使わない（NOPASSWD）',
+    sudoSeparate: '別に設定する',
+    sudoHint:
+      'root のパスワードを求められる環境（SUSE の targetpw など）では別に設定してください。',
+    sftpServer: 'sftp-server のパス',
+    sftpAuto: '自動検出',
+    sftpCustom: '指定する',
+    hostKey: '信頼済みのホストキー',
+    hostKeyNone: 'まだありません（初回接続時に確認します）',
+    hostKeyPresented: 'サーバーが提示した新しいキー',
+    cancel: 'キャンセル',
+    save: '保存',
+    formError: {
+      nameRequired: '名前を入力してください',
+      hostRequired: 'ホストを入力してください',
+      portInvalid: '1〜65535 の数値を入力してください',
+      usernameRequired: 'ユーザー名を入力してください',
+      usernameInvalid: '使えるのは英小文字・数字・_ . - です（先頭は英小文字か _、32 文字まで）',
+      passwordRequired: 'パスワードを入力してください',
+      keyPathRequired: '秘密鍵ファイルを選んでください',
+      sudoPasswordRequired: 'sudo パスワードを入力してください',
+      sftpServerPathInvalid: '/ で始まる絶対パスを入力してください（英数字と . _ / + - のみ）',
+      identityInvalid: '使えるのは英小文字・数字・_ . - です（先頭は英小文字か _、32 文字まで）',
+      identityDuplicate: 'すでに追加されています',
+      identityTooMany: '登録できるのは 20 ユーザーまでです'
+    },
+    testResult: 'テスト結果',
+    testing: 'テスト中…',
+    closeResult: 'テスト結果を閉じる',
+    step: {
+      connect: '接続',
+      hostKey: 'ホストキー',
+      auth: '認証',
+      sftp: 'SFTP',
+      identity: '{{identity}} に切り替え'
+    },
+    stepOk: '成功',
+    stepFailed: '失敗',
+    stepSkipped: '未実施',
+    homeInfo: 'ホーム: {{path}}',
+    identityInfo: 'sftp-server: {{path}}（{{mode}}）',
+    modeNopty: '端末なし',
+    modePty: '端末あり',
+    deleteTitle: 'この接続を削除しますか？',
+    deleteCounting: 'この接続を使っている項目を確認しています…',
+    deleteNoRefs: 'この接続を使っているワークスペースの項目はありません。',
+    deleteRefs:
+      'この接続を使っているワークスペースの項目: {{count}} 件。項目は残り、「接続が見つかりません」と表示されます。',
+    deleteCountFailed: 'この接続を使っている項目の数を確認できませんでした。',
+    deleteSubmit: '削除',
+    trustTitle: '新しいホストキーを信頼しますか？',
+    trustDescription:
+      'サーバーのホストキーが以前と異なります。サーバーの再構築などで変わったことを確認できた場合だけ信頼してください。',
+    oldKey: '以前のキー',
+    newKey: '新しいキー',
+    trustSubmit: '信頼する',
+    trustKeyStale:
+      'サーバーが提示しているキーが、表示していたものから変わりました。新しいキーを確認してから信頼してください。',
+    promptTitle: 'このサーバーを信頼しますか？',
+    promptDescription:
+      '「{{name}}」（{{address}}）に初めて接続します。フィンガープリントが正しいことを管理者に確認してから信頼してください。',
+    algorithm: 'アルゴリズム',
+    fingerprint: 'フィンガープリント',
+    promptAccept: '信頼して接続',
+    promptMore: 'このあと {{count}} 件の確認があります'
   },
   welcome: {
     title: 'ようこそ',
@@ -217,7 +343,7 @@ export default {
     startTitle: 'はじめに',
     newWorkspace: '新しいワークスペースを作成',
     openFolder: 'ローカルフォルダーを開く',
-    connectRemote: 'SMB / FTP / SFTP に接続',
+    connectRemote: 'SFTP サーバーに接続',
     shortcutsTitle: 'ショートカット',
     shortcutCommand: 'コマンドパレット',
     shortcutSidebar: 'サイドバーの表示切替',
@@ -278,6 +404,24 @@ export default {
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
     DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
     LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください',
-    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります'
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります',
+    CONN_NOT_FOUND: '接続が見つかりません（削除された可能性があります）',
+    CONN_AUTH_FAILED:
+      '認証に失敗しました。ユーザー名・パスワード・鍵を確認してください（自動では再試行しません）',
+    CONN_KEY_INVALID:
+      '秘密鍵を読み込めません。対応形式は OpenSSH / PEM と PuTTY の PPK v2（RSA / DSA）です。パスフレーズも確認してください',
+    CONN_HOST_KEY_REJECTED: 'サーバーのホストキーを信頼しなかったため、接続しませんでした',
+    CONN_HOST_KEY_CHANGED:
+      'サーバーのホストキーが信頼済みのものと異なるため、接続を拒否しました。確認のうえ「リモート接続」で新しいキーを信頼してください',
+    CONN_SUDO_AUTH_FAILED: 'sudo のパスワードが正しくありません（自動では再試行しません）',
+    CONN_SUDO_DENIED: 'sudo でこのユーザーに切り替える権限がありません',
+    CONN_SUDO_FAILED:
+      'ユーザーの切り替えに失敗しました（タイムアウトまたはチャネルが閉じられました）',
+    CONN_SFTP_SERVER_NOT_FOUND:
+      'サーバー上に sftp-server が見つかりません。接続の設定でパスを指定してください',
+    CONN_PROCESS_LIST_HIDDEN:
+      'サーバーが他のユーザーのプロセスを隠しているため、安全にユーザーを切り替えられません',
+    CONN_SECRET_UNAVAILABLE:
+      '保存されたパスワードを復号できません。接続の設定で入力し直してください'
   }
 }

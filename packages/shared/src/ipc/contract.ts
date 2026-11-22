@@ -25,6 +25,14 @@ import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
+import { ConnectionSaveInput, ConnectionTrustHostKeyInput } from '../connection/schema'
+import type {
+  ConnectionDto,
+  ConnectionState,
+  ConnectionTestResult,
+  HostKeyPrompt
+} from '../connection/types'
+import { IDENTITY_PATTERN } from '../vfs/sftp-uri'
 import type {
   DesktopCurrent,
   DesktopRestoreResult,
@@ -281,6 +289,39 @@ export const ipcContract = {
   'desktop.cancelExit': route<void>()(z.void()),
   /** 渲染端已显示退出对话框（收到 desktop.exitRequested 后调用）；之后主进程不再超时 */
   'desktop.exitShown': route<void>()(z.void()),
+  /**
+   * 远程连接（M4，主进程 modules/connection）。按 connectionId 操作，不受条目范围（K17）限制；
+   * id 不存在 → CONN_NOT_FOUND。返回的 ConnectionDto 不含机密（只有 hasSecret / hasSudoSecret）。
+   * connection.save：无 id = 新建；secret / sudoSecret 省略 = 不变、空串 / null = 清除；
+   * 机密无法加密保存 → CONN_SECRET_UNAVAILABLE。编辑只在对应的凭据有变化时解除认证锁定（登录：密码 / 主机 /
+   * 端口 / 用户名 / 认证方式 / 私钥；sudo：sudo 密码，或未另设时的登录密码）；只改名称时不断开该连接
+   */
+  'connection.list': route<ConnectionDto[]>()(z.void()),
+  'connection.save': route<ConnectionDto>()(ConnectionSaveInput),
+  /** 断开并删除；引用它的条目保留 */
+  'connection.delete': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /** 测试连接：逐步结果（连接 / 主机密钥 / 认证 / SFTP / 各身份） */
+  'connection.test': route<ConnectionTestResult>()(z.strictObject({ id: z.string().min(1) })),
+  /** 「重新连接」：解除认证锁定并断开，之后的请求重新连接 */
+  'connection.reconnect': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /**
+   * 「信任新的密钥」：保存用户看到的新主机密钥 key（没有出示的密钥 → CONN_NOT_FOUND；
+   * 与服务器最新出示的密钥不一致 → CONN_HOST_KEY_CHANGED，不保存）
+   */
+  'connection.trustHostKey': route<void>()(ConnectionTrustHostKeyInput),
+  /** 回答 connection.hostKeyPrompt；过期 / 未知的 promptId 不做任何事 */
+  'connection.answerHostKey': route<void>()(
+    z.strictObject({ promptId: z.string().min(1), accept: z.boolean() })
+  ),
+  /** 尚未回答的主机密钥询问（渲染端重新加载后先查询一次，再订阅 connection.hostKeyPrompt） */
+  'connection.pendingHostKeyPrompts': route<HostKeyPrompt[]>()(z.void()),
+  /** 主目录：登录用户为 realpath(.)（会连接）；切换身份为 / */
+  'connection.home': route<string>()(
+    z.strictObject({
+      id: z.string().min(1),
+      identity: z.string().regex(IDENTITY_PATTERN).nullable()
+    })
+  ),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -342,6 +383,17 @@ export interface IpcEvents {
   'desktop.exitRequested': Record<string, never>
   /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
   'desktop.exitCancelled': Record<string, never>
+  /** 连接列表有变化（保存 / 删除 / 信任密钥 / 重新连接 / 测试之后）。广播 */
+  'connection.changed': Record<string, never>
+  /** 连接状态变化（连接池）。广播 */
+  'connection.status': { id: string; state: ConnectionState }
+  /**
+   * 首次连接时请求确认主机密钥（只发给主窗口；没有主窗口时按拒绝处理）。以 connection.answerHostKey 回答；
+   * 5 分钟内未回答按拒绝处理
+   */
+  'connection.hostKeyPrompt': HostKeyPrompt
+  /** 主机密钥询问已结束（回答 / 超时）：渲染端移除对应的确认框。只发给主窗口 */
+  'connection.hostKeyPromptClosed': { promptId: string }
 }
 export type IpcEventName = keyof IpcEvents
 

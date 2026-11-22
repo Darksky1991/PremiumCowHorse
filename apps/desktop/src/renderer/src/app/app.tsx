@@ -1,11 +1,12 @@
 import type { JSX } from 'react'
 import { builtinPlugins } from '@pch/plugin-builtin'
 import { AddressBar } from '@renderer/features/address-bar'
+import { ConnectionsView, HostKeyPrompts } from '@renderer/features/connections'
 import { DesktopPrompts, DesktopView, SnapshotPage } from '@renderer/features/desktop'
 import { ExplorerView } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
-import { Shell, SidebarEmptyState } from '@renderer/features/shell'
+import { Shell } from '@renderer/features/shell'
 import { TabsArea } from '@renderer/features/tabs'
 import { WorkspaceSwitcher, WorkspacesPage } from '@renderer/features/workspace'
 
@@ -26,7 +27,7 @@ export function App(): JSX.Element {
           explorer: <ExplorerView />,
           search: <SearchView />,
           desktop: <DesktopView />,
-          connections: <SidebarEmptyState view="connections" />
+          connections: <ConnectionsView />
         }}
         workspaceSwitcher={<WorkspaceSwitcher />}
         addressBar={<AddressBar />}
@@ -44,6 +45,7 @@ export function App(): JSX.Element {
         }
       />
       <DesktopPrompts />
+      <HostKeyPrompts />
     </>
   )
 }

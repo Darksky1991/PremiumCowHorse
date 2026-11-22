@@ -16,12 +16,14 @@ export function Welcome(): JSX.Element {
   const { t, i18n } = useTranslation(['welcome', 'common'])
   const { data: active } = useActiveWorkspace()
   const setNewWorkspaceOpen = useUiStore((s) => s.setNewWorkspaceOpen)
+  const showView = useUiStore((s) => s.showView)
   const soon = (): void => notifyComingSoon(i18n)
 
   const actions: { icon: LucideIcon; label: string; onClick: () => void }[] = [
     { icon: PlusIcon, label: t('newWorkspace'), onClick: () => setNewWorkspaceOpen(true) },
     { icon: FolderOpenIcon, label: t('openFolder'), onClick: soon },
-    { icon: ServerIcon, label: t('connectRemote'), onClick: soon }
+    // 打开侧栏的「远程连接」视图（视图属于 features/connections，经 ui-store 切换）
+    { icon: ServerIcon, label: t('connectRemote'), onClick: () => showView('connections') }
   ]
   const shortcuts: { keys: string[]; label: string }[] = [
     { keys: ['Ctrl', 'K'], label: t('shortcutCommand') },

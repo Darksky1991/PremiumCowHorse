@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AppError, type DirectoryListing, type FileEntry } from '@pch/shared'
+import { RemoteAccess } from './remote-access'
 import { vfsHandlers, type ScannerApi } from './vfs.ipc'
 import type { VfsService } from './vfs.service'
 
@@ -10,7 +11,10 @@ const items: FileEntry[] = [
 ]
 const cached: DirectoryListing = { items, state: 'cached', checkedAt: 100 }
 
-function setup(scanner: Partial<ScannerApi> & { available: boolean }): {
+function setup(
+  scanner: Partial<ScannerApi> & { available: boolean },
+  remoteRoots: string[] = []
+): {
   handlers: ReturnType<typeof vfsHandlers>
   vfs: {
     list: ReturnType<typeof vi.fn>
@@ -29,7 +33,9 @@ function setup(scanner: Partial<ScannerApi> & { available: boolean }): {
     offlineShares: vi.fn(() => []),
     ...scanner
   }
-  return { handlers: vfsHandlers(vfs as unknown as VfsService, full), vfs }
+  const access = new RemoteAccess()
+  access.setRoots(remoteRoots)
+  return { handlers: vfsHandlers(vfs as unknown as VfsService, full, access), vfs }
 }
 
 describe('vfsHandlers vfs.list', () => {
@@ -120,5 +126,49 @@ describe('vfsHandlers vfs.sniff', () => {
     await expect(handlers['vfs.sniff']({ uri }, ctx)).resolves.toEqual({ kind: 'binary' })
     vfs.read.mockResolvedValueOnce(new Uint8Array(0))
     await expect(handlers['vfs.sniff']({ uri }, ctx)).resolves.toEqual({ kind: 'empty' })
+  })
+})
+
+describe('vfsHandlers 的访问范围（sftp:）', () => {
+  const root = 'sftp://c1/opt'
+  const inside = 'sftp://c1/opt/app'
+  const outside = 'sftp://c1/etc'
+
+  it('stat / list / sniff：范围外为 IPC_FORBIDDEN，不访问文件系统', async () => {
+    const list = vi.fn(async () => cached)
+    const { handlers, vfs } = setup({ available: true, list }, [root])
+    for (const call of [
+      handlers['vfs.stat']({ uri: outside }, ctx),
+      handlers['vfs.list']({ uri: outside }, ctx),
+      handlers['vfs.sniff']({ uri: outside }, ctx)
+    ]) {
+      await expect(call).rejects.toMatchObject({ code: 'IPC_FORBIDDEN' })
+    }
+    expect(vfs.stat).not.toHaveBeenCalled()
+    expect(vfs.read).not.toHaveBeenCalled()
+    expect(list).not.toHaveBeenCalled()
+    await handlers['vfs.list']({ uri: inside }, ctx)
+    expect(list).toHaveBeenCalledWith(inside)
+    vfs.stat.mockResolvedValueOnce({})
+    await handlers['vfs.stat']({ uri: inside }, ctx)
+    expect(vfs.stat).toHaveBeenCalledWith(inside)
+  })
+
+  it('interest / refresh：丢弃范围外的 URI（focus 范围外 → null）', async () => {
+    const interest = vi.fn()
+    const refresh = vi.fn()
+    const { handlers } = setup({ available: true, interest, refresh }, [root])
+    await handlers['vfs.interest'](
+      { focus: outside, visible: [uri, outside, inside], offscreen: [outside], tabs: [inside] },
+      ctx
+    )
+    expect(interest).toHaveBeenCalledWith(7, {
+      focus: null,
+      visible: [uri, inside],
+      offscreen: [],
+      tabs: [inside]
+    })
+    await handlers['vfs.refresh']({ uris: [outside, inside, uri] }, ctx)
+    expect(refresh).toHaveBeenCalledWith([inside, uri])
   })
 })

@@ -4,7 +4,14 @@ import { DatabaseSync } from 'node:sqlite'
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { pathToFileURL } from 'node:url'
 import { fileUriToLocalPath } from '../../main/vfs/local-path'
-import { isUnderUri as isUnder, prefixOf } from '@pch/shared'
+import {
+  isSftpUri,
+  isUnderUri as isUnder,
+  prefixOf,
+  sftpChildUri,
+  sftpNameOf,
+  sftpParentUri
+} from '@pch/shared'
 import type { RawEntry } from '../enum/types'
 import { CACHE_VERSION, CREATE_SQL, DROP_SQL } from './cache-schema'
 
@@ -37,6 +44,7 @@ export { isUnder }
 
 /** 子项 URI：与 LocalProvider.list 的生成方式完全一致（调度器把 RawEntry 转为 FileEntry 时也用它） */
 export function childUri(dirUri: string, name: string): string {
+  if (isSftpUri(dirUri)) return sftpChildUri(dirUri, name)
   return pathToFileURL(path.join(fileUriToLocalPath(dirUri), name)).href
 }
 
@@ -116,6 +124,7 @@ export function queueQuery(
 /** 父目录 URI（字符串方式，仅用于目录行尚未由父目录建立时）。根没有父目录 */
 function parentOf(uri: string, roots: string[]): string | null {
   if (roots.includes(uri)) return null
+  if (isSftpUri(uri)) return sftpParentUri(uri)
   const cut = uri.lastIndexOf('/')
   if (cut <= 0) return null
   const parent = uri.slice(0, cut)
@@ -129,7 +138,8 @@ function sameEntry(a: RawEntry, b: RawEntry): boolean {
     (a.target ?? null) === (b.target ?? null) &&
     a.size === b.size &&
     a.mtime === b.mtime &&
-    a.hidden === b.hidden
+    a.hidden === b.hidden &&
+    (a.owner ?? null) === (b.owner ?? null)
   )
 }
 
@@ -142,6 +152,7 @@ function toEntry(r: Row): RawEntry {
     hidden: r.hidden === 1
   }
   if (e.kind === 'symlink') e.target = (r.target as 'file' | 'directory' | null) ?? null
+  if (r.owner != null) e.owner = r.owner as string
   return e
 }
 
@@ -259,10 +270,10 @@ export class Cache {
       )
       const seen = new Set<string>()
       const insert = this.db.prepare(
-        'INSERT INTO entries (dir_id, name, kind, target, size, mtime, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO entries (dir_id, name, kind, target, size, mtime, hidden, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
       const update = this.db.prepare(
-        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ? WHERE dir_id = ? AND name = ?'
+        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ?, owner = ? WHERE dir_id = ? AND name = ?'
       )
       const remove = this.db.prepare('DELETE FROM entries WHERE dir_id = ? AND name = ?')
       const childDirUris = new Set<string>()
@@ -271,11 +282,12 @@ export class Cache {
         if (e.kind === 'directory') childDirUris.add(childUri(uri, e.name))
         const before = old.get(e.name)
         const target = e.kind === 'symlink' ? (e.target ?? null) : null
+        const owner = e.owner ?? null
         if (!before) {
-          insert.run(dirId, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0)
+          insert.run(dirId, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, owner)
           changed = true
         } else if (!sameEntry(before, e)) {
-          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, dirId, e.name)
+          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, owner, dirId, e.name)
           changed = true
         }
       }
@@ -363,7 +375,7 @@ export class Cache {
       const parent = (row?.parent_uri as string | null | undefined) ?? parentOf(uri, this.roots)
       this.removeSubtreeRows(uri)
       if (parent === null) return { parentChanged: false }
-      const name = path.basename(fileUriToLocalPath(uri))
+      const name = isSftpUri(uri) ? sftpNameOf(uri) : path.basename(fileUriToLocalPath(uri))
       // 名称经与列表相同的函数还原：不一致（例如 URI 写法不同）时不猜测
       if (name === '' || childUri(parent, name) !== uri) return { parentChanged: false }
       const r = this.db

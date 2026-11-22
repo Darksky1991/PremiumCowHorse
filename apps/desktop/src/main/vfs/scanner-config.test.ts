@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, type WorkspaceEntry } from '@pch/shared'
+import { DEFAULT_SETTINGS, type LocationKind, type WorkspaceEntry } from '@pch/shared'
 import { buildScannerConfig } from './scanner-config'
 
 const entry = (
@@ -30,8 +30,7 @@ describe('buildScannerConfig', () => {
     entry('f', 'w1', 'file', 'file:///C:/a/x.txt'),
     entry('o', 'w2', 'folder', 'file:///D:/other')
   ]
-  const location = (uri: string): 'local' | 'network' =>
-    uri.startsWith('file:///') ? 'local' : 'network'
+  const location = (uri: string): LocationKind => (uri.startsWith('file:///') ? 'local' : 'network')
 
   it('当前工作区的 folder 条目为根（级别取按位置的全局默认），所有工作区的 folder 条目进入 allRootUris', () => {
     const settings = {
@@ -66,10 +65,34 @@ describe('buildScannerConfig', () => {
         near: { local: 20, network: 60 },
         far: { local: 120, network: 600 }
       },
-      backgroundGapMs: { local: 500, network: 4000 },
-      timeoutSec: { local: 5, network: 10 },
+      backgroundGapMs: { local: 500, network: 4000, remote: 500 },
+      timeoutSec: { local: 5, network: 10, remote: 20 },
+      remoteIndexIntervalSec: 1800,
       activeDepth: 3
     })
+  })
+
+  it('sftp 条目为 remote 根，级别恒为 passive；建立索引目标照常下发', () => {
+    const c = buildScannerConfig({
+      activeWorkspaceIds: ['w1'],
+      allFolderEntries: [entry('s', 'w1', 'folder', 'sftp://ID/a', 'all')],
+      indexTargets: [{ workspaceId: 'w1', uri: 'sftp://ID/a' }],
+      settings: { ...DEFAULT_SETTINGS, 'cache.strategy.network': 'all' },
+      location: (uri) => (uri.startsWith('sftp:') ? 'remote' : 'local')
+    })
+    expect(c.roots).toEqual([
+      {
+        entryId: 's',
+        workspaceId: 'w1',
+        uri: 'sftp://ID/a',
+        strategy: 'passive',
+        location: 'remote'
+      }
+    ])
+    expect(c.indexTargets).toEqual(['sftp://ID/a'])
+    expect(c.settings.timeoutSec.remote).toBe(20)
+    expect(c.settings.backgroundGapMs.remote).toBe(500)
+    expect(c.settings.remoteIndexIntervalSec).toBe(1800)
   })
 
   it('位置无法判断的条目不下发为根', () => {

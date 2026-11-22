@@ -9,8 +9,10 @@ import {
   PencilIcon,
   PinIcon,
   RefreshCwIcon,
+  ServerIcon,
   SquareArrowOutUpRightIcon,
   SquareMinusIcon,
+  UserRoundPlusIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -31,7 +33,8 @@ import {
 import { useEntries, useEntryActions, useIndexTargets } from '@renderer/data/entries'
 import { useSetting } from '@renderer/data/settings'
 import { call } from '@renderer/lib/ipc'
-import { fileUriToWindowsPath, isUncUri } from '@renderer/lib/file-uri'
+import { copyablePath } from '@renderer/lib/display-path'
+import { isUncUri } from '@renderer/lib/file-uri'
 import { menuItemsFor, type MenuItemId } from './menu-items'
 import type { TreeNode } from './tree-model'
 
@@ -56,6 +59,11 @@ export interface NodeContextMenuProps {
   onOpenInNewTab: () => void
   onNewGroup: () => void
   onAddPaths: (kind: 'folder' | 'file') => void
+  /** 「添加远程文件夹…」（M4 设计 5.8） */
+  onAddRemote: () => void
+  /** 无权限的远程状态行：可以「以属主身份添加为条目」时为属主名（owner-switch.ts），否则 null */
+  ownerSwitch: string | null
+  onAddAsOwner: () => void
   onRename: () => void
   onRemove: () => void
   onPin: () => void
@@ -66,6 +74,8 @@ const ICONS: Partial<Record<MenuItemId, LucideIcon>> = {
   newGroup: FolderPlusIcon,
   addFolder: FolderPlusIcon,
   addFile: FilePlusIcon,
+  addRemoteFolder: ServerIcon,
+  addAsOwner: UserRoundPlusIcon,
   reveal: FolderSearchIcon,
   cacheStrategy: RefreshCwIcon,
   buildIndex: DatabaseIcon,
@@ -87,12 +97,15 @@ export function NodeContextMenu({
   onOpenInNewTab,
   onNewGroup,
   onAddPaths,
+  onAddRemote,
+  ownerSwitch,
+  onAddAsOwner,
   onRename,
   onRemove,
   onPin
 }: NodeContextMenuProps): JSX.Element | null {
   const { t } = useTranslation()
-  const items = menuItemsFor(node)
+  const items = menuItemsFor(node, { canAddAsOwner: ownerSwitch !== null })
   const { data: entries } = useEntries(workspaceId)
   const { data: indexTargets } = useIndexTargets(workspaceId)
   const { setCacheStrategy, setIndexTarget } = useEntryActions()
@@ -145,9 +158,12 @@ export function NodeContextMenu({
     newGroup: onNewGroup,
     addFolder: () => onAddPaths('folder'),
     addFile: () => onAddPaths('file'),
+    addRemoteFolder: onAddRemote,
+    addAsOwner: onAddAsOwner,
     reveal,
     copyPath: () => {
-      const path = uri === null ? null : fileUriToWindowsPath(uri)
+      // 本地为 Windows 路径，远程为服务器上的绝对路径（「复制 URI」才含连接与身份）
+      const path = uri === null ? null : copyablePath(uri)
       if (path !== null) void copy(path, t('explorer:copiedPath'))
     },
     copyUri: () => {
@@ -162,6 +178,8 @@ export function NodeContextMenu({
     newGroup: t('explorer:newGroup'),
     addFolder: t('explorer:menuAddFolder'),
     addFile: t('explorer:menuAddFile'),
+    addRemoteFolder: t('explorer:menuAddRemoteFolder'),
+    addAsOwner: t('explorer:addAsOwner', { owner: ownerSwitch ?? '' }),
     reveal: t('explorer:reveal'),
     cacheStrategy: t('explorer:cacheStrategy'),
     buildIndex: t('explorer:buildIndex'),
@@ -173,9 +191,9 @@ export function NodeContextMenu({
   }
   const shortcuts: Partial<Record<MenuItemId, string>> = { rename: 'F2', remove: 'Del' }
 
-  // 本地路径只在 file: URI 能转换时提供「复制路径」
+  // 「复制路径」只在 URI 能转换为路径（本地 / 远程）时提供
   const visible = items.filter(
-    (id) => id !== 'copyPath' || (uri !== null && fileUriToWindowsPath(uri) !== null)
+    (id) => id !== 'copyPath' || (uri !== null && copyablePath(uri) !== null)
   )
 
   return (

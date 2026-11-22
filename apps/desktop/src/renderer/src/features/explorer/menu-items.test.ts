@@ -16,8 +16,49 @@ const node = (over: Partial<TreeNode> & { kind: NodeKind }): TreeNode => ({
 })
 
 describe('menuItemsFor', () => {
-  it('空白处：新建分组、添加文件夹 / 文件', () => {
-    expect(menuItemsFor(null)).toEqual(['newGroup', 'separator', 'addFolder', 'addFile'])
+  it('空白处：新建分组、添加文件夹 / 文件 / 远程文件夹', () => {
+    expect(menuItemsFor(null)).toEqual([
+      'newGroup',
+      'separator',
+      'addFolder',
+      'addFile',
+      'addRemoteFolder'
+    ])
+  })
+
+  it('远程（sftp）节点：没有「在资源管理器中显示」与「缓存策略」，复制与索引照常', () => {
+    const remote = { uri: 'sftp://ID/home/pchuser' }
+    expect(menuItemsFor(node({ ...remote, kind: 'folder' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'buildIndex',
+      'separator',
+      'rename',
+      'remove'
+    ])
+    const fs = { ...remote, source: 'fs' as const, id: 'fs:e1:a' }
+    expect(menuItemsFor(node({ ...fs, kind: 'directory' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'buildIndex',
+      'separator',
+      'pinToRoot'
+    ])
+    expect(menuItemsFor(node({ ...fs, kind: 'file' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'pinToRoot'
+    ])
+    expect(menuItemsFor(node({ ...fs, kind: 'link-broken' }))).toEqual(['copyPath', 'copyUri'])
   })
 
   it('分组：新建子分组、重命名、移除', () => {
@@ -121,6 +162,24 @@ describe('menuItemsFor', () => {
   it('状态行没有菜单', () => {
     expect(menuItemsFor(node({ id: 'entry:e1#status', kind: 'folder', status: 'empty' }))).toEqual(
       []
+    )
+  })
+
+  it('无权限的远程状态行可以「以属主身份添加为条目」时，菜单只有这一项（键盘可达）', () => {
+    const denied = node({
+      id: 'fs:e1:log#status',
+      kind: 'directory',
+      source: 'fs',
+      uri: 'sftp://ID/opt/app1/log',
+      status: 'error',
+      errorCode: 'FS_PERMISSION_DENIED',
+      owner: 'app1'
+    })
+    expect(menuItemsFor(denied, { canAddAsOwner: true })).toEqual(['addAsOwner'])
+    expect(menuItemsFor(denied)).toEqual([])
+    // 只作用于状态行：普通节点不受影响
+    expect(menuItemsFor(node({ kind: 'folder' }), { canAddAsOwner: true })).not.toContain(
+      'addAsOwner'
     )
   })
 })

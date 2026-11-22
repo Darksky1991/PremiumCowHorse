@@ -14,6 +14,7 @@ import { formatBytes, formatDateTime } from './format'
 /**
  * 文件信息（名称、位置、类型、大小、修改时间）与三个动作；所有访问都经 host。
  * 文件且候选查看器含文本插件时另有「作为文本查看」（host.tabs.viewWith，导航离开后恢复自动选择）。
+ * 远程资源（!host.fs.isLocal）只有「复制路径」：用系统应用打开、在资源管理器中显示、作为文本查看都需要本机文件。
  * 「无法预览」只在自动选择到本插件时显示：用户选定「文件信息」（资源树单击、查看器菜单）时文件可能有预览器，不显示
  */
 export default function FallbackPreview({ resource, host }: PreviewProps): JSX.Element {
@@ -22,6 +23,7 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
   const Icon = isDirectory ? FolderIcon : FileIcon
   const size = formatBytes(resource.size, language)
   const chosen = host.tabs.selectedViewer() === FALLBACK_PLUGIN_ID
+  const local = host.fs.isLocal(resource.uri)
 
   return (
     <div className="h-full overflow-auto">
@@ -56,19 +58,23 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
         </dl>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void host.system.openWithSystem(resource.uri)}>
-            <ExternalLinkIcon data-icon="inline-start" />
-            {t('openWithSystem')}
-          </Button>
-          <Button variant="outline" onClick={() => host.system.revealInOs(resource.uri)}>
-            <FolderOpenIcon data-icon="inline-start" />
-            {t('reveal')}
-          </Button>
+          {local ? (
+            <>
+              <Button onClick={() => void host.system.openWithSystem(resource.uri)}>
+                <ExternalLinkIcon data-icon="inline-start" />
+                {t('openWithSystem')}
+              </Button>
+              <Button variant="outline" onClick={() => host.system.revealInOs(resource.uri)}>
+                <FolderOpenIcon data-icon="inline-start" />
+                {t('reveal')}
+              </Button>
+            </>
+          ) : null}
           <Button variant="outline" onClick={() => void host.system.copyPath(resource.uri)}>
             <CopyIcon data-icon="inline-start" />
             {t('copyPath')}
           </Button>
-          {!isDirectory && host.tabs.candidates().some((c) => c.id === TEXT_PLUGIN_ID) ? (
+          {local && !isDirectory && host.tabs.candidates().some((c) => c.id === TEXT_PLUGIN_ID) ? (
             <Button variant="outline" onClick={() => host.tabs.viewWith(TEXT_PLUGIN_ID)}>
               <FileTextIcon data-icon="inline-start" />
               {t('viewAsText')}

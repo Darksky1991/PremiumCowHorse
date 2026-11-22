@@ -6,7 +6,7 @@
 /**
  * 标签显示的位置的种类：工作区总览 / 工作区一览 / 桌面记录（内部 URI，不是文件系统）、目录、文件
  */
-export type LocationKind = 'workspace' | 'workspaces' | 'desktop' | 'directory' | 'file'
+export type LayoutLocationKind = 'workspace' | 'workspaces' | 'desktop' | 'directory' | 'file'
 
 /**
  * 标签显示的「位置」（M1-3b，设计 devDoc/2026-11-19-15 第 2.1 节）。
@@ -17,7 +17,7 @@ export type LocationKind = 'workspace' | 'workspaces' | 'desktop' | 'directory' 
  */
 export interface TabLocation {
   uri: string
-  kind: LocationKind
+  kind: LayoutLocationKind
   title: string
 }
 

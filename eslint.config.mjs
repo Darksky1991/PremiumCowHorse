@@ -154,6 +154,8 @@ export default defineConfig(
       '.claude',
       // SDD 工作区（git 忽略，含 spike 脚本），不参与 lint
       '.superpowers/**',
+      // 先行试验的参考脚本（用完即弃的质量，只供实施时参考，不在项目中运行）
+      'scripts/wsl-sftp/reference/**',
       // shadcn 生成的组件保持上游原样，便于用 CLI 对比和更新
       'packages/ui/src/components'
     ]

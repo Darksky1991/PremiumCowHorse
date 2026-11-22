@@ -8,10 +8,20 @@ export interface RootConfig {
   workspaceId: string
   uri: string
   strategy: CacheStrategy
-  location: 'local' | 'network'
+  location: LocationKind
 }
 
-/** 按位置类型区分的一对取值 */
+/** 位置类型：本地 / 网络共享 / 远程（SFTP） */
+export type LocationKind = 'local' | 'network' | 'remote'
+
+/** 按位置类型区分的三个取值 */
+export interface LocationTriple {
+  local: number
+  network: number
+  remote: number
+}
+
+/** 按位置类型区分的一对取值（远程没有定期确认，故定期确认间隔只有 local / network） */
 export interface LocationPair {
   local: number
   network: number
@@ -22,8 +32,10 @@ export interface ScanSettings {
   /** 定期确认的间隔（秒）：关注点 / 近 / 远 */
   interval: { focus: LocationPair; near: LocationPair; far: LocationPair }
   /** 后台队列每确认完一个目录后的休息时间（毫秒）；用户正在操作时加倍 */
-  backgroundGapMs: LocationPair
-  timeoutSec: LocationPair
+  backgroundGapMs: LocationTriple
+  timeoutSec: LocationTriple
+  /** 远程目录的建立索引间隔（秒）；远程没有定期确认 */
+  remoteIndexIntervalSec: number
   activeDepth: number
 }
 
@@ -49,4 +61,24 @@ export interface ReachabilityEvent {
 export interface OfflineShare {
   share: string
   since: number
+}
+
+/**
+ * 一个目录的直接子项（扫描进程的枚举结果，缓存的条目）。不含子项 URI：调用方按与 provider 相同的方式
+ * 由目录 URI 与 name 生成（file: 为 pathToFileURL(path.join(fileURLToPath(dir), name))，sftp: 为
+ * sftpChildUri），缓存以此为键。远程目录的列表由主进程经 remoteResult 传给扫描进程（协议的
+ * RawEntrySchema 与本类型一致）。
+ */
+export interface RawEntry {
+  name: string
+  kind: 'file' | 'directory' | 'symlink'
+  /** 只有 symlink 才有：链接目标的类型；目标不存在或无法读取时为 null */
+  target?: 'file' | 'directory' | null
+  /** 文件的字节数；目录与链接为 0 */
+  size: number
+  /** 修改时间（Unix 毫秒，可带小数，与 fs.Stats.mtimeMs 相同） */
+  mtime: number
+  hidden: boolean
+  /** 属主名（远程目录：SFTP longname 的第 3 列；本地与取不到时没有） */
+  owner?: string
 }

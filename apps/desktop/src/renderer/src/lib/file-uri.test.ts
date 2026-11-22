@@ -35,7 +35,12 @@ describe('shareKeyOfUri', () => {
     expect(shareKeyOfUri('file://server/%E5%85%B1%E6%9C%89')).toBe('\\\\server\\共有')
   })
 
-  it('非 file 协议或无法解析返回 null', () => {
+  it('sftp → 连接键（不含身份，与主进程 vfs/location.ts 一致）', () => {
+    expect(shareKeyOfUri('sftp://ID/var/log')).toBe('sftp://ID')
+    expect(shareKeyOfUri('sftp://app1@ID/opt')).toBe('sftp://ID')
+  })
+
+  it('非 file / sftp 协议或无法解析返回 null', () => {
     expect(shareKeyOfUri('https://example.com/a')).toBeNull()
     expect(shareKeyOfUri('not a uri')).toBeNull()
   })
@@ -61,6 +66,13 @@ describe('isShareOffline', () => {
     expect(isShareOffline('file:///C:/a', {})).toBe(false)
     expect(isShareOffline('https://x/y', offline)).toBe(false)
   })
+
+  it('sftp：同一连接的任何身份都按连接断开（扫描进程以 sftp://<connectionId> 报告）', () => {
+    const remote = { 'sftp://3f2a': 1 }
+    expect(isShareOffline('sftp://3f2a/var/log', remote)).toBe(true)
+    expect(isShareOffline('sftp://app1@3f2a/opt', remote)).toBe(true)
+    expect(isShareOffline('sftp://other/var', remote)).toBe(false)
+  })
 })
 
 describe('isUncUri', () => {
@@ -68,5 +80,6 @@ describe('isUncUri', () => {
     expect(isUncUri('file://server/share/x')).toBe(true)
     expect(isUncUri('file:///C:/x')).toBe(false)
     expect(isUncUri('https://x/y')).toBe(false)
+    expect(isUncUri('sftp://ID/x')).toBe(false)
   })
 })

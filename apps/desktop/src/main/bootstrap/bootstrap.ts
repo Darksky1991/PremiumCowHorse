@@ -15,6 +15,7 @@ import { createContainer, type Container } from './container'
 import { bindDocumentOwner } from '../vfs/document/document-owner'
 import { bindWebViewOwner } from '../modules/web/web-session'
 import { buildScannerConfig } from '../vfs/scanner-config'
+import { remoteFolderRoots } from '../vfs/remote-access'
 import { registerShutdown } from './shutdown'
 
 export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
@@ -93,6 +94,8 @@ function wireEvents(c: Container): void {
   c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
   c.bus.on('vfs.changed', (e) => c.windows.broadcast('vfs.changed', e))
   c.bus.on('vfs.reachability', (e) => c.windows.broadcast('vfs.reachability', e))
+  c.bus.on('connection.changed', (e) => c.windows.broadcast('connection.changed', e))
+  c.bus.on('connection.status', (e) => c.windows.broadcast('connection.status', e))
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())
@@ -134,13 +137,17 @@ function wireDocuments(c: Container): void {
 
 /**
  * 扫描进程的接线：配置下发（启动、工作区或条目变化、切换工作区、刷新 / 超时设置变化时）、
+ * 访问范围（RemoteAccess）的根随同一批条目更新、
  * 窗口焦点（P1 在所有窗口失焦时暂停，重新获得焦点时关注点进入 P0）、窗口销毁时释放其关注点。
  * owner = 窗口的 webContents id（与 vfs.interest 的 senderId 一致）。
  */
 function wireScanner(c: Container): void {
   let seq = 0
+  let rootsSet = false
   const push = async (): Promise<void> => {
     const mine = ++seq
+    // 根更新在途：条目刚添加（workspace.changed 同步触发本函数）到 setRoots 之前，对新根的访问检查等待而不拒绝
+    const updated = c.remoteAccess.beginUpdate()
     try {
       const [active, all, indexTargets] = await Promise.all([
         c.workspaces.active(),
@@ -150,6 +157,9 @@ function wireScanner(c: Container): void {
       const entries = (await Promise.all(all.map((w) => c.workspaces.listEntries(w.id)))).flat()
       // 更晚发起的下发已在途：丢弃这次（避免旧配置后到、覆盖新配置）
       if (mine !== seq) return
+      // 访问范围：所有工作区的远程 folder 条目（与扫描配置同一批条目）
+      c.remoteAccess.setRoots(remoteFolderRoots(entries))
+      rootsSet = true
       c.scanner.configure(
         buildScannerConfig({
           activeWorkspaceIds: [active.id],
@@ -161,6 +171,13 @@ function wireScanner(c: Container): void {
       )
     } catch (e) {
       c.logger.error('[scanner] cannot build the scanner config', e)
+      // 第一次就失败：不让等待中的 sftp 访问检查一直挂起（范围为空 = 全部拒绝，下一次下发时恢复）
+      if (!rootsSet && mine === seq) {
+        c.remoteAccess.setRoots([])
+        rootsSet = true
+      }
+    } finally {
+      updated()
     }
   }
   void push()

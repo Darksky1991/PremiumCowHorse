@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AppError, type MainToScanner, type ScannerConfig } from '@pch/shared'
 import type { Logger } from '../infra/logger'
-import { ScannerClient, type ScannerPort } from './scanner-client'
+import { ScannerClient, type ScannerClientOptions, type ScannerPort } from './scanner-client'
 
 class FakePort implements ScannerPort {
   readonly sent: MainToScanner[] = []
@@ -48,8 +48,9 @@ const config: ScannerConfig = {
       near: { local: 30, network: 60 },
       far: { local: 120, network: 300 }
     },
-    backgroundGapMs: { local: 500, network: 2000 },
-    timeoutSec: { local: 5, network: 10 },
+    backgroundGapMs: { local: 500, network: 2000, remote: 500 },
+    timeoutSec: { local: 5, network: 10, remote: 20 },
+    remoteIndexIntervalSec: 1800,
     activeDepth: 3
   }
 }
@@ -72,7 +73,9 @@ interface Setup {
   onReachability: Fn
 }
 
-function setup(opts: { now?: () => number } = {}): Setup {
+function setup(
+  opts: { now?: () => number; remoteOp?: ScannerClientOptions['remoteOp'] } = {}
+): Setup {
   const ports: FakePort[] = []
   const fork = vi.fn((): FakePort => {
     const p = new FakePort()
@@ -88,7 +91,8 @@ function setup(opts: { now?: () => number } = {}): Setup {
     onChanged,
     onReachability,
     log: log as unknown as Logger,
-    now: opts.now
+    now: opts.now,
+    remoteOp: opts.remoteOp
   })
   client.start()
   const port = (): FakePort => ports[ports.length - 1]!
@@ -328,5 +332,122 @@ describe('ScannerClient', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('ScannerClient: remote requests from the scanner', () => {
+  const DIR = 'sftp://c1/var/log'
+  const remoteResults = (p: FakePort): Array<Extract<MainToScanner, { type: 'remoteResult' }>> =>
+    p.sent.filter(
+      (m): m is Extract<MainToScanner, { type: 'remoteResult' }> => m.type === 'remoteResult'
+    )
+
+  /** remoteOp 的假实现：记下请求与 signal，由测试决定何时完成 */
+  function deferredRemoteOp(): {
+    fn: NonNullable<ScannerClientOptions['remoteOp']>
+    calls: Array<{
+      req: { op: 'stat' | 'list'; uri: string; userAction: boolean }
+      signal: AbortSignal
+      resolve: (v: unknown) => void
+      reject: (e: unknown) => void
+    }>
+  } {
+    const calls: ReturnType<typeof deferredRemoteOp>['calls'] = []
+    const fn: NonNullable<ScannerClientOptions['remoteOp']> = (req, signal) =>
+      new Promise((resolve, reject) => calls.push({ req, signal, resolve, reject }))
+    return { fn, calls }
+  }
+
+  it('runs remoteOp and answers with remoteResult ok', async () => {
+    const remote = deferredRemoteOp()
+    const { port } = setup({ remoteOp: remote.fn })
+    port().emit({ type: 'remoteOp', id: 1, op: 'list', uri: DIR, userAction: true })
+    await vi.waitFor(() => expect(remote.calls).toHaveLength(1))
+    expect(remote.calls[0]!.req).toEqual({ op: 'list', uri: DIR, userAction: true })
+    remote.calls[0]!.resolve([{ name: 'a', kind: 'file', size: 1, mtime: 1, hidden: false }])
+    await vi.waitFor(() =>
+      expect(remoteResults(port())).toEqual([
+        {
+          type: 'remoteResult',
+          id: 1,
+          ok: true,
+          value: [{ name: 'a', kind: 'file', size: 1, mtime: 1, hidden: false }]
+        }
+      ])
+    )
+  })
+
+  it('answers with the error code when remoteOp throws an AppError', async () => {
+    const { port } = setup({
+      remoteOp: async () => {
+        throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'c1' })
+      }
+    })
+    port().emit({ type: 'remoteOp', id: 3, op: 'stat', uri: DIR, userAction: false })
+    await vi.waitFor(() =>
+      expect(remoteResults(port())).toMatchObject([
+        { type: 'remoteResult', id: 3, ok: false, error: { code: 'CONN_AUTH_FAILED' } }
+      ])
+    )
+  })
+
+  it('answers FS_UNSUPPORTED_SCHEME when no remoteOp is configured', async () => {
+    const { port } = setup()
+    port().emit({ type: 'remoteOp', id: 4, op: 'stat', uri: DIR, userAction: false })
+    await vi.waitFor(() =>
+      expect(remoteResults(port())).toMatchObject([
+        { id: 4, ok: false, error: { code: 'FS_UNSUPPORTED_SCHEME' } }
+      ])
+    )
+  })
+
+  it('aborts the signal on remoteCancel and never sends the result', async () => {
+    const remote = deferredRemoteOp()
+    const { port } = setup({ remoteOp: remote.fn })
+    port().emit({ type: 'remoteOp', id: 5, op: 'list', uri: DIR, userAction: false })
+    await vi.waitFor(() => expect(remote.calls).toHaveLength(1))
+    port().emit({ type: 'remoteCancel', id: 5 })
+    expect(remote.calls[0]!.signal.aborted).toBe(true)
+    remote.calls[0]!.resolve([])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(remoteResults(port())).toEqual([])
+  })
+
+  it('aborts in-flight remote requests when the scanner exits', async () => {
+    const remote = deferredRemoteOp()
+    const { ports } = setup({ remoteOp: remote.fn })
+    ports[0]!.emit({ type: 'remoteOp', id: 6, op: 'list', uri: DIR, userAction: false })
+    await vi.waitFor(() => expect(remote.calls).toHaveLength(1))
+    ports[0]!.exit(1)
+    expect(remote.calls[0]!.signal.aborted).toBe(true)
+    // 新进程的编号从头开始：旧请求的结果不能发给新进程
+    remote.calls[0]!.resolve([])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ports).toHaveLength(2)
+    expect(remoteResults(ports[0]!)).toEqual([])
+    expect(remoteResults(ports[1]!)).toEqual([])
+  })
+
+  it('aborts in-flight remote requests on dispose', async () => {
+    const remote = deferredRemoteOp()
+    const { client, port } = setup({ remoteOp: remote.fn })
+    port().emit({ type: 'remoteOp', id: 7, op: 'stat', uri: DIR, userAction: false })
+    await vi.waitFor(() => expect(remote.calls).toHaveLength(1))
+    await client.dispose()
+    expect(remote.calls[0]!.signal.aborted).toBe(true)
+  })
+})
+
+describe('ScannerClient: remote requests during dispose', () => {
+  it('does not start remote reads after dispose began', async () => {
+    const remoteOp = vi.fn(async () => ({ mtime: 1 }))
+    const { client, port } = setup({ remoteOp })
+    port().exitOnShutdown = false
+    const done = client.dispose()
+    port().emit({ type: 'remoteOp', id: 1, op: 'stat', uri: 'sftp://c1/a', userAction: false })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(remoteOp).not.toHaveBeenCalled()
+    port().exit(0)
+    await done
   })
 })

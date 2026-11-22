@@ -37,6 +37,29 @@ describe('bridgeMainEvents', () => {
     vi.unstubAllGlobals()
   })
 
+  it('connection.changed 让连接列表与主目录失效', () => {
+    client.setQueryData(queryKeys.connections, [])
+    client.setQueryData(queryKeys.connectionHome('c1', null), '/home/a')
+    client.setQueryData(queryKeys.settings, {})
+    emit('connection.changed', {})
+    expect(client.getQueryState(queryKeys.connections)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.connectionHome('c1', null))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.settings)?.isInvalidated).toBe(false)
+  })
+
+  it('connection.status 就地更新该连接的状态并让列表失效', () => {
+    client.setQueryData(queryKeys.connections, [
+      { id: 'c1', state: 'idle' },
+      { id: 'c2', state: 'idle' }
+    ])
+    emit('connection.status', { id: 'c1', state: 'online' })
+    expect(client.getQueryData(queryKeys.connections)).toEqual([
+      { id: 'c1', state: 'online' },
+      { id: 'c2', state: 'idle' }
+    ])
+    expect(client.getQueryState(queryKeys.connections)?.isInvalidated).toBe(true)
+  })
+
   it('vfs.changed 只让该目录的查询失效', () => {
     const a = queryKeys.directory('file:///C:/a')
     const b = queryKeys.directory('file:///C:/b')

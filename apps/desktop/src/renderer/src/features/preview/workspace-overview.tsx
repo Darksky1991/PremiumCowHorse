@@ -1,13 +1,14 @@
 import { useEffect, useId, useMemo, useRef, type JSX } from 'react'
-import { FolderRootIcon, LayersIcon } from 'lucide-react'
+import { FolderRootIcon, LayersIcon, ServerIcon } from 'lucide-react'
 import { FileIcon } from '@pch/ui/file-icon'
 import { useTranslation } from 'react-i18next'
 import { workspaceIdOfUri, type TabState, type WorkspaceEntry } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
+import { useConnectionNames } from '@renderer/data/connections'
 import { useEntries } from '@renderer/data/entries'
 import { useWorkspaces, workspaceDisplayName } from '@renderer/data/workspace'
-import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { displayPath, isLocalUri } from '@renderer/lib/display-path'
 import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
 import { overviewSections, type OverviewSection } from './overview-model'
 
@@ -153,7 +154,9 @@ function EntryItem({
   entry: WorkspaceEntry & { uri: string }
   onActivate: (entry: WorkspaceEntry & { uri: string }, newTab: boolean) => void
 }): JSX.Element {
-  const path = fileUriToWindowsPath(entry.uri) ?? entry.uri
+  const { t } = useTranslation()
+  // 显示路径：本地为 Windows 路径，远程为 `<连接名>:<路径>`
+  const path = displayPath(entry.uri, useConnectionNames())
   return (
     // 单击只获得焦点（选中）；双击 / Enter 在当前标签打开（Enter 的默认 click 被阻止，避免与单击语义混淆）；
     // 中键 / Ctrl+单击 / Ctrl+Enter 在新标签打开
@@ -182,7 +185,14 @@ function EntryItem({
       }}
       className="flex w-full min-w-0 cursor-default items-center gap-3 rounded-md px-3 py-2 text-left outline-none select-none hover:bg-accent/50 focus-visible:outline-1 focus-visible:outline-ring focus:bg-accent focus:text-accent-foreground"
     >
-      {entry.kind === 'folder' ? (
+      {entry.kind === 'folder' && !isLocalUri(entry.uri) ? (
+        // 远程条目以服务器图标区别于本地（与资源树一致）
+        <ServerIcon
+          role="img"
+          aria-label={t('explorer:remoteFolder')}
+          className="size-5 shrink-0 text-muted-foreground"
+        />
+      ) : entry.kind === 'folder' ? (
         <FolderRootIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       ) : (
         <FileIcon

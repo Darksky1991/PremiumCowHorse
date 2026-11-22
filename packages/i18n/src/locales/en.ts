@@ -29,7 +29,6 @@ export default {
     emptyTitle: 'This workspace is empty',
     emptyHint: 'Drag folders or files here, or add them with the buttons below.',
     addFolder: 'Add folder',
-    addConnection: 'Add remote connection',
     title: 'Explorer',
     refresh: 'Refresh',
     collapseAll: 'Collapse all',
@@ -77,7 +76,25 @@ export default {
     revealNotInWorkspace: 'This item is not under any entry of the current workspace',
     revealNotFound:
       'Could not find the item in the tree. The folder may have changed (press F5 to refresh).',
-    revealTimeout: 'Loading the folders took too long; expanded as far as possible'
+    revealTimeout: 'Loading the folders took too long; expanded as far as possible',
+    addRemoteFolder: 'Add remote folder',
+    menuAddRemoteFolder: 'Add remote folder…',
+    remoteFolder: 'Remote folder',
+    addRemoteTitle: 'Add remote folder',
+    addRemoteDescription:
+      'Adds a folder on an SFTP server as a read-only entry. Files on the server are never changed.',
+    remoteConnection: 'Connection',
+    remoteNoConnections: 'No remote connections yet. Add one with Manage connections.',
+    manageConnections: 'Manage connections',
+    remoteIdentity: 'Read as',
+    remoteLoginUser: 'Login user ({{name}})',
+    remoteIdentityHint: 'Other users are read through sudo; their default path is /.',
+    remotePath: 'Path',
+    remotePathInvalid: 'Enter an absolute path starting with / (. and .. are not allowed)',
+    remoteHomeLoading: 'Getting the home folder…',
+    add: 'Add',
+    addAsOwner: 'Add entry as {{owner}}',
+    addedAsOwner: 'Added “{{label}}” (read as {{owner}})'
   },
   search: {
     title: 'Search',
@@ -209,8 +226,120 @@ export default {
     }
   },
   connections: {
+    title: 'Remote connections',
+    listLabel: 'Remote connections',
+    add: 'New connection',
     emptyTitle: 'No remote connections yet',
-    emptyHint: 'Add an SMB, FTP or SFTP server once and use it from any workspace.'
+    emptyHint: 'Add an SFTP server once and use it from any workspace.',
+    status: {
+      online: 'Online',
+      idle: 'Not connected',
+      connecting: 'Connecting',
+      offline: 'Offline',
+      authFailed: 'Authentication failed',
+      sudoAuthFailed: 'sudo authentication failed',
+      hostKeyPending: 'Waiting for host key confirmation',
+      hostKeyChanged: 'Host key changed'
+    },
+    identitiesLine: 'Switch users: {{list}}',
+    test: 'Test',
+    edit: 'Edit',
+    delete: 'Delete',
+    reconnect: 'Reconnect',
+    trustNewKey: 'Trust new key',
+    newTitle: 'New connection',
+    editTitle: 'Edit connection',
+    dialogDescription:
+      'Connects read-only over SFTP (SSH). Passwords are encrypted and stored on this PC.',
+    name: 'Name',
+    namePlaceholder: 'e.g. Customer A prod AP1',
+    host: 'Host',
+    port: 'Port',
+    username: 'User name',
+    auth: 'Authentication',
+    authPassword: 'Password authentication',
+    authKey: 'Private key authentication',
+    password: 'Password',
+    secretSaved: 'Saved (unchanged)',
+    keyPath: 'Private key file',
+    browse: 'Browse…',
+    keyHint: 'OpenSSH / PEM keys and PuTTY PPK v2 (RSA / DSA) are supported.',
+    passphrase: 'Passphrase',
+    passphraseNone: 'None',
+    identities: 'Switch users',
+    identitiesHint:
+      'Users to switch to with sudo for reading (e.g. app1, root). Press Enter to add.',
+    identityPlaceholder: 'Type a user name',
+    removeIdentity: 'Remove {{name}}',
+    sudo: 'sudo password',
+    sudoSame: 'Same as login password',
+    sudoNone: 'No sudo password (NOPASSWD)',
+    sudoSeparate: 'Set separately',
+    sudoHint: 'Set it separately where sudo asks for the root password (e.g. targetpw on SUSE).',
+    sftpServer: 'sftp-server path',
+    sftpAuto: 'Auto-detect',
+    sftpCustom: 'Specify',
+    hostKey: 'Trusted host key',
+    hostKeyNone: 'None yet (confirmed on first connection)',
+    hostKeyPresented: 'New key presented by the server',
+    cancel: 'Cancel',
+    save: 'Save',
+    formError: {
+      nameRequired: 'Enter a name',
+      hostRequired: 'Enter a host',
+      portInvalid: 'Enter a number from 1 to 65535',
+      usernameRequired: 'Enter a user name',
+      usernameInvalid:
+        'Use lowercase letters, digits and _ . - only (start with a letter or _, up to 32 characters)',
+      passwordRequired: 'Enter the password',
+      keyPathRequired: 'Choose a private key file',
+      sudoPasswordRequired: 'Enter the sudo password',
+      sftpServerPathInvalid:
+        'Enter an absolute path starting with / (letters, digits and . _ / + - only)',
+      identityInvalid:
+        'Use lowercase letters, digits and _ . - only (start with a letter or _, up to 32 characters)',
+      identityDuplicate: 'Already added',
+      identityTooMany: 'Up to 20 users can be added'
+    },
+    testResult: 'Test result',
+    testing: 'Testing…',
+    closeResult: 'Close test result',
+    step: {
+      connect: 'Connect',
+      hostKey: 'Host key',
+      auth: 'Authentication',
+      sftp: 'SFTP',
+      identity: 'Switch to {{identity}}'
+    },
+    stepOk: 'OK',
+    stepFailed: 'Failed',
+    stepSkipped: 'Not run',
+    homeInfo: 'Home: {{path}}',
+    identityInfo: 'sftp-server: {{path}} ({{mode}})',
+    modeNopty: 'no terminal',
+    modePty: 'terminal',
+    deleteTitle: 'Delete this connection?',
+    deleteCounting: 'Checking which entries use this connection…',
+    deleteNoRefs: 'No workspace entries use this connection.',
+    deleteRefs:
+      'Workspace entries using this connection: {{count}}. They are kept and show “connection not found”.',
+    deleteCountFailed: 'Could not check which entries use this connection.',
+    deleteSubmit: 'Delete',
+    trustTitle: 'Trust the new host key?',
+    trustDescription:
+      'The server host key differs from the trusted one. Trust it only after confirming the change (for example, the server was rebuilt).',
+    oldKey: 'Previous key',
+    newKey: 'New key',
+    trustSubmit: 'Trust',
+    trustKeyStale:
+      'The key the server presents has changed from the one shown. Check the new key before trusting it.',
+    promptTitle: 'Trust this server?',
+    promptDescription:
+      'Connecting to “{{name}}” ({{address}}) for the first time. Confirm the fingerprint with the administrator before trusting it.',
+    algorithm: 'Algorithm',
+    fingerprint: 'Fingerprint',
+    promptAccept: 'Trust and connect',
+    promptMore: 'More confirmations waiting: {{count}}'
   },
   welcome: {
     title: 'Welcome',
@@ -218,7 +347,7 @@ export default {
     startTitle: 'Start',
     newWorkspace: 'Create a workspace',
     openFolder: 'Open a local folder',
-    connectRemote: 'Connect to SMB / FTP / SFTP',
+    connectRemote: 'Connect to an SFTP server',
     shortcutsTitle: 'Shortcuts',
     shortcutCommand: 'Command palette',
     shortcutSidebar: 'Toggle sidebar',
@@ -279,6 +408,23 @@ export default {
     INDEX_UNAVAILABLE: 'The index is unavailable',
     DOC_NOT_FOUND: 'The document was closed. Open it again',
     LAUNCH_FAILED: 'Could not launch the app. Check the associated application',
-    DESKTOP_SNAPSHOT_NOT_FOUND: 'The desktop snapshot was not found. It may have been deleted'
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'The desktop snapshot was not found. It may have been deleted',
+    CONN_NOT_FOUND: 'Connection not found (it may have been deleted)',
+    CONN_AUTH_FAILED:
+      'Authentication failed. Check the user name, password or key (no automatic retry)',
+    CONN_KEY_INVALID:
+      'Cannot read the private key. Only OpenSSH / PEM and PuTTY PPK v2 (RSA / DSA) keys are supported; also check the passphrase',
+    CONN_HOST_KEY_REJECTED: 'The server host key was not trusted, so the connection was canceled',
+    CONN_HOST_KEY_CHANGED:
+      "The server's host key differs from the trusted one, so the connection was refused. After verifying, trust the new key in Remote connections",
+    CONN_SUDO_AUTH_FAILED: 'The sudo password is incorrect (no automatic retry)',
+    CONN_SUDO_DENIED: 'sudo does not allow switching to this user',
+    CONN_SUDO_FAILED: 'Switching user failed (timed out or the channel was closed)',
+    CONN_SFTP_SERVER_NOT_FOUND:
+      'sftp-server was not found on the server. Specify its path in the connection settings',
+    CONN_PROCESS_LIST_HIDDEN:
+      "The server hides other users' processes, so the user cannot be switched safely",
+    CONN_SECRET_UNAVAILABLE:
+      'The saved password cannot be decrypted. Enter it again in the connection settings'
   }
 } satisfies Resource

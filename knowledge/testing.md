@@ -148,6 +148,7 @@
 - 预防：做系统级截图前先用上面的最小命令探测。
 - 补充（2026-11-21，M2 反馈第 6–8 项）：同一会话中先后出现两种表现——先报 `The handle is invalid`，几分钟后 `CopyFromScreen` 不再报错、但保存的是**全白图像**（窗口区域没有任何内容）。不报错不等于截到了：截图后必须打开看一眼；全白时同样按上面退回 `page.screenshot`，并在报告中写明没有系统级截图。
 - 再次出现（2026-11-21 / 2026-11-22，M3 Task 11 与 Task 13）：两次都报 `The handle is invalid`，系统级截图退回 Playwright 的 `page.screenshot`。此时 COM（Office 自动化、`Shell.Application`）与 UI Automation 的 `Invoke` 仍可用，资源管理器 / Office 的窗口也能正常创建与关闭（Task 13 的实机端到端在这种状态下完成），只是看不到真实像素。**注意**：`CopyFromScreen` 的异常在 `-Command` 中是非终止错误，PowerShell 继续执行 `$bmp.Save` 并以退出码 0 结束，`execFileSync` 不抛错——`scripts/os-screenshot.mjs` 与同类脚本会照常打印 `saved`，留下一张全空的 PNG（本次 1920x1128 时约 8.5KB）。判断成败要看 stderr 里有没有该异常、再打开图片确认，不能只看退出码。
+- 再次出现（2026-11-23，M4 Task 14a）：后台代理执行的实机验证中 `CopyFromScreen` 报 `The handle is invalid` 并得到全白图；系统级整窗截屏记为未验证，页面截图（`page.screenshot`）正常。
 
 ### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
 
@@ -311,3 +312,11 @@
 - 原因：桌面记录的 `ExitGuard` 在 Windows 上（监控启用）且设置 `desktop.askOnExit` 为默认值 true 时拦截主窗口的 `close`，发出 `desktop.exitRequested`，渲染端显示退出对话框，窗口不关。`app.close()`（经 `before-quit`）不受影响，所以其他用例没事。
 - 解决：用例点「閉じる」后等对话框出现，再点「保存しないで終了 / 不保存并退出 / Exit without saving」（提交 `335c6d5`）。只是要关闭应用、不关心退出询问的用例，用 `app.close()`，或先 `settings.set({ 'desktop.askOnExit': false })`。
 - 预防：给主窗口的关闭加拦截之类改变全局行为的改动，要跑全量 e2e，而不只是本功能的 spec；`grep` 一下 e2e 里点关闭按钮 / 调 `window.close` 的地方。
+
+### e2e：建立索引后在搜索视图里重新输入同一关键字，结果不更新
+
+- 日期：2026-11-23
+- 症状（M4 Task 13 `e2e/remote.spec.ts`）：对远程条目「建立索引」后，用 `toPass` 循环「清空 → 输入 `deep.txt` → 期望 1 条」，30 秒内一直是「0 件 · キャッシュから検索（たった今）/ まだスキャンされていないフォルダーがあります」；同一时刻经 IPC `search.query` 直接查询，约 8 秒后已能查到。
+- 原因：搜索视图的输入经防抖（`search-view.tsx` 的 `useDebounced`）后才成为查询键；「清空 → 立即输入同一关键字」在防抖期内完成，防抖后的值没有变化，查询键不变，挂载中的 `useQuery` 不会重新查询（`data/search.ts`：结果按设计不随 `vfs.changed` 失效，只在关键字变化 / 重新挂载时查询）。另外索引按目录逐个读取（远程每个目录之间休息 `cache.backgroundGapMs.remote`），先找到的文件不代表其余目录已读完。
+- 解决：先经 IPC `search.query` 轮询，等到目标命中且 `incomplete: false`（没有未扫描的目录），再在界面中输入关键字（每个关键字只输入一次）。
+- 预防：依赖后台索引的搜索用例，等待条件放在 IPC 层（`incomplete`），界面只验证展示与定位；不要靠在界面上反复输入同一关键字来等待。

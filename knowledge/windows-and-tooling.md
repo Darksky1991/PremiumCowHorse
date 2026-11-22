@@ -255,3 +255,35 @@
 - 原因：未查明（引号 heredoc 本不该处理反斜杠；推测是工具传参时多做了一层转义还原）。
 - 解决：含反斜杠的修改用 Edit 工具直接写；必须用脚本时，在脚本中用 `chr(92)` 拼反斜杠，或测试数据改用正斜杠路径；改完用 `grep -c $'\a' <文件>` 查控制字符、`grep -n 'C:\\[A-Za-z]'` 查单个反斜杠的路径。
 - 预防：批量修改前先确认要写入的文本里有没有反斜杠；有就不用 heredoc 传给解释器。CLAUDE.md「长 heredoc 易解析失败，批量修改改用脚本文件」同理。
+
+### Git Bash 调用 `wsl.exe`：参数与环境变量中的 `/usr/...` 被改写成 Windows 路径
+
+- 日期：2026-11-22
+- 症状：`wsl.exe -d Debian -u root -- /usr/sbin/sshd ...` 报 `/bin/bash: line 1: C:/Program Files/Git/usr/sbin/sshd: No such file or directory`；`READFILE=/opt/x node spike.mjs` 在 node 里拿到的是 `C:/Program Files/Git/opt/x`。
+- 原因：MSYS 在调用 Windows 程序时把形如 POSIX 绝对路径的参数和环境变量转换为 Windows 路径。
+- 解决：参数用 `MSYS_NO_PATHCONV=1 wsl.exe ...`；环境变量用 `MSYS2_ENV_CONV_EXCL='*'`。或改用 PowerShell 调用。
+- 预防：从 Git Bash 向 WSL / Linux 侧传路径时一律加上述变量（`scripts/wsl-sftp/README.md`）。
+
+### `wsl.exe ... -- bash -c '...'`：命令先经 WSL 的 shell 再展开一次
+
+- 日期：2026-11-22
+- 症状：`wsl.exe -d AlmaLinux-9 -u root -- bash -c 'for p in $(pgrep sshd-session); do kill -CONT $p; done'` 报 `syntax error near unexpected token '1503'`，`$(...)` 在进入 `bash -c` 之前已被展开。
+- 原因：`wsl.exe` 把 `--` 之后的参数拼成一行交给目标用户的默认 shell 执行，引号与 `$` 会被这一层再解析一次。
+- 解决：把命令写进脚本文件，`wsl.exe -d <实例> -u root -- bash /mnt/c/.../script.sh`。
+- 预防：含 `$`、引号或多条语句的命令一律用脚本文件。
+
+### `pkill -f <模式>` 会匹配到执行它的 shell 自身
+
+- 日期：2026-11-22
+- 症状：`wsl.exe ... -- bash -c "pkill -STOP -f 'sshd.*pchuser'; ..."` 一直不返回。
+- 原因：`bash -c` 的命令行里也含有字符串 `sshd.*pchuser`，被 `pkill -f` 匹配并冻结（SIGSTOP），后面的命令不再执行。
+- 解决：按进程名精确匹配（`pgrep -x` / `pkill -u <用户> <进程名>`），或把模式写成不会匹配自身的形式（如 `'[s]shd.*pchuser'`）。
+- 预防：在脚本中慎用 `pkill -f`，尤其是 `-STOP` / `-KILL`。
+
+### `wsl.exe -d <实例> -u root -e <命令>`：PATH 不含 `/usr/local/sbin`
+
+- 日期：2026-11-23
+- 症状（M4 Task 14a）：`wsl.exe -d Debian -u root -e pch-scenario all quiet` 找不到命令（`scripts/wsl-sftp/README.md` 中经默认 shell 的写法 `wsl -d Debian -u root -- pch-scenario …` 照常可用）。
+- 原因：`-e` 不经 WSL 的默认 shell 直接执行，得到的 PATH 不含 `/usr/local/sbin`（为什么经 shell 时含有，推测是 shell 的初始化补上的，未核实）。
+- 解决：`-e` 时用绝对路径（`/usr/local/sbin/pch-scenario`）。`-e` 的好处是参数不再经 shell 二次解析（见上一条），测试中从 Node `spawn('wsl.exe', ['-d', …, '-u', 'root', '-e', …])` 更可靠。
+- 预防：经 `-e` 执行的命令一律写绝对路径。

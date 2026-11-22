@@ -1,14 +1,17 @@
 import { createRequire } from 'node:module'
+import { isSftpUri, sftpConnectionKey } from '@pch/shared'
+import type { LocationKind } from '@pch/shared'
 import { fileUriToLocalPath } from './local-path'
 
 /**
  * 位置类型与并发分组的键（主进程与扫描进程共用；不依赖 electron）。
  * - UNC（file://host/share/...）→ network；shareKey `\\host\share`、hostKey `host`（均小写）
+ * - sftp:// → remote；shareKey / hostKey 均为连接键 `sftp://<connectionId>`（不含身份）
  * - 盘符 → GetDriveTypeW 为 DRIVE_REMOTE（映射的网络盘）时 network，否则 local；
  *   shareKey 为大写盘符加冒号。映射盘对应的服务器暂不解析（WNetGetConnectionW），
  *   hostKey 直接用盘符，使每个映射盘各自成为一组；本地盘的 hostKey 为 'local'。
  */
-export type LocationKind = 'local' | 'network'
+export type { LocationKind }
 
 export interface Locator {
   location(uri: string): LocationKind
@@ -47,14 +50,17 @@ export function createLocator(driveType: DriveTypeFn | null): Locator {
   }
   return {
     location(uri) {
+      if (isSftpUri(uri)) return 'remote'
       const p = parse(uri)
       return p.unc || isRemoteDrive(p.drive) ? 'network' : 'local'
     },
     shareKey(uri) {
+      if (isSftpUri(uri)) return sftpConnectionKey(uri)
       const p = parse(uri)
       return p.unc ? `\\\\${p.host}\\${p.share}` : p.drive
     },
     hostKey(uri) {
+      if (isSftpUri(uri)) return sftpConnectionKey(uri)
       const p = parse(uri)
       if (p.unc) return p.host
       return isRemoteDrive(p.drive) ? p.drive : 'local'

@@ -71,7 +71,8 @@ export const textPlugin = definePreviewPlugin<TextViewState>({
     id: TEXT_PLUGIN_ID,
     name: 'name',
     version: '1.0.0',
-    match: { kinds: ['file'], extensions: TEXT_EXTENSIONS, textLike: true },
+    // 只处理本机文件（远程资源没有读取；M4 设计 5.8）
+    match: { kinds: ['file'], schemes: ['file'], extensions: TEXT_EXTENSIONS, textLike: true },
     // 文件被删除时保留已显示的内容并提示「文件已不存在」（use-document.ts 的 missing）
     handlesMissing: true
   },

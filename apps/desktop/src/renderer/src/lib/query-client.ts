@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { normalizeRootUri, type Settings } from '@pch/shared'
+import { normalizeRootUri, type ConnectionDto, type Settings } from '@pch/shared'
 import { shareKeyOfUri } from './file-uri'
 import { subscribe } from './ipc'
 import { queryKeys } from './query-keys'
@@ -46,6 +46,17 @@ export function bridgeMainEvents(client: QueryClient): () => void {
         void client.invalidateQueries({ queryKey: queryKeys.desktopSnapshots })
         void client.invalidateQueries({ queryKey: queryKeys.desktopSnapshotRoot })
       }
+    }),
+    // 远程连接：增删改 / 测试之后整体失效（列表与主目录）
+    subscribe('connection.changed', () => {
+      void client.invalidateQueries({ queryKey: queryKeys.connectionRoot })
+    }),
+    // 连接状态（连接池）：先就地更新状态点，再重新取得列表（认证锁定等可能随之变化）
+    subscribe('connection.status', ({ id, state }) => {
+      client.setQueryData<ConnectionDto[]>(queryKeys.connections, (prev) =>
+        prev?.map((c) => (c.id === id ? { ...c, state } : c))
+      )
+      void client.invalidateQueries({ queryKey: queryKeys.connections })
     }),
     // 目录的缓存内容有变化（扫描进程检查后发现差异）：重新列出该目录（读缓存，很快）；
     // 该目录自身与其直接子项的 stat（预览标签显示的大小 / 时间）也失效。
