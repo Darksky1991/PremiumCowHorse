@@ -309,6 +309,8 @@ export const ipcContract = {
   'connection.answerHostKey': route<void>()(
     z.strictObject({ promptId: z.string().min(1), accept: z.boolean() })
   ),
+  /** 尚未回答的主机密钥询问（渲染端重新加载后先查询一次，再订阅 connection.hostKeyPrompt） */
+  'connection.pendingHostKeyPrompts': route<HostKeyPrompt[]>()(z.void()),
   /** 主目录：登录用户为 realpath(.)（会连接）；切换身份为 / */
   'connection.home': route<string>()(
     z.strictObject({

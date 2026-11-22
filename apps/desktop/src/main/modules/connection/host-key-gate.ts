@@ -9,6 +9,8 @@ export interface HostKeyGate {
   /** 首次连接：询问用户（同一连接同时只有一个询问，其余等待同一结果） */
   ask(connectionId: string, key: HostKeyInfo): Promise<boolean>
   answer(promptId: string, accept: boolean): void
+  /** 已发出、尚未回答且未超时的询问（渲染端重新加载后据此恢复确认框） */
+  pending(): HostKeyPrompt[]
 }
 
 export interface HostKeyGateDeps {
@@ -22,7 +24,8 @@ const DEFAULT_TIMEOUT_MS = 300_000
 
 interface Pending {
   key: HostKeyInfo
-  promptId: string | null
+  /** 已发给窗口的询问；发出之前为 null */
+  prompt: HostKeyPrompt | null
   result: Promise<boolean>
   settle: (accept: boolean) => void
 }
@@ -38,7 +41,7 @@ export function createHostKeyGate(deps: HostKeyGateDeps): HostKeyGate {
   function start(connectionId: string, key: HostKeyInfo): Promise<boolean> {
     let settle!: (accept: boolean) => void
     const result = new Promise<boolean>((resolve) => (settle = resolve))
-    const entry: Pending = { key, promptId: null, result, settle: () => undefined }
+    const entry: Pending = { key, prompt: null, result, settle: () => undefined }
     let timer: ReturnType<typeof setTimeout> | undefined
     entry.settle = (accept) => {
       if (pending.get(connectionId) !== entry) return
@@ -56,11 +59,11 @@ export function createHostKeyGate(deps: HostKeyGateDeps): HostKeyGate {
         desc = undefined
       }
       if (!desc) return entry.settle(false)
-      const promptId = randomUUID()
-      entry.promptId = promptId
+      const prompt: HostKeyPrompt = { promptId: randomUUID(), connectionId, ...desc, key }
+      entry.prompt = prompt
       let sent: boolean
       try {
-        sent = deps.send({ promptId, connectionId, ...desc, key })
+        sent = deps.send(prompt)
       } catch {
         sent = false
       }
@@ -81,9 +84,15 @@ export function createHostKeyGate(deps: HostKeyGateDeps): HostKeyGate {
 
   function answer(promptId: string, accept: boolean): void {
     for (const entry of pending.values()) {
-      if (entry.promptId === promptId) return entry.settle(accept === true)
+      if (entry.prompt?.promptId === promptId) return entry.settle(accept === true)
     }
   }
 
-  return { ask, answer }
+  function list(): HostKeyPrompt[] {
+    const out: HostKeyPrompt[] = []
+    for (const entry of pending.values()) if (entry.prompt) out.push(entry.prompt)
+    return out
+  }
+
+  return { ask, answer, pending: list }
 }

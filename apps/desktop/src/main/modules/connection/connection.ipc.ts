@@ -10,6 +10,7 @@ type ConnectionChannel =
   | 'connection.reconnect'
   | 'connection.trustHostKey'
   | 'connection.answerHostKey'
+  | 'connection.pendingHostKeyPrompts'
   | 'connection.home'
 
 /**
@@ -21,7 +22,7 @@ export function connectionHandlers(
     ConnectionService,
     'list' | 'save' | 'delete' | 'test' | 'reconnect' | 'trustHostKey' | 'home'
   >,
-  hostKeys: Pick<HostKeyGate, 'answer'>
+  hostKeys: Pick<HostKeyGate, 'answer' | 'pending'>
 ): HandlersOf<ConnectionChannel> {
   return {
     'connection.list': () => service.list(),
@@ -31,6 +32,7 @@ export function connectionHandlers(
     'connection.reconnect': ({ id }) => service.reconnect(id),
     'connection.trustHostKey': ({ id }) => service.trustHostKey(id),
     'connection.answerHostKey': async ({ promptId, accept }) => hostKeys.answer(promptId, accept),
+    'connection.pendingHostKeyPrompts': async () => hostKeys.pending(),
     'connection.home': ({ id, identity }) => service.home(id, identity)
   }
 }

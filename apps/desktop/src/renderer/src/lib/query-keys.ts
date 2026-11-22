@@ -23,6 +23,12 @@ export const queryKeys = {
   desktopSnapshotRoot: ['desktop', 'snapshot'] as const,
   desktopSnapshot: (id: number) => ['desktop', 'snapshot', id] as const,
   desktopCurrent: ['desktop', 'current'] as const,
+  /** 远程连接：'connection' 前缀用于连接变化时一次性失效 */
+  connectionRoot: ['connection'] as const,
+  connections: ['connection', 'list'] as const,
+  /** 连接的主目录（登录用户为 realpath('.')；切换身份为 /） */
+  connectionHome: (id: string, identity: string | null) =>
+    ['connection', 'home', id, identity] as const,
   /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
     ['search', workspaceId, text, kind] as const

@@ -102,6 +102,41 @@ describe('createHostKeyGate', () => {
     await expect(a).resolves.toBe(false)
   })
 
+  it('pending 列出已发出且未回答的询问；回答后移除', async () => {
+    const { gate, prompts } = setup()
+    expect(gate.pending()).toEqual([])
+    const a = gate.ask('c1', KEY)
+    const b = gate.ask('c2', OTHER)
+    await flush()
+    expect(gate.pending()).toEqual(prompts)
+    gate.answer(prompts[0]!.promptId, true)
+    await expect(a).resolves.toBe(true)
+    expect(gate.pending()).toEqual([prompts[1]])
+    gate.answer(prompts[1]!.promptId, false)
+    await expect(b).resolves.toBe(false)
+    expect(gate.pending()).toEqual([])
+  })
+
+  it('pending 不含未能发出的询问（连接不存在 / 没有主窗口）', async () => {
+    const gone = setup({ describe: async () => undefined })
+    await expect(gone.gate.ask('c1', KEY)).resolves.toBe(false)
+    expect(gone.gate.pending()).toEqual([])
+    const noWindow = setup({ send: () => false })
+    await expect(noWindow.gate.ask('c1', KEY)).resolves.toBe(false)
+    expect(noWindow.gate.pending()).toEqual([])
+  })
+
+  it('pending 不含已超时的询问', async () => {
+    vi.useFakeTimers()
+    const { gate } = setup()
+    const a = gate.ask('c1', KEY)
+    await flush()
+    expect(gate.pending()).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(300_000)
+    await expect(a).resolves.toBe(false)
+    expect(gate.pending()).toEqual([])
+  })
+
   it('一直没有回答：到时以 false 结束，之后的询问重新发出', async () => {
     vi.useFakeTimers()
     const { gate, send } = setup()

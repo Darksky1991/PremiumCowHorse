@@ -210,7 +210,7 @@ function setup(
     openIdentity: h.openIdentity as unknown as PoolDeps['openIdentity'],
     bridge: h.bridge as unknown as PoolDeps['bridge'],
     readKeyFile: h.readKeyFile as PoolDeps['readKeyFile'],
-    hostKeys: { ask: h.ask as HostKeyGate['ask'], answer: () => undefined },
+    hostKeys: { ask: h.ask as HostKeyGate['ask'], answer: () => undefined, pending: () => [] },
     settings: () => ({ keepaliveSec: 15, idleDisconnectMin: 5, timeoutSec: 20, ...over.settings }),
     onStatus: (_id, s) => h.states.push(s),
     now: () => Date.now(),
