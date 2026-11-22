@@ -62,14 +62,21 @@ const POLL_INTERVAL_MAX_MS = 3_600_000
 /**
  * 长寿命的轮询通道（D2）：每 intervalMs 输出一帧进程表，以 PCHEND 行分帧。
  * 间隔按毫秒取整后换算成秒（150 → 0.15）；非有限正数或超过上限时抛错。
+ * I2b（R24）：本端关闭通道后循环只能靠 SIGPIPE 结束；会话子进程若继承了被忽略的 SIGPIPE，写失败只返回非零，
+ * 循环会在服务器上永远运行。因此 ps / echo 失败即 exit，并以 ceil(2 × timeoutMs / 间隔) 次为上限
+ * （覆盖身份切换超时的两倍：超时之前不会因次数用完而提前关闭通道）。
  */
-export function pollCommand(intervalMs: number): string {
+export function pollCommand(intervalMs: number, timeoutMs: number): string {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0 || intervalMs > POLL_INTERVAL_MAX_MS) {
     throw new Error('invalid poll interval')
   }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('invalid switch timeout')
   const ms = Math.max(1, Math.round(intervalMs))
   const sec = (ms / 1000).toFixed(3).replace(/\.?0+$/, '')
-  return `while :; do ps -eo pid=,ppid=,comm=; echo PCHEND; sleep ${sec}; done`
+  const times = Math.ceil((2 * timeoutMs) / ms)
+  // 换算出指数形式的数字会让 shell 语法出错
+  if (!Number.isSafeInteger(times)) throw new Error('invalid switch timeout')
+  return `i=0; while [ $i -lt ${times} ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep ${sec}; i=$((i+1)); done`
 }
 const POLL_FRAME_END = 'PCHEND'
 
@@ -161,7 +168,7 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
   try {
     sudoCmd = sudoCommand(deps.identity)
     startCmd = startCommand(deps.sftpServerPath)
-    pollCmd = pollCommand(deps.pollIntervalMs)
+    pollCmd = pollCommand(deps.pollIntervalMs, deps.timeoutMs)
   } catch (e) {
     return Promise.reject(
       new AppError({ code: 'CONN_SUDO_FAILED', detail: e instanceof Error ? e.message : String(e) })

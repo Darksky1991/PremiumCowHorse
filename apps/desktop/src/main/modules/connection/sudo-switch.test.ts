@@ -87,7 +87,7 @@ function harness(over: Partial<SwitchDeps> = {}, opts: { holdPoll?: boolean } = 
   const deps: SwitchDeps = {
     exec: async (command, o) => {
       commands.push({ command, pty: o.pty })
-      if (command.startsWith('while :;')) {
+      if (command.includes('PCHEND')) {
         await pollReady
         return poll
       }
@@ -172,14 +172,27 @@ describe('命令字符串', () => {
   })
 
   it('pollCommand：间隔换算成服务器端 sleep 的秒数，PCHEND 分帧不变', () => {
-    expect(pollCommand(150)).toBe(
-      'while :; do ps -eo pid=,ppid=,comm=; echo PCHEND; sleep 0.15; done'
+    expect(pollCommand(150, 15_000)).toBe(
+      'i=0; while [ $i -lt 200 ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep 0.15; i=$((i+1)); done'
     )
-    expect(pollCommand(1000)).toContain('sleep 1;')
-    expect(pollCommand(1500)).toContain('sleep 1.5;')
-    expect(pollCommand(0.2)).toContain('sleep 0.001;')
+    expect(pollCommand(1000, 15_000)).toContain('sleep 1;')
+    expect(pollCommand(1500, 15_000)).toContain('sleep 1.5;')
+    expect(pollCommand(0.2, 15_000)).toContain('sleep 0.001;')
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1e22]) {
-      expect(() => pollCommand(bad)).toThrow()
+      expect(() => pollCommand(bad, 15_000)).toThrow()
+    }
+  })
+
+  it('I2b：轮询循环在写失败（SIGPIPE 被忽略时）即退出，且迭代次数覆盖切换超时的两倍', () => {
+    const cmd = pollCommand(150, 15_000)
+    expect(cmd).toContain('ps -eo pid=,ppid=,comm= || exit;')
+    expect(cmd).toContain('echo PCHEND || exit;')
+    expect(cmd).not.toContain('while :')
+    // 次数 = ceil(2 × 超时 / 间隔)
+    expect(pollCommand(1000, 15_000)).toContain('-lt 30 ]')
+    expect(pollCommand(150, 10_000)).toContain('-lt 134 ]')
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1e22]) {
+      expect(() => pollCommand(150, bad)).toThrow()
     }
   })
 
@@ -187,7 +200,7 @@ describe('命令字符串', () => {
     const h = harness({ pollIntervalMs: 300 })
     const p = track(openIdentityChannel(h.deps))
     await flush()
-    expect(h.commands[1]).toEqual({ command: pollCommand(300), pty: false })
+    expect(h.commands[1]).toEqual({ command: pollCommand(300, 15_000), pty: false })
     h.cmd.close()
     await errorOf(p.promise)
 
@@ -257,7 +270,7 @@ describe('openIdentityChannel（非终端方式）', () => {
     await flush()
     expect(h.commands).toEqual([
       { command: sudoCommand('app1'), pty: false },
-      { command: pollCommand(150), pty: false }
+      { command: pollCommand(150, 15_000), pty: false }
     ])
     h.cmd.err(`PCHPID:${SUDO_PID}\n`)
     h.cmd.err('PCHSUDOPROMPT')
@@ -766,7 +779,7 @@ describe('openIdentityChannel（终端方式）', () => {
     const p = track(openIdentityChannel(h.deps))
     await flush()
     expect(h.commands[0]).toEqual({ command: sudoCommand('app1'), pty: true })
-    expect(h.commands[1]).toEqual({ command: pollCommand(150), pty: false })
+    expect(h.commands[1]).toEqual({ command: pollCommand(150, 15_000), pty: false })
     // stderr 上的东西在终端方式下不作数
     h.cmd.err('PCHSUDOPROMPT')
     await flush()

@@ -80,6 +80,13 @@ const sudoLog = (distro: string): string => sh(distro, `cat ${SUDO_LOG} 2>/dev/n
 const journal = (distro: string, since: number): string =>
   sh(distro, `journalctl --since @${since} --no-pager -o cat`)
 
+/**
+ * I2b：服务器上残留的进程表轮询循环（命令行含 PCHEND）。模式写成 [P]CHEND：sh -c 自身的命令行不被匹配
+ * （knowledge/windows-and-tooling.md「pkill -f 会匹配到执行它的 shell 自身」）
+ */
+const leftoverPolls = (distro: string): string =>
+  sh(distro, "pgrep -a -f '[P]CHEND' || true").trim()
+
 const count = (text: string, re: RegExp): number => text.match(new RegExp(re, 'g'))?.length ?? 0
 const SUDO_AUTH_FAILURE = /pam_unix\(sudo:auth\): authentication failure/
 const SSHD_AUTH_FAILURE = /pam_unix\(sshd:auth\): authentication failure/
@@ -370,6 +377,11 @@ describe.skipIf(!ENABLED)('WSL 实机：SFTP 与身份切换', () => {
 
       const t = await timed(`${d.name} all test()`, () => h.pool.test(h.rec.id))
       expect(t.steps.every((s) => s.ok)).toBe(true)
+      // I2b：每次切换的轮询通道在判定后关闭，服务器上不留下轮询循环
+      await sleep(1000)
+      const left = leftoverPolls(d.name)
+      facts.push(`${d.name} all: leftover poll loops after 4 switches=[${left}]`)
+      expect(left).toBe('')
       for (const s of t.steps.filter((x) => x.step === 'identity')) {
         expect(s.ok && s.info).toMatchObject({ mode: 'nopty' })
       }
@@ -502,6 +514,8 @@ describe.skipIf(!ENABLED)('WSL 实机：SFTP 与身份切换', () => {
       expect(count(j2, SUDO_AUTH_FAILURE)).toBe(1)
       expect(count(j2, /sudo\[\d+\]|sudo-rs|sudo:/)).toBe(count(j1, /sudo\[\d+\]|sudo-rs|sudo:/))
       if (!d.sudoRs) expect(sudoLog(d.name)).toBe(logAfter)
+      // I2b：失败的切换也不留下轮询循环
+      expect(leftoverPolls(d.name)).toBe('')
     })
 
     it('错误的登录密码：CONN_AUTH_FAILED，只记 1 次失败；之后不再连接', async () => {
