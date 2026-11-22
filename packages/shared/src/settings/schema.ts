@@ -26,7 +26,18 @@ export const settingsSchema = z.object({
   'preview.maxTextSizeMB': z.number().int().min(1).max(500).default(50),
   'session.restoreOnStartup': z.boolean().default(true),
   'window.onDetachedClose': z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),
+  /** 暂无用途（远程文件下载缓存不在 M4 范围） */
   'remote.cacheSizeMB': z.number().int().min(100).default(1024),
+  /** SFTP 保活间隔（秒）；连续 3 次无响应视为断线 */
+  'remote.keepaliveSec': z.number().int().min(5).max(120).default(15),
+  /** 远程连接无请求多少分钟后自动断开 */
+  'remote.idleDisconnectMin': z.number().int().min(1).max(60).default(5),
+  /** 远程文件系统调用的超时（秒） */
+  'vfs.timeoutSec.remote': z.number().int().min(5).max(120).default(20),
+  /** 远程目录后台填充缓存时，每个目录完成后的休息时间（毫秒） */
+  'cache.backgroundGapMs.remote': z.number().int().min(100).default(500),
+  /** 远程目录建立索引的间隔（分钟） */
+  'cache.remoteIndexIntervalMin': z.number().int().min(5).max(1440).default(30),
   /** 缓存策略的全局默认（设计 8）：本地「积极」、网络「默认」；条目可单独设置 */
   'cache.strategy.local': z.enum(CACHE_STRATEGIES).default('active'),
   'cache.strategy.network': z.enum(CACHE_STRATEGIES).default('default'),

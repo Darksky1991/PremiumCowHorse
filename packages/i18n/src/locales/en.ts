@@ -279,6 +279,23 @@ export default {
     INDEX_UNAVAILABLE: 'The index is unavailable',
     DOC_NOT_FOUND: 'The document was closed. Open it again',
     LAUNCH_FAILED: 'Could not launch the app. Check the associated application',
-    DESKTOP_SNAPSHOT_NOT_FOUND: 'The desktop snapshot was not found. It may have been deleted'
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'The desktop snapshot was not found. It may have been deleted',
+    CONN_NOT_FOUND: 'Connection not found (it may have been deleted)',
+    CONN_AUTH_FAILED:
+      'Authentication failed. Check the user name, password or key (no automatic retry)',
+    CONN_KEY_INVALID:
+      'Cannot read the private key. Only OpenSSH / PEM and PuTTY PPK v2 (RSA / DSA) keys are supported; also check the passphrase',
+    CONN_HOST_KEY_REJECTED: 'The server host key was not trusted, so the connection was canceled',
+    CONN_HOST_KEY_CHANGED:
+      "The server's host key differs from the trusted one, so the connection was refused. After verifying, trust the new key in Remote connections",
+    CONN_SUDO_AUTH_FAILED: 'The sudo password is incorrect (no automatic retry)',
+    CONN_SUDO_DENIED: 'sudo does not allow switching to this user',
+    CONN_SUDO_FAILED: 'Switching user failed (timed out or the channel was closed)',
+    CONN_SFTP_SERVER_NOT_FOUND:
+      'sftp-server was not found on the server. Specify its path in the connection settings',
+    CONN_PROCESS_LIST_HIDDEN:
+      "The server hides other users' processes, so the user cannot be switched safely",
+    CONN_SECRET_UNAVAILABLE:
+      'The saved password cannot be decrypted. Enter it again in the connection settings'
   }
 } satisfies Resource

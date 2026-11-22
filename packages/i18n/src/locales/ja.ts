@@ -278,6 +278,24 @@ export default {
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
     DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
     LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください',
-    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります'
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります',
+    CONN_NOT_FOUND: '接続が見つかりません（削除された可能性があります）',
+    CONN_AUTH_FAILED:
+      '認証に失敗しました。ユーザー名・パスワード・鍵を確認してください（自動では再試行しません）',
+    CONN_KEY_INVALID:
+      '秘密鍵を読み込めません。対応形式は OpenSSH / PEM と PuTTY の PPK v2（RSA / DSA）です。パスフレーズも確認してください',
+    CONN_HOST_KEY_REJECTED: 'サーバーのホストキーを信頼しなかったため、接続しませんでした',
+    CONN_HOST_KEY_CHANGED:
+      'サーバーのホストキーが信頼済みのものと異なるため、接続を拒否しました。確認のうえ「リモート接続」で新しいキーを信頼してください',
+    CONN_SUDO_AUTH_FAILED: 'sudo のパスワードが正しくありません（自動では再試行しません）',
+    CONN_SUDO_DENIED: 'sudo でこのユーザーに切り替える権限がありません',
+    CONN_SUDO_FAILED:
+      'ユーザーの切り替えに失敗しました（タイムアウトまたはチャネルが閉じられました）',
+    CONN_SFTP_SERVER_NOT_FOUND:
+      'サーバー上に sftp-server が見つかりません。接続の設定でパスを指定してください',
+    CONN_PROCESS_LIST_HIDDEN:
+      'サーバーが他のユーザーのプロセスを隠しているため、安全にユーザーを切り替えられません',
+    CONN_SECRET_UNAVAILABLE:
+      '保存されたパスワードを復号できません。接続の設定で入力し直してください'
   }
 }

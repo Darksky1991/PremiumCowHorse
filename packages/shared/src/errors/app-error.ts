@@ -31,7 +31,29 @@ export const ERROR_CODES = [
   /** 启动本机程序（Office 等）失败 */
   'LAUNCH_FAILED',
   /** 桌面记录的快照不存在（已删除，或属于别的机器） */
-  'DESKTOP_SNAPSHOT_NOT_FOUND'
+  'DESKTOP_SNAPSHOT_NOT_FOUND',
+  /** 连接不存在（已删除） */
+  'CONN_NOT_FOUND',
+  /** 认证失败（密码 / 密钥错误）；失败后不再自动重试 */
+  'CONN_AUTH_FAILED',
+  /** 私钥无法解析：只支持 OpenSSH / PEM 与 PuTTY PPK v2（RSA / DSA），或口令错误 */
+  'CONN_KEY_INVALID',
+  /** 用户拒绝信任服务器的主机密钥 */
+  'CONN_HOST_KEY_REJECTED',
+  /** 主机密钥与已信任的不同，已拒绝连接 */
+  'CONN_HOST_KEY_CHANGED',
+  /** sudo 身份切换的密码错误；不再自动重试 */
+  'CONN_SUDO_AUTH_FAILED',
+  /** sudo 不允许当前用户切换到该身份 */
+  'CONN_SUDO_DENIED',
+  /** 身份切换失败（超时、通道提前关闭等） */
+  'CONN_SUDO_FAILED',
+  /** 服务器上找不到 sftp-server，无法以其他身份启动 */
+  'CONN_SFTP_SERVER_NOT_FOUND',
+  /** 服务器隐藏了其他用户的进程，无法安全地切换身份 */
+  'CONN_PROCESS_LIST_HIDDEN',
+  /** 保存的密码 / 口令无法解密（系统加密不可用或数据已损坏） */
+  'CONN_SECRET_UNAVAILABLE'
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

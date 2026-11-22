@@ -268,6 +268,19 @@ export default {
     INDEX_UNAVAILABLE: '索引不可用',
     DOC_NOT_FOUND: '文档已关闭，请重新打开',
     LAUNCH_FAILED: '启动失败，请检查关联的应用程序',
-    DESKTOP_SNAPSHOT_NOT_FOUND: '找不到该桌面记录，可能已被删除'
+    DESKTOP_SNAPSHOT_NOT_FOUND: '找不到该桌面记录，可能已被删除',
+    CONN_NOT_FOUND: '找不到该连接（可能已被删除）',
+    CONN_AUTH_FAILED: '认证失败，请检查用户名、密码或密钥（不会自动重试）',
+    CONN_KEY_INVALID:
+      '无法读取私钥：只支持 OpenSSH / PEM 格式与 PuTTY 的 PPK v2（RSA / DSA）私钥，也请确认口令是否正确',
+    CONN_HOST_KEY_REJECTED: '未信任服务器的主机密钥，已取消连接',
+    CONN_HOST_KEY_CHANGED:
+      '服务器的主机密钥与已信任的不同，已拒绝连接；确认后在「远程连接」中信任新的密钥',
+    CONN_SUDO_AUTH_FAILED: 'sudo 密码错误（不会自动重试）',
+    CONN_SUDO_DENIED: 'sudo 不允许切换到该用户',
+    CONN_SUDO_FAILED: '切换用户失败（超时或通道被关闭）',
+    CONN_SFTP_SERVER_NOT_FOUND: '服务器上找不到 sftp-server，请在连接设置中指定路径',
+    CONN_PROCESS_LIST_HIDDEN: '服务器隐藏了其他用户的进程，无法安全地切换身份',
+    CONN_SECRET_UNAVAILABLE: '无法解密已保存的密码，请在连接设置中重新输入'
   }
 } satisfies Resource
