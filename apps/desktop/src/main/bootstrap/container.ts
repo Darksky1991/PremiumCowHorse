@@ -3,7 +3,7 @@ import path from 'node:path'
 import { hostname } from 'node:os'
 import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
-import { parseSftpUri, resolveLanguage, type LocationKind } from '@pch/shared'
+import { parseSftpUri, resolveLanguage, type ConnectionState, type LocationKind } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
 import type { MainEvents } from '../core/events'
 import { openDatabase, type Database } from '../infra/db/client'
@@ -21,6 +21,7 @@ import { ConnectionPool } from '../modules/connection/connection-pool'
 import { ConnectionRepo } from '../modules/connection/connection.repo'
 import { ConnectionService } from '../modules/connection/connection.service'
 import { createHostKeyGate, type HostKeyGate } from '../modules/connection/host-key-gate'
+import { createOfflineRefresher } from '../modules/connection/offline-refresh'
 import { electronSecretBox } from '../modules/connection/secret-box'
 import { sftpOverChannel } from '../modules/connection/sftp-bridge'
 import { connectSsh } from '../modules/connection/ssh-session'
@@ -122,6 +123,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     // 超时 / 已回答：主窗口收起对应的确认框
     closed: (promptId) => windows.sendToMain('connection.hostKeyPromptClosed', { promptId })
   })
+  // 池在 onStatus 之前不会用到这个变量；scanner / workspaces 在其后创建，经 getter 延迟取用
+  let offlineRefresh: (id: string, state: ConnectionState) => void = () => undefined
   const pool = new ConnectionPool({
     repo: connectionRepo,
     secrets,
@@ -135,7 +138,10 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
       idleDisconnectMin: settings.get('remote.idleDisconnectMin'),
       timeoutSec: settings.get('vfs.timeoutSec.remote')
     }),
-    onStatus: (id, state) => bus.emit('connection.status', { id, state }),
+    onStatus: (id, state) => {
+      bus.emit('connection.status', { id, state })
+      offlineRefresh(id, state)
+    },
     now: Date.now,
     setTimer: setTimeout,
     clearTimer: clearTimeout,
@@ -170,6 +176,12 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     remoteOp: createRemoteOp({ access: remoteAccess, provider: sftp })
   })
   scanner.start()
+  // 因错误断线（offline）时，让扫描进程立即重读该连接的远程根，资源树即显示断开（R21）
+  offlineRefresh = createOfflineRefresher({
+    rootsOf: (id) => remoteRootsOf(workspaces, id),
+    refresh: (roots) => scanner.refresh(roots),
+    onError: (id, e) => logger.error(`[connection] refresh roots of ${id} failed`, e)
+  })
   const connections = new ConnectionService({
     repo: connectionRepo,
     secrets,
