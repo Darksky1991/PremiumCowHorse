@@ -78,6 +78,29 @@ export interface DesktopItemsTable {
   data: string
 }
 
+/**
+ * 远程连接（M4）。secret / sudo_secret 为加密后的 base64；identities 为 string[] 的 JSON；
+ * host_key 为 HostKeyInfo 的 JSON；options 为 { sftpServerPath: string | null } 的 JSON；
+ * auth_state 为 ConnectionAuthState
+ */
+export interface ConnectionsTable {
+  id: string
+  name: string
+  host: string
+  port: number
+  username: string
+  auth: string
+  key_path: string | null
+  secret: string | null
+  sudo_secret: string | null
+  identities: string
+  host_key: string | null
+  options: string
+  auth_state: string
+  created_at: number
+  updated_at: number
+}
+
 export interface DB {
   settings: SettingsTable
   workspaces: WorkspacesTable
@@ -86,4 +109,5 @@ export interface DB {
   launch_capabilities: LaunchCapabilitiesTable
   desktop_snapshots: DesktopSnapshotsTable
   desktop_items: DesktopItemsTable
+  connections: ConnectionsTable
 }
