@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { CircleAlertIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { desktopIdOfUri, desktopLocation, type DesktopItem, type TabState } from '@pch/shared'
+import {
+  desktopIdOfUri,
+  desktopLocation,
+  type DesktopRestoreResult,
+  type TabState
+} from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
+import { Dialog, DialogContent } from '@pch/ui/components/dialog'
 import { Spinner } from '@pch/ui/components/spinner'
 import {
   restoreDesktop,
@@ -12,6 +18,8 @@ import {
 } from '@renderer/data/desktop'
 import { notify } from '@renderer/stores/messages-store'
 import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
+import { entryIdsOf, picksOf, type ChecklistItem, type ChecklistPick } from './checklist-model'
+import { ClearSnapshotsBody } from './clear-snapshots'
 import { errorCode, errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
 import { formatSnapshotTime, kindKey, restoreSummary, snapshotTitle } from './snapshot-label'
@@ -21,9 +29,9 @@ export interface SnapshotPageProps {
   tab: TabState
 }
 
-/** 清单的项目：id 为勾选用的字符串（现在：key；快照：String(项目 id)） */
+/** 清单的项目：id 为字符串（现在：key；快照：String(项目 id)） */
 interface PageData {
-  items: { id: string; item: DesktopItem }[]
+  items: ChecklistItem[]
   /** 本轮无法读取的类别（只有「现在」有） */
   unreadable: string[]
   /** 页面副标题（快照的时间与种类；「现在」为 null） */
@@ -31,8 +39,9 @@ interface PageData {
 }
 
 /**
- * 快照页（设计 5.7，内置视图，不是插件）：「現在」与快照共用同一个项目清单（默认全选）。
- * 快照页底部「選択した項目を復元」→ 结果汇总为应用消息；「現在」页底部「保存」→ 保存所选项目为手动快照。
+ * 快照页（设计 5.7，内置视图，不是插件）：「現在」与快照共用同一个项目清单（默认全选；Explorer 按标签）。
+ * 快照页底部「選択した項目を復元」→ 结果汇总为应用消息，再确认是否删除快照（默认保留）；
+ * 「現在」页底部「保存」→ 保存所选项目为手动快照。
  * 不访问文件系统；刷新（地址栏 / F5）重新取得数据。
  */
 export function SnapshotPage({ tab }: SnapshotPageProps): JSX.Element {
@@ -73,9 +82,12 @@ function CurrentPage({ tab }: SnapshotPageProps): JSX.Element {
       data={data}
       emptyText={t('desktop:emptyCurrent')}
       actionLabel={t('desktop:saveSelected')}
-      onAction={async (ids) => {
-        await saveDesktop(ids, null)
-        notify('success', t('desktop:saved', { count: ids.length }))
+      onAction={async (picks, count) => {
+        await saveDesktop(
+          picks.map((p) => ({ key: p.id, tabs: p.tabs })),
+          null
+        )
+        notify('success', t('desktop:saved', { count }))
       }}
     />
   )
@@ -86,7 +98,15 @@ function SavedPage({ tab, id }: SnapshotPageProps & { id: number }): JSX.Element
   const query = useDesktopSnapshot(id)
   const { refetch } = query
   const navigate = useTabsStore((s) => s.navigate)
+  /** 恢复完成：显示「删除快照吗？」确认 */
+  const [done, setDone] = useState<DesktopRestoreResult | null>(null)
   useEffect(() => onTabRefresh(tab.id, () => void refetch()), [tab.id, refetch])
+  const finish = (cleared: boolean): void => {
+    setDone(null)
+    // 已删除：本页的快照不存在了，把这个标签带到「現在」页（Ruling 17）；保留：重新取得
+    if (cleared) navigate(tab.id, desktopLocation('current', t('desktop:current')))
+    else void refetch()
+  }
   const language = i18n.language
   const data = useMemo<PageData | undefined>(
     () =>
@@ -103,23 +123,30 @@ function SavedPage({ tab, id }: SnapshotPageProps & { id: number }): JSX.Element
     [query.data, language, t]
   )
   return (
-    <PageBody
-      tab={tab}
-      query={query}
-      data={data}
-      title={query.data === undefined ? undefined : snapshotTitle(query.data, t, language)}
-      emptyText={t('desktop:emptySnapshot')}
-      actionLabel={t('desktop:restoreSelected')}
-      onAction={async (ids) => {
-        const result = await restoreDesktop(id, ids.map(Number))
-        const { level, message } = restoreSummary(result, t, language)
-        notify(level, message)
-        // 恢复后快照已被清空：本页的快照不存在了，把这个标签带到「現在」页（Ruling 17）；
-        // 有连不上 / 启动失败的项目时快照保留（Ruling 14），留在本页并重新取得
-        if (result.cleared) navigate(tab.id, desktopLocation('current', t('desktop:current')))
-        else void refetch()
-      }}
-    />
+    <>
+      <PageBody
+        tab={tab}
+        query={query}
+        data={data}
+        title={query.data === undefined ? undefined : snapshotTitle(query.data, t, language)}
+        emptyText={t('desktop:emptySnapshot')}
+        actionLabel={t('desktop:restoreSelected')}
+        onAction={async (picks) => {
+          const result = await restoreDesktop(
+            id,
+            picks.map((p) => ({ id: Number(p.id), tabs: p.tabs }))
+          )
+          const { level, message } = restoreSummary(result, t, language)
+          notify(level, message)
+          setDone(result)
+        }}
+      />
+      <Dialog open={done !== null} onOpenChange={(open) => (open ? undefined : finish(false))}>
+        <DialogContent showCloseButton={false}>
+          {done === null ? null : <ClearSnapshotsBody result={done} onDone={finish} />}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
@@ -130,8 +157,8 @@ interface PageBodyProps {
   title?: string
   emptyText: string
   actionLabel: string
-  /** 对所选项目执行底部按钮的操作（抛出的错误由页面提示） */
-  onAction: (ids: string[]) => Promise<void>
+  /** 对所选项目执行底部按钮的操作（count 为勾选单位数；抛出的错误由页面提示） */
+  onAction: (picks: ChecklistPick[], count: number) => Promise<void>
 }
 
 function PageBody({
@@ -148,19 +175,20 @@ function PageBody({
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set())
   const [busy, setBusy] = useState(false)
   const items = data?.items
+  const entryIds = useMemo(() => entryIdsOf(items ?? []), [items])
   const selected = useMemo(
-    () => new Set((items ?? []).map((i) => i.id).filter((id) => !deselected.has(id))),
-    [items, deselected]
+    () => new Set(entryIds.filter((id) => !deselected.has(id))),
+    [entryIds, deselected]
   )
   const onChange = (next: Set<string>): void =>
-    setDeselected(new Set((items ?? []).map((i) => i.id).filter((id) => !next.has(id))))
+    setDeselected(new Set(entryIds.filter((id) => !next.has(id))))
 
   const run = async (): Promise<void> => {
     if (items === undefined) return
     setBusy(true)
     try {
       // 按清单顺序传出（勾选集合与清单可能在等待期间变化，以点击时的值为准）
-      await onAction(items.map((i) => i.id).filter((id) => selected.has(id)))
+      await onAction(picksOf(items, selected), selected.size)
     } catch (e) {
       notify('error', errorText(t, e))
     } finally {
@@ -220,7 +248,7 @@ function PageBody({
         items === undefined || gone ? null : (
           <>
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {t('desktop:selectedCount', { selected: selected.size, total: items.length })}
+              {t('desktop:selectedCount', { selected: selected.size, total: entryIds.length })}
             </span>
             <Button disabled={busy || selected.size === 0} onClick={() => void run()}>
               {busy ? <Spinner data-icon="inline-start" /> : null}

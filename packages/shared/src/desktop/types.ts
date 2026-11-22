@@ -30,6 +30,7 @@ export interface DesktopSnapshotSummary {
   createdAt: number
   logonAt: number
   name: string | null
+  /** 项目数：Explorer 每个标签算一项（desktopEntryCount） */
   itemCount: number
 }
 
@@ -59,7 +60,17 @@ export interface DesktopRestoreResult {
   skipped: { itemId: number; reason: DesktopSkipReason }[]
 }
 
-/** desktop.restore 的结果：cleared = 恢复后已清空全部快照（有连不上 / 启动失败的项目时不清空，Ruling 14） */
-export interface DesktopRestoreOutcome extends DesktopRestoreResult {
-  cleared: boolean
+/**
+ * 保存 / 退出时选中的现场项目：key 为现场项目的 key；tabs 只对 Explorer 有效，
+ * 为选中标签的下标（按原顺序保留，越界忽略，一个都不剩时不保存该窗口）；省略 = 整个项目
+ */
+export interface DesktopPick {
+  key: string
+  tabs?: number[] | undefined
+}
+
+/** 恢复时选中的快照项目：id 为快照项目 id；tabs 同 DesktopPick */
+export interface DesktopRestorePick {
+  id: number
+  tabs?: number[] | undefined
 }

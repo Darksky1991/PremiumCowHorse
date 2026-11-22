@@ -32,3 +32,22 @@ export function openTargetsOf(items: DesktopItem[]): Set<string> {
   }
   return set
 }
+
+/** 项目数的统一算法（清单的勾选单位）：Explorer 每个标签算一项，其余每个项目一项 */
+export function desktopEntryCount(items: readonly DesktopItem[]): number {
+  return items.reduce((n, item) => n + (item.kind === 'explorer' ? item.tabs.length : 1), 0)
+}
+
+/**
+ * 按选中的标签取项目的子集：tabs 省略或非 Explorer → 原项目；Explorer 只保留选中下标的标签
+ * （按原顺序，重复与越界忽略）；一个都不剩 → null
+ */
+export function pickTabs(
+  item: DesktopItem,
+  tabs: readonly number[] | undefined
+): DesktopItem | null {
+  if (tabs === undefined || item.kind !== 'explorer') return item
+  const wanted = new Set(tabs)
+  const kept = item.tabs.filter((_, i) => wanted.has(i))
+  return kept.length === 0 ? null : { ...item, tabs: kept }
+}

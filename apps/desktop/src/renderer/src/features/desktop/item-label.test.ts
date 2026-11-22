@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DesktopItem } from '@pch/shared'
-import { itemLabel, type LabelText } from './item-label'
+import { itemLabel, tabLabel, type LabelText } from './item-label'
 
 const text: LabelText = {
   specialLocation: '特殊位置',
@@ -86,5 +86,18 @@ describe('itemLabel', () => {
       bounds: null
     }
     expect(itemLabel(root, text).title).toBe('C:')
+  })
+})
+
+describe('tabLabel', () => {
+  it('路径：最后一段 + 完整路径（UNC 同样）', () => {
+    expect(tabLabel('C:/work/案件A', text)).toEqual({ title: '案件A', detail: 'C:/work/案件A' })
+    expect(tabLabel('//nas/share/', text)).toEqual({ title: 'share', detail: '//nas/share/' })
+  })
+  it('::{CLSID}：特殊位置，没有详情', () => {
+    expect(tabLabel('::{20D04FE0-3AEA-1069-A2D8-08002B30309D}', text)).toEqual({
+      title: '特殊位置',
+      detail: ''
+    })
   })
 })

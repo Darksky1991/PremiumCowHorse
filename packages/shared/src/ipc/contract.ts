@@ -27,7 +27,7 @@ import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 import type {
   DesktopCurrent,
-  DesktopRestoreOutcome,
+  DesktopRestoreResult,
   DesktopSnapshot,
   DesktopSnapshotSummary
 } from '../desktop/types'
@@ -44,6 +44,10 @@ export const VFS_REFRESH_MAX = 500
  * 多标签、长路径（最长约 32_767 字符）时会超过 4096；放宽为 65_536（只是输入上限，不影响存储）
  */
 export const DESKTOP_KEY_MAX = 65_536
+
+/** Explorer 选中标签的下标（DesktopPick / DesktopRestorePick 的 tabs） */
+const DesktopTabs = z.array(z.number().int().nonnegative()).max(500).optional()
+const DesktopPickInput = z.strictObject({ key: z.string().max(DESKTOP_KEY_MAX), tabs: DesktopTabs })
 
 /** 浏览器视图（web.*）的标签 id 与位置：DIP 整数，宿主自行取整（Electron 对小数隐式四舍五入，不依赖它） */
 const WebTabId = z.string().min(1).max(200)
@@ -235,10 +239,10 @@ export const ipcContract = {
   'desktop.list': route<DesktopSnapshotSummary[]>()(z.void()),
   'desktop.get': route<DesktopSnapshot>()(z.strictObject({ id: z.number().int().positive() })),
   'desktop.current': route<DesktopCurrent>()(z.void()),
-  /** 手动快照：当前现场中 key 在列表里的项目；返回快照 id */
+  /** 手动快照：当前现场中选中的项目（Explorer 可只选部分标签）；返回快照 id */
   'desktop.save': route<number>()(
     z.strictObject({
-      keys: z.array(z.string().max(DESKTOP_KEY_MAX)).max(500),
+      picks: z.array(DesktopPickInput).max(500),
       name: z.string().max(100).nullable()
     })
   ),
@@ -248,24 +252,28 @@ export const ipcContract = {
   'desktop.delete': route<void>()(z.strictObject({ id: z.number().int().positive() })),
   /**
    * 按快照恢复：只传快照 id 与项目 id，程序路径与参数由主进程从数据库取出（不属于该快照的项目 id 忽略）。
-   * 已开着的项目跳过
+   * 已开着的项目跳过；Explorer 可只恢复部分标签（tabs）。不删除快照（删除由用户确认后 desktop.clear）
    */
-  'desktop.restore': route<DesktopRestoreOutcome>()(
+  'desktop.restore': route<DesktopRestoreResult>()(
     z.strictObject({
       snapshotId: z.number().int().positive(),
-      itemIds: z.array(z.number().int().positive()).max(500)
+      picks: z
+        .array(z.strictObject({ id: z.number().int().positive(), tabs: DesktopTabs }))
+        .max(500)
     })
   ),
+  /** 删除全部快照（含 exit-none；恢复后经用户确认调用），之后立即写一份本次登录的自动快照 */
+  'desktop.clear': route<void>()(z.void()),
   /** 启动时的恢复候选（items 已滤掉开着的）；没有可提示的 → null。每次启动只返回一次 */
   'desktop.restorePrompt': route<DesktopSnapshot | null>()(z.void()),
   /**
-   * 回应 desktop.exitRequested：save 为真时保存 keys 对应的项目，否则记为「不保存」；
+   * 回应 desktop.exitRequested：save 为真时保存 picks 选中的项目，否则记为「不保存」；
    * dontAskAgain 时写设置 desktop.askOnExit = false。之后主进程关闭主窗口
    */
   'desktop.exit': route<void>()(
     z.strictObject({
       save: z.boolean(),
-      keys: z.array(z.string().max(DESKTOP_KEY_MAX)).max(500),
+      picks: z.array(DesktopPickInput).max(500),
       dontAskAgain: z.boolean()
     })
   ),

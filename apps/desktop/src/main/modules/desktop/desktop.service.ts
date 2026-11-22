@@ -1,9 +1,11 @@
 import {
   AppError,
   openTargetsOf,
+  pickTabs,
   type DesktopCurrent,
   type DesktopItem,
-  type DesktopRestoreOutcome,
+  type DesktopPick,
+  type DesktopRestorePick,
   type DesktopRestoreResult,
   type DesktopSnapshot,
   type DesktopSnapshotItem,
@@ -33,6 +35,8 @@ export interface DesktopServiceDeps {
   now: () => number
   emit: (e: IpcEvents['desktop.changed']) => void
   autoSaveMs: number
+  /** 现场变化后到写自动快照的合并等待（短时间内多个类别相继变化只写一次） */
+  changeSaveDelayMs: number
   /** 可见快照最多保留几个 */
   keepVisible: number
   /** 恢复完成后（无论是否清空快照），等这么久再重新扫描 */
@@ -58,10 +62,6 @@ const countsOf = (items: DesktopItem[]): string => {
   return counts.size === 0 ? 'none' : [...counts].map(([k, n]) => `${k}=${n}`).join(' ')
 }
 
-/** 恢复后是否清空快照（Ruling 14）：有连不上 / 启动失败的项目时保留，可以再试 */
-const shouldClear = (result: DesktopRestoreResult): boolean =>
-  !result.skipped.some((s) => s.reason === 'unreachable' || s.reason === 'failed')
-
 /**
  * 桌面记录服务（设计 5.3–5.5）：启动时取登录时刻与恢复候选，驱动监控，定时写自动记录；
  * 手动 / 退出时保存、会话结束处理、恢复的入口。所有写入串行执行，stop 后 idle() 等待写完
@@ -82,6 +82,9 @@ export class DesktopService {
    */
   private autoFrom: readonly DesktopSnapshotKind[] = ['auto']
   private rescanTimer: ReturnType<typeof setTimeout> | undefined
+  private changeTimer: ReturnType<typeof setTimeout> | undefined
+  /** 消失中项目到期（从 retained 移除）的时刻再写一次：不必等 autoSaveMs 的兜底 */
+  private expiryTimer: ReturnType<typeof setTimeout> | undefined
   /** 第一次完整读取已完成：之前的现场不完整，不写自动记录 */
   private ready = false
   private stopped = false
@@ -106,7 +109,8 @@ export class DesktopService {
 
   /**
    * 取登录时刻 → 记下恢复候选 → 启动监控并完整读取一次 → 写本次登录的第一份 auto →
-   * 每 autoSaveMs 检查一次（retained 与最近一份 auto 不同才写，写后清理）
+   * 之后现场每次变化（liveChanged，合并 changeSaveDelayMs）与每 autoSaveMs（兜底：消失项目到期移除不触发变化）
+   * 检查一次：retained 与最近一份 auto 不同才写，写后清理
    */
   start(): Promise<void> {
     this.startPromise ??= this.doStart()
@@ -215,10 +219,22 @@ export class DesktopService {
     }
   }
 
-  /** 手动快照：当前现场中 key 在列表里的项目 */
-  async saveManual(keys: string[], name: string | null): Promise<number> {
+  /**
+   * 监控报告现场变化（组合根接到 DesktopMonitor.onChange）：合并 changeSaveDelayMs 后按自动保存的规则写入，
+   * 让自动快照尽量与现场同步。退出流程中、会话结束冻结期间、第一次完整读取之前不写
+   */
+  liveChanged(): void {
+    if (this.stopped || this.closing || !this.ready || this.changeTimer) return
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = undefined
+      this.tick()
+    }, this.d.changeSaveDelayMs)
+  }
+
+  /** 手动快照：当前现场中选中的项目（Explorer 可只选部分标签） */
+  async saveManual(picks: DesktopPick[], name: string | null): Promise<number> {
     const id = await this.enqueue(async () => {
-      const newId = await this.insert('manual', this.pick(keys), name)
+      const newId = await this.insert('manual', this.pick(picks), name)
       await this.d.repo.prune(this.d.keepVisible, this.protectId)
       return newId
     })
@@ -233,17 +249,21 @@ export class DesktopService {
    * - 不保存 → 删除本次登录的 auto，写 exit-none 标记（下次登录不提示）
    * 开始时即进入退出状态：之后的自动保存、重新扫描与恢复后的清空都不再进行
    */
-  async saveExit(save: boolean, keys: string[]): Promise<void> {
+  async saveExit(save: boolean, picks: DesktopPick[]): Promise<void> {
     this.closing = true
     clearTimeout(this.rescanTimer)
     this.rescanTimer = undefined
+    clearTimeout(this.changeTimer)
+    this.changeTimer = undefined
+    clearTimeout(this.expiryTimer)
+    this.expiryTimer = undefined
     if (save && !this.ready) {
       this.d.logger.info(
         'desktop: exit before the first full read; no exit snapshot (the auto snapshot is kept)'
       )
       return
     }
-    const items = save ? this.pick(keys) : []
+    const items = save ? this.pick(picks) : []
     const id = await this.enqueue(async () => {
       const autoId = this.autoId
       this.autoId = null
@@ -306,39 +326,44 @@ export class DesktopService {
   }
 
   /**
-   * 只恢复属于该快照的项目（按快照中的顺序；不属于的 id 忽略）；已开着的判断用当前现场。
-   * 启动全部完成之后（设计第 9 节、Ruling 14）：没有 unreachable / failed 的跳过项（open / missing 视为已处理）
-   * 时清空全部快照（含 exit-none）；否则保留快照，可以再试。两种情况都在 restoreRescanMs 后重新扫描。
-   * 清空失败只记 warn，不让成功的恢复报错；退出流程中不清空
+   * 只恢复属于该快照的项目（按快照中的顺序；不属于的 id 忽略；Explorer 按 tabs 只恢复部分标签，
+   * 一个都不剩的忽略）；已开着的判断用当前现场。快照不在这里删除：恢复后由用户确认是否删除（clear）。
+   * restoreRescanMs 后重新扫描一次
    */
-  async restore(snapshotId: number, itemIds: number[]): Promise<DesktopRestoreOutcome> {
+  async restore(snapshotId: number, picks: DesktopRestorePick[]): Promise<DesktopRestoreResult> {
     const snapshot = await this.get(snapshotId)
-    const wanted = new Set(itemIds)
-    const items = snapshot.items.filter((i) => wanted.has(i.id))
+    const wanted = new Map(picks.map((p) => [p.id, p.tabs]))
+    const items: DesktopSnapshotItem[] = []
+    for (const i of snapshot.items) {
+      if (!wanted.has(i.id)) continue
+      const item = pickTabs(i.item, wanted.get(i.id))
+      if (item) items.push({ id: i.id, item })
+    }
     // 多次恢复依次执行：后一次按前一次结束时的现场判断「已开着」
     const run = this.restores.then(() => this.d.restore(items, this.openTargets()))
     this.restores = run.catch(() => undefined)
     const result: DesktopRestoreResult = await run
-    const cleared = shouldClear(result) && (await this.enqueue(() => this.clearAll()))
-    if (cleared) this.d.emit({ scope: 'snapshots' })
     this.scheduleRescan()
-    return { ...result, cleared }
+    return result
   }
 
-  /** 恢复后的清空（在写入队列中执行）；返回是否清空了 */
-  private async clearAll(): Promise<boolean> {
-    if (this.closing) return false
-    try {
+  /**
+   * 删除全部快照（含 exit-none；恢复后经用户确认，设计第 9 节修订）：之后本次登录的 auto 重新写入
+   * （第一次完整读取之后立即写一份现场）。退出流程中不做
+   */
+  async clear(): Promise<void> {
+    if (this.closing) return
+    await this.enqueue(async () => {
+      if (this.closing) return
       await this.d.repo.deleteAll()
-    } catch (e) {
-      this.d.logger.warn(`desktop: clearing snapshots after restore failed: ${firstLine(e)}`)
-      return false
-    }
-    this.autoId = null
-    this.autoFrom = ['auto']
-    this.protectId = null
-    this.lastAutoSig = null
-    return true
+      this.autoId = null
+      this.autoFrom = ['auto']
+      this.protectId = null
+      this.lastAutoSig = null
+      if (this.ready && !this.stopped) await this.writeAuto(this.d.live.retained(this.d.now()))
+    })
+    this.d.logger.info('desktop: all snapshots deleted by the user')
+    this.d.emit({ scope: 'snapshots' })
   }
 
   /** restoreRescanMs 后完整读取一次并写一份新的 auto；连续恢复时以最后一次为准，stop 时取消 */
@@ -370,6 +395,10 @@ export class DesktopService {
     this.timer = undefined
     clearTimeout(this.rescanTimer)
     this.rescanTimer = undefined
+    clearTimeout(this.changeTimer)
+    this.changeTimer = undefined
+    clearTimeout(this.expiryTimer)
+    this.expiryTimer = undefined
     this.d.monitor?.stop()
   }
 
@@ -396,7 +425,22 @@ export class DesktopService {
       if (this.closing) return
       const items = this.d.live.retained(this.d.now())
       if (signatureOf(items) !== this.lastAutoSig) await this.writeAuto(items)
+      else this.scheduleExpiry()
     })
+  }
+
+  /** 按现场中最早的到期时刻安排下一次检查（每次检查 / 写入后重排） */
+  private scheduleExpiry(): void {
+    clearTimeout(this.expiryTimer)
+    this.expiryTimer = undefined
+    if (this.stopped || this.closing) return
+    const now = this.d.now()
+    const at = this.d.live.nextExpiry(now)
+    if (at === null) return
+    this.expiryTimer = setTimeout(() => {
+      this.expiryTimer = undefined
+      this.tick()
+    }, at - now)
   }
 
   private async writeAuto(items: DesktopItem[]): Promise<void> {
@@ -411,6 +455,7 @@ export class DesktopService {
     }
     this.autoFrom = ['auto']
     this.lastAutoSig = signatureOf(items)
+    this.scheduleExpiry()
     await this.d.repo.prune(this.d.keepVisible, this.protectId)
     this.d.logger.info(`desktop: auto snapshot #${id} (${countsOf(items)})`)
     this.d.emit({ scope: 'snapshots' })
@@ -430,12 +475,16 @@ export class DesktopService {
     })
   }
 
-  private pick(keys: string[]): DesktopItem[] {
-    const wanted = new Set(keys)
-    return this.d.live
-      .current()
-      .filter((c) => wanted.has(c.key))
-      .map((c) => c.item)
+  /** 现场中选中的项目（按现场顺序；Explorer 按 tabs 取部分标签，一个都不剩的不要） */
+  private pick(picks: DesktopPick[]): DesktopItem[] {
+    const wanted = new Map(picks.map((p) => [p.key, p.tabs]))
+    const out: DesktopItem[] = []
+    for (const c of this.d.live.current()) {
+      if (!wanted.has(c.key)) continue
+      const item = pickTabs(c.item, wanted.get(c.key))
+      if (item) out.push(item)
+    }
+    return out
   }
 
   private openTargets(): Set<string> {

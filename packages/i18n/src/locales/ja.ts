@@ -180,6 +180,14 @@ export default {
     restoreDescription: '再起動前に開いていた項目です。復元する項目を選んでください。',
     restoreSubmit: '復元',
     restoreLater: '後で',
+    explorerWindow: '同じウィンドウ・{{count}} 個のタブ',
+    clearTitle: '保存済みのスナップショットを削除しますか？',
+    clearDescription:
+      '復元が終わりました。保存済みのスナップショット {{count}} 件をすべて削除し、現在のデスクトップを記録し直します。',
+    clearFailedNote:
+      '復元できなかった項目があります（接続できない / 起動に失敗）。スナップショットを残すと後でやり直せます。',
+    clearKeep: '残す',
+    clearConfirm: '削除',
     exitTitle: '終了前にデスクトップを保存しますか？',
     exitDescription: '保存する項目を選んでください。次回の起動時に復元できます。',
     exitNoItems: '現在開いている項目はありません',

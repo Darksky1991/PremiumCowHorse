@@ -51,3 +51,12 @@ export function itemLabel(item: DesktopItem, text: LabelText): ItemLabel {
       return { title: lastSegment(item.workspace), badge: '', detail: item.workspace }
   }
 }
+
+/**
+ * Explorer 单个标签在清单中的显示（每个标签一张卡片）：主文字为最后一段，详情为完整路径；
+ * `::{CLSID}` 为本地化的「特殊位置」，没有详情
+ */
+export function tabLabel(tab: string, text: LabelText): { title: string; detail: string } {
+  if (tab.startsWith('::{')) return { title: text.specialLocation, detail: '' }
+  return { title: lastSegment(tab), detail: tab }
+}

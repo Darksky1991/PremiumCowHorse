@@ -14,6 +14,7 @@ import { Spinner } from '@pch/ui/components/spinner'
 import { useDesktopCurrent } from '@renderer/data/desktop'
 import { call } from '@renderer/lib/ipc'
 import { notify } from '@renderer/stores/messages-store'
+import { entryIdsOf, picksOf } from './checklist-model'
 import { errorText } from './error-text'
 import { ItemChecklist } from './item-checklist'
 
@@ -21,7 +22,7 @@ import { ItemChecklist } from './item-checklist'
 const EXIT_IGNORED_MS = 2000
 
 /**
- * 退出时的「保存哪些」对话框（设计 5.7、第 8 节）：列出现场的项目（默认全选）。
+ * 退出时的「保存哪些」对话框（设计 5.7、第 8 节）：列出现场的项目（默认全选；Explorer 每个标签分别勾选）。
  * 「保存して終了」「保存しないで終了」→ desktop.exit，主进程随后关闭窗口；
  * 「キャンセル」、Esc、点外部 → desktop.cancelExit。勾选「次回から確認しない」后两种退出都照传 dontAskAgain
  */
@@ -69,16 +70,17 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
   // 记「不勾选」的项目：之后出现的新项目默认勾选
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set())
   const [dontAskAgain, setDontAskAgain] = useState(false)
+  const entryIds = useMemo(() => entryIdsOf(items), [items])
   const selected = useMemo(
-    () => new Set(items.map((i) => i.id).filter((id) => !deselected.has(id))),
-    [items, deselected]
+    () => new Set(entryIds.filter((id) => !deselected.has(id))),
+    [entryIds, deselected]
   )
 
   const exit = async (save: boolean): Promise<void> => {
     setBusy(true)
     try {
-      const keys = save ? items.map((i) => i.id).filter((id) => selected.has(id)) : []
-      await call('desktop.exit', { save, keys, dontAskAgain })
+      const picks = save ? picksOf(items, selected).map((p) => ({ key: p.id, tabs: p.tabs })) : []
+      await call('desktop.exit', { save, picks, dontAskAgain })
       // 成功后主进程关闭窗口，对话框保持到那时；主进程忽略了回应（不在询问阶段）时窗口不会关闭，
       // 过一会儿仍在则复位并关闭对话框，不把用户困在里面
       timer.current = setTimeout(() => {
@@ -110,9 +112,7 @@ function ExitSession({ onClose }: { onClose: () => void }): JSX.Element {
             <ItemChecklist
               items={items}
               selected={selected}
-              onChange={(next) =>
-                setDeselected(new Set(items.map((i) => i.id).filter((id) => !next.has(id))))
-              }
+              onChange={(next) => setDeselected(new Set(entryIds.filter((id) => !next.has(id))))}
             />
           )}
         </div>

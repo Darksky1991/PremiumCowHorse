@@ -81,6 +81,22 @@ export class LiveState {
     return out
   }
 
+  /**
+   * 消失中的项目里最早从 retained 移除的时刻（now 之后）；没有 → null。
+   * 自动保存据此在到期时再写一次，不必等兜底周期
+   */
+  nextExpiry(now: number): number | null {
+    let next: number | null = null
+    for (const map of this.byCollector.values()) {
+      for (const entry of map.values()) {
+        if (entry.goneAt === undefined) continue
+        const at = Math.max(entry.goneAt, this.frozenUntil) + this.removeAfterMs
+        if (at > now && (next === null || at < next)) next = at
+      }
+    }
+    return next
+  }
+
   /** 冻结期内的消失从冻结结束时才开始计时 */
   private expired(goneAt: number, now: number): boolean {
     return now - Math.max(goneAt, this.frozenUntil) >= this.removeAfterMs

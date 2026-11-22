@@ -1,3 +1,4 @@
+import type { DesktopPick } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 
 export interface ExitGuardDeps {
@@ -16,9 +17,9 @@ export interface ExitGuardDeps {
   notifyCancelled: () => void
   /** 关闭主窗口（之后的 close 不再拦截） */
   closeMain: () => void
-  saveExit: (save: boolean, keys: string[]) => Promise<void>
-  /** 当前现场全部项目的 key（不再询问 = 全部保存，设计第 8 节） */
-  currentKeys: () => string[]
+  saveExit: (save: boolean, picks: DesktopPick[]) => Promise<void>
+  /** 当前现场的全部项目（不再询问 = 全部保存，设计第 8 节） */
+  currentPicks: () => DesktopPick[]
   now: () => number
   /** 发出请求后等待 desktop.exitShown 的上限；到期视为渲染端无法显示对话框 */
   shownTimeoutMs: number
@@ -73,7 +74,7 @@ export class ExitGuard {
       this.phase = 'asking'
       this.request()
     } else {
-      void this.finish(true, this.d.currentKeys(), false)
+      void this.finish(true, this.d.currentPicks(), false)
     }
     return true
   }
@@ -84,12 +85,12 @@ export class ExitGuard {
   }
 
   /** desktop.exit：只在询问中有效（迟到或多余的调用忽略） */
-  async exit(input: { save: boolean; keys: string[]; dontAskAgain: boolean }): Promise<void> {
+  async exit(input: { save: boolean; picks: DesktopPick[]; dontAskAgain: boolean }): Promise<void> {
     if (this.phase !== 'asking') {
       this.d.logger.info(`desktop: ignoring desktop.exit in phase ${this.phase}`)
       return
     }
-    await this.finish(input.save, input.keys, input.dontAskAgain)
+    await this.finish(input.save, input.picks, input.dontAskAgain)
   }
 
   /** desktop.cancelExit：清除挂起状态（渲染端发起，不必再通知） */
@@ -136,7 +137,7 @@ export class ExitGuard {
       this.d.logger.warn(
         `desktop: the exit dialog was not shown in ${this.d.shownTimeoutMs} ms, saving everything`
       )
-      void this.finish(true, this.d.currentKeys(), false)
+      void this.finish(true, this.d.currentPicks(), false)
     }, this.d.shownTimeoutMs)
     this.d.focusMain()
     this.d.requestExit()
@@ -155,12 +156,12 @@ export class ExitGuard {
     this.phase = 'idle'
   }
 
-  private async finish(save: boolean, keys: string[], dontAskAgain: boolean): Promise<void> {
+  private async finish(save: boolean, picks: DesktopPick[], dontAskAgain: boolean): Promise<void> {
     this.clearTimer()
     this.phase = 'saving'
     try {
       if (dontAskAgain) await this.d.setAskOnExit(false)
-      await this.d.saveExit(save, keys)
+      await this.d.saveExit(save, picks)
     } catch (e) {
       this.d.logger.error(`desktop: saving on exit failed: ${firstLine(e)}`)
     } finally {

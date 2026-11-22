@@ -1,9 +1,11 @@
+import { sql } from 'kysely'
 import { z } from 'zod'
-import type {
-  DesktopItem,
-  DesktopSnapshot,
-  DesktopSnapshotKind,
-  DesktopSnapshotSummary
+import {
+  desktopEntryCount,
+  type DesktopItem,
+  type DesktopSnapshot,
+  type DesktopSnapshotKind,
+  type DesktopSnapshotSummary
 } from '@pch/shared'
 import type { Database } from '../../infra/db/client'
 
@@ -143,7 +145,10 @@ export class DesktopSnapshotRepo {
         // 损坏的项目丢弃
       }
     }
-    return { ...toSummary({ ...row, itemCount: items.length }), items }
+    return {
+      ...toSummary({ ...row, itemCount: desktopEntryCount(items.map((i) => i.item)) }),
+      items
+    }
   }
 
   async rename(id: number, name: string | null): Promise<void> {
@@ -276,7 +281,10 @@ export class DesktopSnapshotRepo {
         's.created_at',
         's.logon_at',
         's.name',
-        eb.fn.count<number>('i.id').as('itemCount')
+        // 与 desktopEntryCount 相同：Explorer 按标签数计（json_array_length 对没有 tabs 的项目为 NULL → 1），没有项目为 0
+        sql<number>`coalesce(sum(case when ${eb.ref('i.id')} is null then 0 else coalesce(json_array_length(${eb.ref('i.data')}, '$.tabs'), 1) end), 0)`.as(
+          'itemCount'
+        )
       ])
       .where('s.machine', '=', this.machine)
       .groupBy('s.id')

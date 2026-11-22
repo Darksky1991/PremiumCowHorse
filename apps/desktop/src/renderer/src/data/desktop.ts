@@ -1,7 +1,9 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type {
   DesktopCurrent,
-  DesktopRestoreOutcome,
+  DesktopPick,
+  DesktopRestorePick,
+  DesktopRestoreResult,
   DesktopSnapshot,
   DesktopSnapshotSummary
 } from '@pch/shared'
@@ -37,17 +39,22 @@ export function useDesktopCurrent(): UseQueryResult<DesktopCurrent> {
   })
 }
 
-/** 保存现场中 key 在 keys 里的项目为手动快照；返回快照 id */
-export function saveDesktop(keys: string[], name: string | null): Promise<number> {
-  return call('desktop.save', { keys, name })
+/** 保存现场中选中的项目为手动快照（Explorer 可只选部分标签）；返回快照 id */
+export function saveDesktop(picks: DesktopPick[], name: string | null): Promise<number> {
+  return call('desktop.save', { picks, name })
 }
 
-/** 按快照恢复所选项目（项目 id 来自快照）；cleared = 恢复后快照已全部清空 */
+/** 按快照恢复所选项目（项目 id 来自快照；Explorer 可只选部分标签）。不删除快照 */
 export function restoreDesktop(
   snapshotId: number,
-  itemIds: number[]
-): Promise<DesktopRestoreOutcome> {
-  return call('desktop.restore', { snapshotId, itemIds })
+  picks: DesktopRestorePick[]
+): Promise<DesktopRestoreResult> {
+  return call('desktop.restore', { snapshotId, picks })
+}
+
+/** 删除全部快照（恢复后经用户确认）；主进程随后写一份新的自动快照 */
+export function clearDesktop(): Promise<void> {
+  return call('desktop.clear', undefined)
 }
 
 /** 改名；null 恢复为无名称（按种类显示） */

@@ -42,6 +42,19 @@ describe('LiveState', () => {
     expect(paths(s.retained(1000 + 60_000))).toContain('C:\\b.docx')
   })
 
+  it('nextExpiry：消失中项目最早的移除时刻；冻结期内从冻结结束起算；没有 → null', () => {
+    const s = new LiveState({ removeAfterMs: 60_000 })
+    s.apply('office', [office('C:/a.docx'), office('C:/b.docx'), office('C:/c.docx')], 0)
+    expect(s.nextExpiry(0)).toBeNull()
+    s.apply('office', [office('C:/b.docx'), office('C:/c.docx')], 1000)
+    s.apply('office', [office('C:/c.docx')], 5000)
+    expect(s.nextExpiry(5000)).toBe(61_000)
+    // 已过的时刻不算
+    expect(s.nextExpiry(61_000)).toBe(65_000)
+    s.freeze(100_000, 6000)
+    expect(s.nextExpiry(6000)).toBe(160_000)
+  })
+
   it('apply 报告 retained 的变化（到期移除算变化）', () => {
     const s = new LiveState({ removeAfterMs: 60_000 })
     s.apply('office', [office('C:\\a.docx')], 0)

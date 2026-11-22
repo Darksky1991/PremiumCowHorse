@@ -56,7 +56,7 @@ describe('DesktopSnapshotRepo', () => {
     const db = await memoryDb()
     const repo = new DesktopSnapshotRepo(db, 'PC-A')
     const items = [
-      explorer('C:\\a'),
+      { kind: 'explorer', tabs: ['C:\\a', 'C:\\a2', 'C:\\a3'], bounds: null },
       { kind: 'office', app: 'excel', path: 'C:\\b.xlsx', readOnly: false, exe: 'EXCEL.EXE' },
       { kind: 'eclipse', workspace: 'C:\\ws', exe: 'eclipse.exe', bounds: null }
     ] satisfies DesktopItem[]
@@ -70,13 +70,14 @@ describe('DesktopSnapshotRepo', () => {
       createdAt: 5,
       logonAt: 2,
       name: 'n',
-      itemCount: 3
+      // Explorer 每个标签算一项：3 + 1 + 1
+      itemCount: 5
     })
     expect(snap?.items.map((i) => i.item)).toEqual(items)
     const list = await repo.list()
     expect(list.map((s) => [s.createdAt, s.itemCount])).toEqual([
       [6, 0],
-      [5, 3]
+      [5, 5]
     ])
 
     await repo.rename(id, null)

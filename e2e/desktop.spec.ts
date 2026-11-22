@@ -116,15 +116,89 @@ test.describe('desktop snapshots', () => {
       await expect(box(second.page, /a\.xlsx/)).toBeChecked()
       await expect(dialog(second.page).getByRole('checkbox', { name: /b\.docx/ })).toHaveCount(0)
       await dialog(second.page).getByRole('button', { name: 'Restore' }).click()
-      await expect(dialog(second.page)).toBeHidden()
       await expect.poll(mainLog).toMatch(/\[desktop:fake\] spawn .*EXCEL\.EXE/i)
       expect(mainLog()).not.toMatch(/\[desktop:fake\] spawn .*WINWORD\.EXE/i)
+      // 恢复后询问是否删除快照：默认焦点在「Keep」，选它则快照保留
+      await expect(dialog(second.page)).toContainText('Delete the saved snapshots?')
+      await expect(dialog(second.page).getByRole('button', { name: 'Keep' })).toBeFocused()
+      await dialog(second.page).getByRole('button', { name: 'Keep' }).click()
+      await expect(dialog(second.page)).toBeHidden()
+      await second.page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      const list = second.page.getByRole('list', { name: 'Desktop snapshots' })
+      await expect(list.getByRole('button', { name: /Saved on exit/ })).toBeVisible()
     } finally {
       await second.app.close()
     }
   })
 
-  test('restoring clears every snapshot and then rescans into a single new auto snapshot', async () => {
+  test('Explorer tabs are separate cards grouped by window, for exit and for restore', async () => {
+    const tabs = ['C:\\work\\t1', 'C:\\work\\t2', 'C:\\work\\t3']
+    const windowItem = { kind: 'explorer', tabs, bounds: null }
+    const single = { kind: 'explorer', tabs: ['D:\\solo'], bounds: null }
+    const first = await start(1000, [windowItem, single])
+    try {
+      await closeWindow(first.page)
+      const group = dialog(first.page).getByRole('group', { name: 'Same window · 3 tab(s)' })
+      await expect(group.getByRole('checkbox')).toHaveCount(3)
+      // 单标签窗口不在窗口框内
+      await expect(group.getByRole('checkbox', { name: /solo/ })).toHaveCount(0)
+      await expect(box(first.page, /solo/)).toBeChecked()
+      // 退出时只保存 t1、t3
+      await group.getByRole('checkbox', { name: /^t2/ }).click()
+      await expect(dialog(first.page)).toContainText('3 / 4 selected')
+      await dialog(first.page).getByRole('button', { name: 'Save and exit' }).click()
+      await first.app.waitForEvent('close')
+    } finally {
+      await first.app.close().catch(() => undefined)
+    }
+
+    const second = await start(2000, [])
+    try {
+      const group = dialog(second.page).getByRole('group', { name: 'Same window · 2 tab(s)' })
+      await expect(group.getByRole('checkbox')).toHaveCount(2)
+      await expect(group.getByRole('checkbox', { name: /^t2/ })).toHaveCount(0)
+      // 恢复时再去掉 t3 与单标签窗口：只剩 t1，单标签直接用 explorer.exe 打开
+      await group.getByRole('checkbox', { name: /^t3/ }).click()
+      await box(second.page, /solo/).click()
+      await dialog(second.page).getByRole('button', { name: 'Restore' }).click()
+      await expect.poll(mainLog).toMatch(/\[desktop:fake\] spawn .*explorer\.exe .*t1/i)
+      expect(mainLog()).not.toMatch(/\[desktop:fake\] (spawn|powershell) .*(t3|solo)/i)
+      await dialog(second.page).getByRole('button', { name: 'Keep' }).click()
+      await expect(dialog(second.page)).toBeHidden()
+    } finally {
+      await second.app.close()
+    }
+  })
+
+  test('cards have the same height across groups', async () => {
+    const longPath = `C:\\${'very long folder name '.repeat(8)}\\x.xlsx`
+    const { app, page } = await start(1000, [
+      { ...EXCEL, path: longPath, readOnly: true },
+      WORD,
+      {
+        kind: 'explorer',
+        tabs: ['::{20D04FE0-3AEA-1069-A2D8-08002B30309D}', 'C:\\w'],
+        bounds: null
+      }
+    ])
+    try {
+      await page.getByRole('button', { name: 'Desktop snapshots' }).click()
+      await page
+        .getByRole('list', { name: 'Desktop snapshots' })
+        .getByRole('button', { name: /Now/ })
+        .click()
+      const cards = page.getByRole('checkbox')
+      await expect(cards).toHaveCount(4)
+      const heights = await cards.evaluateAll((els) =>
+        els.map((e) => Math.round(e.getBoundingClientRect().height))
+      )
+      expect(new Set(heights).size).toBe(1)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('confirming deletion after a restore leaves a single new auto snapshot', async () => {
     test.setTimeout(60_000)
     const first = await start(1000, [EXCEL, WORD])
     try {
@@ -139,22 +213,24 @@ test.describe('desktop snapshots', () => {
     try {
       await expect(dialog(second.page)).toBeVisible()
       await dialog(second.page).getByRole('button', { name: 'Restore' }).click()
+      // 上次的退出快照 + 本次的自动快照
+      await expect(dialog(second.page)).toContainText('2 saved snapshot(s)')
+      await dialog(second.page).getByRole('button', { name: 'Delete' }).click()
       await expect(dialog(second.page)).toBeHidden()
       await second.page.getByRole('button', { name: 'Desktop snapshots' }).click()
       const list = second.page.getByRole('list', { name: 'Desktop snapshots' })
-      // 清空：只剩「Now」行；约 10 秒后重新扫描写入一份新的自动快照
-      await expect(list).toContainText('No snapshots yet')
-      await expect(list).not.toContainText('No snapshots yet', { timeout: 25_000 })
+      // 删除全部后立即重新记录：只剩「Now」行 + 一份新的自动快照；约 10 秒后的重新扫描原地更新，不多出一份
       await expect(list.getByRole('listitem')).toHaveCount(2)
       await expect(list).toContainText('Autosave')
-      await second.page.waitForTimeout(1000)
+      await expect(list).not.toContainText('Saved on exit')
+      await second.page.waitForTimeout(12_000)
       await expect(list.getByRole('listitem')).toHaveCount(2)
     } finally {
       await second.app.close().catch(() => undefined)
     }
   })
 
-  test('restoring from a snapshot page clears it and moves the tab to the Now page', async () => {
+  test('deleting after a restore from a snapshot page moves the tab to the Now page', async () => {
     const { app, page } = await start(1000, [EXCEL])
     try {
       await page.getByRole('button', { name: 'Desktop snapshots' }).click()
@@ -162,11 +238,13 @@ test.describe('desktop snapshots', () => {
       await page.getByRole('button', { name: 'Save now' }).click()
       await list.getByRole('button', { name: /Manual save/ }).click()
       await expect(page.getByRole('checkbox', { name: /a\.xlsx/ })).toBeChecked()
-      // a.xlsx 已开着 = open（视为已处理）→ 清空快照，标签改为「Now」页
       await page.getByRole('button', { name: 'Restore selected items' }).click()
+      // 确认删除 → 标签改为「Now」页，只剩新的自动快照
+      await dialog(page).getByRole('button', { name: 'Delete' }).click()
       await expect(page.getByRole('heading', { name: 'Now' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
-      await expect(list).toContainText('No snapshots yet')
+      await expect(list).not.toContainText('Manual save')
+      await expect(list).toContainText('Autosave')
       await expect(page.getByText('This snapshot no longer exists')).toHaveCount(0)
       // 快照被清空后页面的重新获取不按 error 记日志
       expect(mainLog()).not.toMatch(/\[error\][^\n]*DESKTOP_SNAPSHOT_NOT_FOUND/)
@@ -175,8 +253,8 @@ test.describe('desktop snapshots', () => {
     }
   })
 
-  test('a restore with a failed item keeps the snapshot and stays on its page', async () => {
-    // 白名单外的 exe → failed：快照不清空（Ruling 14）
+  test('a restore with a failed item suggests keeping, and keeping stays on its page', async () => {
+    // 白名单外的 exe → failed：确认框提示保留快照以便再试
     const notepad = { ...WORD, path: 'C:\\work\\c.docx', exe: 'C:\\Windows\\notepad.exe' }
     const first = await start(1000, [notepad])
     try {
@@ -195,7 +273,10 @@ test.describe('desktop snapshots', () => {
       const list = page.getByRole('list', { name: 'Desktop snapshots' })
       await list.getByRole('button', { name: /Saved on exit/ }).click()
       await page.getByRole('button', { name: 'Restore selected items' }).click()
-      await expect(page.getByText(/failed to start/i)).toBeVisible()
+      await expect(page.getByText(/failed to start/i).first()).toBeVisible()
+      await expect(dialog(page)).toContainText('Keep the snapshots to try again later')
+      await page.keyboard.press('Escape')
+      await expect(dialog(page)).toBeHidden()
       await expect(page.getByRole('checkbox', { name: /c\.docx/ })).toBeVisible()
       await expect(list.getByRole('button', { name: /Saved on exit/ })).toBeVisible()
       await expect(page.getByRole('heading', { name: 'Now' })).toHaveCount(0)

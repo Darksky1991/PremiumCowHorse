@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DesktopPick } from '@pch/shared'
 import { ExitGuard } from './exit-guard'
 
 const SHOWN_MS = 10_000
@@ -21,8 +22,8 @@ function setup(opts: { ask?: boolean; alive?: boolean; enabled?: boolean } = {})
     requestExit: vi.fn(),
     notifyCancelled: vi.fn(),
     closeMain: vi.fn(),
-    saveExit: vi.fn<(save: boolean, keys: string[]) => Promise<void>>(async () => undefined),
-    currentKeys: () => ['k1', 'k2'],
+    saveExit: vi.fn<(save: boolean, picks: DesktopPick[]) => Promise<void>>(async () => undefined),
+    currentPicks: () => [{ key: 'k1' }, { key: 'k2' }],
     now: () => Date.now(),
     shownTimeoutMs: SHOWN_MS,
     sessionFreezeMs: FREEZE_MS,
@@ -43,9 +44,9 @@ describe('ExitGuard', () => {
     )
 
     t.guard.shown()
-    await t.guard.exit({ save: true, keys: ['k1'], dontAskAgain: true })
+    await t.guard.exit({ save: true, picks: [{ key: 'k1', tabs: [0] }], dontAskAgain: true })
     expect(t.deps.setAskOnExit).toHaveBeenCalledWith(false)
-    expect(t.deps.saveExit).toHaveBeenCalledWith(true, ['k1'])
+    expect(t.deps.saveExit).toHaveBeenCalledWith(true, [{ key: 'k1', tabs: [0] }])
     expect(t.deps.closeMain).toHaveBeenCalledTimes(1)
     expect(t.guard.onClose()).toBe(false)
   })
@@ -56,11 +57,11 @@ describe('ExitGuard', () => {
     await vi.advanceTimersByTimeAsync(SHOWN_MS - 1)
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
-    expect(t.deps.saveExit).toHaveBeenCalledWith(true, ['k1', 'k2'])
+    expect(t.deps.saveExit).toHaveBeenCalledWith(true, [{ key: 'k1' }, { key: 'k2' }])
     expect(t.deps.closeMain).toHaveBeenCalledTimes(1)
     expect(t.deps.logger.warn).toHaveBeenCalled()
     // 迟到的回应被忽略
-    await t.guard.exit({ save: false, keys: [], dontAskAgain: true })
+    await t.guard.exit({ save: false, picks: [], dontAskAgain: true })
     expect(t.deps.saveExit).toHaveBeenCalledTimes(1)
     expect(t.deps.setAskOnExit).not.toHaveBeenCalled()
   })
@@ -72,7 +73,7 @@ describe('ExitGuard', () => {
     await vi.advanceTimersByTimeAsync(SHOWN_MS * 100)
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     expect(t.deps.closeMain).not.toHaveBeenCalled()
-    await t.guard.exit({ save: false, keys: [], dontAskAgain: false })
+    await t.guard.exit({ save: false, picks: [], dontAskAgain: false })
     expect(t.deps.saveExit).toHaveBeenCalledWith(false, [])
     expect(t.deps.closeMain).toHaveBeenCalledTimes(1)
   })
@@ -87,7 +88,7 @@ describe('ExitGuard', () => {
     expect(t.deps.focusMain).toHaveBeenCalledTimes(2)
     // 重发后没有 exitShown：10 秒后保存退出
     await vi.advanceTimersByTimeAsync(SHOWN_MS)
-    expect(t.deps.saveExit).toHaveBeenCalledWith(true, ['k1', 'k2'])
+    expect(t.deps.saveExit).toHaveBeenCalledWith(true, [{ key: 'k1' }, { key: 'k2' }])
     expect(t.deps.closeMain).toHaveBeenCalledTimes(1)
   })
 
@@ -97,7 +98,7 @@ describe('ExitGuard', () => {
     t.guard.rendererReset()
     await vi.advanceTimersByTimeAsync(SHOWN_MS * 2)
     expect(t.deps.saveExit).not.toHaveBeenCalled()
-    await t.guard.exit({ save: true, keys: [], dontAskAgain: false })
+    await t.guard.exit({ save: true, picks: [], dontAskAgain: false })
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     expect(t.guard.onClose()).toBe(true)
     expect(t.deps.requestExit).toHaveBeenCalledTimes(2)
@@ -121,7 +122,7 @@ describe('ExitGuard', () => {
     expect(t.guard.onClose()).toBe(true)
     expect(t.deps.requestExit).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(t.deps.closeMain).toHaveBeenCalledTimes(1))
-    expect(t.deps.saveExit).toHaveBeenCalledWith(true, ['k1', 'k2'])
+    expect(t.deps.saveExit).toHaveBeenCalledWith(true, [{ key: 'k1' }, { key: 'k2' }])
     expect(t.guard.onClose()).toBe(false)
   })
 
@@ -168,7 +169,7 @@ describe('ExitGuard', () => {
 
   it('没有挂起的询问时 exit 被忽略', async () => {
     const t = setup()
-    await t.guard.exit({ save: true, keys: [], dontAskAgain: false })
+    await t.guard.exit({ save: true, picks: [], dontAskAgain: false })
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     expect(t.deps.closeMain).not.toHaveBeenCalled()
   })
@@ -177,7 +178,7 @@ describe('ExitGuard', () => {
     const t = setup()
     t.deps.saveExit.mockRejectedValueOnce(new Error('db gone'))
     t.guard.onClose()
-    await t.guard.exit({ save: true, keys: ['k1'], dontAskAgain: false })
+    await t.guard.exit({ save: true, picks: [{ key: 'k1', tabs: [0] }], dontAskAgain: false })
     expect(t.deps.closeMain).toHaveBeenCalledTimes(1)
     expect(t.deps.logger.error).toHaveBeenCalled()
     expect(t.guard.onClose()).toBe(false)
@@ -203,7 +204,7 @@ describe('ExitGuard', () => {
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     // 关机被取消后：渲染端已关闭对话框，迟到的回答不生效，重新关闭时重新询问
     await vi.advanceTimersByTimeAsync(FREEZE_MS)
-    await t.guard.exit({ save: true, keys: [], dontAskAgain: false })
+    await t.guard.exit({ save: true, picks: [], dontAskAgain: false })
     expect(t.deps.saveExit).not.toHaveBeenCalled()
     expect(t.guard.onClose()).toBe(true)
     expect(t.deps.requestExit).toHaveBeenCalledTimes(2)

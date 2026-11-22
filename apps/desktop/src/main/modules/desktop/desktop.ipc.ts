@@ -10,6 +10,7 @@ type DesktopChannel =
   | 'desktop.rename'
   | 'desktop.delete'
   | 'desktop.restore'
+  | 'desktop.clear'
   | 'desktop.restorePrompt'
   | 'desktop.exit'
   | 'desktop.cancelExit'
@@ -19,7 +20,15 @@ type DesktopChannel =
 export function desktopHandlers(
   desktop: Pick<
     DesktopService,
-    'list' | 'get' | 'current' | 'saveManual' | 'rename' | 'delete' | 'restore' | 'restorePrompt'
+    | 'list'
+    | 'get'
+    | 'current'
+    | 'saveManual'
+    | 'rename'
+    | 'delete'
+    | 'restore'
+    | 'clear'
+    | 'restorePrompt'
   >,
   exit: Pick<ExitGuard, 'exit' | 'cancel' | 'shown'>
 ): HandlersOf<DesktopChannel> {
@@ -27,10 +36,11 @@ export function desktopHandlers(
     'desktop.list': async () => desktop.list(),
     'desktop.get': async ({ id }) => desktop.get(id),
     'desktop.current': async () => desktop.current(),
-    'desktop.save': async ({ keys, name }) => desktop.saveManual(keys, name),
+    'desktop.save': async ({ picks, name }) => desktop.saveManual(picks, name),
     'desktop.rename': async ({ id, name }) => desktop.rename(id, name),
     'desktop.delete': async ({ id }) => desktop.delete(id),
-    'desktop.restore': async ({ snapshotId, itemIds }) => desktop.restore(snapshotId, itemIds),
+    'desktop.restore': async ({ snapshotId, picks }) => desktop.restore(snapshotId, picks),
+    'desktop.clear': async () => desktop.clear(),
     'desktop.restorePrompt': async () => desktop.restorePrompt(),
     'desktop.exit': async (input) => exit.exit(input),
     'desktop.cancelExit': async () => exit.cancel(),

@@ -9,7 +9,12 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
-import { desktopLocation, desktopIdOfUri, type DesktopSnapshotSummary } from '@pch/shared'
+import {
+  desktopEntryCount,
+  desktopIdOfUri,
+  desktopLocation,
+  type DesktopSnapshotSummary
+} from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import {
   ContextMenu,
@@ -61,15 +66,19 @@ export function DesktopView(): JSX.Element {
   const logonAt = current.data?.logonAt ?? null
 
   const saveNow = async (): Promise<void> => {
-    const keys = (current.data?.items ?? []).map((i) => i.key)
-    if (keys.length === 0) {
+    const items = current.data?.items ?? []
+    if (items.length === 0) {
       notify('info', t('desktop:nothingToSave'))
       return
     }
     setSaving(true)
     try {
-      await saveDesktop(keys, null)
-      notify('success', t('desktop:saved', { count: keys.length }))
+      await saveDesktop(
+        items.map((i) => ({ key: i.key })),
+        null
+      )
+      // 件数：Explorer 每个标签算一项，与快照页、列表一致
+      notify('success', t('desktop:saved', { count: desktopEntryCount(items.map((i) => i.item)) }))
     } catch (e) {
       notify('error', errorText(t, e))
     } finally {
@@ -120,7 +129,9 @@ export function DesktopView(): JSX.Element {
             <span className="min-w-0 flex-1 truncate font-medium">{t('desktop:current')}</span>
             {current.data === undefined ? null : (
               <span className="shrink-0 text-xs text-muted-foreground">
-                {t('desktop:itemCount', { count: current.data.items.length })}
+                {t('desktop:itemCount', {
+                  count: desktopEntryCount(current.data.items.map((i) => i.item))
+                })}
               </span>
             )}
           </button>

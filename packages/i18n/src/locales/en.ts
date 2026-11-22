@@ -181,6 +181,14 @@ export default {
     restoreDescription: 'These items were open before the restart. Choose what to restore.',
     restoreSubmit: 'Restore',
     restoreLater: 'Later',
+    explorerWindow: 'Same window · {{count}} tab(s)',
+    clearTitle: 'Delete the saved snapshots?',
+    clearDescription:
+      'Restore finished. All {{count}} saved snapshot(s) will be deleted and the current desktop recorded again.',
+    clearFailedNote:
+      'Some items could not be restored (unreachable or failed to start). Keep the snapshots to try again later.',
+    clearKeep: 'Keep',
+    clearConfirm: 'Delete',
     exitTitle: 'Save your desktop before exiting?',
     exitDescription: 'Choose the items to save. You can restore them next time you start.',
     exitNoItems: 'Nothing is open right now',

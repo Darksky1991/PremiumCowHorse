@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { desktopItemKey, openTargetsOf } from './keys'
+import { desktopItemKey, openTargetsOf, pickTabs } from './keys'
 import type { DesktopItem } from './types'
 
 const office = (path: string): DesktopItem => ({
@@ -42,5 +42,25 @@ describe('openTargetsOf', () => {
   it('其余类别用各自的 key', () => {
     const set = openTargetsOf([office('C:\\X.xlsx')])
     expect([...set]).toEqual(['office:c:\\x.xlsx'])
+  })
+})
+
+describe('pickTabs', () => {
+  it('省略 tabs 时原样返回', () => {
+    const item = explorer(['C:\\A', 'C:\\B'])
+    expect(pickTabs(item, undefined)).toBe(item)
+  })
+  it('Explorer 按原顺序保留选中的标签，重复与越界忽略', () => {
+    expect(pickTabs(explorer(['C:\\A', 'C:\\B', 'C:\\C']), [2, 0, 0, 9])).toEqual(
+      explorer(['C:\\A', 'C:\\C'])
+    )
+  })
+  it('一个标签都不剩时为 null', () => {
+    expect(pickTabs(explorer(['C:\\A']), [])).toBeNull()
+    expect(pickTabs(explorer(['C:\\A']), [5])).toBeNull()
+  })
+  it('非 Explorer 忽略 tabs', () => {
+    const item = office('C:\\X.xlsx')
+    expect(pickTabs(item, [])).toBe(item)
   })
 })

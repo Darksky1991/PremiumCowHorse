@@ -227,7 +227,11 @@ function createDesktop(deps: {
         },
         now: Date.now,
         logger,
-        onChange: () => windows.broadcast('desktop.changed', { scope: 'current' })
+        onChange: () => {
+          windows.broadcast('desktop.changed', { scope: 'current' })
+          // 现场变化 → 尽快同步自动快照（desktop 在 monitor.start 之前已构造完成）
+          desktop.liveChanged()
+        }
       })
     : null
   const restoreDeps = fake?.restoreDeps ?? {
@@ -250,6 +254,7 @@ function createDesktop(deps: {
     now: Date.now,
     emit: (e) => windows.broadcast('desktop.changed', e),
     autoSaveMs: T.autoSaveMs,
+    changeSaveDelayMs: T.changeSaveDelayMs,
     keepVisible: T.keepVisible,
     restoreRescanMs: T.restoreRescanMs,
     sessionFreezeMs: T.sessionFreezeMs,
@@ -264,8 +269,8 @@ function createDesktop(deps: {
     requestExit: () => windows.sendToMain('desktop.exitRequested', {}),
     notifyCancelled: () => windows.sendToMain('desktop.exitCancelled', {}),
     closeMain: () => windows.closeMain(),
-    saveExit: (save, keys) => desktop.saveExit(save, keys),
-    currentKeys: () => desktop.current().items.map((i) => i.key),
+    saveExit: (save, picks) => desktop.saveExit(save, picks),
+    currentPicks: () => desktop.current().items.map((i) => ({ key: i.key })),
     now: Date.now,
     shownTimeoutMs: T.exitShownTimeoutMs,
     sessionFreezeMs: T.sessionFreezeMs,
