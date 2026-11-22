@@ -8,6 +8,7 @@ import {
   normalizeRootUri,
   parseSftpUri,
   DEFAULT_WORKSPACE_ID,
+  type SftpLocation,
   type EntryAddInput,
   type EntryMoveInput,
   type EntrySetCacheStrategyInput,
@@ -27,6 +28,12 @@ import { fileUriToLocalPath } from '../../vfs/local-path'
 import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo, IndexTargetRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
+
+/** sftp 条目所需的连接信息（组合根由连接 repo 提供；模块之间不互相 import） */
+export interface RemoteConnectionLookup {
+  /** 该连接登记的可切换身份；连接不存在为 null */
+  identities(connectionId: string): Promise<string[] | null>
+}
 
 /**
  * 条目 URI 的规范形式：sftp: 经解析再格式化（scheme 小写、消去 . / ..、逐段重新编码、去掉结尾 /），
@@ -53,7 +60,9 @@ export class WorkspaceService {
     private readonly vfs: VfsService,
     private readonly bus: EventBus<MainEvents>,
     /** 系统临时目录（app.getPath('temp')）；rejectTemporary 时位于其下的路径被拒绝。组合根注入，测试可传任意目录 */
-    tempDir: string
+    tempDir: string,
+    /** sftp 条目的身份校验；未注入时带身份的 sftp 条目一律拒绝（fail closed） */
+    private readonly remote: RemoteConnectionLookup | null = null
   ) {
     this.tempDirs = [tempDir]
     try {
@@ -147,6 +156,9 @@ export class WorkspaceService {
     let defaultLabel = ''
     if (input.kind !== 'group') {
       uri = input.path !== undefined ? toFileUri(input.path) : entryUri(input.uri as string)
+      // sftp:（设计 5.7）：只接受 folder 条目，身份须已登记；都在 stat 之前检查（不连接服务器）
+      const remote = parseSftpUri(uri)
+      if (remote) await this.checkRemoteEntry(input.kind, remote)
       // 先于 stat 检查：临时副本即使存在也不接受（只对本地 file:；sftp: 的存在与类型经 VFS → SftpProvider 校验）
       if (
         input.rejectTemporary === true &&
@@ -315,6 +327,21 @@ export class WorkspaceService {
   }
 
   // ---------- 内部 ----------
+
+  private async checkRemoteEntry(kind: 'folder' | 'file', loc: SftpLocation): Promise<void> {
+    if (kind === 'file') {
+      throw new AppError({
+        code: 'FS_UNSUPPORTED_SCHEME',
+        detail: 'sftp: remote file entries are not supported'
+      })
+    }
+    if (loc.identity === null) return
+    const identities = this.remote ? await this.remote.identities(loc.connectionId) : []
+    if (identities === null) throw new AppError({ code: 'CONN_NOT_FOUND' })
+    if (!identities.includes(loc.identity)) {
+      throw new AppError({ code: 'IPC_FORBIDDEN', detail: 'identity not registered' })
+    }
+  }
 
   /**
    * 路径是否位于临时目录之下：原始形式或 realpath 形式（解决 8.3 短名 / 长名不一致、

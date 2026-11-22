@@ -146,6 +146,8 @@ function wireScanner(c: Container): void {
   let rootsSet = false
   const push = async (): Promise<void> => {
     const mine = ++seq
+    // 根更新在途：条目刚添加（workspace.changed 同步触发本函数）到 setRoots 之前，对新根的访问检查等待而不拒绝
+    const updated = c.remoteAccess.beginUpdate()
     try {
       const [active, all, indexTargets] = await Promise.all([
         c.workspaces.active(),
@@ -174,6 +176,8 @@ function wireScanner(c: Container): void {
         c.remoteAccess.setRoots([])
         rootsSet = true
       }
+    } finally {
+      updated()
     }
   }
   void push()

@@ -93,8 +93,9 @@ export class ConnectionService {
     return this.toDto(saved)
   }
 
-  /** 先断开再删除；引用它的条目保留（显示「连接不存在」） */
+  /** 先断开再删除；引用它的条目保留（显示「连接不存在」）。不存在 → CONN_NOT_FOUND */
   async delete(id: string): Promise<void> {
+    await this.require(id)
     this.deps.pool.disconnect(id)
     await this.deps.repo.delete(id)
     this.changed(id)
@@ -104,8 +105,8 @@ export class ConnectionService {
     try {
       return await this.deps.pool.test(id)
     } finally {
-      // 测试可能写入锁定状态 / 解除锁定 / 保存主机密钥
-      this.deps.emitChanged()
+      // 测试可能写入锁定状态 / 解除锁定 / 保存主机密钥：通知变化，并立即重新检查该连接的条目根
+      this.changed(id)
     }
   }
 

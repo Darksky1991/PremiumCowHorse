@@ -143,6 +143,10 @@ export class ConnectionPool implements SftpSessionSource {
     if (this.disposed) throw new AppError({ code: 'FS_UNAVAILABLE', detail: 'pool disposed' })
     const rec = await this.deps.repo.get(id)
     if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
+    // 身份必须在该连接登记的 identities 中（编辑删去的身份随之不可用）：不连接、不执行 sudo
+    if (identity !== null && !rec.identities.includes(identity)) {
+      throw new AppError({ code: 'IPC_FORBIDDEN', detail: 'identity not registered' })
+    }
     if (rec.authState === 'auth-failed' || this.authLocked.has(id)) {
       this.setState(id, 'auth-failed')
       throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'locked' })

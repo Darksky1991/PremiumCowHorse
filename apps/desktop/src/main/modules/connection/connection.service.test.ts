@@ -231,6 +231,13 @@ describe('ConnectionService', () => {
     expect(onConnectionReset).toHaveBeenLastCalledWith(dto.id)
   })
 
+  it('delete 不存在的连接 → CONN_NOT_FOUND，不断开、不通知', async () => {
+    emitChanged.mockClear()
+    expect((await errorOf(service.delete('nope'))).code).toBe('CONN_NOT_FOUND')
+    expect(pool.disconnect).not.toHaveBeenCalled()
+    expect(emitChanged).not.toHaveBeenCalled()
+  })
+
   it('reconnect：unlock、disconnect 与 onConnectionReset', async () => {
     const dto = await service.save(input())
     pool.disconnect.mockClear()
@@ -285,6 +292,16 @@ describe('ConnectionService', () => {
     })
     expect(pool.test).toHaveBeenCalledWith(dto.id)
     expect(emitChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('test 之后 onConnectionReset（测试可能解除了锁定，条目根立即重新检查）', async () => {
+    const dto = await service.save(input())
+    onConnectionReset.mockClear()
+    await service.test(dto.id)
+    expect(onConnectionReset).toHaveBeenCalledWith(dto.id)
+    expect(pool.test.mock.invocationCallOrder[0]).toBeLessThan(
+      onConnectionReset.mock.invocationCallOrder[0]!
+    )
   })
 
   it('home：按连接与身份取连接池的 home', async () => {

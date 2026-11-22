@@ -563,6 +563,32 @@ describe('ConnectionPool: 认证锁定', () => {
   })
 })
 
+describe('ConnectionPool: 身份须已登记', () => {
+  it('未登记的身份 → IPC_FORBIDDEN，不连接、不执行 sudo', async () => {
+    const h = setup({ records: [record({ identities: ['app1'] })] })
+    for (const userAction of [true, false]) {
+      const err = await errorOf(
+        h.pool.session({ connectionId: 'c1', identity: 'root' }, opts(userAction))
+      )
+      expect(err.code).toBe('IPC_FORBIDDEN')
+    }
+    expect(h.connect).not.toHaveBeenCalled()
+    expect(h.openIdentity).not.toHaveBeenCalled()
+  })
+
+  it('identities 被编辑删去某身份后，该身份不再可用；登录用户与其他身份不受影响', async () => {
+    const h = setup()
+    await h.pool.session(ROOT, opts())
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    h.repo.records.get('c1')!.identities = ['app1']
+    h.pool.disconnect('c1')
+    expect((await errorOf(h.pool.session(ROOT, opts()))).code).toBe('IPC_FORBIDDEN')
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    await expect(h.pool.session(LOGIN, opts())).resolves.toBeDefined()
+    await expect(h.pool.session(APP1, opts())).resolves.toBeDefined()
+  })
+})
+
 describe('ConnectionPool: 身份会话', () => {
   it('第一次使用身份时探测一次；sudo 密码为登录密码；同一身份共享', async () => {
     const h = setup()

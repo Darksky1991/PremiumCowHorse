@@ -275,7 +275,9 @@ describe('WorkspaceService', () => {
           db,
           new VfsService([new LocalProvider(), sftpProvider]),
           new EventBus<MainEvents>(),
-          at('Temp')
+          at('Temp'),
+          // 连接 ID 登记了身份 app1；其余连接不存在
+          { identities: async (id) => (id === ID ? ['app1'] : null) }
         )
       })
 
@@ -299,6 +301,49 @@ describe('WorkspaceService', () => {
 
       it('rejects an unparsable sftp URI with FS_INVALID_URI', async () => {
         await expect(addSftp('sftp://')).rejects.toMatchObject({ code: 'FS_INVALID_URI' })
+        expect(sftpStat).not.toHaveBeenCalled()
+      })
+
+      it('R14: rejects remote file entries with FS_UNSUPPORTED_SCHEME before stat', async () => {
+        await expect(
+          service.addEntry({
+            kind: 'file',
+            workspaceId: DEFAULT_WORKSPACE_ID,
+            parentId: null,
+            uri: `sftp://${ID}/etc/hosts`
+          })
+        ).rejects.toMatchObject({ code: 'FS_UNSUPPORTED_SCHEME' })
+        expect(sftpStat).not.toHaveBeenCalled()
+        expect(await order()).toEqual([])
+      })
+
+      it('accepts a registered identity; rejects an unregistered one with IPC_FORBIDDEN before stat', async () => {
+        const e = await addSftp(`sftp://app1@${ID}/opt`)
+        expect(e.uri).toBe(`sftp://app1@${ID}/opt`)
+        sftpStat.mockClear()
+        await expect(addSftp(`sftp://root@${ID}/root`)).rejects.toMatchObject({
+          code: 'IPC_FORBIDDEN'
+        })
+        expect(sftpStat).not.toHaveBeenCalled()
+      })
+
+      it('an identity on an unknown connection -> CONN_NOT_FOUND before stat', async () => {
+        await expect(addSftp('sftp://app1@nope/opt')).rejects.toMatchObject({
+          code: 'CONN_NOT_FOUND'
+        })
+        expect(sftpStat).not.toHaveBeenCalled()
+      })
+
+      it('without the connection lookup injected, identity URIs are rejected (fail closed)', async () => {
+        service = new WorkspaceService(
+          db,
+          new VfsService([new LocalProvider(), sftpProvider]),
+          new EventBus<MainEvents>(),
+          at('Temp')
+        )
+        await expect(addSftp(`sftp://app1@${ID}/opt`)).rejects.toMatchObject({
+          code: 'IPC_FORBIDDEN'
+        })
         expect(sftpStat).not.toHaveBeenCalled()
       })
     })

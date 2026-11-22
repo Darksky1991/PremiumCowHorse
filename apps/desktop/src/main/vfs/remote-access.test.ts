@@ -98,6 +98,70 @@ describe('RemoteAccess.check', () => {
   })
 })
 
+describe('RemoteAccess：根的更新在途', () => {
+  it('更新在途时对新根的 check 等到 setRoots 之后通过', async () => {
+    const a = ready([`sftp://${ID}/opt`])
+    const done = a.beginUpdate()
+    let settled: string | null | undefined
+    const p = codeOf(a.check(`sftp://${ID}/var/log`)).then((c) => (settled = c))
+    // 已在范围内的不等待
+    expect(await codeOf(a.check(`sftp://${ID}/opt/a`))).toBeNull()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBeUndefined()
+    a.setRoots([`sftp://${ID}/opt`, `sftp://${ID}/var`])
+    done()
+    await p
+    expect(settled).toBeNull()
+  })
+
+  it('更新结束后仍不在范围内 → IPC_FORBIDDEN', async () => {
+    const a = ready([`sftp://${ID}/opt`])
+    const done = a.beginUpdate()
+    const p = codeOf(a.check(`sftp://${ID}/etc`))
+    a.setRoots([`sftp://${ID}/opt`])
+    done()
+    expect(await p).toBe('IPC_FORBIDDEN')
+  })
+
+  it('多个更新在途：全部结束后才再判；done 重复调用无副作用', async () => {
+    const a = ready([])
+    const d1 = a.beginUpdate()
+    const d2 = a.beginUpdate()
+    let settled: string | null | undefined
+    const p = codeOf(a.check(`sftp://${ID}/opt/a`)).then((c) => (settled = c))
+    d1()
+    d1()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBeUndefined()
+    a.setRoots([`sftp://${ID}/opt`])
+    d2()
+    await p
+    expect(settled).toBeNull()
+  })
+
+  it('filter：更新在途时范围外的等到更新结束后再判', async () => {
+    const a = ready([`sftp://${ID}/opt`])
+    const done = a.beginUpdate()
+    const p = a.filter([`sftp://${ID}/opt/a`, `sftp://${ID}/var/log`, `sftp://${ID}/etc`])
+    a.setRoots([`sftp://${ID}/opt`, `sftp://${ID}/var`])
+    done()
+    await expect(p).resolves.toEqual([`sftp://${ID}/opt/a`, `sftp://${ID}/var/log`])
+  })
+
+  it('没有更新在途时范围外照常立即拒绝', async () => {
+    const a = ready([`sftp://${ID}/opt`])
+    a.beginUpdate()() // 已结束的更新不影响
+    let settled = false
+    const p = a.check(`sftp://${ID}/etc`).catch((e: unknown) => {
+      settled = true
+      throw e
+    })
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+    expect(settled).toBe(true)
+    await expect(p).rejects.toMatchObject({ code: 'IPC_FORBIDDEN' })
+  })
+})
+
 describe('RemoteAccess.filter', () => {
   it('丢弃范围外的 sftp URI，其余保持原样与顺序', async () => {
     const a = ready([`sftp://${ID}/opt`])

@@ -23,6 +23,10 @@ export class RemoteAccess {
   private roots: SftpLocation[] | null = null
   private readonly ready: Promise<void>
   private markReady!: () => void
+  /** 进行中的根更新数（beginUpdate）；归零时 idle 完成 */
+  private updates = 0
+  private idle: Promise<void> = Promise.resolve()
+  private markIdle: () => void = () => undefined
 
   constructor() {
     this.ready = new Promise<void>((resolve) => (this.markReady = resolve))
@@ -39,18 +43,41 @@ export class RemoteAccess {
     this.markReady()
   }
 
+  /**
+   * 登记一次进行中的根更新（bootstrap 的 push 在开始时调用，结束时调用返回的函数；重复调用无副作用）。
+   * 条目添加提交、发出 workspace.changed 之后到 setRoots 之前，渲染端对新根的访问不应被拒绝：
+   * 判为范围外且有更新在途时，check / filter 等全部更新结束后再判一次
+   */
+  beginUpdate(): () => void {
+    if (this.updates === 0) this.idle = new Promise<void>((resolve) => (this.markIdle = resolve))
+    this.updates++
+    let ended = false
+    return () => {
+      if (ended) return
+      ended = true
+      if (--this.updates === 0) this.markIdle()
+    }
+  }
+
   /** 非 sftp: 直接通过；sftp: 不在任何根之下 → IPC_FORBIDDEN */
   async check(uri: string): Promise<void> {
     if (!isSftp(uri)) return
     await this.ready
-    if (!this.allowed(uri)) throw new AppError({ code: 'IPC_FORBIDDEN', detail: 'outside entries' })
+    while (!this.allowed(uri)) {
+      if (this.updates === 0) {
+        throw new AppError({ code: 'IPC_FORBIDDEN', detail: 'outside entries' })
+      }
+      await this.idle
+    }
   }
 
   /** 过滤（vfs.interest / vfs.refresh 的数组）：范围外的 sftp URI 丢弃，其余保持原样与顺序 */
   async filter(uris: readonly string[]): Promise<string[]> {
     if (!uris.some(isSftp)) return [...uris]
     await this.ready
-    return uris.filter((u) => !isSftp(u) || this.allowed(u))
+    const pass = (u: string): boolean => !isSftp(u) || this.allowed(u)
+    while (this.updates > 0 && !uris.every(pass)) await this.idle
+    return uris.filter(pass)
   }
 
   private allowed(uri: string): boolean {
