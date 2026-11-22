@@ -106,6 +106,57 @@ describe('SftpProvider.list', () => {
     expect(items.find((x) => x.name === 'dead')).toMatchObject({ kind: 'symlink', target: null })
   })
 
+  it('I3: link targets are stat-ed concurrently, at most 32 at a time, order preserved', async () => {
+    const n = 100
+    const links: SftpDirEntry[] = Array.from({ length: n }, (_, i) => ({
+      filename: `l${i}`,
+      longname: '',
+      attrs: attrs(LNK, 3)
+    }))
+    let running = 0
+    let max = 0
+    const session: SftpSession = {
+      ...fakeSession({}, { '/usr/lib64': links }),
+      stat: async (p) => {
+        running++
+        max = Math.max(max, running)
+        await new Promise((r) => setTimeout(r, 2))
+        running--
+        // 偶数号指向目录，奇数号是失效链接
+        if (Number(p.slice(p.lastIndexOf('/') + 2)) % 2 === 0) return attrs(DIR)
+        throw notFound()
+      }
+    }
+    const items = await new SftpProvider(sourceOf(session)).list(
+      new URL(`sftp://${ID}/usr/lib64`),
+      sig
+    )
+    expect(max).toBe(32)
+    expect(items.map((x) => x.name)).toEqual(links.map((l) => l.filename))
+    expect(items.map((x) => x.target)).toEqual(
+      links.map((_, i) => (i % 2 === 0 ? 'directory' : null))
+    )
+  })
+
+  it('I3: a disconnect while resolving links fails the listing', async () => {
+    const links: SftpDirEntry[] = Array.from({ length: 40 }, (_, i) => ({
+      filename: `l${i}`,
+      longname: '',
+      attrs: attrs(LNK, 3)
+    }))
+    const session: SftpSession = {
+      ...fakeSession({}, { '/x': links }),
+      stat: async () => {
+        throw new AppError({ code: 'FS_UNAVAILABLE' })
+      }
+    }
+    await expect(
+      new SftpProvider(sourceOf(session)).list(new URL(`sftp://${ID}/x`), sig, {
+        userAction: false
+      })
+    ).rejects.toMatchObject({ code: 'FS_UNAVAILABLE' })
+  })
+
   it('invalid uri -> FS_INVALID_URI', async () => {
     await expect(mk().list(new URL('sftp:///x'), sig)).rejects.toMatchObject({
       code: 'FS_INVALID_URI'

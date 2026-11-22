@@ -177,6 +177,30 @@ describe('Scheduler: remote directories', () => {
     ])
   })
 
+  it('I3: a remote list that times out (no batch yet) marks only that directory, not the connection', async () => {
+    const { clock, fs, s, cache, reach } = setup([remoteRoot])
+    const A = fs.addDir(RR, 'a')
+    const B = fs.addDir(RR, 'b')
+    // statDir 成功（连接有响应），list 迟迟不返回（例如逐个 stat 上千个链接）
+    fs.gate = (op, uri, signal) => (op === 'list' && uri === A ? hang(signal) : undefined)
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(20_000)
+    expect(cache.getDir(A)).toMatchObject({ state: 'unreachable', errorCode: 'FS_TIMEOUT' })
+    expect(reach).toEqual([])
+    expect(s.isOffline(A)).toBe(false)
+    await expect(s.listNow(B)).resolves.toMatchObject({ state: 'fresh' })
+  })
+
+  it('I3: a remote statDir (probe) timeout still takes the connection offline', async () => {
+    const { clock, fs, s, reach } = setup([remoteRoot])
+    const A = fs.addDir(RR, 'a')
+    fs.gate = (op, uri, signal) => (op === 'stat' && uri === A ? hang(signal) : undefined)
+    s.setInterest(1, { ...none, focus: A })
+    await clock.advance(20_000)
+    expect(reach.map((r) => r.slice(0, 2))).toEqual([[CONN, 'offline']])
+    expect(s.isOffline(A)).toBe(true)
+  })
+
   it('CONN_* errors mark the directory, not the connection', async () => {
     const h = setup([remoteRoot])
     const { clock, fs, s, reach, cache } = h

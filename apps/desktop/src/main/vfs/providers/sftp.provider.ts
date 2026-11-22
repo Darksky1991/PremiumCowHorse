@@ -58,6 +58,22 @@ export function ownerOfLongname(longname: string): string | undefined {
   return longname.trim().split(/\s+/)[2] || undefined
 }
 
+/** 链接目标的 stat 同时进行的上限（I3：大目录的链接逐个往返会超过看门狗） */
+export const LINK_STAT_CONCURRENCY = 32
+
+/** 以至多 limit 个并发对 items 逐个执行 fn；任何一个失败即整体失败（其余仍在进行的结果被丢弃） */
+async function eachLimited<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) await fn(items[next++] as T)
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
+
 function unsupported(): AppError {
   return new AppError({ code: 'FS_UNSUPPORTED_SCHEME', detail: 'sftp: read is not supported' })
 }
@@ -94,6 +110,7 @@ export class SftpProvider implements FileSystemProvider {
       return await this.run(target, signal, opts, async (s, sig) => {
         const dirs = await s.readdir(path, sig)
         const out: FileEntry[] = []
+        const links: { entry: FileEntry; path: string }[] = []
         for (const d of dirs) {
           if (d.filename === '.' || d.filename === '..') continue
           const kind = kindOf(d.attrs.mode)
@@ -108,19 +125,22 @@ export class SftpProvider implements FileSystemProvider {
           const owner = ownerOfLongname(d.longname)
           if (owner !== undefined) entry.owner = owner
           if (kind === 'symlink') {
-            const childPath = path === '/' ? `/${d.filename}` : `${path}/${d.filename}`
-            entry.target = await s.stat(childPath, sig).then(
-              (a) => (kindOf(a.mode) === 'directory' ? 'directory' : 'file'),
-              (e: unknown) => {
-                // 取消与断线要向上传递；其余（目标不存在、无权限）视为失效链接
-                const err = toSftpAppError(e)
-                if (err.code === 'FS_CANCELLED' || err.code === 'FS_UNAVAILABLE') throw err
-                return null
-              }
-            )
+            links.push({ entry, path: path === '/' ? `/${d.filename}` : `${path}/${d.filename}` })
           }
           out.push(entry)
         }
+        // 链接目标的类型：有界并发（/usr/lib64、/etc/alternatives 等有上千个链接）
+        await eachLimited(links, LINK_STAT_CONCURRENCY, async ({ entry, path: p }) => {
+          entry.target = await s.stat(p, sig).then(
+            (a) => (kindOf(a.mode) === 'directory' ? 'directory' : 'file'),
+            (e: unknown) => {
+              // 取消与断线要向上传递；其余（目标不存在、无权限）视为失效链接
+              const err = toSftpAppError(e)
+              if (err.code === 'FS_CANCELLED' || err.code === 'FS_UNAVAILABLE') throw err
+              return null
+            }
+          )
+        })
         return out
       })
     } catch (e) {

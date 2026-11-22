@@ -881,6 +881,8 @@ export class Scheduler {
     const { uri } = task
     const share = this.enumerator.shareKey(uri)
     let probe = true
+    /** 已进入 list 阶段（statDir 已成功） */
+    let listing = false
     try {
       // userAction：用户操作的远程读取在断线时重连并重试一次；系统派生的 P0、后台与定期确认不重试
       const { userAction } = task
@@ -908,6 +910,7 @@ export class Scheduler {
       }
 
       run.batches = 0
+      listing = true
       const entries = await this.guard(uri, run, (signal, onBatch) =>
         this.enumerator.list(uri, { signal, onBatch, userAction })
       )
@@ -927,8 +930,10 @@ export class Scheduler {
     } catch (e) {
       const error = toAppError(e)
       if (this.disposed || error.code === 'FS_CANCELLED') return { ok: false, error }
-      // 枚举阶段：拿到第一批之前仍算探测
-      this.handleError(task, error, probe && run.batches === 0)
+      // 枚举阶段：拿到第一批之前仍算探测。远程目录除外（I3）：list 一次返回完整列表（中途没有批次），
+      // 大目录（逐个解析上千个链接）可能超过看门狗；statDir 刚刚成功，说明连接有响应，只记该目录超时
+      const remoteList = listing && this.isRemote(uri)
+      this.handleError(task, error, probe && run.batches === 0 && !remoteList)
       return { ok: false, error }
     }
   }
