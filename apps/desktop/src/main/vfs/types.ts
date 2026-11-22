@@ -6,7 +6,7 @@ import type { FileEntry, FileStat } from '@pch/shared'
  * 新增一种资源类型只需新增一个 provider 并在组合根注册。
  */
 export interface FileSystemProvider {
-  readonly scheme: 'file'
+  readonly scheme: 'file' | 'sftp'
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>
   list(uri: URL, signal?: AbortSignal): Promise<FileEntry[]>
   /**
