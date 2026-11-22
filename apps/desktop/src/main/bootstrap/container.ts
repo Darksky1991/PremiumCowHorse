@@ -118,7 +118,9 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
       if (!windows.mainRendererAlive()) return false
       windows.sendToMain('connection.hostKeyPrompt', p)
       return true
-    }
+    },
+    // 超时 / 已回答：主窗口收起对应的确认框
+    closed: (promptId) => windows.sendToMain('connection.hostKeyPromptClosed', { promptId })
   })
   const pool = new ConnectionPool({
     repo: connectionRepo,

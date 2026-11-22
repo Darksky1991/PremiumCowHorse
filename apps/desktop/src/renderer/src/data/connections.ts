@@ -27,8 +27,17 @@ export function useConnections(): UseQueryResult<ConnectionDto[]> {
   })
 }
 
+/**
+ * 保存连接。**不经 TanStack 的 MutationCache**：useMutation 会把 variables（含明文 secret / sudoSecret）
+ * 留在缓存中直到 gcTime（默认 5 分钟）到期。明文只在这次 IPC 调用中经过渲染端，返回后不留任何引用；
+ * 进行中状态由调用方自己保存。成功后主进程广播 connection.changed
+ */
+export function saveConnection(input: ConnectionSaveInput): Promise<ConnectionDto> {
+  return call('connection.save', input)
+}
+
+/** 以下操作的输入只有连接 id（不含机密），可以经 useMutation */
 export interface ConnectionActions {
-  save: UseMutationResult<ConnectionDto, Error, ConnectionSaveInput>
   remove: UseMutationResult<void, Error, string>
   test: UseMutationResult<ConnectionTestResult, Error, string>
   reconnect: UseMutationResult<void, Error, string>
@@ -37,9 +46,6 @@ export interface ConnectionActions {
 
 /** 写操作成功后主进程广播 connection.changed，列表由 query-client 的桥接失效 */
 export function useConnectionActions(): ConnectionActions {
-  const save = useMutation({
-    mutationFn: (input: ConnectionSaveInput) => call('connection.save', input)
-  })
   const remove = useMutation({ mutationFn: (id: string) => call('connection.delete', { id }) })
   const test = useMutation({ mutationFn: (id: string) => call('connection.test', { id }) })
   const reconnect = useMutation({
@@ -48,7 +54,7 @@ export function useConnectionActions(): ConnectionActions {
   const trustHostKey = useMutation({
     mutationFn: (id: string) => call('connection.trustHostKey', { id })
   })
-  return { save, remove, test, reconnect, trustHostKey }
+  return { remove, test, reconnect, trustHostKey }
 }
 
 /** 主目录（登录用户会连接服务器）；id 为 undefined 时不查询 */
@@ -66,6 +72,11 @@ export function useConnectionHome(
 /** 订阅主进程的主机密钥询问（connection.hostKeyPrompt），返回取消订阅函数 */
 export function subscribeHostKeyPrompts(listener: (p: HostKeyPrompt) => void): () => void {
   return subscribe('connection.hostKeyPrompt', listener)
+}
+
+/** 订阅「询问已结束」（主进程中已回答或超时），返回取消订阅函数 */
+export function subscribeHostKeyPromptsClosed(listener: (promptId: string) => void): () => void {
+  return subscribe('connection.hostKeyPromptClosed', ({ promptId }) => listener(promptId))
 }
 
 /** 尚未回答的主机密钥询问（窗口重新加载之前发出、错过了事件的询问） */

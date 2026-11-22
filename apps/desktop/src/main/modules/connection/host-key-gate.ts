@@ -16,6 +16,8 @@ export interface HostKeyGate {
 export interface HostKeyGateDeps {
   describe(connectionId: string): Promise<{ name: string; host: string; port: number } | undefined>
   send(prompt: HostKeyPrompt): boolean // 发给主窗口；没有主窗口 → false → ask 返回 false
+  /** 已发出的询问结束（回答 / 超时）：通知窗口收起确认框（渲染端自己回答时也会收到，重复移除无害） */
+  closed?(promptId: string): void
   /** 等待回答的上限（默认 5 分钟，与连接池首次连接的 readyTimeout 下限一致）；到时按拒绝处理 */
   timeoutMs?: number
 }
@@ -48,6 +50,13 @@ export function createHostKeyGate(deps: HostKeyGateDeps): HostKeyGate {
       pending.delete(connectionId)
       clearTimeout(timer)
       settle(accept)
+      if (entry.prompt) {
+        try {
+          deps.closed?.(entry.prompt.promptId)
+        } catch {
+          // 通知失败不影响结果（窗口已关闭等）
+        }
+      }
     }
     pending.set(connectionId, entry)
 

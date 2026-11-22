@@ -16,17 +16,19 @@ import {
 import {
   answerHostKey,
   pendingHostKeyPrompts,
-  subscribeHostKeyPrompts
+  subscribeHostKeyPrompts,
+  subscribeHostKeyPromptsClosed
 } from '@renderer/data/connections'
 import { notify } from '@renderer/stores/messages-store'
 import { hostPort } from './connection-form'
 import { errorText } from './error-text'
-import { enqueuePrompt, startHostKeyPromptSync } from './prompt-queue'
+import { dequeuePrompt, enqueuePrompt, startHostKeyPromptSync } from './prompt-queue'
 
 /**
  * 首次连接时的主机密钥确认（设计 5.3）：主进程发来 connection.hostKeyPrompt，在这里显示连接名、主机、
  * 算法与 SHA256 指纹，「信任并连接」/「取消」经 connection.answerHostKey 回答（Esc 等关闭视同取消）。
- * 挂载时先查询尚未回答的询问（窗口重新加载后不丢失），多个询问依次显示。主窗口挂载一次
+ * 挂载时先查询尚未回答的询问（窗口重新加载后不丢失），多个询问依次显示；主进程中已结束（超时 / 其他途径
+ * 回答）的询问随 connection.hostKeyPromptClosed 收起，不挡住后面的询问。主窗口挂载一次
  */
 export function HostKeyPrompts(): JSX.Element {
   const { t } = useTranslation()
@@ -38,8 +40,10 @@ export function HostKeyPrompts(): JSX.Element {
     () =>
       startHostKeyPromptSync({
         subscribe: subscribeHostKeyPrompts,
+        subscribeClosed: subscribeHostKeyPromptsClosed,
         fetchPending: pendingHostKeyPrompts,
-        add: (p) => setQueue((q) => enqueuePrompt(q, p))
+        add: (p) => setQueue((q) => enqueuePrompt(q, p)),
+        remove: (promptId) => setQueue((q) => dequeuePrompt(q, promptId))
       }),
     []
   )
@@ -51,7 +55,7 @@ export function HostKeyPrompts(): JSX.Element {
   const answer = (accept: boolean): void => {
     if (!current) return
     const { promptId } = current
-    setQueue((q) => q.filter((p) => p.promptId !== promptId))
+    setQueue((q) => dequeuePrompt(q, promptId))
     answerHostKey(promptId, accept).catch((e: unknown) => notify('error', errorText(t, e)))
   }
 

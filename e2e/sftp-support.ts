@@ -20,11 +20,19 @@ export const PASSWORD_METHODS = ['password', 'keyboard-interactive']
 
 /**
  * 在测试进程中启动假 SFTP 服务器（真实的 ssh2 Server，只监听 127.0.0.1），root 映射为服务器的 /。
- * 用例结束时调用 close()
+ * opts：同端口重启（port）、指定主机密钥（PEM；缺省每次生成新的 ed25519）。用例结束时调用 close()
  */
-export async function startSftp(root: string): Promise<FakeSftpServer> {
+export async function startSftp(
+  root: string,
+  opts: { port?: number; hostKey?: string } = {}
+): Promise<FakeSftpServer> {
   mkdirSync(path.join(root, ...SFTP_HOME.split('/').filter(Boolean)), { recursive: true })
-  return startFakeSftpServer({ root, users: { [SFTP_USER]: SFTP_PASSWORD }, home: SFTP_HOME })
+  return startFakeSftpServer({
+    root,
+    users: { [SFTP_USER]: SFTP_PASSWORD },
+    home: SFTP_HOME,
+    ...opts
+  })
 }
 
 /** 打开活动栏的「远程连接」视图（以英文界面为前提） */

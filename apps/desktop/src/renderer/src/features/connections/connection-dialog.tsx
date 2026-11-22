@@ -34,7 +34,7 @@ import {
 import { Input } from '@pch/ui/components/input'
 import { RadioGroup, RadioGroupItem } from '@pch/ui/components/radio-group'
 import { Spinner } from '@pch/ui/components/spinner'
-import { useConnectionActions, useConnections } from '@renderer/data/connections'
+import { saveConnection, useConnections } from '@renderer/data/connections'
 import { call } from '@renderer/lib/ipc'
 import { notify } from '@renderer/stores/messages-store'
 import {
@@ -48,6 +48,7 @@ import {
 } from './connection-form'
 import { errorCode, errorText } from './error-text'
 import { HostKeyDetails } from './host-key-prompt'
+import { TrustKeyDialog } from './trust-key-dialog'
 
 interface ConnectionDialogProps {
   open: boolean
@@ -100,10 +101,12 @@ function ConnectionFormBody({
   onGone: () => void
 }): JSX.Element {
   const { t } = useTranslation()
-  const { save } = useConnectionActions()
   const [form, setForm] = useState<ConnectionForm>(() => initialForm(connection))
   const [draft, setDraft] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  // 保存不经 useMutation（明文机密不能留在 MutationCache 中）：进行中状态自己保存，ref 防止连按
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const draftRef = useRef<HTMLInputElement>(null)
 
   const set = <K extends keyof ConnectionForm>(key: K, value: ConnectionForm[K]): void =>
@@ -145,7 +148,7 @@ function ConnectionFormBody({
 
   const submit = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
-    if (save.isPending) return
+    if (savingRef.current) return
     setSubmitted(true)
     // 输入中但还没按回车的身份：合法则一并保存，不合法则停在输入框
     const pendingName = draft.trim()
@@ -157,12 +160,17 @@ function ConnectionFormBody({
       pendingName === '' ? form : { ...form, identities: [...form.identities, pendingName] }
     const built = buildSaveInput(next, connection)
     if (!built.ok) return
+    savingRef.current = true
+    setSaving(true)
     try {
-      const saved = await save.mutateAsync(built.input)
+      const saved = await saveConnection(built.input)
       onDone(saved)
     } catch (err) {
       notify('error', errorText(t, err))
       if (errorCode(err) === 'CONN_NOT_FOUND') onGone()
+    } finally {
+      savingRef.current = false
+      setSaving(false)
     }
   }
 
@@ -267,7 +275,11 @@ function ConnectionFormBody({
             value={form.sudoMode}
             onChange={(v) => set('sudoMode', v)}
             options={[
-              { value: 'login', label: t('connections:sudoSame') },
+              // 私钥认证时没有登录密码可用：不提交 sudo 密码（只适用于 NOPASSWD）
+              {
+                value: 'login',
+                label: t(form.auth === 'key' ? 'connections:sudoNone' : 'connections:sudoSame')
+              },
               { value: 'separate', label: t('connections:sudoSeparate') }
             ]}
             description={t('connections:sudoHint')}
@@ -316,8 +328,8 @@ function ConnectionFormBody({
         <DialogClose render={<Button type="button" variant="outline" />}>
           {t('connections:cancel')}
         </DialogClose>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? <Spinner data-icon="inline-start" aria-hidden /> : null}
+        <Button type="submit" disabled={saving}>
+          {saving ? <Spinner data-icon="inline-start" aria-hidden /> : null}
           {t('connections:save')}
         </Button>
       </DialogFooter>
@@ -427,16 +439,19 @@ function KeyPathField({
 }): JSX.Element {
   const { t } = useTranslation()
   const id = useId()
+  const errorId = `${id}-error`
   return (
     <Field data-invalid={error !== undefined}>
       <FieldLabel htmlFor={id}>{t('connections:keyPath')}</FieldLabel>
-      <div className="flex gap-2">
+      {/* 校验失败时 Field 整体变红；「参照…」按钮保持正文颜色 */}
+      <div className="flex gap-2 text-foreground">
         <Input
           id={id}
           value={value}
           spellCheck={false}
           autoComplete="off"
           aria-invalid={error !== undefined}
+          aria-describedby={error === undefined ? undefined : errorId}
           onChange={(e) => onChange(e.target.value)}
         />
         <Button type="button" variant="outline" onClick={onBrowse}>
@@ -445,7 +460,7 @@ function KeyPathField({
         </Button>
       </div>
       <FieldDescription>{t('connections:keyHint')}</FieldDescription>
-      {error === undefined ? null : <FieldError>{error}</FieldError>}
+      {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </Field>
   )
 }
@@ -515,11 +530,14 @@ function IdentityTags({
   )
 }
 
-/** 已信任的主机密钥（只读）；服务器出示了不同的密钥时显示新密钥与「信任新的密钥」 */
+/**
+ * 已信任的主机密钥（只读）；服务器出示了不同的密钥时显示新密钥与「信任新的密钥」
+ * （经与行内相同的确认框，显示新旧指纹后才信任）
+ */
 function HostKeySection({ id, fallback }: { id: string; fallback: ConnectionDto }): JSX.Element {
   const { t } = useTranslation()
   const { data } = useConnections()
-  const { trustHostKey } = useConnectionActions()
+  const [trustOpen, setTrustOpen] = useState(false)
   const live = data?.find((c) => c.id === id) ?? fallback
   return (
     <div className="grid gap-2">
@@ -536,20 +554,13 @@ function HostKeySection({ id, fallback }: { id: string; fallback: ConnectionDto 
           </p>
           <HostKeyDetails hostKey={live.presentedHostKey} />
           <div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={trustHostKey.isPending}
-              onClick={() =>
-                trustHostKey.mutate(id, { onError: (e) => notify('error', errorText(t, e)) })
-              }
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => setTrustOpen(true)}>
               {t('connections:trustNewKey')}
             </Button>
           </div>
         </div>
       ) : null}
+      <TrustKeyDialog open={trustOpen} onOpenChange={setTrustOpen} connection={live} />
     </div>
   )
 }

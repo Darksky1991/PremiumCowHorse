@@ -26,6 +26,7 @@ export type ConnectionFormErrorKey =
   | 'nameRequired'
   | 'hostRequired'
   | 'portInvalid'
+  | 'usernameRequired'
   | 'usernameInvalid'
   | 'passwordRequired'
   | 'keyPathRequired'
@@ -105,7 +106,8 @@ export function buildSaveInput(
   if (name === '') errors.name = 'nameRequired'
   if (host === '') errors.host = 'hostRequired'
   if (port === null) errors.port = 'portInvalid'
-  if (!IDENTITY_PATTERN.test(username)) errors.username = 'usernameInvalid'
+  if (username === '') errors.username = 'usernameRequired'
+  else if (!IDENTITY_PATTERN.test(username)) errors.username = 'usernameInvalid'
 
   let secret: string | undefined
   if (form.secret !== '') secret = form.secret

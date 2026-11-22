@@ -216,11 +216,11 @@ export default {
       online: 'オンライン',
       idle: '未接続',
       connecting: '接続中',
-      offline: '切断',
+      offline: 'オフライン',
       authFailed: '認証失敗',
       sudoAuthFailed: 'sudo 認証失敗',
       hostKeyPending: 'ホストキーの確認待ち',
-      hostKeyChanged: 'ホストキーが変更されました'
+      hostKeyChanged: 'ホストキー変更'
     },
     identitiesLine: '切り替えユーザー: {{list}}',
     test: 'テスト',
@@ -253,6 +253,7 @@ export default {
     removeIdentity: '{{name}} を削除',
     sudo: 'sudo パスワード',
     sudoSame: 'ログインパスワードと同じ',
+    sudoNone: 'sudo パスワードを使わない（NOPASSWD）',
     sudoSeparate: '別に設定する',
     sudoHint:
       'root のパスワードを求められる環境（SUSE の targetpw など）では別に設定してください。',
@@ -268,6 +269,7 @@ export default {
       nameRequired: '名前を入力してください',
       hostRequired: 'ホストを入力してください',
       portInvalid: '1〜65535 の数値を入力してください',
+      usernameRequired: 'ユーザー名を入力してください',
       usernameInvalid: '使えるのは英小文字・数字・_ . - です（先頭は英小文字か _、32 文字まで）',
       passwordRequired: 'パスワードを入力してください',
       keyPathRequired: '秘密鍵ファイルを選んでください',
@@ -321,7 +323,7 @@ export default {
     startTitle: 'はじめに',
     newWorkspace: '新しいワークスペースを作成',
     openFolder: 'ローカルフォルダーを開く',
-    connectRemote: 'SMB / FTP / SFTP に接続',
+    connectRemote: 'SFTP サーバーに接続',
     shortcutsTitle: 'ショートカット',
     shortcutCommand: 'コマンドパレット',
     shortcutSidebar: 'サイドバーの表示切替',

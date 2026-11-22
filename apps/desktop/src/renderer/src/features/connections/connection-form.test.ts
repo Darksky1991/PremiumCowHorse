@@ -71,6 +71,10 @@ describe('buildSaveInput', () => {
         secret: 'passwordRequired'
       }
     })
+    expect(buildSaveInput(filled({ username: '  ' }))).toEqual({
+      ok: false,
+      errors: { username: 'usernameRequired' }
+    })
     expect(buildSaveInput(filled({ port: '22a' }))).toMatchObject({
       ok: false,
       errors: { port: 'portInvalid' }

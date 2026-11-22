@@ -388,6 +388,8 @@ export interface IpcEvents {
    * 5 分钟内未回答按拒绝处理
    */
   'connection.hostKeyPrompt': HostKeyPrompt
+  /** 主机密钥询问已结束（回答 / 超时）：渲染端移除对应的确认框。只发给主窗口 */
+  'connection.hostKeyPromptClosed': { promptId: string }
 }
 export type IpcEventName = keyof IpcEvents
 

@@ -32,9 +32,9 @@ import { notify } from '@renderer/stores/messages-store'
 import { ConnectionDialog } from './connection-dialog'
 import { hostPort } from './connection-form'
 import { errorCode, errorText } from './error-text'
-import { HostKeyDetails } from './host-key-prompt'
 import { connectionStatus, toneClassName } from './status'
 import { TestResultPanel, type TestState } from './test-result'
+import { TrustKeyDialog } from './trust-key-dialog'
 
 type Editing = { connection: ConnectionDto | undefined }
 
@@ -331,60 +331,5 @@ function ReferenceCount({ connectionId }: { connectionId: string }): JSX.Element
             ? t('connections:deleteNoRefs')
             : t('connections:deleteRefs', { count })}
     </span>
-  )
-}
-
-/** 「信任新的密钥」：显示原来与新的指纹，确认后保存新密钥 */
-function TrustKeyDialog({
-  open,
-  onOpenChange,
-  connection
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  connection: ConnectionDto
-}): JSX.Element {
-  const { t } = useTranslation()
-  const { trustHostKey } = useConnectionActions()
-  const confirm = (): void =>
-    trustHostKey.mutate(connection.id, {
-      onSuccess: () => onOpenChange(false),
-      onError: (e) => {
-        notify('error', errorText(t, e))
-        onOpenChange(false)
-      }
-    })
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('connections:trustTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('connections:trustDescription')}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-1">
-            <p className="text-xs font-medium">{t('connections:oldKey')}</p>
-            {connection.hostKey ? (
-              <HostKeyDetails hostKey={connection.hostKey} />
-            ) : (
-              <p className="text-xs text-muted-foreground">{t('connections:hostKeyNone')}</p>
-            )}
-          </div>
-          {connection.presentedHostKey ? (
-            <div className="grid gap-1">
-              <p className="text-xs font-medium text-destructive">{t('connections:newKey')}</p>
-              <HostKeyDetails hostKey={connection.presentedHostKey} />
-            </div>
-          ) : null}
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t('connections:cancel')}</AlertDialogCancel>
-          <AlertDialogAction disabled={trustHostKey.isPending} onClick={confirm}>
-            {trustHostKey.isPending ? <Spinner data-icon="inline-start" aria-hidden /> : null}
-            {t('connections:trustSubmit')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   )
 }

@@ -137,6 +137,52 @@ describe('createHostKeyGate', () => {
     expect(gate.pending()).toEqual([])
   })
 
+  it('询问结束（回答 / 超时）时通知 closed；未能发出的询问不通知', async () => {
+    vi.useFakeTimers()
+    const closed = vi.fn()
+    const prompts: HostKeyPrompt[] = []
+    const gate = createHostKeyGate({
+      describe: async (id) => (id === 'gone' ? undefined : DESC),
+      send: (p) => {
+        prompts.push(p)
+        return true
+      },
+      closed
+    })
+    const a = gate.ask('c1', KEY)
+    const b = gate.ask('c2', KEY)
+    await flush()
+    expect(closed).not.toHaveBeenCalled()
+    gate.answer(prompts[0]!.promptId, true)
+    await expect(a).resolves.toBe(true)
+    expect(closed).toHaveBeenCalledWith(prompts[0]!.promptId)
+    await vi.advanceTimersByTimeAsync(300_000)
+    await expect(b).resolves.toBe(false)
+    expect(closed).toHaveBeenLastCalledWith(prompts[1]!.promptId)
+    expect(closed).toHaveBeenCalledTimes(2)
+    await expect(gate.ask('gone', KEY)).resolves.toBe(false)
+    expect(closed).toHaveBeenCalledTimes(2)
+  })
+
+  it('closed 抛出也不影响结果', async () => {
+    const prompts: HostKeyPrompt[] = []
+    const gate = createHostKeyGate({
+      describe: async () => DESC,
+      send: (p) => {
+        prompts.push(p)
+        return true
+      },
+      closed: () => {
+        throw new Error('window gone')
+      }
+    })
+    const a = gate.ask('c1', KEY)
+    await flush()
+    gate.answer(prompts[0]!.promptId, true)
+    await expect(a).resolves.toBe(true)
+    expect(gate.pending()).toEqual([])
+  })
+
   it('一直没有回答：到时以 false 结束，之后的询问重新发出', async () => {
     vi.useFakeTimers()
     const { gate, send } = setup()

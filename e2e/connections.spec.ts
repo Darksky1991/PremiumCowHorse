@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { data, launch, removeDirs } from './support'
+import { data, invoke, launch, removeDirs } from './support'
 import {
   addConnection,
   connectionRow,
@@ -55,7 +55,7 @@ test.describe('remote connections', () => {
     await expect(row).toContainText('Not connected')
 
     // 第一次测试：弹出主机密钥确认，显示服务器出示的 SHA256 指纹
-    await row.getByRole('button', { name: 'Test' }).click()
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
     const prompt = hostKeyPrompt(page)
     await expect(prompt).toBeVisible()
     await expect(prompt).toContainText('Fake server')
@@ -88,7 +88,7 @@ test.describe('remote connections', () => {
 
     // 测试：认证失败，行显示「认证失败」与「重新连接」；本次只提交了 1 次密码
     const before = server.authAttempts.length
-    await row.getByRole('button', { name: 'Test' }).click()
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
     await expect(step(result, 'Authentication')).toHaveAttribute('data-ok', 'false')
     await expect(row).toContainText('Authentication failed')
     await expect(row.getByRole('button', { name: 'Reconnect' })).toBeVisible()
@@ -110,7 +110,7 @@ test.describe('remote connections', () => {
     const page = await start()
     const id = await addConnection(page, server)
     const row = connectionRow(page, 'Fake server')
-    await row.getByRole('button', { name: 'Test' }).click()
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
     await hostKeyPrompt(page).getByRole('button', { name: 'Trust and connect' }).click()
     await expect(step(testResult(row), 'SFTP')).toHaveAttribute('data-ok', 'true')
 
@@ -135,7 +135,9 @@ test.describe('remote connections', () => {
   test('a pending host key prompt survives a renderer reload', async () => {
     const page = await start()
     const id = await addConnection(page, server)
-    await connectionRow(page, 'Fake server').getByRole('button', { name: 'Test' }).click()
+    await connectionRow(page, 'Fake server')
+      .getByRole('button', { name: 'Test', exact: true })
+      .click()
     await expect(hostKeyPrompt(page)).toBeVisible()
 
     await page.reload()
@@ -153,5 +155,86 @@ test.describe('remote connections', () => {
           )?.hostKey
       )
       .toEqual(server.hostKey)
+  })
+
+  test('a prompt answered elsewhere (or timed out) closes in the window', async () => {
+    const page = await start()
+    await addConnection(page, server)
+    const row = connectionRow(page, 'Fake server')
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(hostKeyPrompt(page)).toBeVisible()
+
+    // 主进程中结束询问（与超时同一路径：gate settle → connection.hostKeyPromptClosed）
+    const pending = await data<{ promptId: string }[]>(page, 'connection.pendingHostKeyPrompts')
+    expect(pending).toHaveLength(1)
+    const res = await invoke(page, 'connection.answerHostKey', {
+      promptId: pending[0]!.promptId,
+      accept: false
+    })
+    expect(res.ok).toBe(true)
+    await expect(hostKeyPrompt(page)).toBeHidden()
+    await expect(step(testResult(row), 'Host key')).toHaveAttribute('data-ok', 'false')
+  })
+
+  test('trusting a changed host key from the edit dialog asks for confirmation', async () => {
+    const page = await start()
+    const id = await addConnection(page, server)
+    const row = connectionRow(page, 'Fake server')
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
+    await hostKeyPrompt(page).getByRole('button', { name: 'Trust and connect' }).click()
+    await expect(step(testResult(row), 'SFTP')).toHaveAttribute('data-ok', 'true')
+    const oldKey = server.hostKey
+
+    // 同端口、换一把主机密钥重启 → 测试得到「主机密钥已变化」
+    const port = server.port
+    await server.close()
+    server = await startSftp(root, { port })
+    await row.getByRole('button', { name: 'Test', exact: true }).click()
+    await expect(step(testResult(row), 'Host key')).toHaveAttribute('data-ok', 'false')
+    await expect(row).toContainText('Host key changed')
+
+    await row.getByRole('button', { name: 'Edit' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Edit connection' })
+    await expect(dialog).toContainText(server.hostKey.fingerprint)
+    await dialog.getByRole('button', { name: 'Trust new key' }).click()
+    const confirm = page.getByRole('alertdialog', { name: 'Trust the new host key?' })
+    await expect(confirm).toContainText(oldKey.fingerprint)
+    await expect(confirm).toContainText(server.hostKey.fingerprint)
+    // 取消则不信任
+    await confirm.getByRole('button', { name: 'Cancel' }).click()
+    await expect(confirm).toBeHidden()
+    const before = (await data<{ id: string; hostKey: unknown }[]>(page, 'connection.list')).find(
+      (c) => c.id === id
+    )
+    expect(before?.hostKey).toEqual(oldKey)
+
+    await dialog.getByRole('button', { name: 'Trust new key' }).click()
+    await confirm.getByRole('button', { name: 'Trust', exact: true }).click()
+    await expect(confirm).toBeHidden()
+    await expect
+      .poll(
+        async () =>
+          (await data<{ id: string; hostKey: unknown }[]>(page, 'connection.list')).find(
+            (c) => c.id === id
+          )?.hostKey
+      )
+      .toEqual(server.hostKey)
+  })
+
+  test('the welcome page opens the view; key auth names the sudo choice NOPASSWD', async () => {
+    const page = await start()
+    await page.getByRole('button', { name: 'Connect to an SFTP server' }).click()
+    await expect(page.getByRole('heading', { name: 'Remote connections' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'New connection' }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'New connection' })
+    await expect(dialog.getByRole('radio', { name: 'Same as login password' })).toBeVisible()
+    await dialog.getByRole('radio', { name: 'Private key authentication' }).click()
+    await expect(dialog.getByRole('radio', { name: 'No sudo password (NOPASSWD)' })).toBeVisible()
+    await expect(dialog.getByRole('radio', { name: 'Same as login password' })).toHaveCount(0)
+
+    // 用户名为空：「必填」而不是格式错误
+    await dialog.getByRole('button', { name: 'Save' }).click()
+    await expect(dialog).toContainText('Enter a user name')
   })
 })
