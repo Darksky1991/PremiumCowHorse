@@ -255,3 +255,11 @@
 - 症状 / 事实：`ssh2` 1.17.0 README：`hostVerifier` 默认「auto-accept if hostVerifier is not set」；`client.sftp()` 只能经 `sftp` 子系统开通道（`lib/client.js` 的 `reqSubsystem`）。
 - 解决：始终设置 `hostVerifier`（支持 `(key, callback)` 异步确认）。要在 `sudo su - x` 之后的命令通道上走 SFTP，借用内部类 `ssh2/lib/protocol/SFTP.js`：它只通过 `client._protocol.channelData(id, data)` 写出、经 `push(data)` 收入，可桥接到任意双工流（`scripts/wsl-sftp/reference/sudo-sftp-spike.mjs` 的 `sftpOverStream`）。文件名按 UTF-8 编解码（`readString(true)` / `utf8Write`），非 UTF-8 文件名无法往返。
 - 预防：借用内部 API 时固定精确版本，并用测试覆盖；升级 `ssh2` 时先跑这些测试。
+
+### ssh2 `utils.generateKeyPairSync('ed25519')`：约 1/256 生成畸形密钥（`Malformed OpenSSH private key`）
+
+- 日期：2026-11-22
+- 症状（M4 Task 5）：`ssh-session.test.ts` 偶发失败，单独连跑 5 次约失败 1 次：`Error: Malformed OpenSSH private key`，栈指向假服务器 `startFakeSftpServer` 中对刚生成的主机密钥调用 `utils.parseKey`（`keyParser.js` 第 728 行，`parseOpenSSHPrivKeys`）。
+- 原因：`ssh2` 1.17.0 的 `lib/keygen.js` 第 290–297 行从 SPKI DER 的 BIT STRING 取 ed25519 公钥时「去掉**所有**前导 0x00」。本意只是去掉 BIT STRING 的「未用位数」字节（恒为 0x00），但公钥本身以 0x00 开头时（概率 1/256）也被截掉，生成 31 字节的公钥，ssh2 自己的解析器要求 32 字节（第 723–725 行）而拒绝。实测 10 000 个中 46 个畸形，公钥长度全为 31。**解析器没有问题**：真实 `ssh-keygen`（Windows 自带 OpenSSH）生成的公钥以 0x00 开头的密钥（未加密 / 加密）都能被 `parseKey` 正确解析。ECDSA 不受影响（公钥点以 0x04 开头）。
+- 解决：测试夹具改用 `modules/connection/testing/test-keys.ts` 的 `generateEd25519KeyPair()`，按根因检查输出（公钥必须是 32 字节），只丢弃有缺陷的输出；另以测试固定「公钥以 0x00 开头的合法密钥能被 `parsePrivateKey` 接受」。
+- 预防：产品代码不要用 `ssh2` 的 `generateKeyPairSync` 生成 ed25519 密钥（需要时用 `node:crypto` 生成后自行按 OpenSSH 格式组装）；随机生成的夹具要考虑「低概率的边界值」，在测试中大量生成并逐个校验，避免偶发失败。升级 `ssh2` 时确认该问题是否已修复。

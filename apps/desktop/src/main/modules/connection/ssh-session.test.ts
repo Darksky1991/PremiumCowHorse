@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer, Socket, type Server as NetServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -10,11 +11,13 @@ import { wrapSftp, type RawSftp } from './sftp-session'
 import {
   connectSsh,
   hostKeyInfo,
+  parsePrivateKey,
   toExecChannel,
   type SshConnectConfig,
   type SshSession
 } from './ssh-session'
 import { startFakeSftpServer, type FakeSftpServer } from './testing/fake-sftp-server'
+import { generateEd25519KeyPair } from './testing/test-keys'
 
 const PASSWORD_METHODS = ['password', 'keyboard-interactive']
 
@@ -142,22 +145,23 @@ describe('authentication is submitted once', () => {
   it('private key: invalid / encrypted without passphrase / wrong passphrase → CONN_KEY_INVALID without connecting', async () => {
     const s = await server()
     const verifyHostKey = vi.fn(async () => true)
-    const enc = utils.generateKeyPairSync('ed25519', {
-      passphrase: 'kp-secret',
-      cipher: 'aes256-ctr',
-      rounds: 16
-    }).private
-    const cases: { privateKey: Buffer; passphrase?: string }[] = [
-      { privateKey: Buffer.from('not a key') },
-      { privateKey: Buffer.from(utils.generateKeyPairSync('ed25519').public) },
-      { privateKey: Buffer.from(enc) },
-      { privateKey: Buffer.from(enc), passphrase: 'wrong' }
+    const enc = generateEd25519KeyPair('kp-secret').private
+    // 每种情况都断言失败的原因：夹具本身有缺陷时（例如 ssh2 生成了畸形密钥）不会「碰巧」通过
+    const cases: { privateKey: Buffer; passphrase?: string; reason: RegExp }[] = [
+      { privateKey: Buffer.from('not a key'), reason: /Unsupported key format/ },
+      {
+        privateKey: Buffer.from(generateEd25519KeyPair().public),
+        reason: /not a private key/
+      },
+      { privateKey: Buffer.from(enc), reason: /passphrase required/ },
+      { privateKey: Buffer.from(enc), passphrase: 'wrong', reason: /bad passphrase/ }
     ]
-    for (const key of cases) {
+    for (const { reason, ...key } of cases) {
       const err = await errorOf(
         connectSsh(cfg(s, { auth: { kind: 'key', ...key }, verifyHostKey }))
       )
       expect(err.code).toBe('CONN_KEY_INVALID')
+      expect(err.detail).toMatch(reason)
       expect(err.detail ?? '').not.toContain('kp-secret')
     }
     expect(verifyHostKey).not.toHaveBeenCalled()
@@ -166,11 +170,7 @@ describe('authentication is submitted once', () => {
 
   it('private key: decrypts with the passphrase, then offers publickey only if the server lists it', async () => {
     const s = await server()
-    const enc = utils.generateKeyPairSync('ed25519', {
-      passphrase: 'kp-secret',
-      cipher: 'aes256-ctr',
-      rounds: 16
-    }).private
+    const enc = generateEd25519KeyPair('kp-secret').private
     const err = await errorOf(
       connectSsh(
         cfg(s, { auth: { kind: 'key', privateKey: Buffer.from(enc), passphrase: 'kp-secret' } })
@@ -221,6 +221,74 @@ describe('authentication is submitted once', () => {
     expect(err.detail).toContain('unsupported prompt')
     expect(err.detail ?? '').not.toContain('Pch-pass1')
     expect(s.kbdAnswers).toEqual([])
+  })
+})
+
+describe('ed25519 keys whose public key starts with 0x00', () => {
+  /**
+   * 不经 ssh2 的 keygen（有缺陷，见 testing/test-keys.ts）按 OpenSSH 格式（PROTOCOL.key）自行组装：
+   * 公钥以 0x00 开头的合法 ed25519 私钥。真实的 ssh-keygen 以 1/256 的概率生成这种密钥。
+   */
+  function openSshKeyWithLeadingZero(): { pem: Buffer; publicBlob: Buffer } {
+    const str = (v: Buffer | string): Buffer => {
+      const b = Buffer.from(v)
+      const len = Buffer.alloc(4)
+      len.writeUInt32BE(b.length)
+      return Buffer.concat([len, b])
+    }
+    const u32 = (n: number): Buffer => {
+      const b = Buffer.alloc(4)
+      b.writeUInt32BE(n)
+      return b
+    }
+    for (;;) {
+      const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+      const x = Buffer.from(publicKey.export({ format: 'jwk' }).x ?? '', 'base64url')
+      if (x[0] !== 0) continue
+      const d = Buffer.from(privateKey.export({ format: 'jwk' }).d ?? '', 'base64url')
+      const publicBlob = Buffer.concat([str('ssh-ed25519'), str(x)])
+      let priv = Buffer.concat([
+        u32(0x5a5a5a5a),
+        u32(0x5a5a5a5a),
+        str('ssh-ed25519'),
+        str(x),
+        str(Buffer.concat([d, x])),
+        str('')
+      ])
+      for (let i = 1; priv.length % 8 !== 0; i++) priv = Buffer.concat([priv, Buffer.from([i])])
+      const body = Buffer.concat([
+        Buffer.from('openssh-key-v1\0'),
+        str('none'),
+        str('none'),
+        str(''),
+        u32(1),
+        str(publicBlob),
+        str(priv)
+      ])
+      const b64 =
+        body
+          .toString('base64')
+          .match(/.{1,70}/g)
+          ?.join('\n') ?? ''
+      const pem = `-----BEGIN OPENSSH PRIVATE KEY-----\n${b64}\n-----END OPENSSH PRIVATE KEY-----\n`
+      return { pem: Buffer.from(pem), publicBlob }
+    }
+  }
+
+  it('parsePrivateKey accepts them (only ssh2 keygen is affected, not the parser)', () => {
+    const { pem, publicBlob } = openSshKeyWithLeadingZero()
+    const key = parsePrivateKey(pem, undefined)
+    expect(key.isPrivateKey()).toBe(true)
+    expect(key.getPublicSSH().equals(publicBlob)).toBe(true)
+    expect(hostKeyInfo(publicBlob).algorithm).toBe('ssh-ed25519')
+  })
+
+  it('test fixture keys are always well-formed (ssh2 keygen strips a leading 0x00)', () => {
+    // 修复前约 1/256 的密钥畸形：300 个中至少出现 1 个的概率约 69%
+    for (let i = 0; i < 300; i++) {
+      const pair = generateEd25519KeyPair()
+      expect(utils.parseKey(pair.private)).not.toBeInstanceOf(Error)
+    }
   })
 })
 

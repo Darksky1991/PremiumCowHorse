@@ -7,6 +7,7 @@ import { createServer, type Socket } from 'node:net'
 import { join, posix } from 'node:path'
 import { Server, utils, type Attributes, type FileEntry, type SFTPWrapper } from 'ssh2'
 import type { HostKeyInfo } from '@pch/shared'
+import { generateEd25519KeyPair } from './test-keys'
 
 export interface FakeSftpServer {
   port: number
@@ -88,7 +89,8 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
   const ownerOf = opts.owner ?? (() => 'pchuser')
   const methods: FakeAuthMethod[] = [opts.authMethod ?? 'password'].flat()
   const kbdPrompts = opts.kbdPrompts ?? [{ prompt: 'Password: ', echo: false }]
-  const hostKeyPem = opts.hostKey ?? utils.generateKeyPairSync('ed25519').private
+  // 不直接用 utils.generateKeyPairSync：ssh2 约 1/256 生成畸形的 ed25519 密钥（见 test-keys.ts）
+  const hostKeyPem = opts.hostKey ?? generateEd25519KeyPair().private
   const parsed = utils.parseKey(hostKeyPem)
   if (parsed instanceof Error) throw parsed
   const pub = (Array.isArray(parsed) ? parsed[0] : parsed).getPublicSSH()
