@@ -76,7 +76,25 @@ export default {
     revealNotInWorkspace: 'This item is not under any entry of the current workspace',
     revealNotFound:
       'Could not find the item in the tree. The folder may have changed (press F5 to refresh).',
-    revealTimeout: 'Loading the folders took too long; expanded as far as possible'
+    revealTimeout: 'Loading the folders took too long; expanded as far as possible',
+    addRemoteFolder: 'Add remote folder',
+    menuAddRemoteFolder: 'Add remote folder…',
+    remoteFolder: 'Remote folder',
+    addRemoteTitle: 'Add remote folder',
+    addRemoteDescription:
+      'Adds a folder on an SFTP server as a read-only entry. Files on the server are never changed.',
+    remoteConnection: 'Connection',
+    remoteNoConnections: 'No remote connections yet. Add one with Manage connections.',
+    manageConnections: 'Manage connections',
+    remoteIdentity: 'Read as',
+    remoteLoginUser: 'Login user ({{name}})',
+    remoteIdentityHint: 'Other users are read through sudo; their default path is /.',
+    remotePath: 'Path',
+    remotePathInvalid: 'Enter an absolute path starting with / (. and .. are not allowed)',
+    remoteHomeLoading: 'Getting the home folder…',
+    add: 'Add',
+    addAsOwner: 'Add entry as {{owner}}',
+    addedAsOwner: 'Added “{{label}}” (read as {{owner}})'
   },
   search: {
     title: 'Search',

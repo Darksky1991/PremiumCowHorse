@@ -149,8 +149,16 @@ export interface PreviewHost {
     refresh(uri: string): Promise<void>
     /** 该目录的缓存内容有变化时回调（之后再 list 取得新内容）；返回取消订阅函数 */
     subscribe(uri: string, onChange: () => void): () => void
-    /** 显示用的路径（file URI → Windows 路径；无法转换时原样返回 URI） */
+    /**
+     * 显示用的路径：file URI → Windows 路径；远程（sftp）→ `<连接名>:<路径>`
+     * （切换身份时 `<身份>@<连接名>:<路径>`）；无法转换时原样返回 URI
+     */
     toDisplayPath(uri: string): string
+    /**
+     * 是否为本机资源（file:）。系统操作（用系统应用打开、在资源管理器中显示、启动本机应用）与
+     * 读取内容（doc.* / 作为文本查看）只对本机资源可用；远程资源只能列出与查看文件信息
+     */
+    isLocal(uri: string): boolean
     /**
      * uri 所属的工作区条目（folder）的根 URI：包含它的条目中最内层者；不在任何条目之下时为 null
      */

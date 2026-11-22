@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ConnectionSaveInput, PchBridge } from '@pch/shared'
 import {
+  connectionNamesOf,
   countConnectionReferences,
   fetchConnectionReferenceCount,
   saveConnection,
@@ -127,5 +128,17 @@ describe('fetchConnectionReferenceCount', () => {
     vi.stubGlobal('window', { pch: bridge })
     await expect(fetchConnectionReferenceCount('c1')).resolves.toBe(2)
     expect(invoke).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('connectionNamesOf', () => {
+  it('connectionId → 连接名（显示路径用）；列表未加载时为空', () => {
+    expect(
+      connectionNamesOf([
+        { id: 'a', name: 'AP1' },
+        { id: 'b', name: 'DB' }
+      ])
+    ).toEqual({ a: 'AP1', b: 'DB' })
+    expect(connectionNamesOf(undefined)).toEqual({})
   })
 })

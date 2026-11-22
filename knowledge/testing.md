@@ -311,3 +311,11 @@
 - 原因：桌面记录的 `ExitGuard` 在 Windows 上（监控启用）且设置 `desktop.askOnExit` 为默认值 true 时拦截主窗口的 `close`，发出 `desktop.exitRequested`，渲染端显示退出对话框，窗口不关。`app.close()`（经 `before-quit`）不受影响，所以其他用例没事。
 - 解决：用例点「閉じる」后等对话框出现，再点「保存しないで終了 / 不保存并退出 / Exit without saving」（提交 `335c6d5`）。只是要关闭应用、不关心退出询问的用例，用 `app.close()`，或先 `settings.set({ 'desktop.askOnExit': false })`。
 - 预防：给主窗口的关闭加拦截之类改变全局行为的改动，要跑全量 e2e，而不只是本功能的 spec；`grep` 一下 e2e 里点关闭按钮 / 调 `window.close` 的地方。
+
+### e2e：建立索引后在搜索视图里重新输入同一关键字，结果不更新
+
+- 日期：2026-11-23
+- 症状（M4 Task 13 `e2e/remote.spec.ts`）：对远程条目「建立索引」后，用 `toPass` 循环「清空 → 输入 `deep.txt` → 期望 1 条」，30 秒内一直是「0 件 · キャッシュから検索（たった今）/ まだスキャンされていないフォルダーがあります」；同一时刻经 IPC `search.query` 直接查询，约 8 秒后已能查到。
+- 原因：搜索视图的输入经防抖（`search-view.tsx` 的 `useDebounced`）后才成为查询键；「清空 → 立即输入同一关键字」在防抖期内完成，防抖后的值没有变化，查询键不变，挂载中的 `useQuery` 不会重新查询（`data/search.ts`：结果按设计不随 `vfs.changed` 失效，只在关键字变化 / 重新挂载时查询）。另外索引按目录逐个读取（远程每个目录之间休息 `cache.backgroundGapMs.remote`），先找到的文件不代表其余目录已读完。
+- 解决：先经 IPC `search.query` 轮询，等到目标命中且 `incomplete: false`（没有未扫描的目录），再在界面中输入关键字（每个关键字只输入一次）。
+- 预防：依赖后台索引的搜索用例，等待条件放在 IPC 层（`incomplete`），界面只验证展示与定位；不要靠在界面上反复输入同一关键字来等待。

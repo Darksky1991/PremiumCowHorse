@@ -23,6 +23,7 @@ import {
 import { AppError, type FileStat, type TabState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
+import { useConnectionNames } from '@renderer/data/connections'
 import { useEntries } from '@renderer/data/entries'
 import { useSettings } from '@renderer/data/settings'
 import { fetchDirectory, retryDirectory, useResourceStat } from '@renderer/data/vfs'
@@ -169,8 +170,9 @@ function StatResource(props: PreviewContainerProps): JSX.Element {
 }
 
 /**
- * 选择插件：没有插件按扩展名 / MIME 匹配的文件先 sniff（显示加载中），
- * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。选了查看器时不 sniff
+ * 选择插件：没有插件按扩展名 / MIME 匹配的本机文件先 sniff（显示加载中），
+ * 判为文本时 resource.textLike = true（交给 textLike 插件），否则 false（fallback）。
+ * 选了查看器时、远程资源（needsSniff 中按 isLocalUri 排除：主进程不提供读取）不 sniff
  */
 function SelectPlugin({
   whenMissing,
@@ -296,6 +298,7 @@ function PluginView({
     [workspace, workspaceName, workspacesTitle, entries, tab.uri, tab.kind, tab.title]
   )
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
+  const connectionNames = useConnectionNames()
   const open = useTabsStore((s) => s.open)
   const navigate = useTabsStore((s) => s.navigate)
   const setViewState = useTabsStore((s) => s.setViewState)
@@ -380,6 +383,7 @@ function PluginView({
       language,
       theme,
       settings,
+      connectionNames,
       roots,
       parent
     })
@@ -401,6 +405,7 @@ function PluginView({
     language,
     theme,
     settings,
+    connectionNames,
     roots,
     parent
   ])

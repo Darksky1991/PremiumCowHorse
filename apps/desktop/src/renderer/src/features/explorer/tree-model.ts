@@ -34,6 +34,11 @@ export interface TreeNode {
    * 不同，拖放据此把落点换算为主进程 entry.move 的 index（drag-drop.ts）
    */
   rank?: number
+  /**
+   * 远程（sftp）真实子项：列表中该项的属主名（FileEntry.owner）。其状态行沿用它：
+   * 无权限时据此给出「以属主身份添加为条目」（owner-switch.ts）
+   */
+  owner?: string
 }
 
 export interface TreeInput {
@@ -134,7 +139,8 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
       expandable: false,
       expanded: false,
       status,
-      ...(errorCode !== undefined && { errorCode })
+      ...(errorCode !== undefined && { errorCode }),
+      ...(parent.owner !== undefined && { owner: parent.owner })
     })
   }
 
@@ -163,6 +169,7 @@ export function buildVisibleNodes(input: TreeInput): TreeNode[] {
         expandable,
         expanded: expandable && expanded.has(id),
         ...(dimmed && { dimmed: true as const }),
+        ...(item.owner !== undefined && { owner: item.owner }),
         ...(expandable && cacheInfo(item.uri))
       }
       out.push(node)

@@ -16,8 +16,49 @@ const node = (over: Partial<TreeNode> & { kind: NodeKind }): TreeNode => ({
 })
 
 describe('menuItemsFor', () => {
-  it('空白处：新建分组、添加文件夹 / 文件', () => {
-    expect(menuItemsFor(null)).toEqual(['newGroup', 'separator', 'addFolder', 'addFile'])
+  it('空白处：新建分组、添加文件夹 / 文件 / 远程文件夹', () => {
+    expect(menuItemsFor(null)).toEqual([
+      'newGroup',
+      'separator',
+      'addFolder',
+      'addFile',
+      'addRemoteFolder'
+    ])
+  })
+
+  it('远程（sftp）节点：没有「在资源管理器中显示」与「缓存策略」，复制与索引照常', () => {
+    const remote = { uri: 'sftp://ID/home/pchuser' }
+    expect(menuItemsFor(node({ ...remote, kind: 'folder' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'buildIndex',
+      'separator',
+      'rename',
+      'remove'
+    ])
+    const fs = { ...remote, source: 'fs' as const, id: 'fs:e1:a' }
+    expect(menuItemsFor(node({ ...fs, kind: 'directory' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'buildIndex',
+      'separator',
+      'pinToRoot'
+    ])
+    expect(menuItemsFor(node({ ...fs, kind: 'file' }))).toEqual([
+      'openInNewTab',
+      'separator',
+      'copyPath',
+      'copyUri',
+      'separator',
+      'pinToRoot'
+    ])
+    expect(menuItemsFor(node({ ...fs, kind: 'link-broken' }))).toEqual(['copyPath', 'copyUri'])
   })
 
   it('分组：新建子分组、重命名、移除', () => {

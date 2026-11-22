@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   useMutation,
   useQuery,
@@ -25,6 +26,19 @@ export function useConnections(): UseQueryResult<ConnectionDto[]> {
     queryKey: queryKeys.connections,
     queryFn: () => call('connection.list', undefined)
   })
+}
+
+/** connectionId → 连接名（显示路径 lib/display-path.ts 用）；列表未加载时为空 */
+export function connectionNamesOf(
+  list: readonly Pick<ConnectionDto, 'id' | 'name'>[] | undefined
+): Record<string, string> {
+  return Object.fromEntries((list ?? []).map((c) => [c.id, c.name]))
+}
+
+/** 当前的连接名表（引用在连接列表不变时稳定） */
+export function useConnectionNames(): Record<string, string> {
+  const { data } = useConnections()
+  return useMemo(() => connectionNamesOf(data), [data])
 }
 
 /**

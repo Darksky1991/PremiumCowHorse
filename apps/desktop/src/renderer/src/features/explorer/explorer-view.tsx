@@ -6,7 +6,8 @@ import {
   FolderTreeIcon,
   LayersIcon,
   LocateFixedIcon,
-  RefreshCwIcon
+  RefreshCwIcon,
+  ServerIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { notify } from '@renderer/stores/messages-store'
@@ -29,6 +30,7 @@ import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { useNavigationStore } from '@renderer/stores/navigation-store'
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
+import { AddRemoteDialog } from './add-remote-dialog'
 import { osDropEffect, resolveDrop } from './drag-drop'
 import { useExplorerStore } from './explorer-store'
 import { ExplorerTree } from './explorer-tree'
@@ -155,7 +157,7 @@ export function ExplorerView(): JSX.Element {
   )
 }
 
-/** 工作区没有条目：引导用系统对话框添加文件夹 */
+/** 工作区没有条目：引导用系统对话框添加文件夹、添加远程文件夹或新建分组 */
 function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
   const { t } = useTranslation()
   // 添加与系统拖入共用拖放的执行器：逐项添加，某项失败只提示该项，不中断其余项（与树空白处菜单一致）
@@ -194,6 +196,7 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
   }
 
   const [groupOpen, setGroupOpen] = useState(false)
+  const [remoteOpen, setRemoteOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -219,12 +222,22 @@ function ExplorerEmpty({ workspaceId }: { workspaceId: string }): JSX.Element {
             <FolderPlusIcon data-icon="inline-start" />
             {t('explorer:addFolder')}
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setRemoteOpen(true)}>
+            <ServerIcon data-icon="inline-start" />
+            {t('explorer:addRemoteFolder')}
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setGroupOpen(true)}>
             <LayersIcon data-icon="inline-start" />
             {t('explorer:newGroup')}
           </Button>
         </EmptyContent>
       </Empty>
+      <AddRemoteDialog
+        open={remoteOpen}
+        onOpenChange={setRemoteOpen}
+        workspaceId={workspaceId}
+        finalFocus={rootRef}
+      />
       <NewGroupDialog
         open={groupOpen}
         onOpenChange={setGroupOpen}

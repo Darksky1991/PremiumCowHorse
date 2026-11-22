@@ -16,6 +16,8 @@ export const htmlPlugin = definePreviewPlugin({
     priority: 1,
     match: {
       kinds: ['file'],
+      // 只处理本机文件（远程资源没有读取 / 系统应用打开；M4 设计 5.8）
+      schemes: ['file'],
       extensions: ['html', 'htm', 'xhtml', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp']
     }
   },

@@ -17,10 +17,12 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { notify } from '@renderer/stores/messages-store'
 import { AppError, type DirectoryListing, type WorkspaceEntry } from '@pch/shared'
 import { ContextMenu, ContextMenuTrigger } from '@pch/ui/components/context-menu'
+import { useConnections } from '@renderer/data/connections'
 import { useSetting } from '@renderer/data/settings'
 import { useDirectories, useVfsInterest, type DirectoryState } from '@renderer/data/vfs'
 import { call, getBridge } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
+import { AddRemoteDialog } from './add-remote-dialog'
 import {
   DRAG_MIME,
   isDraggableNode,
@@ -37,6 +39,7 @@ import { isEntryNode } from './menu-items'
 import { NewGroupDialog } from './new-group-dialog'
 import { NodeContextMenu } from './node-context-menu'
 import { openRequest, openTarget, type OpenGesture } from './open-target'
+import { ownerSwitchFor } from './owner-switch'
 import { RemoveEntryDialog, type RemoveTarget } from './remove-entry-dialog'
 import { RenameDialog, type RenameTarget } from './rename-dialog'
 import { hiddenSelectionIndex, resolveSelection } from './selection'
@@ -57,6 +60,7 @@ type DialogState =
   | { type: 'rename'; target: RenameTarget }
   | { type: 'remove'; target: RemoveTarget }
   | { type: 'newGroup'; parentId: string | null }
+  | { type: 'addRemote' }
 
 /** 默认密度下的行高；实际高度由 measureElement 测量（紧凑密度下随 --spacing 变小） */
 const ROW_ESTIMATE = 28
@@ -101,6 +105,8 @@ export function ExplorerTree({
   // 分组抽屉：根下的分组同一时刻只展开一个（设计 2.7）
   const drawers = useMemo(() => drawerIds(entries), [entries])
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
+  // 「以属主身份添加为条目」要看连接登记的身份与登录用户名
+  const { data: connections } = useConnections()
 
   // 需要列出的目录依赖父目录的列表（子目录的 URI 来自父目录的列表）。
   // 查询集合存为 state，变化时在渲染中同步（React 推荐的「根据渲染结果调整 state」写法）；
@@ -358,6 +364,28 @@ export function ExplorerTree({
     }
   }
 
+  /**
+   * 无权限的远程目录：以属主身份把同一路径添加为条目，加在包含它的条目所在的父分组下（设计 M4 5.8）。
+   * 主进程校验身份已登记；失败时提示错误码
+   */
+  const addAsOwner = (node: TreeNode): void => {
+    const target = ownerSwitchFor(node, entries, connections)
+    if (target === null) return
+    call('entry.add', {
+      kind: 'folder',
+      workspaceId,
+      parentId: target.parentId,
+      uri: target.uri,
+      label: target.label
+    })
+      .then(() =>
+        notify('success', t('explorer:addedAsOwner', { label: target.label, owner: target.owner }))
+      )
+      .catch((e: unknown) => {
+        notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+      })
+  }
+
   /** 把真实子项固定为工作区根部的条目 */
   const pin = (node: TreeNode): void => {
     if (node.uri === null) return
@@ -523,6 +551,8 @@ export function ExplorerTree({
                     onRetry={() => {
                       if (node.uri !== null) onRetry(node.uri)
                     }}
+                    addAsOwner={ownerSwitchFor(node, entries, connections)?.owner ?? null}
+                    onAddAsOwner={() => addAsOwner(node)}
                   />
                 )
               })}
@@ -536,6 +566,7 @@ export function ExplorerTree({
           onOpenInNewTab={() => menuNode && openNode(menuNode, 'newTab')}
           onNewGroup={() => openNewGroup(menuNode)}
           onAddPaths={(kind) => void addPaths(kind)}
+          onAddRemote={() => openDialog({ type: 'addRemote' })}
           onRename={() => menuNode && openRename(menuNode)}
           onRemove={() => menuNode && openRemove(menuNode)}
           onPin={() => menuNode && pin(menuNode)}
@@ -554,6 +585,14 @@ export function ExplorerTree({
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           target={dialog.target}
+          finalFocus={scrollRef}
+        />
+      )}
+      {dialog?.type === 'addRemote' && (
+        <AddRemoteDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          workspaceId={workspaceId}
           finalFocus={scrollRef}
         />
       )}

@@ -167,6 +167,10 @@ describe('textLike plugins (sniffed text files)', () => {
     expect(needsSniff(all, file('app.out', { textLike: false }))).toBe(false)
   })
 
+  it('needsSniff: never for remote resources (they offer no read; design 5.8)', () => {
+    expect(needsSniff(all, file('app.out', { uri: 'sftp://ID/var/app.out' }))).toBe(false)
+  })
+
   it('pluginById finds a registered plugin, or null', () => {
     expect(pluginById(all, 'pch.preview.text')).toBe(text)
     expect(pluginById([folder, fallback], 'pch.preview.text')).toBeNull()

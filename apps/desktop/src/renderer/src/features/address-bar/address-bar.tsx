@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@pch/ui/components/dropdown-menu'
+import { useConnectionNames } from '@renderer/data/connections'
 import { useEntries } from '@renderer/data/entries'
 import {
   useActiveWorkspace,
@@ -31,7 +32,7 @@ import {
   useWorkspaces,
   workspaceDisplayName
 } from '@renderer/data/workspace'
-import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { copyablePath, displayPath } from '@renderer/lib/display-path'
 import { call } from '@renderer/lib/ipc'
 import {
   logicalPath,
@@ -68,6 +69,7 @@ export function AddressBar(): JSX.Element {
   const { t } = useTranslation()
   const { data: workspace } = useActiveWorkspace()
   const { data: entries } = useEntries(workspace?.id)
+  const connectionNames = useConnectionNames()
   const active = useTabsStore(selectActiveTab(workspace?.id))
   const openHere = useTabsStore((s) => s.openHere)
   const navigate = useTabsStore((s) => s.navigate)
@@ -113,14 +115,19 @@ export function AddressBar(): JSX.Element {
     if (!newTab && target.uri === active?.uri) return
     openHere(workspace.id, target, { newTab })
   }
-  /** 当前位置（最后一段）可复制的路径；工作区 / 一览为 null */
-  const currentPath = pathOf(segments.at(-1))
+  /**
+   * 当前位置（最后一段）的显示路径（悬停提示；远程为 `<连接名>:<路径>`）与复制的内容
+   * （本地为 Windows 路径，远程为服务器上的绝对路径，其他为 URI）；工作区 / 一览为 null
+   */
+  const currentPath = pathOf(segments.at(-1), connectionNames)
   const copyCurrentPath = (): void => {
     const last = segments.at(-1)
     if (currentPath === null || last === undefined) return
-    const isFilePath = fileUriToWindowsPath(last.target.uri) !== null
-    call('system.copyText', { text: currentPath })
-      .then(() => notify('success', t(isFilePath ? 'explorer:copiedPath' : 'explorer:copiedUri')))
+    const path = copyablePath(last.target.uri)
+    call('system.copyText', { text: path ?? last.target.uri })
+      .then(() =>
+        notify('success', t(path !== null ? 'explorer:copiedPath' : 'explorer:copiedUri'))
+      )
       .catch((e: unknown) => {
         notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
       })
@@ -243,7 +250,7 @@ ${t('addressBar:copyHint')}`
         >
           {segments.map((segment, i) => {
             const current = i === segments.length - 1
-            const path = pathOf(segment)
+            const path = pathOf(segment, connectionNames)
             const button = (
               <Button
                 variant="ghost"
@@ -293,8 +300,14 @@ ${t('addressBar:copyHint')}`
   )
 }
 
-/** 段的可复制路径：文件 / 目录为 Windows 路径，其他（网页等）为 URI；工作区 / 一览 / 桌面记录段没有路径 */
-function pathOf(segment: PathSegment | undefined): string | null {
+/**
+ * 段的显示路径：本地文件 / 目录为 Windows 路径，远程为 `<连接名>:<路径>`，其他（网页等）为 URI；
+ * 工作区 / 一览 / 桌面记录段没有路径
+ */
+function pathOf(
+  segment: PathSegment | undefined,
+  connectionNames: Readonly<Record<string, string>>
+): string | null {
   if (
     segment === undefined ||
     segment.kind === 'workspace' ||
@@ -303,7 +316,7 @@ function pathOf(segment: PathSegment | undefined): string | null {
   ) {
     return null
   }
-  return fileUriToWindowsPath(segment.target.uri) ?? segment.target.uri
+  return displayPath(segment.target.uri, connectionNames)
 }
 
 /**

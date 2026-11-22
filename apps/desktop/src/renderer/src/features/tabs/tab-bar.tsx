@@ -12,7 +12,8 @@ import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import type { TabState, TabsState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
-import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { useConnectionNames } from '@renderer/data/connections'
+import { displayPath } from '@renderer/lib/display-path'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
 
@@ -36,6 +37,7 @@ export interface TabBarProps {
  */
 export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
   const { t } = useTranslation()
+  const connectionNames = useConnectionNames()
   const listRef = useRef<HTMLDivElement>(null)
   const activate = useTabsStore((s) => s.activate)
   const close = useTabsStore((s) => s.close)
@@ -109,7 +111,7 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             title={
               tab.kind === 'workspace' || tab.kind === 'workspaces' || tab.kind === 'desktop'
                 ? title
-                : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
+                : displayPath(tab.uri, connectionNames)
             }
             onClick={() => activate(tab.id)}
             // 中键：按下时阻止自动滚动，auxclick 时关闭

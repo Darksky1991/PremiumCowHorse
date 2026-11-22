@@ -29,7 +29,8 @@ import {
   ContextMenuTrigger
 } from '@pch/ui/components/context-menu'
 import { call } from '@renderer/lib/ipc'
-import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { useConnectionNames } from '@renderer/data/connections'
+import { copyablePath, displayPath, isLocalUri } from '@renderer/lib/display-path'
 import { locationParts } from './format'
 
 const ICONS: Record<FileKind, LucideIcon> = {
@@ -72,6 +73,7 @@ export function SearchResults({
 }: SearchResultsProps): JSX.Element {
   const baseId = useId()
   const { t } = useTranslation()
+  const connectionNames = useConnectionNames()
   const [menuHit, setMenuHit] = useState<SearchHit | null>(null)
 
   // 本项目未启用 React Compiler；该规则只提示「编译器会跳过此组件」，不影响运行
@@ -143,7 +145,9 @@ export function SearchResults({
       .then(() => notify('success', message))
       .catch(reportError)
   }
-  const menuPath = menuHit === null ? null : fileUriToWindowsPath(menuHit.uri)
+  // 「复制路径」：本地为 Windows 路径，远程为服务器上的绝对路径；「在资源管理器中显示」只对本机资源
+  const menuPath = menuHit === null ? null : copyablePath(menuHit.uri)
+  const menuLocal = menuHit !== null && isLocalUri(menuHit.uri)
   const activeRendered = rows.some((r) => r.index === activeIndex)
 
   return (
@@ -176,6 +180,7 @@ export function SearchResults({
                   hit={hit}
                   terms={terms}
                   entryLabel={entryLabels.get(hit.entryId) ?? ''}
+                  path={displayPath(hit.uri, connectionNames)}
                   selected={r.index === activeIndex}
                   start={r.start}
                   onClick={() => {
@@ -194,12 +199,14 @@ export function SearchResults({
             <ListTreeIcon />
             {t('search:revealInTree')}
           </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => call('system.revealInOs', { uri: menuHit.uri }).catch(reportError)}
-          >
-            <FolderSearchIcon />
-            {t('explorer:reveal')}
-          </ContextMenuItem>
+          {menuLocal ? (
+            <ContextMenuItem
+              onClick={() => call('system.revealInOs', { uri: menuHit.uri }).catch(reportError)}
+            >
+              <FolderSearchIcon />
+              {t('explorer:reveal')}
+            </ContextMenuItem>
+          ) : null}
           <ContextMenuSeparator />
           {menuPath === null ? null : (
             <ContextMenuItem onClick={() => copy(menuPath, t('explorer:copiedPath'))}>
@@ -225,6 +232,7 @@ function ResultRow({
   hit,
   terms,
   entryLabel,
+  path,
   selected,
   start,
   onClick
@@ -237,13 +245,14 @@ function ResultRow({
   hit: SearchHit
   terms: SearchTerm[]
   entryLabel: string
+  /** 悬停提示的显示路径（本地为 Windows 路径，远程为 `<连接名>:<路径>`） */
+  path: string
   selected: boolean
   start: number
   onClick: () => void
 }): JSX.Element {
   const Icon = ICONS[hit.kind]
   const { head, tail } = locationParts(hit, entryLabel)
-  const path = fileUriToWindowsPath(hit.uri) ?? hit.uri
 
   return (
     <div

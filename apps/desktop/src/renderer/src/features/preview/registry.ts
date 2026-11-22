@@ -5,6 +5,7 @@ import {
   type PreviewPluginManifest,
   type ResourceInfo
 } from '@pch/plugin-sdk'
+import { isLocalUri } from '@renderer/lib/display-path'
 
 const EXTENSION_SCORE = 3
 const MIME_EXACT_SCORE = 2
@@ -89,12 +90,14 @@ export function pickPlugin(
 
 /**
  * 选择插件之前是否要先 sniff（读开头 8KB 判断文本 / 二进制）：非空文件、没有插件按扩展名 / MIME 等匹配、
- * 且有插件声明了 textLike。已判断过（resource.textLike 存在）时为 false
+ * 且有插件声明了 textLike。已判断过（resource.textLike 存在）时为 false。
+ * 远程资源不 sniff：主进程不为它们提供读取（vfs.sniff 会失败；M4 设计 5.8）
  */
 export function needsSniff(plugins: readonly AnyPreviewPlugin[], resource: ResourceInfo): boolean {
   if (resource.kind !== 'file' || resource.size === 0 || resource.textLike !== undefined) {
     return false
   }
+  if (!isLocalUri(resource.uri)) return false
   if (!plugins.some((p) => p.manifest.match.textLike === true)) return false
   return pickPlugin(plugins, resource).manifest.id === FALLBACK_PLUGIN_ID
 }

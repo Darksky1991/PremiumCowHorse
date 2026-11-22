@@ -9,13 +9,15 @@ import type {
 import {
   AppError,
   ERROR_CODES,
+  isSftpUri,
   isUnderUri,
+  sftpNameOf,
   type DirectoryListing,
   type ErrorCode,
   type TabLocation
 } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
-import { fileUriToWindowsPath } from '@renderer/lib/file-uri'
+import { copyablePath, displayPath, isLocalUri } from '@renderer/lib/display-path'
 import type { TabTarget } from '@renderer/stores/tabs-store'
 import { isExecutableExtension } from './executable'
 
@@ -61,6 +63,8 @@ export interface PreviewHostDeps {
   language: string
   theme: 'light' | 'dark'
   settings: Partial<HostSettings> | undefined
+  /** connectionId → 连接名（远程资源的显示路径 `<连接名>:<路径>`） */
+  connectionNames: Readonly<Record<string, string>>
   /** 标签所属工作区的 folder 条目的根 URI（fs.rootOf 用） */
   roots: readonly string[]
   /** 标签当前位置按逻辑路径的上一级（lib/logical-path.ts 的 parentLocation；tabs.up 用），没有时为 null */
@@ -72,8 +76,9 @@ const HOST_SETTING_KEYS: ReadonlySet<string> = new Set<keyof HostSettings>([
   'explorer.showHiddenFiles'
 ])
 
-/** URI 最后一段的显示名（百分号解码失败时保留原样；驱动器根 file:///C:/ 为 C:） */
+/** URI 最后一段的显示名（百分号解码失败时保留原样；驱动器根 file:///C:/ 为 C:；远程的根为 /） */
 function nameOfUri(uri: string): string {
+  if (isSftpUri(uri)) return sftpNameOf(uri) || '/'
   const path = URL.canParse(uri) ? new URL(uri).pathname : uri
   const last = path.split('/').filter(Boolean).pop() ?? uri
   try {
@@ -119,7 +124,8 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         deps.onVfsChanged((changed) => {
           if (changed === uri) onChange()
         }),
-      toDisplayPath: (uri) => fileUriToWindowsPath(uri) ?? uri,
+      toDisplayPath: (uri) => displayPath(uri, deps.connectionNames),
+      isLocal: isLocalUri,
       rootOf: (uri) => {
         let best: string | null = null
         for (const root of deps.roots) {
@@ -161,7 +167,7 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
       },
       copyPath: async (uri) => {
         try {
-          await invoke('system.copyText', { text: fileUriToWindowsPath(uri) ?? uri })
+          await invoke('system.copyText', { text: copyablePath(uri) ?? uri })
           deps.notify(deps.t('preview:copiedPath'), 'success')
         } catch (e) {
           reportError(e)

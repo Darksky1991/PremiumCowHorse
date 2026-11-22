@@ -4,6 +4,7 @@ import {
   CircleAlertIcon,
   FolderRootIcon,
   LayersIcon,
+  ServerIcon,
   UnplugIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -12,6 +13,7 @@ import { cn } from 'cn'
 import { FileIcon } from '@pch/ui/file-icon'
 import { Button } from '@pch/ui/components/button'
 import { Spinner } from '@pch/ui/components/spinner'
+import { isLocalUri } from '@renderer/lib/display-path'
 import type { DropPosition } from './drag-drop'
 import type { NodeKind, TreeNode } from './tree-model'
 
@@ -58,6 +60,11 @@ export interface TreeRowProps {
   /** 展开箭头的单击：只展开 / 折叠（不选中、不打开） */
   onToggle: () => void
   onRetry: () => void
+  /**
+   * 无权限的远程目录的状态行：可以「以属主身份添加为条目」时为属主名（owner-switch.ts），否则 null
+   */
+  addAsOwner: string | null
+  onAddAsOwner: () => void
 }
 
 /** 落点高亮：before / after 为行上 / 下边线，inside（放进分组）为背景高亮；颜色用设计 token */
@@ -83,10 +90,15 @@ export function TreeRow({
   onDoubleClick,
   onMiddleClick,
   onToggle,
-  onRetry
+  onRetry,
+  addAsOwner,
+  onAddAsOwner
 }: TreeRowProps): JSX.Element {
   const { t, i18n } = useTranslation()
   const FixedIcon = FIXED_ICONS[node.kind]
+  // 远程条目（sftp 的 folder 条目）以服务器图标区别于本地（设计 M4 5.8）
+  const remoteEntry =
+    node.source === 'entry' && node.kind === 'folder' && node.uri !== null && !isLocalUri(node.uri)
   // 分组抽屉的标题（根下的分组，设计 2.7）：分节标题的外观，仍是树的一行（键盘遍历、aria-expanded）
   const drawer = node.kind === 'group' && node.parentId === null && node.status === undefined
 
@@ -129,7 +141,12 @@ export function TreeRow({
       )}
     >
       {node.status ? (
-        <StatusContent node={node} onRetry={onRetry} />
+        <StatusContent
+          node={node}
+          onRetry={onRetry}
+          addAsOwner={addAsOwner}
+          onAddAsOwner={onAddAsOwner}
+        />
       ) : (
         <>
           <ChevronRightIcon
@@ -147,7 +164,13 @@ export function TreeRow({
               node.expanded && 'rotate-90'
             )}
           />
-          {FixedIcon ? (
+          {remoteEntry ? (
+            <ServerIcon
+              role="img"
+              aria-label={t('explorer:remoteFolder')}
+              className="size-4 shrink-0 text-muted-foreground"
+            />
+          ) : FixedIcon ? (
             <FixedIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           ) : (
             <FileIcon
@@ -190,7 +213,12 @@ function formatTime(node: TreeNode, language: string): string {
   return node.checkedAt == null ? '' : new Date(node.checkedAt).toLocaleString(language)
 }
 
-function StatusContent({ node, onRetry }: { node: TreeNode; onRetry: () => void }): JSX.Element {
+function StatusContent({
+  node,
+  onRetry,
+  addAsOwner,
+  onAddAsOwner
+}: Pick<TreeRowProps, 'node' | 'onRetry' | 'addAsOwner' | 'onAddAsOwner'>): JSX.Element {
   const { t } = useTranslation()
   // 状态行与同级子项的名称对齐（越过箭头的位置）
   const lead = <span aria-hidden className="size-4 shrink-0" />
@@ -228,6 +256,22 @@ function StatusContent({ node, onRetry }: { node: TreeNode; onRetry: () => void 
         >
           {t('explorer:retry')}
         </Button>
+        {addAsOwner === null ? null : (
+          // 无权限、属主在登记的身份中：以属主身份把同一路径添加为新条目（不自动切换身份）
+          <Button
+            size="xs"
+            variant="ghost"
+            className="shrink-0"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddAsOwner()
+            }}
+          >
+            {t('explorer:addAsOwner', { owner: addAsOwner })}
+          </Button>
+        )}
       </>
     )
   }

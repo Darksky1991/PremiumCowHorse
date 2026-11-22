@@ -1,3 +1,5 @@
+import { isSftpUri, sftpConnectionKey } from '@pch/shared'
+
 /**
  * `file:` URI → Windows 路径（渲染端没有 Node 的 fileURLToPath，供「复制路径」使用）。
  * `file:///C:/案件` → `C:\案件`；带主机名的 `file://server/share/x` → `\\server\share\x`。
@@ -19,11 +21,13 @@ export function fileUriToWindowsPath(uri: string): string | null {
 }
 
 /**
- * `file:` URI 所在的共享 / 卷的键，规则与主进程 vfs/location.ts 的 shareKey 一致：
- * UNC → `\\host\share`（小写）；盘符 → 大写盘符加冒号（`C:`）。非 file 协议或无法解析时返回 null。
+ * URI 所在的共享 / 卷 / 连接的键，规则与主进程 vfs/location.ts 的 shareKey 一致：
+ * UNC → `\\host\share`（小写）；盘符 → 大写盘符加冒号（`C:`）；sftp → `sftp://<connectionId>`
+ * （同一连接的各身份共用一条物理连接，一起断开）。其余协议或无法解析时返回 null。
  * 映射网络盘在渲染端无法识别（需要 GetDriveTypeW），其键就是盘符本身，与主进程对映射盘的规则相同。
  */
 export function shareKeyOfUri(uri: string): string | null {
+  if (isSftpUri(uri)) return sftpConnectionKey(uri)
   if (!URL.canParse(uri)) return null
   const url = new URL(uri)
   if (url.protocol !== 'file:') return null

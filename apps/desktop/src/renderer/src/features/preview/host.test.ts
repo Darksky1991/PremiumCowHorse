@@ -63,6 +63,7 @@ function setup(overrides: Partial<PreviewHostDeps> = {}): {
     language: 'ja',
     theme: 'dark',
     settings: { 'explorer.showHiddenFiles': true },
+    connectionNames: { ID: 'AP1' },
     parent: { uri: 'file:///C:/%E6%A1%88%E4%BB%B6', kind: 'directory', title: '案件' },
     roots: [
       'file:///C:/%E6%A1%88%E4%BB%B6',
@@ -313,10 +314,27 @@ describe('createPreviewHost: fs, i18n and settings', () => {
     expect(host.i18n.describeError('not a code')).toBe('errors:UNKNOWN')
   })
 
-  it('shows Windows paths and falls back to the URI', () => {
+  it('shows Windows paths, <connection>:<path> for remote resources and falls back to the URI', () => {
     const { host } = setup()
     expect(host.fs.toDisplayPath(TXT)).toBe('C:\\案件\\memo.txt')
-    expect(host.fs.toDisplayPath('sftp://h/x')).toBe('sftp://h/x')
+    expect(host.fs.toDisplayPath('sftp://ID/home/pchuser/a%20b.log')).toBe(
+      'AP1:/home/pchuser/a b.log'
+    )
+    expect(host.fs.toDisplayPath('sftp://app1@ID/opt')).toBe('app1@AP1:/opt')
+    expect(host.fs.toDisplayPath('https://example.com/')).toBe('https://example.com/')
+  })
+
+  it('isLocal: only file: resources support system actions', () => {
+    const { host } = setup()
+    expect(host.fs.isLocal(TXT)).toBe(true)
+    expect(host.fs.isLocal('sftp://ID/home/pchuser/app.log')).toBe(false)
+  })
+
+  it('copies the absolute server path of a remote resource', async () => {
+    const { host, calls, deps } = setup()
+    await host.system.copyPath('sftp://app1@ID/opt/a%20b')
+    expect(calls).toEqual([['system.copyText', { text: '/opt/a b' }]])
+    expect(deps.notify).toHaveBeenCalledWith('preview:copiedPath', 'success')
   })
 
   it('exposes plugin translations, language, theme and read-only settings', () => {

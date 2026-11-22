@@ -75,7 +75,25 @@ export default {
     revealNotInWorkspace: 'この項目は現在のワークスペースのどの項目にも含まれていません',
     revealNotFound:
       'ツリーに見つかりません。フォルダーの内容が変わった可能性があります（F5 で最新の情報に更新）',
-    revealTimeout: 'フォルダーの読み込みに時間がかかっているため、途中まで展開しました'
+    revealTimeout: 'フォルダーの読み込みに時間がかかっているため、途中まで展開しました',
+    addRemoteFolder: 'リモートフォルダーを追加',
+    menuAddRemoteFolder: 'リモートフォルダーを追加…',
+    remoteFolder: 'リモートフォルダー',
+    addRemoteTitle: 'リモートフォルダーを追加',
+    addRemoteDescription:
+      'SFTP サーバー上のフォルダーを読み取り専用の項目として追加します。サーバー上のファイルは変更しません。',
+    remoteConnection: '接続',
+    remoteNoConnections: 'リモート接続がありません。「接続の管理」から登録してください。',
+    manageConnections: '接続の管理',
+    remoteIdentity: '読み取るユーザー',
+    remoteLoginUser: 'ログインユーザー（{{name}}）',
+    remoteIdentityHint: '切り替えユーザーは sudo で読み取ります。既定のパスは / です。',
+    remotePath: 'パス',
+    remotePathInvalid: '/ で始まる絶対パスを入力してください（. や .. は使えません）',
+    remoteHomeLoading: 'ホームフォルダーを取得しています…',
+    add: '追加',
+    addAsOwner: '{{owner}} として項目に追加',
+    addedAsOwner: '「{{label}}」を {{owner}} として追加しました'
   },
   search: {
     title: '検索',

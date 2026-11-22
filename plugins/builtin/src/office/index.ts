@@ -12,6 +12,8 @@ export const officePlugin = definePreviewPlugin({
     version: '1.0.0',
     match: {
       kinds: ['file'],
+      // 只处理本机文件（远程资源没有读取 / 系统应用打开；M4 设计 5.8）
+      schemes: ['file'],
       extensions: [
         'xlsx',
         'xlsm',
