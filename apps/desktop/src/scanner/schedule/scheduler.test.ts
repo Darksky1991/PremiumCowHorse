@@ -3,6 +3,7 @@ import {
   AppError,
   parseQuery,
   type ErrorCode,
+  type LocationKind,
   type RootConfig,
   type ScanSettings
 } from '@pch/shared'
@@ -108,7 +109,7 @@ class FakeFs implements Enumerator {
 
   constructor(private readonly clock: FakeClock) {}
 
-  location = (u: string): 'local' | 'network' => this.loc.location(u)
+  location = (u: string): LocationKind => this.loc.location(u)
   shareKey = (u: string): string => this.loc.shareKey(u)
   hostKey = (u: string): string => this.loc.hostKey(u)
 
@@ -218,8 +219,9 @@ const settings: ScanSettings = {
     near: { local: 30, network: 60 },
     far: { local: 120, network: 300 }
   },
-  backgroundGapMs: { local: 500, network: 2000 },
-  timeoutSec: { local: 5, network: 10 },
+  backgroundGapMs: { local: 500, network: 2000, remote: 500 },
+  timeoutSec: { local: 5, network: 10, remote: 20 },
+  remoteIndexIntervalSec: 1800,
   activeDepth: 3
 }
 
@@ -426,7 +428,10 @@ describe('Scheduler: periodic checks', () => {
 
   it('no directory is re-enumerated only because time has passed', async () => {
     // 后台的休息时间拉长，只为让用例跑得快
-    const slow = { ...settings, backgroundGapMs: { local: 60_000, network: 60_000 } }
+    const slow = {
+      ...settings,
+      backgroundGapMs: { local: 60_000, network: 60_000, remote: 60_000 }
+    }
     const { clock, fs, s } = setup([root(R, 'all')], { settings: slow })
     const A = fs.addDir(R, 'a')
     const B = fs.addDir(R, 'b')

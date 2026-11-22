@@ -18,15 +18,22 @@ const RootConfigSchema = z.strictObject({
   workspaceId: z.string().min(1),
   uri,
   strategy: z.enum(['passive', 'default', 'active', 'all']),
-  location: z.enum(['local', 'network'])
+  location: z.enum(['local', 'network', 'remote'])
 }) satisfies z.ZodType<RootConfig>
 
 const Pair = z.strictObject({ local: z.number().positive(), network: z.number().positive() })
 
+const Triple = z.strictObject({
+  local: z.number().positive(),
+  network: z.number().positive(),
+  remote: z.number().positive()
+})
+
 const ScanSettingsSchema = z.strictObject({
   interval: z.strictObject({ focus: Pair, near: Pair, far: Pair }),
-  backgroundGapMs: Pair,
-  timeoutSec: Pair,
+  backgroundGapMs: Triple,
+  timeoutSec: Triple,
+  remoteIndexIntervalSec: z.number().positive(),
   activeDepth: z.number().int().nonnegative()
 }) satisfies z.ZodType<ScanSettings>
 

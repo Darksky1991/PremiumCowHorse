@@ -2,7 +2,7 @@ import path from 'node:path'
 import { hostname } from 'node:os'
 import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
-import { resolveLanguage } from '@pch/shared'
+import { resolveLanguage, type LocationKind } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
 import type { MainEvents } from '../core/events'
 import { openDatabase, type Database } from '../infra/db/client'
@@ -87,7 +87,7 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   // 一次性调用（stat、条目添加的校验、降级模式的直接枚举）的超时按位置取 vfs.timeoutSec.*（总时长）
   const vfs = new VfsService([new LocalProvider()], {
     timeoutMs: (uri) => {
-      let where: 'local' | 'network' = 'network'
+      let where: LocationKind = 'network'
       try {
         where = location(uri)
       } catch {

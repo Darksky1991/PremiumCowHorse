@@ -59,8 +59,9 @@ describe('scanner host search', () => {
             near: { local: 30, network: 60 },
             far: { local: 120, network: 300 }
           },
-          backgroundGapMs: { local: 500, network: 2000 },
-          timeoutSec: { local: 5, network: 10 },
+          backgroundGapMs: { local: 500, network: 2000, remote: 500 },
+          timeoutSec: { local: 5, network: 10, remote: 20 },
+          remoteIndexIntervalSec: 1800,
           activeDepth: 3
         }
       }

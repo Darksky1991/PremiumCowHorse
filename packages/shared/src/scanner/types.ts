@@ -8,10 +8,20 @@ export interface RootConfig {
   workspaceId: string
   uri: string
   strategy: CacheStrategy
-  location: 'local' | 'network'
+  location: LocationKind
 }
 
-/** 按位置类型区分的一对取值 */
+/** 位置类型：本地 / 网络共享 / 远程（SFTP） */
+export type LocationKind = 'local' | 'network' | 'remote'
+
+/** 按位置类型区分的三个取值 */
+export interface LocationTriple {
+  local: number
+  network: number
+  remote: number
+}
+
+/** 按位置类型区分的一对取值（远程没有定期确认，故定期确认间隔只有 local / network） */
 export interface LocationPair {
   local: number
   network: number
@@ -22,8 +32,10 @@ export interface ScanSettings {
   /** 定期确认的间隔（秒）：关注点 / 近 / 远 */
   interval: { focus: LocationPair; near: LocationPair; far: LocationPair }
   /** 后台队列每确认完一个目录后的休息时间（毫秒）；用户正在操作时加倍 */
-  backgroundGapMs: LocationPair
-  timeoutSec: LocationPair
+  backgroundGapMs: LocationTriple
+  timeoutSec: LocationTriple
+  /** 远程目录的建立索引间隔（秒）；远程没有定期确认 */
+  remoteIndexIntervalSec: number
   activeDepth: number
 }
 

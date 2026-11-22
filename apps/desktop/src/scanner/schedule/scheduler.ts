@@ -1,9 +1,12 @@
 import {
   AppError,
+  isSftpUri,
   isUnderUri,
+  parseSftpUri,
   type DirectoryListing,
   type FileEntry,
   type Interest,
+  type LocationKind,
   type RootConfig,
   type ScanSettings
 } from '@pch/shared'
@@ -57,7 +60,11 @@ export const PUMP_RETRY_MS = 1000
  * 每个位置组的非关注点定期确认（近 / 远层）之间的最小间隔：网络不超过 5 次 / 秒，本地 20 次 / 秒。
  * 关注点的确认不受此限。层的间隔因此是下限：到期的目录多时依次推后
  */
-export const PERIODIC_GAP_MS: Record<'local' | 'network', number> = { local: 50, network: 200 }
+export const PERIODIC_GAP_MS: Record<LocationKind, number> = {
+  local: 50,
+  network: 200,
+  remote: 200
+}
 
 /** 设计 8.2 / 4.9 的默认值：configure 之前（例如启动时的 listNow）使用 */
 const DEFAULT_SETTINGS: ScanSettings = {
@@ -66,8 +73,9 @@ const DEFAULT_SETTINGS: ScanSettings = {
     near: { local: 30, network: 60 },
     far: { local: 120, network: 300 }
   },
-  backgroundGapMs: { local: 500, network: 2000 },
-  timeoutSec: { local: 5, network: 10 },
+  backgroundGapMs: { local: 500, network: 2000, remote: 500 },
+  timeoutSec: { local: 5, network: 10, remote: 20 },
+  remoteIndexIntervalSec: 1800,
   activeDepth: 3
 }
 
@@ -150,6 +158,10 @@ function toFileEntry(dirUri: string, e: RawEntry): FileEntry {
 /** 无法转换为本地路径的 URI（非 file:、格式错误）：返回错误；有效时返回 null */
 function uriError(uri: string): AppError | null {
   try {
+    if (isSftpUri(uri)) {
+      if (parseSftpUri(uri) === null) throw new AppError({ code: 'FS_INVALID_URI', detail: uri })
+      return null
+    }
     fileUriToLocalPath(uri)
     return null
   } catch (e) {
@@ -253,7 +265,7 @@ export class Scheduler {
       cache: this.cache,
       groupKey: (u) => this.groupKey(u),
       // 后台队列不重新确认在「远」层间隔之内确认过的目录
-      minAgeMs: (u) => this.settings.interval.far[this.enumerator.location(u)] * 1000,
+      minAgeMs: (u) => this.minAgeFor(u),
       freshMs: FRESH_MS
     })
   }
@@ -639,8 +651,17 @@ export class Scheduler {
 
   /** 定期确认的间隔：按层与位置；出错的目录（权限、超时）按远层的间隔重试 */
   private intervalFor(uri: string, tier: Tier, dir = this.cache.getDir(uri)): number {
+    const where = this.enumerator.location(uri)
+    // 远程没有定期确认；这里的间隔只作为建立索引的最小间隔（行为在后续任务中细化）
+    if (where === 'remote') return this.settings.remoteIndexIntervalSec * 1000
     const t = dir !== undefined && dir.state !== 'ok' ? 'far' : tier
-    return this.settings.interval[t][this.enumerator.location(uri)] * 1000
+    return this.settings.interval[t][where] * 1000
+  }
+
+  private minAgeFor(uri: string): number {
+    const where = this.enumerator.location(uri)
+    if (where === 'remote') return this.settings.remoteIndexIntervalSec * 1000
+    return this.settings.interval.far[where] * 1000
   }
 
   // ---- 后台队列 ----

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CacheStrategy, RootConfig } from '@pch/shared'
-import { computeScope, TIER_LIMIT } from './scope'
+import { computeScope, parentUri, TIER_LIMIT } from './scope'
 import type { ScopeInput, Tier } from './scope'
 
 const R = 'file:///C:/r'
@@ -296,5 +296,12 @@ describe('computeScope: tier limits', () => {
     const r = computeScope(input('default', { focus: null, visible, hot: [u('v149')] }))
     const near = byTier(r, 'near')
     expect(near).toEqual([u('v149'), ...visible.slice(0, TIER_LIMIT - 1)])
+  })
+})
+
+describe('parentUri: sftp', () => {
+  it('uses sftp parent semantics', () => {
+    expect(parentUri('sftp://ID/a/b')).toBe('sftp://ID/a')
+    expect(parentUri('sftp://ID')).toBeNull()
   })
 })

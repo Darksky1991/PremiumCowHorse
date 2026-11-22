@@ -5,6 +5,13 @@ const DRIVE_FIXED = 3
 const DRIVE_REMOTE = 4
 
 describe('createLocator', () => {
+  it('treats sftp URIs as remote keyed by connection id', () => {
+    const loc = createLocator(null)
+    expect(loc.location('sftp://ID/x')).toBe('remote')
+    expect(loc.shareKey('sftp://app1@ID/x')).toBe('sftp://ID')
+    expect(loc.hostKey('sftp://app1@ID/x')).toBe('sftp://ID')
+  })
+
   it('treats UNC paths as network and keys them by host and share (lower case)', () => {
     const driveType = vi.fn(() => DRIVE_FIXED)
     const loc = createLocator(driveType)

@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Cache, isUnder, queueQuery } from './cache'
+import { Cache, childUri, isUnder, queueQuery } from './cache'
 import type { RawEntry } from '../enum/types'
 
 const file = (name: string, size = 1, mtime = 1000): RawEntry => ({
@@ -743,5 +743,33 @@ describe('Cache on disk', () => {
     writeFileSync(f, 'not a sqlite database '.repeat(200))
     expect(() => Cache.open(f)).toThrow(/not a database/)
     expect(() => rmSync(f)).not.toThrow()
+  })
+})
+
+describe('Cache: sftp URIs', () => {
+  const S = 'sftp://ID/a'
+  const C = 'sftp://ID/a/b%20c'
+
+  it('childUri encodes names', () => {
+    expect(childUri(S, 'b c')).toBe(C)
+  })
+
+  it('applyListing links child directories to their parent', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [dir('b c')], 1)
+    cache.applyListing(C, 1, [], 2)
+    expect(cache.getDir(C)?.parentUri).toBe(S)
+    cache.close()
+  })
+
+  it('removeMissing deletes the entry from the parent listing', () => {
+    const cache = Cache.open(':memory:')
+    cache.setRoots([S])
+    cache.applyListing(S, 1, [dir('b c'), dir('d')], 1)
+    cache.applyListing(C, 1, [], 2)
+    expect(cache.removeMissing(C).parentChanged).toBe(true)
+    expect(cache.getEntries(S).map((e) => e.name)).toEqual(['d'])
+    cache.close()
   })
 })
