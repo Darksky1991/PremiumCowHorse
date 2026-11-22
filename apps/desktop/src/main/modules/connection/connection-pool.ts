@@ -100,6 +100,10 @@ export class ConnectionPool implements SftpSessionSource {
   private readonly presented = new Map<string, HostKeyInfo>()
   /** 内存中的登录认证锁定（与 auth_state 同时写） */
   private readonly authLocked = new Set<string>()
+  /** 主机密钥被拒绝 / 确认超时 / 没有窗口（R13）：后台请求不再询问，用户操作才重新询问 */
+  private readonly untrusted = new Set<string>()
+  /** R12：connectionId → 进行中的连接尝试（含已被丢弃的） */
+  private readonly attempts = new Map<string, Promise<SshSession>>()
   private readonly memory = new IdentityMemory()
   private readonly identityDeps: IdentityDeps
   private readonly owners = new WeakMap<SftpSession, Owner>()
@@ -141,6 +145,12 @@ export class ConnectionPool implements SftpSessionSource {
         throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED', detail: 'locked' })
       }
       this.memory.checkFailure(id, identity, opts.userAction)
+    }
+    if (this.untrusted.has(id) && !this.conns.has(id)) {
+      if (!opts.userAction) {
+        throw new AppError({ code: 'CONN_HOST_KEY_REJECTED', detail: 'not trusted' })
+      }
+      this.untrusted.delete(id)
     }
 
     const conn = this.ensureConn(id)
@@ -186,6 +196,7 @@ export class ConnectionPool implements SftpSessionSource {
     this.memory.clearModes(connectionId)
     this.memory.sudoLocked.delete(connectionId)
     this.authLocked.delete(connectionId)
+    this.untrusted.delete(connectionId)
     this.presented.delete(connectionId)
     this.setState(connectionId, 'idle')
   }
@@ -193,6 +204,7 @@ export class ConnectionPool implements SftpSessionSource {
   async unlock(connectionId: string): Promise<void> {
     await this.deps.repo.setAuthState(connectionId, 'ok')
     this.authLocked.delete(connectionId)
+    this.untrusted.delete(connectionId)
     this.memory.sudoLocked.delete(connectionId)
     this.memory.clearFailures(connectionId)
     if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
@@ -252,14 +264,15 @@ export class ConnectionPool implements SftpSessionSource {
     try {
       steps.push({ step: 'auth', ok: true })
       this.presented.delete(connectionId)
+      // 登录认证已成功：内存中的登录锁定与 auth-failed 状态立即解除（身份步骤的结果另行处理）
+      this.authLocked.delete(connectionId)
+      if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
       await this.testSftp(ssh, steps)
       const sudoAuthFailed = await testIdentitySteps(rec, ssh, this.identityDeps, steps)
       // sudo 认证失败已由 testIdentitySteps 锁定；其余情况解除锁定
       if (!sudoAuthFailed) {
-        this.authLocked.delete(connectionId)
         this.memory.sudoLocked.delete(connectionId)
         if (rec.authState !== 'ok') await this.writeAuthState(connectionId, 'ok')
-        if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
       }
       return { steps }
     } finally {
@@ -294,11 +307,33 @@ export class ConnectionPool implements SftpSessionSource {
     return conn
   }
 
-  private async open(conn: Conn): Promise<SshSession> {
+  /**
+   * R12：同一连接同时只有一个连接尝试（含已被 disconnect 丢弃、仍在进行的）。新的尝试先等旧的结束，
+   * 再重新读取记录与锁定——否则 disconnect 之后的请求会立即以同一（可能错误的）密码再拨一次
+   */
+  private open(conn: Conn): Promise<SshSession> {
     const id = conn.id
     this.setState(id, 'connecting')
+    const prev = this.attempts.get(id)
+    const mine = (async (): Promise<SshSession> => {
+      if (prev) await prev.catch(() => undefined)
+      return this.attempt(conn)
+    })()
+    this.attempts.set(id, mine)
+    void mine
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.attempts.get(id) === mine) this.attempts.delete(id)
+      })
+    return mine
+  }
+
+  private async attempt(conn: Conn): Promise<SshSession> {
+    const id = conn.id
     let locked = false
+    let dialed: ConnectionRecord | null = null
     try {
+      if (conn.discarded) throw new AppError({ code: 'FS_UNAVAILABLE', detail: 'disconnected' })
       // 重新读取：与之前失败的尝试竞争的请求在这里看到锁定，不再提交凭据
       const rec = await this.deps.repo.get(id)
       if (!rec) throw new AppError({ code: 'CONN_NOT_FOUND' })
@@ -306,6 +341,7 @@ export class ConnectionPool implements SftpSessionSource {
         locked = true
         throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'locked' })
       }
+      dialed = rec
       const ssh = await this.dial(rec, {
         onState: (s) => {
           if (!conn.discarded) this.setState(id, s)
@@ -320,6 +356,8 @@ export class ConnectionPool implements SftpSessionSource {
       ssh.onClose((err) => this.onSshClosed(conn, err))
       this.deps.log.info(`connection ${id}: online`)
       this.setState(id, 'online')
+      // 等待者都已离开（取消）时也要开始空闲计时，否则连接永不断开
+      if (conn.active === 0) this.touch(conn)
       return ssh
     } catch (e) {
       const err = toAppError(e)
@@ -327,10 +365,11 @@ export class ConnectionPool implements SftpSessionSource {
       if (!conn.discarded) {
         conn.discarded = true
         if (locked) this.setState(id, 'auth-failed')
-        else await this.connectFailed(id, err)
+        else await this.connectFailed(id, err, dialed)
       } else if (err.code === 'CONN_AUTH_FAILED' && !locked && !isNoMethod(err)) {
-        // 尝试中途被 disconnect：凭据已提交并失败，仍要锁定（否则下一次请求以同一密码再试）
-        await this.lockAuth(id)
+        // 尝试中途被 disconnect：凭据已提交并失败，仍要锁定（否则下一次请求以同一密码再试）；
+        // 但记录在拨号之后被编辑过时，失败的是旧的凭据，不覆盖编辑的结果
+        if (dialed && (await this.unchangedSince(dialed))) await this.lockAuth(id)
       }
       throw err
     }
@@ -366,6 +405,8 @@ export class ConnectionPool implements SftpSessionSource {
         hooks.onState?.('host-key-pending')
         const ok = await this.deps.hostKeys.ask(id, key).catch(() => false)
         hooks.onState?.('connecting')
+        if (ok) this.untrusted.delete(id)
+        else this.untrusted.add(id)
         if (!ok) {
           const e = new AppError({ code: 'CONN_HOST_KEY_REJECTED', detail: key.fingerprint })
           hooks.onHostKey?.(e)
@@ -405,11 +446,25 @@ export class ConnectionPool implements SftpSessionSource {
     return { kind: 'password', password: decryptSecret(secrets, rec.secret) }
   }
 
-  private async connectFailed(id: string, err: AppError): Promise<void> {
+  /**
+   * 拨号时的记录之后没有被编辑（R12：updatedAt 相同）。读取失败时按「未编辑」处理（偏向锁定）；
+   * 记录已删除时无需锁定
+   */
+  private async unchangedSince(dialed: ConnectionRecord): Promise<boolean> {
+    const cur = await this.deps.repo.get(dialed.id).catch(() => dialed)
+    return cur !== undefined && cur.updatedAt === dialed.updatedAt
+  }
+
+  private async connectFailed(
+    id: string,
+    err: AppError,
+    dialed: ConnectionRecord | null
+  ): Promise<void> {
     this.deps.log.warn(`connection ${id}: connect failed (${err.code})`)
     switch (err.code) {
       case 'CONN_AUTH_FAILED':
         if (isNoMethod(err)) return this.setState(id, 'idle')
+        if (dialed && !(await this.unchangedSince(dialed))) return this.setState(id, 'idle')
         await this.lockAuth(id)
         return this.setState(id, 'auth-failed')
       case 'CONN_HOST_KEY_CHANGED':

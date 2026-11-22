@@ -83,7 +83,7 @@ export function decryptSecret(secrets: SecretBox, stored: string): string {
 
 /**
  * 以登录用户执行一次探测（不经 sudo，不留 sudo 日志）。
- * 通道打不开 / 超时 → CONN_SUDO_FAILED（SSH 连接已断时为 FS_UNAVAILABLE）。
+ * 通道打不开 / 超时 / 输出不完整（没有 PS: 行）→ CONN_SUDO_FAILED（SSH 连接已断时为 FS_UNAVAILABLE）。
  */
 export async function runProbe(
   ssh: SshSession,
@@ -112,7 +112,10 @@ export async function runProbe(
     ch.stderr.on('data', () => undefined)
     ch.onClose(() => {
       clearTimeout(timer)
-      resolve(parseProbeOutput(out + decoder.end()))
+      const result = parseProbeOutput(out + decoder.end())
+      // 没有 PS: 行：通道提前关闭或输出被截断，不能据此判断（调用方不缓存失败的探测）
+      if (result.complete) resolve(result)
+      else reject(new AppError({ code: 'CONN_SUDO_FAILED', detail: 'probe incomplete' }))
     })
   })
 }
@@ -252,16 +255,20 @@ export interface IdentityDeps {
 
 interface Entry {
   promise: Promise<SftpSession>
+  /** 只在 SSH 连接被丢弃时中止（R11：请求取消不中止打开过程） */
   ctrl: AbortController
-  waiters: number
-  settled: boolean
   opened: OpenedIdentity | null
   wrapper: SftpSession | null
 }
 
+/** 连接已被丢弃时，打开过程的「取消」对等待者而言是连接不可用 */
+const unavailable = (): AppError =>
+  new AppError({ code: 'FS_UNAVAILABLE', detail: 'ssh connection closed' })
+
 /**
- * 一条 SSH 连接上的切换身份会话：每个身份一个通道，打开过程由并发请求共享；
- * 最后一个等待者因取消离开时中止打开过程（不在同一请求内重开）。探测每条连接执行一次。
+ * 一条 SSH 连接上的切换身份会话：每个身份一个通道，打开过程由并发请求共享。探测每条连接执行一次。
+ * 请求被取消只让该请求离开；打开过程（有 15 秒上限）跑完——中途中止会在交出密码后丢掉结果，
+ * 下一次请求以同一密码重交（R11）。成功的会话留在池中，无人使用时随空闲断开关闭。
  */
 export class ConnIdentities {
   private readonly entries = new Map<string, Entry>()
@@ -278,18 +285,10 @@ export class ConnIdentities {
   ) {}
 
   async session(identity: string, signal: AbortSignal): Promise<SftpSession> {
+    if (this.closed) throw unavailable()
     const entry = this.entries.get(identity) ?? this.start(identity)
     if (entry.wrapper) return entry.wrapper
-    entry.waiters++
-    try {
-      return await raceSignal(entry.promise, signal)
-    } finally {
-      entry.waiters--
-      if (entry.waiters === 0 && !entry.settled && signal.aborted) {
-        if (this.entries.get(identity) === entry) this.entries.delete(identity)
-        entry.ctrl.abort()
-      }
-    }
+    return raceSignal(entry.promise, signal)
   }
 
   /** 会话的通道已断：丢弃并关闭（下一次请求重开） */
@@ -301,7 +300,10 @@ export class ConnIdentities {
     return true
   }
 
-  /** SSH 连接被丢弃：中止打开中的过程，关闭全部身份通道 */
+  /**
+   * SSH 连接被丢弃：中止打开中的过程，关闭全部身份通道。等待者得到 FS_UNAVAILABLE；
+   * 已交出 sudo 密码而未判定成功的，sudo-switch 以 CONN_SUDO_AUTH_FAILED 结束（锁定）
+   */
   close(): void {
     this.closed = true
     for (const entry of this.entries.values()) {
@@ -317,18 +319,14 @@ export class ConnIdentities {
     const entry: Entry = {
       promise: Promise.resolve(null as unknown as SftpSession),
       ctrl,
-      waiters: 0,
-      settled: false,
       opened: null,
       wrapper: null
     }
-    const current = (): boolean => this.entries.get(identity) === entry && !this.closed
     entry.promise = this.open(identity, ctrl.signal).then(
       (opened) => {
-        entry.settled = true
-        if (!current()) {
+        if (this.closed || this.entries.get(identity) !== entry) {
           opened.channel.close()
-          throw new AppError({ code: ctrl.signal.aborted ? 'FS_CANCELLED' : 'FS_UNAVAILABLE' })
+          throw unavailable()
         }
         entry.opened = opened
         entry.wrapper = this.wrap(identity, opened.sftp)
@@ -339,7 +337,6 @@ export class ConnIdentities {
         return entry.wrapper
       },
       (e: unknown) => {
-        entry.settled = true
         if (this.entries.get(identity) === entry) this.entries.delete(identity)
         throw toAppError(e)
       }
@@ -357,11 +354,14 @@ export class ConnIdentities {
     const prev = this.turn
     let release!: () => void
     const mine = new Promise<void>((r) => (release = r))
-    // 下一个要等前一个与本次都结束（本次在排队中被取消时，前一个可能仍在进行）
+    // 下一个要等前一个与本次都结束（本次在排队中被中止时，前一个可能仍在进行）
     this.turn = prev.then(() => mine)
     try {
       await raceSignal(prev, signal)
       return await this.openNow(identity, signal)
+    } catch (e) {
+      const err = toAppError(e)
+      throw err.code === 'FS_CANCELLED' && this.closed ? unavailable() : err
     } finally {
       release()
     }
@@ -394,7 +394,8 @@ export class ConnIdentities {
       const err = toAppError(e)
       if (locked) throw err
       deps.log.warn(`connection ${id}: identity open failed (${err.code})`)
-      // 按连接锁住全部身份（pam_faillock 按登录用户计数）；登录用户自己的 SFTP 不受影响
+      // 按连接锁住全部身份（pam_faillock 按登录用户计数）；登录用户自己的 SFTP 不受影响。
+      // 连接已被丢弃时也要锁：交出密码后断线同样无法排除密码错误
       if (err.code === 'CONN_SUDO_AUTH_FAILED') await deps.lockSudo(id)
       else if (!this.closed) memory.remember(id, identity, err)
       throw err

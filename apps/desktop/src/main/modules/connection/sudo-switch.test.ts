@@ -637,6 +637,62 @@ describe('openIdentityChannel（非终端方式）', () => {
     expect(h2.commands).toEqual([])
   })
 
+  it('交出密码后、判定成功之前被中止 → CONN_SUDO_AUTH_FAILED（无法排除密码错误，R11）', async () => {
+    const ac = new AbortController()
+    const h = harness({ signal: ac.signal })
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n'])
+    ac.abort()
+    const e = await appErrorOf(p)
+    expect(e.code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(e.detail ?? '').not.toContain('Pch-pass1')
+    expect(h.cmd.closed).toBe(true)
+    expect(h.poll.closed).toBe(true)
+  })
+
+  it('交出密码后已有认证通过的迹象（stdout 有输出）再被中止 → FS_CANCELLED', async () => {
+    const ac = new AbortController()
+    const h = harness({ signal: ac.signal })
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    h.cmd.out('welcome\n')
+    await flush()
+    ac.abort()
+    expect((await appErrorOf(p)).code).toBe('FS_CANCELLED')
+  })
+
+  it('出现提示但还没交出密码时被中止 → FS_CANCELLED', async () => {
+    const ac = new AbortController()
+    // 轮询通道未打开时不写密码
+    const h = harness({ signal: ac.signal }, { holdPoll: true })
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    expect(h.cmd.writes).toEqual([])
+    ac.abort()
+    expect((await appErrorOf(p)).code).toBe('FS_CANCELLED')
+  })
+
+  it('判定成功之后（start 阶段）被中止 → FS_CANCELLED', async () => {
+    const ac = new AbortController()
+    const h = harness({ signal: ac.signal })
+    const p = openIdentityChannel(h.deps)
+    await flush()
+    h.cmd.err(`PCHPID:${SUDO_PID}\nPCHSUDOPROMPT`)
+    await flush()
+    h.poll.out(psFrame(true))
+    await flush()
+    expect(h.cmd.writes).toEqual(['Pch-pass1\n', startCommand(SFTP_PATH)])
+    ac.abort()
+    expect((await appErrorOf(p)).code).toBe('FS_CANCELLED')
+  })
+
   it('密码不出现在任何命令中；失败的 detail 中被替换为 ***（即使被拆在两个 chunk 中）', async () => {
     const pw = 'a\'b"c$d\\ e日本'
     const h = harness({ password: pw })

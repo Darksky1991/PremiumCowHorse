@@ -367,6 +367,76 @@ describe('ConnectionPool: 认证锁定', () => {
     expect(h.connect).toHaveBeenCalledTimes(1)
   })
 
+  it('R12：尝试进行中 disconnect，随后的请求等旧尝试结束；旧尝试认证失败 → 只拨一次', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    const a = h.pool.session(LOGIN, opts())
+    await flush()
+    h.pool.disconnect('c1')
+    const b = h.pool.session(LOGIN, opts(false))
+    await flush()
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    answer.resolve(true)
+    expect((await errorOf(a)).code).toBe('CONN_AUTH_FAILED')
+    expect((await errorOf(b)).code).toBe('CONN_AUTH_FAILED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('R12：拨号之后记录被编辑（updatedAt 变化），旧尝试认证失败 → 不写锁定、不覆盖编辑结果', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    const a = h.pool.session(LOGIN, opts())
+    await flush()
+    // 编辑连接：改密码并解除锁定，然后 disconnect
+    const r = h.repo.records.get('c1')!
+    r.secret = 'enc:new-pass'
+    r.updatedAt = 2
+    h.pool.disconnect('c1')
+    answer.resolve(true)
+    expect((await errorOf(a)).code).toBe('CONN_AUTH_FAILED')
+    expect(h.repo.setAuthState).not.toHaveBeenCalled()
+    expect(r.authState).toBe('ok')
+    h.authResult.value = null
+    await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
+    expect(h.connect).toHaveBeenCalledTimes(2)
+    expect((h.connect.mock.calls[1]![0] as SshConnectConfig).auth).toEqual({
+      kind: 'password',
+      password: 'new-pass'
+    })
+  })
+
+  it('R13：主机密钥被拒绝后，后台请求不再询问；用户操作重新询问；disconnect 清除', async () => {
+    const h = setup({ records: [record({ hostKey: null })], ask: async () => false })
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_HOST_KEY_REJECTED')
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_HOST_KEY_REJECTED')
+    expect((await errorOf(h.pool.session(APP1, opts(false)))).code).toBe('CONN_HOST_KEY_REJECTED')
+    expect(h.ask).toHaveBeenCalledTimes(1)
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    expect((await errorOf(h.pool.session(LOGIN, opts(true)))).code).toBe('CONN_HOST_KEY_REJECTED')
+    expect(h.ask).toHaveBeenCalledTimes(2)
+    h.pool.disconnect('c1')
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.ask).toHaveBeenCalledTimes(3)
+    // unlock 也清除
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.ask).toHaveBeenCalledTimes(3)
+    await h.pool.unlock('c1')
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.ask).toHaveBeenCalledTimes(4)
+  })
+
+  it('R13：接受主机密钥后不再视为未信任', async () => {
+    let accept = false
+    const h = setup({ records: [record({ hostKey: null })], ask: async () => accept })
+    await errorOf(h.pool.session(LOGIN, opts(true)))
+    accept = true
+    await expect(h.pool.session(LOGIN, opts(true))).resolves.toBeDefined()
+    h.pool.invalidate(LOGIN, await h.pool.session(LOGIN, opts(false)))
+    await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
+  })
+
   it('服务器没有可用的认证方式 → 不写锁定，状态 idle，下次照常尝试', async () => {
     const h = setup()
     h.authResult.value = new AppError({
@@ -446,7 +516,7 @@ describe('ConnectionPool: 认证锁定', () => {
     expect(h.openIdentity).toHaveBeenCalledTimes(1)
   })
 
-  it('排队中的身份打开被取消：不影响前一个，之后的打开仍按顺序进行', async () => {
+  it('排队中的身份请求被取消：不影响前一个，之后的请求加入保留下来的打开过程，仍按顺序进行', async () => {
     const h = setup()
     const gate = deferred<void>()
     let running = 0
@@ -604,22 +674,97 @@ describe('ConnectionPool: 身份会话', () => {
     expect(h.openIdentity).toHaveBeenCalledTimes(2)
   })
 
-  it('打开中唯一的请求被取消 → 中止打开过程，不在同一请求内重开', async () => {
+  it('R11：打开中唯一的请求被取消 → 打开过程继续，成功的会话留在池中，之后不重交密码', async () => {
     const h = setup()
+    const gate = deferred<void>()
     let seen: AbortSignal | undefined
-    h.identityPlan = (d) =>
-      new Promise((_, reject) => {
-        seen = d.signal
-        d.signal?.addEventListener('abort', () => reject(new AppError({ code: 'FS_CANCELLED' })))
-      })
+    h.identityPlan = async (d) => {
+      seen = d.signal
+      await gate.promise
+      return { channel: new FakeChannel(), firstData: Buffer.alloc(0), mode: d.mode }
+    }
     const ac = new AbortController()
     const p = h.pool.session(APP1, opts(true, ac.signal))
     await flush()
     ac.abort()
     expect((await errorOf(p)).code).toBe('FS_CANCELLED')
-    expect(seen?.aborted).toBe(true)
+    expect(seen?.aborted).toBe(false)
+    gate.resolve()
     await flush()
+    await expect(h.pool.session(APP1, opts(false))).resolves.toBeDefined()
     expect(h.openIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it('R11：唯一的请求取消后打开过程以 sudo 认证失败结束 → 锁定，之后不再执行 sudo', async () => {
+    const h = setup()
+    const gate = deferred<void>()
+    h.identityPlan = async () => {
+      await gate.promise
+      throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+    }
+    const ac = new AbortController()
+    const p = h.pool.session(APP1, opts(true, ac.signal))
+    await flush()
+    ac.abort()
+    expect((await errorOf(p)).code).toBe('FS_CANCELLED')
+    gate.resolve()
+    await flush()
+    expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'sudo-auth-failed')
+    expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it('R11：已交出 sudo 密码后 SSH 断线 → 锁定（sudo-auth-failed），后台与用户请求都不再执行 sudo', async () => {
+    const h = setup()
+    // 与 sudo-switch 一致：交出密码之后被中止 → CONN_SUDO_AUTH_FAILED
+    h.identityPlan = (d) =>
+      new Promise((_, reject) => {
+        d.signal?.addEventListener('abort', () =>
+          reject(new AppError({ code: 'CONN_SUDO_AUTH_FAILED', detail: 'aborted after password' }))
+        )
+      })
+    const p = h.pool.session(APP1, opts())
+    await flush()
+    h.sessions[0]!.fireClose(new AppError({ code: 'FS_UNAVAILABLE', detail: 'keepalive' }))
+    expect((await errorOf(p)).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'sudo-auth-failed')
+    expect((await errorOf(h.pool.session(APP1, opts(false)))).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect((await errorOf(h.pool.session(ROOT, opts(true)))).code).toBe('CONN_SUDO_AUTH_FAILED')
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it('连接被丢弃时正在打开的身份请求 → FS_UNAVAILABLE（不是 FS_CANCELLED），不记住失败', async () => {
+    const h = setup()
+    h.identityPlan = (d) =>
+      new Promise((_, reject) => {
+        d.signal?.addEventListener('abort', () => reject(new AppError({ code: 'FS_CANCELLED' })))
+      })
+    const p = h.pool.session(APP1, opts())
+    await flush()
+    h.sessions[0]!.fireClose(new AppError({ code: 'FS_UNAVAILABLE' }))
+    expect((await errorOf(p)).code).toBe('FS_UNAVAILABLE')
+    // 排队中（尚未开始）的也一样
+    h.identityPlan = (d) =>
+      new Promise((_, reject) => {
+        d.signal?.addEventListener('abort', () => reject(new AppError({ code: 'FS_CANCELLED' })))
+      })
+    const a = h.pool.session(APP1, opts())
+    const b = h.pool.session(ROOT, opts())
+    await flush()
+    h.pool.disconnect('c1')
+    expect((await errorOf(a)).code).toBe('FS_UNAVAILABLE')
+    expect((await errorOf(b)).code).toBe('FS_UNAVAILABLE')
+    expect(h.repo.setAuthState).not.toHaveBeenCalled()
+  })
+
+  it('探测输出没有 PS: 行（通道提前关闭）→ CONN_SUDO_FAILED，不缓存探测结果', async () => {
+    const h = setup()
+    h.probeOut.value = 'SFTP:/usr/lib/openssh/sftp-server\n'
+    expect((await errorOf(h.pool.session(APP1, opts()))).code).toBe('CONN_SUDO_FAILED')
+    expect(h.openIdentity).not.toHaveBeenCalled()
+    h.sessions[0]!.probeOut = PROBE_OK
+    await expect(h.pool.session(APP1, opts(true))).resolves.toBeDefined()
+    expect(h.sessions[0]!.execs).toHaveLength(2)
   })
 
   it('打开中还有其他等待者时一个请求被取消 → 不中止，其他等待者得到会话', async () => {
@@ -674,6 +819,62 @@ describe('ConnectionPool: 断开', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(h.sessions[0]!.close).toHaveBeenCalled()
     expect(h.channels[0]!.closed).toBe(true)
+  })
+
+  it('确认框期间唯一的请求取消、随后接受 → 连接建立后仍按空闲断开', async () => {
+    vi.useFakeTimers()
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    const ac = new AbortController()
+    const p = h.pool.session(LOGIN, opts(true, ac.signal))
+    await flush()
+    ac.abort()
+    expect((await errorOf(p)).code).toBe('FS_CANCELLED')
+    answer.resolve(true)
+    await flush()
+    expect(h.pool.state('c1')).toBe('online')
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(h.sessions[0]!.close).toHaveBeenCalled()
+    expect(h.pool.state('c1')).toBe('idle')
+  })
+
+  it('R10 的记忆在 SSH 断线时清除', async () => {
+    const h = setup()
+    h.identityPlan = async () => {
+      throw new AppError({ code: 'CONN_SUDO_DENIED' })
+    }
+    await errorOf(h.pool.session(APP1, opts(false)))
+    await errorOf(h.pool.session(APP1, opts(false)))
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    h.sessions[0]!.fireClose(new AppError({ code: 'FS_UNAVAILABLE' }))
+    await errorOf(h.pool.session(APP1, opts(false)))
+    expect(h.openIdentity).toHaveBeenCalledTimes(2)
+  })
+
+  it('R10 的记忆在空闲断开时清除', async () => {
+    vi.useFakeTimers()
+    const h = setup({ settings: { idleDisconnectMin: 1 } })
+    h.identityPlan = async () => {
+      throw new AppError({ code: 'CONN_SUDO_DENIED' })
+    }
+    await errorOf(h.pool.session(APP1, opts(false)))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(h.sessions[0]!.close).toHaveBeenCalled()
+    await errorOf(h.pool.session(APP1, opts(false)))
+    expect(h.openIdentity).toHaveBeenCalledTimes(2)
+  })
+
+  it('R10 的记忆在 unlock() 时清除', async () => {
+    const h = setup()
+    h.identityPlan = async () => {
+      throw new AppError({ code: 'CONN_SUDO_FAILED' })
+    }
+    await errorOf(h.pool.session(APP1, opts(false)))
+    await errorOf(h.pool.session(APP1, opts(false)))
+    expect(h.openIdentity).toHaveBeenCalledTimes(1)
+    await h.pool.unlock('c1')
+    await errorOf(h.pool.session(APP1, opts(false)))
+    expect(h.openIdentity).toHaveBeenCalledTimes(2)
   })
 
   it('SSH 连接关闭（FS_UNAVAILABLE）→ 状态 offline，下一次 session() 重新连接', async () => {
@@ -773,6 +974,23 @@ describe('ConnectionPool: test()', () => {
     expect(r.steps.every((s) => s.ok)).toBe(true)
     expect(h.repo.records.get('c1')!.authState).toBe('ok')
     await expect(h.pool.session(LOGIN, opts())).resolves.toBeDefined()
+  })
+
+  it('R13：登录认证成功即解除内存中的登录锁定（即使之后 sudo 失败）', async () => {
+    const h = setup()
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    await errorOf(h.pool.session(LOGIN, opts()))
+    expect(h.pool.state('c1')).toBe('auth-failed')
+    h.authResult.value = null
+    h.identityPlan = async () => {
+      throw new AppError({ code: 'CONN_SUDO_AUTH_FAILED' })
+    }
+    const r = await h.pool.test('c1')
+    expect(r.steps.at(-1)).toMatchObject({ step: 'identity', identity: 'app1', ok: false })
+    expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
+    expect(h.pool.state('c1')).toBe('idle')
+    await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
+    expect((await errorOf(h.pool.session(APP1, opts(true)))).code).toBe('CONN_SUDO_AUTH_FAILED')
   })
 
   it('认证失败 → 步骤 auth ok:false，写 auth-failed', async () => {

@@ -25,12 +25,15 @@ export function probeCommand(): string {
 export interface ProbeResult {
   sftpServerPath: string | null
   processListVisible: boolean
+  /** 输出中有 PS: 行（命令执行到了最后）；没有 = 通道提前关闭或输出被截断，结果不可信 */
+  complete: boolean
 }
 
 /** 解析探测输出；登录脚本的杂音忽略，不合规的路径（会进入远端命令行）不采用 */
 export function parseProbeOutput(stdout: string): ProbeResult {
   let sftpServerPath: string | null = null
   let processListVisible = false
+  let complete = false
   for (const raw of stdout.split('\n')) {
     const line = raw.replace(/\r$/, '')
     if (sftpServerPath === null && line.startsWith('SFTP:')) {
@@ -38,7 +41,10 @@ export function parseProbeOutput(stdout: string): ProbeResult {
       if (SFTP_SERVER_PATH_PATTERN.test(path)) sftpServerPath = path
     } else if (line === 'PS:ok') {
       processListVisible = true
+      complete = true
+    } else if (line === 'PS:hidden') {
+      complete = true
     }
   }
-  return { sftpServerPath, processListVisible }
+  return { sftpServerPath, processListVisible, complete }
 }

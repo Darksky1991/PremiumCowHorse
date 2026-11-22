@@ -397,7 +397,17 @@ export function openIdentityChannel(deps: SwitchDeps): Promise<SwitchResult> {
       cmd.write(startCmd)
     }
 
-    const onAbort = (): void => fail(new AppError({ code: 'FS_CANCELLED' }))
+    // 交出密码之后、判定成功之前被中止（SSH 断线时连接池先中止再关闭通道）：与通道关闭 / 超时同样
+    // 无法排除密码错误 → CONN_SUDO_AUTH_FAILED（锁定，不重交）；其余情形为 FS_CANCELLED（R11）
+    const onAbort = (): void =>
+      stage === 'auth' && passwordWritten && !authHint
+        ? fail(
+            new AppError({
+              code: 'CONN_SUDO_AUTH_FAILED',
+              detail: detail('aborted after password (stage=auth)')
+            })
+          )
+        : fail(new AppError({ code: 'FS_CANCELLED' }))
     signal?.addEventListener('abort', onAbort, { once: true })
     const timer = setTimeout(() => undetermined('timeout'), deps.timeoutMs)
 
