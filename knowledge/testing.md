@@ -148,6 +148,7 @@
 - 预防：做系统级截图前先用上面的最小命令探测。
 - 补充（2026-11-21，M2 反馈第 6–8 项）：同一会话中先后出现两种表现——先报 `The handle is invalid`，几分钟后 `CopyFromScreen` 不再报错、但保存的是**全白图像**（窗口区域没有任何内容）。不报错不等于截到了：截图后必须打开看一眼；全白时同样按上面退回 `page.screenshot`，并在报告中写明没有系统级截图。
 - 再次出现（2026-11-21 / 2026-11-22，M3 Task 11 与 Task 13）：两次都报 `The handle is invalid`，系统级截图退回 Playwright 的 `page.screenshot`。此时 COM（Office 自动化、`Shell.Application`）与 UI Automation 的 `Invoke` 仍可用，资源管理器 / Office 的窗口也能正常创建与关闭（Task 13 的实机端到端在这种状态下完成），只是看不到真实像素。**注意**：`CopyFromScreen` 的异常在 `-Command` 中是非终止错误，PowerShell 继续执行 `$bmp.Save` 并以退出码 0 结束，`execFileSync` 不抛错——`scripts/os-screenshot.mjs` 与同类脚本会照常打印 `saved`，留下一张全空的 PNG（本次 1920x1128 时约 8.5KB）。判断成败要看 stderr 里有没有该异常、再打开图片确认，不能只看退出码。
+- 再次出现（2026-11-23，M4 Task 14a）：后台代理执行的实机验证中 `CopyFromScreen` 报 `The handle is invalid` 并得到全白图；系统级整窗截屏记为未验证，页面截图（`page.screenshot`）正常。
 
 ### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
 

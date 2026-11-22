@@ -36,6 +36,15 @@
 系统级截屏（含窗口按钮、边框等系统绘制部分，需先 `pnpm build`）：
 `node scripts/os-screenshot.mjs <输出.png> [light|dark] [ja|zh-CN|en]`
 
+远程目录（SFTP，M4）的测试：
+
+- **e2e 不需要真实服务器**：`e2e/connections.spec.ts`、`e2e/remote.spec.ts` 在测试进程内启动假 SFTP 服务器（真实的 `ssh2` Server，只监听 `127.0.0.1`，临时目录映射为服务器的 `/`；`e2e/sftp-support.ts` → `apps/desktop/src/main/modules/connection/testing/fake-sftp-server.ts`），随 `pnpm test:e2e` 运行。假服务器没有 `exec`，sudo 身份切换只在单元测试（脚本化的假通道）与下面的 WSL 实机测试中覆盖。
+- **WSL 实机测试（默认跳过）**：经真实的连接池连接本机 WSL 的 4 个实例（Ubuntu / Debian / AlmaLinux / openSUSE，sshd 端口 2201–2204），覆盖 sudo 场景矩阵并数服务器日志中的失败次数（约 2.5 分钟）：
+  ```bash
+  PCH_WSL_SFTP=1 pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test.ts
+  ```
+  PowerShell：`$env:PCH_WSL_SFTP=1; pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test.ts`。前提：各实例已按 [scripts/wsl-sftp/README.md](./scripts/wsl-sftp/README.md) 执行过 `setup.sh` 并安装最新的 `pch-scenario`，且 sshd 正在监听（`powershell -File scripts/wsl-sftp/start-sshd.ps1`）。测试会切换 sudoers 场景，结束时恢复为 `pch-scenario all quiet`。
+
 ## 目录
 
 ```
@@ -50,7 +59,7 @@ packages/ui             shadcn/ui（Base UI）组件与主题 CSS
 packages/plugin-sdk     预览插件契约
 packages/text-engine    文本预览的纯逻辑（行索引、按行读取等；不依赖任何包）
 e2e                     Playwright Electron 测试
-scripts                 开发辅助脚本（系统级截屏）
+scripts                 开发辅助脚本（系统级截屏；wsl-sftp/：M4 的 WSL SFTP / sudo 试验环境）
 doc / devDoc / knowledge  设计文档 / 开发记录 / 踩坑与知识
 ```
 

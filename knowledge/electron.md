@@ -128,3 +128,11 @@
 - 原因：新建视图并 `loadURL`（以及复用视图加载新地址）时，Chromium 在加载开始后约 50 ms 把焦点给视图（应用 `blur`、视图 `focus`，早于 `dom-ready`）。在视图 `focus` 事件的处理函数中**同步**调用应用 `webContents.focus()` 不生效（焦点仍在视图，之后也没有新的 focus / blur 事件）。
 - 解决：`attach` 时视图没有焦点（用户在应用界面中操作）就记一个标记；视图之后自己拿到的焦点在 `setImmediate` 之后交回应用渲染端（推迟后生效，`dom-ready` / `did-finish-load` 不会再拿走）；用户在视图内按下鼠标（`before-mouse-event` 的 `mouseDown`）时清除标记，焦点已被交回时主动 `webContents.focus()` 给视图（焦点事件与鼠标事件的先后不确定）。代码：`modules/web/web-view-manager.ts`（`guardFocus`）、`web-session.ts`。注意：页面中点链接 / 按 Alt+←→ 时渲染端先 hide / release（焦点已交回应用）再 attach，只按「attach 时视图有没有焦点」判断会把这种导航也当成应用中的操作；因此 hide / release 交回焦点时另记「交接」，同一标签紧接着的 attach 把焦点给视图，应用中的按键 / 鼠标按下作废交接（M2 试用反馈第 1 项）。
 - 预防：在焦点事件里改焦点要推迟到事件之后；e2e 中模拟「用户点击视图」要用 `sendInputEvent` 的鼠标事件（会触发 `before-mouse-event`），只调 `webContents.focus()` 会被上述规则交回应用。
+
+### `safeStorage.encryptString`：同一明文每次加密得到不同的密文；同步 API 在 Electron 45 已标为 deprecated
+
+- 日期：2026-11-23
+- 症状 / 事实（M4 整体审查 C1 / R25 的判定依据，本次实测）：Electron 45.3.3、Windows 11 上对同一字符串调用两次 `safeStorage.encryptString`，base64 长度相同（56）但内容不同，两者都能 `decryptString` 回原文。运行时打印 `(electron) 'safeStorage.isEncryptionAvailable' is deprecated and will be removed. Please use 'safeStorage.isAsyncEncryptionAvailable' instead.`（`decryptString` 同样）；`electron.d.ts` 中 `encryptString` / `decryptString` / `isEncryptionAvailable` 均带 `@deprecated`，推荐 `encryptStringAsync` / `decryptStringAsync` / `isAsyncEncryptionAvailable`。
+- 原因：Windows 下 safeStorage 用 DPAPI 并带随机成分（推测为 Chromium OSCrypt 的随机 IV），密文不确定。
+- 解决：连接编辑「凭据是否有变化」按密文比较（`modules/connection/credentials.ts`）：用户提交了密码 = 写入新的密文 = 视为变化（即使重输的是同一个密码，也解除锁定——这是用户的明确动作）；没提交则沿用原密文 = 未变。`secret-box.ts` 仍用同步 API（可用，只有警告）。
+- 预防：不要用「重新加密后比较密文」判断两个明文是否相同；非 Windows 平台（密文若是确定的）上「重输同一密码」不会被判为变化，移植时要重新核对。迁到 async API 时 `SecretBox` 的接口要改为异步（以后处理，见 `devDoc/2026-11-22-40-m4.md` 推迟项）。

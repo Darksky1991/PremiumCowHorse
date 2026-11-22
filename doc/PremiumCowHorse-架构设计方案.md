@@ -1,6 +1,8 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.26　｜　日期：2026-11-22　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.27　｜　日期：2026-11-23　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.27 变更（M4 远程目录（SFTP 只读）完成；设计 `devDoc/2026-11-22-37-m4-sftp-design.md`，计划 `devDoc/2026-11-22-38-m4-sftp-plan.md`，台账 `devDoc/2026-11-22-39-m4-ledger.md`，总结（控制者裁定 D1–D10 / R1–R25、推迟项、未验证项）`devDoc/2026-11-22-40-m4.md`）：**M4 改为「SFTP 只读」**——需求方 2026-11-22 放弃 SMB（未挂载 SMB 的 SmbProvider 不再做），FTP / FTPS、Office 远程编辑会话（10.5 节）、远程文件下载缓存（7.4 节）移到路线图「后续」。新增 7.6 节「远程目录（SFTP，M4）」：URI `sftp://[<身份>@]<connectionId>/<路径>`、第三种位置 `remote`（并发与可达性单位 = 一条 SSH 连接 `sftp://<connectionId>`）、主进程 `modules/connection`（连接池、保活、空闲断开、主机密钥确认、认证锁定 `auth_state` 跨重启、`sudo su - <身份>` 后在命令通道上走 `sftp-server -R`、进程表轮询判定 sudo 成功）、`vfs/providers/sftp.provider.ts`（只读：`stat` / `list`）、访问范围检查 `vfs/remote-access.ts`（K17 的 sftp 部分）、扫描进程的远程方针（只在展开 / 选中 / 标签 / F5 与「建立索引」时读取，扫描进程 ↔ 主进程消息 `remoteOp` / `remoteCancel` / `remoteResult`）、锁定的解除语义、超时语义、断线显示、残余风险与限制；迁移 0007（`connections`，取代 13 节的草案）；`index.db` 的 `entries` 加列 `owner`，`CACHE_VERSION` 5 → 6（**升级后首次启动重建整个 `index.db`，本地目录的缓存也全部重建**）；IPC `connection.*`（list / save / delete / test / reconnect / trustHostKey（带用户看到的密钥）/ answerHostKey / pendingHostKeyPrompts / home）与事件 `connection.changed` / `status` / `hostKeyPrompt` / `hostKeyPromptClosed`；错误码 `CONN_*` 11 个（含 `CONN_KEY_INVALID`）；设置 `remote.keepaliveSec` / `remote.idleDisconnectMin` / `vfs.timeoutSec.remote` / `cache.backgroundGapMs.remote` / `cache.remoteIndexIntervalMin`（`remote.cacheSizeMB` 暂无用途）；新依赖 `ssh2` 1.17.0（精确版本，不放行安装脚本）。涉及 2.3、3.2、5.2、6.3、6.6、7.1、7.2、7.4、7.6、8.3、10.5、13、14.1、18、19 节
+>
 > v1.26 变更（M3 完成并合并到 `main`，标签 `m3`）：路线图 M3 标为合并完成；合并前的进度、待需求方确认的决定（D1–D4、R 系列）、手动验证清单（V1–V11）与已知问题（K1–K15）见 `devDoc/2026-11-22-36-m3-summary.md`。涉及 18 节
 >
 > v1.25 变更（M3 试用反馈第 2 轮，记录 `devDoc/2026-11-22-35-m3-feedback-2.md`）：**自动快照尽量与现场实时同步**——自动保存兜底间隔 `300_000` → `60_000` ms，另在现场每次变化后合并 `1000` ms 立即写入（`DesktopService.liveChanged`，组合根接到 `DesktopMonitor.onChange`），消失项目到期（`LiveState.nextExpiry`）时再写一次；窗口枚举 `5000` → `2000` ms、防抖 `2000` → `1000` ms、完整读取兜底 `300_000` → `60_000` ms（VS Code 防抖保持 `10_000` ms）；**恢复后不再自动删除快照**，改为确认框（默认「保留」，「删除」→ 新通道 `desktop.clear`：删除全部快照并立即重新写本次登录的 `auto`），`DesktopRestoreOutcome.cleared` 删除（`desktop.restore` 返回 `DesktopRestoreResult`）；**Explorer 每个标签一张卡片、分别勾选**，同一窗口的多个标签用虚线框围起（「同一窗口 · N 个标签」），`desktop.save` / `desktop.exit` 的 `keys` 改为 `picks: { key, tabs? }[]`、`desktop.restore` 的 `itemIds` 改为 `picks: { id, tabs? }[]`（共享 `pickTabs`）；卡片固定高度（两行各自单行省略）；项目数统一为「Explorer 每个标签算一项」（`desktopEntryCount`，快照列表的 `itemCount` 同此）。涉及 6.2、11.4 节
@@ -107,9 +109,9 @@ v1.2 变更说明：Drizzle 稳定版（0.45）尚无 `node:sqlite` 驱动（仅
 | 本地目录/文件 | `file:///C:/work/案件A/設計書.xlsx` | LocalProvider |
 | 已挂载 SMB（盘符） | `file:///Z:/share/doc` | LocalProvider |
 | 已认证的 UNC 路径 | `file://fileserver/share/doc` | LocalProvider |
-| 未挂载 SMB（需凭据） | `smb://{connectionId}/share/doc` | SmbProvider |
-| FTP / FTPS | `ftp://{connectionId}/var/log/app.log` | FtpProvider |
-| SFTP | `sftp://{connectionId}/home/ope/batch` | SftpProvider |
+| 未挂载 SMB（需凭据） | `smb://{connectionId}/share/doc` | SmbProvider（**放弃**：需求方 2026-11-22） |
+| FTP / FTPS | `ftp://{connectionId}/var/log/app.log` | FtpProvider（路线图「后续」） |
+| SFTP | `sftp://{connectionId}/home/ope/batch`；切换身份 `sftp://app1@{connectionId}/opt/app1/log` | SftpProvider（M4 已实现，只读，7.6 节） |
 | 应用内部页面 | `internal://settings` | （非 VFS，由内部插件处理） |
 
 URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不会出现在 URI 和条目数据中；服务器地址变更时只需改连接配置，所有引用自动生效。
@@ -154,8 +156,8 @@ URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不�
 | kysely | 类型安全的 SQL 查询构建器，驱动 `node:sqlite`；迁移 | 单连接互斥锁保证事务安全；v1.1 的 drizzle-orm 见 2.2 节 |
 | @electron-toolkit/utils | 开发环境判断、DevTools 快捷键、AppUserModelId | electron-vite 模板默认 |
 | zod | IPC 输入、设置项、连接配置的校验（三端共用） | 事实标准；同时服务 react-hook-form |
-| basic-ftp | FTP / FTPS 客户端 | 纯 JS、维护活跃、支持断点续传（startAt） |
-| ssh2-sftp-client | SFTP 客户端 | 基于 ssh2，API 友好 |
+| basic-ftp | FTP / FTPS 客户端（FTP 在路线图「后续」，尚未引入） | 纯 JS、维护活跃、支持断点续传（startAt） |
+| ssh2 1.17.0（M4 已引入，精确版本；`@types/ssh2` 1.15.6） | SSH / SFTP 客户端：保活、异步 `hostVerifier`、自定义 `authHandler`、同一连接上多个通道；在 `sudo su -` 之后的命令通道上走 SFTP 借用其内部类 `lib/protocol/SFTP.js`（7.6 节） | 纯 JS；可选的原生加速 `cpu-features` 不需要，`allowBuilds` 中 `ssh2` / `cpu-features` 均为 false（不放行安装脚本）。原计划的 `ssh2-sftp-client` 是其 Promise 封装，不能在命令通道上走 SFTP，未采用（设计 4.3 节） |
 | （不再使用）Node 内置 `fs.watch` | 目录变更监听（M1-2；2026-11-19 起改为扫描 + 缓存，8.3 节） | 监听句柄阻止上级目录改名 / 移动，已删除。v1.4 起不使用 chokidar：只需非递归监听已展开的目录，Windows 上 `fs.watch` 即系统原生的目录监听；chokidar 在网络路径上同样依赖 `fs.watch`（官方建议改用轮询），不能解决网络路径的问题 |
 | electron-log | 日志落盘与轮转 | Electron 场景最常用 |
 | koffi 3.3.8（已引入） | FFI 调用 Windows API：目录枚举（`CreateFileW` 只读打开 + `GetFileInformationByHandleEx`，一次取得名称、大小、时间、隐藏属性）、`GetDriveTypeW`（区分映射的网络盘） | Node-API 预编译二进制在可选依赖 `@koromix/koffi-win32-x64` 中，安装脚本只检查二进制能否加载、不联网下载；无需针对 Electron ABI 重新编译；打包时 electron-builder 自动把 `koffi.node` 解包到 `app.asar.unpacked` |
@@ -312,11 +314,13 @@ apps/desktop/src/
 │   │   ├── scanner-process.ts        # utilityProcess.fork 扫描进程（`?modulePath` 引用入口，UV_THREADPOOL_SIZE=16）
 │   │   ├── providers/
 │   │   │   ├── local.provider.ts
-│   │   │   ├── smb.provider.ts
-│   │   │   ├── ftp.provider.ts
-│   │   │   └── sftp.provider.ts
-│   │   ├── connection-pool.ts        # 远程连接复用、空闲回收、重连
-│   │   ├── remote-cache.ts           # 远程文件本地缓存（LRU）
+│   │   │   ├── smb.provider.ts       # 放弃（需求方 2026-11-22）
+│   │   │   ├── ftp.provider.ts       # 路线图「后续」
+│   │   │   └── sftp.provider.ts      # M4 已实现：只读 stat / list（7.6 节）
+│   │   ├── sftp-errors.ts            # M4：SFTP 状态码 / ssh2 错误 → AppError
+│   │   ├── remote-access.ts          # M4：sftp: URI 必须在某个工作区的远程 folder 条目之下（K17 的 sftp 部分）
+│   │   ├── remote-op.ts              # M4：扫描进程的 remoteOp 经 SftpProvider 执行（含访问范围检查）
+│   │   ├── remote-cache.ts           # 远程文件本地缓存（LRU；路线图「后续」，7.4 节）
 │   │   └── pcfs-protocol.ts          # pcfs:// 协议处理
 │   ├── modules/                      # 按业务领域划分，每个模块结构一致
 │   │   ├── workspace/
@@ -324,7 +328,7 @@ apps/desktop/src/
 │   │   │   ├── entry.repo.ts         # 条目的数据存取
 │   │   │   ├── workspace.service.ts  # 业务规则
 │   │   │   └── workspace.ipc.ts      # IPC handler：参数已校验，只转发给 service
-│   │   ├── connection/
+│   │   ├── connection/               # M4 已实现（7.6 节）：connection.repo / service / ipc、connection-pool（连接池）、identity-sessions（切换身份的会话与记忆）、sudo-switch（sudo 状态机与轮询命令）、server-probe（sftp-server 位置与进程表可见性）、ssh-session（ssh2 Client 封装、一次只交一次密码）、sftp-bridge（借用 ssh2 内部 SFTP 类）、sftp-session、host-key-gate（主机密钥确认）、credentials（凭据比较）、offline-refresh（断线时刷新条目根）、secret-box（safeStorage）、testing/（假 SFTP 服务器、测试密钥）
 │   │   ├── layout/                   # 窗口与标签（持有布局状态；原 M3，已移到路线图「后续」）
 │   │   ├── session/                  # 会话快照保存与恢复（原 M3，已移到「后续」，11.3 节）
 │   │   ├── desktop/                  # 桌面记录（M3 已实现，11.4 节）：window-list（koffi 枚举）、logon（登录时刻）、collectors/（explorer・office・vscode・eclipse 与固定 PowerShell 脚本 scripts.ts）、monitor（扫描与采集编排）、live-state（当前现场与延迟移除）、restore-candidate、snapshot.repo、restore（白名单与启动）、exit-guard（退出询问状态机）、desktop.service、desktop.ipc、fake（仅 e2e）
@@ -347,6 +351,8 @@ apps/desktop/src/
 │   ├── main.ts                       # 进程入口：process.parentPort 收发消息；createScannerHost 组装 Enumerator + Cache + Scheduler
 │   ├── enum/
 │   │   ├── types.ts                  # RawEntry、Enumerator 接口
+│   │   ├── composite-enumerator.ts   # M4：按 scheme 分派（file: → 本地枚举器，sftp: → 远程枚举器）
+│   │   ├── remote-enumerator.ts      # M4：经 remoteOp 请主进程代读远程目录
 │   │   ├── win32-enumerator.ts       # koffi：只读句柄的目录枚举、GetFileAttributesExW 取目录修改时间、Win32 错误码分类
 │   │   ├── fs-enumerator.ts          # 回退：fs-list（隐藏按 . 开头）
 │   │   └── create-enumerator.ts      # koffi 可用则用 win32 版，否则回退并记日志
@@ -358,11 +364,13 @@ apps/desktop/src/
 
 `scanner/` 的进程结构见 `devDoc/2026-11-19-01-refresh-cache-design.md` 4.1 节。scanner 与 vfs 的依赖由 lint 约束：scanner 只允许 import `shared` 与 vfs 中登记为 `vfs-portable` 的文件（`local-path`、`errors`、`location`、`path-name`、`fs-list`），这些文件与 scanner 一起禁止 import `electron`；反方向 `main-vfs` 只能以 `../../scanner/main?modulePath` 引用扫描进程入口（electron-vite 把入口单独打包，得到的只是文件路径，主进程不加载扫描进程的代码）。
 
-主进程与扫描进程的消息定义在 `packages/shared/src/scanner/protocol.ts`（zod，两端收到后都校验，无效消息记日志并忽略）：主 → 扫描 `init { cacheFile }`（fork 后第一条）、`configure { config: ScannerConfig }`、`list { id, uri }`、`interest { ownerId, focus, visible, offscreen }`、`windowFocus`、`releaseOwner`、`refresh { uris }`、`cacheInfo { id }`、`clearCache { id }`、`search { id, scopes, terms, kind, showHidden, limit }`、`cancel { id }`（保留；搜索是同步 SQL 无法中途打断，主进程客户端以「丢弃旧结果」实现取消，不发送本消息）、`shutdown`；扫描 → 主 `result { id, ok, value | error }`、`changed { uri }`、`reachability { share, state, since }`、`log { level, message }`（扫描进程的调度器与枚举器日志经此写入 `main.log`，前缀 `[scanner]`）、`ready`。`ScannerConfig = { roots, allRootUris, indexTargets, settings }`；`Interest`、`ReachabilityEvent` 在 `shared/scanner/types.ts`。
+主进程与扫描进程的消息定义在 `packages/shared/src/scanner/protocol.ts`（zod，两端收到后都校验，无效消息记日志并忽略）：主 → 扫描 `init { cacheFile }`（fork 后第一条）、`configure { config: ScannerConfig }`、`list { id, uri }`、`interest { ownerId, focus, visible, offscreen }`、`windowFocus`、`releaseOwner`、`refresh { uris }`、`cacheInfo { id }`、`clearCache { id }`、`search { id, scopes, terms, kind, showHidden, limit }`、`cancel { id }`（保留；搜索是同步 SQL 无法中途打断，主进程客户端以「丢弃旧结果」实现取消，不发送本消息）、`shutdown`；扫描 → 主 `result { id, ok, value | error }`、`changed { uri }`、`reachability { share, state, since }`、`log { level, message }`（扫描进程的调度器与枚举器日志经此写入 `main.log`，前缀 `[scanner]`）、`ready`。远程目录（M4，D1）方向相反：扫描 → 主 `remoteOp { id, op: 'stat' | 'list', uri, userAction }`（id 由扫描进程分配，与上面的请求 id 是独立的编号空间）、`remoteCancel { id }`（扫描进程已不需要结果：中止 / 超时），主 → 扫描 `remoteResult { id, ok, value | error }`（value 由扫描进程按 op 校验：`RemoteStatValue` / `RemoteListValue`）。`ScannerConfig = { roots, allRootUris, indexTargets, settings }`；`Interest`、`ReachabilityEvent` 在 `shared/scanner/types.ts`。
 
 扫描进程的生命周期：组合根创建 `ScannerClient` 并 `start()`（`utilityProcess.fork`，`serviceName: 'pch-scanner'`，`stdio: 'pipe'`，stdout / stderr 转写到日志；环境变量 `UV_THREADPOOL_SIZE=16`，扫描进程把同一值作为调度器的 `threadPoolSize`）；退出时 `dispose()` 发送 `shutdown`（扫描进程释放调度器、关闭 `index.db` 后退出；任一步抛错时仍执行后面的步骤并 `exit(0)`），2 秒内不退出则 `kill()`。意外退出：进行中的请求以 `INDEX_UNAVAILABLE` 拒绝并立即重启，重启后重发 `init`、最后一次 `configure` 与各窗口最后的焦点 / 关注点；5 分钟内意外退出 3 次则不再重启，`available` 变为 `false`（降级模式：`vfs.list` 由 `VfsService` 直接枚举、不缓存）。进程退出（将重启）或进入降级模式时，客户端对它记录的每个断开的共享（随 `reachability` 消息维护）发出 `online` 并清空——断开由该进程的探测判定，新进程若仍连不上会重新发出 `offline`，降级模式直接枚举；`ScannerClient.offlineShares()` 返回当前集合（IPC `vfs.offlineShares`）。请求另有兜底超时：60 秒没有结果即以 `FS_TIMEOUT` 拒绝（防扫描进程的事件循环卡住、结果丢失；不用 `INDEX_UNAVAILABLE`，因为扫描进程可能仍在同一共享上枚举，`vfs.list` 回退直接枚举会并发第二次访问）；结果消息校验失败但能读出 `id` 时同样以 `INDEX_UNAVAILABLE` 拒绝对应的请求。`index.db` 打不开（例如 `file is not a database`）时删除 `index.db`、`-wal`、`-shm` 重建一次，仍失败则记错误日志、所有请求以 `INDEX_UNAVAILABLE` 回应（进程不退出，避免反复重启）。
 
-已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `cache.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；队列查询 `nextUnlisted` / `oldestChecked(scopes: Scope[], limit, exclude?)`：`Scope = {uri, maxDepth}`；「从未尝试读取」= `checked_at IS NULL`（`nextUnlisted`，深度浅的优先、同深度按 uri），尝试过的（含读取失败的：`applyListing` / `markChecked` / `setState` 都写 `checked_at`）进入 `oldestChecked`（按 `checked_at` 升序）；范围走 `subtreeCondition`，层数用生成列 `dirs.depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；多范围合并去重、limit 为合并后总数；范围小（< 2000 个目录）走主键范围 + 排序，范围大用 `INDEXED BY` 按部分索引 `dirs_unlisted (depth, uri)` / `dirs_checked (checked_at, uri, depth)` 的顺序扫描 + LIMIT（30 万行合成数据、整卷且层数不限：内存库 / 文件库约 0.2–0.3ms；层数上限很小（`maxDepth` 1）时 `oldestChecked` 要沿 `checked_at` 顺序扫很多行，内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊，见 8.3 节）；`CACHE_VERSION` = 5；热点 `hot(k)` 走覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`，不扫描整张表（30 万行合成数据、其中 30 个访问过：约 6.8ms → 0.04ms）；`removeMissing(uri)`：目录不存在时删除它与子树，并从父目录的缓存列表中删除该项（同名的是符号链接时保留），删除了该项时把父目录的 `dir_mtime` 置为 NULL（这是推断，父目录下一次确认必须完整读取），一个事务）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`，设计 8.2：输出定期确认的对象 `periodic: {uri, tier: 'focus'|'near'|'far', full}[]`（关注点 / 近 / 远，同一 URI 取更近的层，只有关注点 `full`；近层、远层各至多 `TIER_LIMIT` = 100 个：按目录树上离关注点的距离取，同等距离时热点优先、再按 URI，近层中视口内可见的已展开目录最优先）与后台队列的范围 `background: {indexTargets: Scope[], hot: string[], ranges: Scope[]}`；目录的策略取包含它的根中最高者，「消极」只有关注点一层；`RootConfig` / `CacheStrategy`（`CACHE_STRATEGIES`）在 `shared/scanner/types.ts`）；`scanner/schedule/background-queue.ts`（后台队列的候选 `BackgroundQueue`：按位置组分别从缓存批量取候选、在内存中逐个消费，见 8.3 节）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / 定期确认按层与位置的间隔 / 后台队列每个位置组同时 1 个、完成后休息 `backgroundGapMs`（用户正在操作时加倍），各窗口的范围分别计算后合并、全部失焦时定期确认暂停（后台队列照常）；缓存不设过期（没有「超过 1 小时强制完整读取」）；并发：每个位置组（本地卷 / 网络主机）「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）——`FS_UNAVAILABLE` 只来自确定的网络 / 设备类错误（win32 枚举器的 `UNAVAILABLE_ERRORS`：15、21、51、53、55、59、64、67、121、1167、1201、1222、1225、1231、1232、1236、1256、2250），因此枚举中途（已有批次）收到时同样判为断开；其他错误码为 `UNKNOWN`，只把该目录记为 `unreachable`（出错的目录在定期确认中按远层的间隔重试，在后台队列中以失败时刻为确认时刻排到后面）；`listNow` 在 2 秒内检查过（任何优先级）时直接返回 `fresh`、不再排 P0（确认时刻在「未来」即系统时钟回拨后，不算 fresh；P0 去重同理，差为负不算重复）；读取得到「不是目录」（`FS_NOT_A_DIRECTORY`，目录被同名文件替换）时删除该目录自身的子树缓存、该行保留为 `unreachable` / `FS_NOT_A_DIRECTORY`（带确认时刻），并对父目录排一次确认（P0，不与刚完成 / 正在执行的 P0 合并），由确认更正该项的类型，不从父目录的缓存列表中删除它；该目录已是此状态时再次出错不再强制父目录（父目录仍列为目录的情形，避免循环），按远层间隔重试（「不存在」才连同父目录列表中的该项一起删除）；读取得到「不存在」（`FS_NOT_FOUND`）时 `removeMissing`，并同样对父目录排一次确认（P0，`force`），由真实列表决定父目录的内容（上级目录改名期间读取、随即改回时，父目录的修改时间不变，只靠推断删除会永远缺少该项）；该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻，父目录的确认不再列出它时删除这一行），已是此状态时再次出错（父目录仍列出它）不再强制父目录、不再从父目录列表中删除，按远层间隔重试；父目录的确认再次列出一个 `not-found` 子目录时把它的 `checked_at` 置 NULL（状态保持 `not-found`），使它作为「从未尝试过」尽快被重读（上级目录改走又改回后即可恢复，防循环的判断看的是状态，不受影响）；根没有父目录，只删除缓存并通知根；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`scanner/search/search.ts`（文件名搜索后端，Task 11：只读缓存、绝不访问文件系统；`parseQuery` / `matchesName` 在 `packages/shared/src/search/query.ts`，扫描进程与主进程共用；3 字符以上的包含词走 `entries_fts MATCH`，短词与通配词用 `LIKE ... ESCAPE` / `lower() GLOB`；范围用 URI 前缀的范围比较（`scanner/cache/cache.ts` 的 `subtreeCondition`，缓存的子树删除也用它，都走主键索引）；IPC `search.query` 由 `main/ipc/search.ipc.ts` 组装 scopes 并合并固定的单个文件条目，`ScannerClient.search` 以同一 requestId 的新查询 / `vfs.cancel` 丢弃旧结果；见 `devDoc/2026-11-19-07-search.md`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主经用户点击调用：先经 `VfsService.stat` 确认存在（带超时与错误码映射），再 `shell.openPath`，失败时以 `UNKNOWN` 拒绝、detail 为系统返回的描述）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+已实现（M0、M1-1、M1-2）：`bootstrap/`、`core/`、`infra/`（db、logger、paths、i18n）、`ipc/`、`modules/`（settings、system、window、workspace）、`vfs/`（types、errors、input-path、local-path、path-name、location、fs-list、vfs.service、vfs.ipc、providers/local.provider）、`windows/`、`preload/`；`scanner/main.ts` 与 `vfs/scanner-client.ts`、`vfs/scanner-process.ts`（扫描进程随应用启动；渲染端的目录请求经由它，见 7.1、8.3 节；`vfs/scanner-config.ts` 的 `buildScannerConfig` 在启动、`workspace.changed`（含切换工作区）与 `cache.*` / `vfs.*` 设置变化时下发配置）；`scanner/enum/`（目录枚举器，已有单元测试；`scanner/cache/`：缓存库 `index.db`（`Cache` 类，node:sqlite，`dirs` / `entries` / FTS5 trigram `entries_fts`；子目录 URI 与 LocalProvider 同法生成，驱动器根 URI 以 `/` 结尾，「在根之下」由纯函数 `isUnder` 判断且大小写敏感；`user_version` 不符则删表重建；队列查询 `nextUnlisted` / `oldestChecked(scopes: Scope[], limit, exclude?)`：`Scope = {uri, maxDepth}`；「从未尝试读取」= `checked_at IS NULL`（`nextUnlisted`，深度浅的优先、同深度按 uri），尝试过的（含读取失败的：`applyListing` / `markChecked` / `setState` 都写 `checked_at`）进入 `oldestChecked`（按 `checked_at` 升序）；范围走 `subtreeCondition`，层数用生成列 `dirs.depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；多范围合并去重、limit 为合并后总数；范围小（< 2000 个目录）走主键范围 + 排序，范围大用 `INDEXED BY` 按部分索引 `dirs_unlisted (depth, uri)` / `dirs_checked (checked_at, uri, depth)` 的顺序扫描 + LIMIT（30 万行合成数据、整卷且层数不限：内存库 / 文件库约 0.2–0.3ms；层数上限很小（`maxDepth` 1）时 `oldestChecked` 要沿 `checked_at` 顺序扫很多行，内存库约 15ms、文件库约 25–45ms，由后台队列的批量候选平摊，见 8.3 节）；`CACHE_VERSION` = 6（M4 在 `entries` 加列 `owner`）；热点 `hot(k)` 走覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`，不扫描整张表（30 万行合成数据、其中 30 个访问过：约 6.8ms → 0.04ms）；`removeMissing(uri)`：目录不存在时删除它与子树，并从父目录的缓存列表中删除该项（同名的是符号链接时保留），删除了该项时把父目录的 `dir_mtime` 置为 NULL（这是推断，父目录下一次确认必须完整读取），一个事务）；`scanner/schedule/scope.ts`（范围计算纯函数 `computeScope`，设计 8.2：输出定期确认的对象 `periodic: {uri, tier: 'focus'|'near'|'far', full}[]`（关注点 / 近 / 远，同一 URI 取更近的层，只有关注点 `full`；近层、远层各至多 `TIER_LIMIT` = 100 个：按目录树上离关注点的距离取，同等距离时热点优先、再按 URI，近层中视口内可见的已展开目录最优先）与后台队列的范围 `background: {indexTargets: Scope[], hot: string[], ranges: Scope[]}`；目录的策略取包含它的根中最高者，「消极」只有关注点一层；`RootConfig` / `CacheStrategy`（`CACHE_STRATEGIES`）在 `shared/scanner/types.ts`）；`scanner/schedule/background-queue.ts`（后台队列的候选 `BackgroundQueue`：按位置组分别从缓存批量取候选、在内存中逐个消费，见 8.3 节）；`scanner/schedule/scheduler.ts`（调度器 `Scheduler`：P0 用户动作 / 定期确认按层与位置的间隔 / 后台队列每个位置组同时 1 个、完成后休息 `backgroundGapMs`（用户正在操作时加倍），各窗口的范围分别计算后合并、全部失焦时定期确认暂停（后台队列照常）；缓存不设过期（没有「超过 1 小时强制完整读取」）；并发：每个位置组（本地卷 / 网络主机）「定期确认 / 后台队列 / 探测」共用 1 个 + P0 1 个，本地合计最多 4 个，总数不超过 libuv 线程池，本地合计、网络合计、单个组都不占用最后一个线程（被中止但未返回的原生调用继续占名额）；排队的 P0 调用方等待超过 `timeoutSec` 以 `FS_TIMEOUT` 拒绝；调度循环的异常记日志（构造参数 `log`）并在 1 秒后重试；看门狗按「没有进展的时间」计时；探测超时 / `FS_UNAVAILABLE` 使共享断开并按 `backoff.ts` 退避（30 秒起翻倍，最长 5 分钟）——`FS_UNAVAILABLE` 只来自确定的网络 / 设备类错误（win32 枚举器的 `UNAVAILABLE_ERRORS`：15、21、51、53、55、59、64、67、121、1167、1201、1222、1225、1231、1232、1236、1256、2250），因此枚举中途（已有批次）收到时同样判为断开；其他错误码为 `UNKNOWN`，只把该目录记为 `unreachable`（出错的目录在定期确认中按远层的间隔重试，在后台队列中以失败时刻为确认时刻排到后面）；`listNow` 在 2 秒内检查过（任何优先级）时直接返回 `fresh`、不再排 P0（确认时刻在「未来」即系统时钟回拨后，不算 fresh；P0 去重同理，差为负不算重复）；读取得到「不是目录」（`FS_NOT_A_DIRECTORY`，目录被同名文件替换）时删除该目录自身的子树缓存、该行保留为 `unreachable` / `FS_NOT_A_DIRECTORY`（带确认时刻），并对父目录排一次确认（P0，不与刚完成 / 正在执行的 P0 合并），由确认更正该项的类型，不从父目录的缓存列表中删除它；该目录已是此状态时再次出错不再强制父目录（父目录仍列为目录的情形，避免循环），按远层间隔重试（「不存在」才连同父目录列表中的该项一起删除）；读取得到「不存在」（`FS_NOT_FOUND`）时 `removeMissing`，并同样对父目录排一次确认（P0，`force`），由真实列表决定父目录的内容（上级目录改名期间读取、随即改回时，父目录的修改时间不变，只靠推断删除会永远缺少该项）；该目录行保留为 `not-found` / `FS_NOT_FOUND`（带确认时刻，父目录的确认不再列出它时删除这一行），已是此状态时再次出错（父目录仍列出它）不再强制父目录、不再从父目录列表中删除，按远层间隔重试；父目录的确认再次列出一个 `not-found` 子目录时把它的 `checked_at` 置 NULL（状态保持 `not-found`），使它作为「从未尝试过」尽快被重读（上级目录改走又改回后即可恢复，防循环的判断看的是状态，不受影响）；根没有父目录，只删除缓存并通知根；`ScanSettings` 在 `shared/scanner/types.ts`，`listNow` 的返回类型 `DirectoryListing` 在 `shared/vfs/types.ts`）；`scanner/search/search.ts`（文件名搜索后端，Task 11：只读缓存、绝不访问文件系统；`parseQuery` / `matchesName` 在 `packages/shared/src/search/query.ts`，扫描进程与主进程共用；3 字符以上的包含词走 `entries_fts MATCH`，短词与通配词用 `LIKE ... ESCAPE` / `lower() GLOB`；范围用 URI 前缀的范围比较（`scanner/cache/cache.ts` 的 `subtreeCondition`，缓存的子树删除也用它，都走主键索引）；IPC `search.query` 由 `main/ipc/search.ipc.ts` 组装 scopes 并合并固定的单个文件条目，`ScannerClient.search` 以同一 requestId 的新查询 / `vfs.cancel` 丢弃旧结果；见 `devDoc/2026-11-19-07-search.md`）；`packages/shared/src/vfs/normalize-uri.ts`（`normalizeRootUri` / `isUnderUri`，主进程、扫描进程与渲染端共用，缓存的 `isUnder` 即它）；`vfs/location.ts` 由 scanner 与主进程（组合根的超时、扫描配置）共用，主进程启动时按 `driveTypeStatus()` 记一条日志：`[vfs] drive type detection: native (koffi)`，koffi 不可用时为警告（映射的网络盘按本地处理）。M1-2 在 `vfs/` 中加入的目录监听（`fs.watch`）已于 2026-11-19 删除（7.1 节），在 `modules/system` 中加入 `system.revealInOs` / `copyText` / `selectPaths`（均不修改文件；`system.openPath` 于 2026-11-19 删除，M1-3 恢复为只由预览插件的宿主经用户点击调用：先经 `VfsService.stat` 确认存在（带超时与错误码映射），再 `shell.openPath`，失败时以 `UNKNOWN` 拒绝、detail 为系统返回的描述）。主进程至今**没有任何写文件、移动、删除文件的 API**。
+
+已实现（M4 SFTP 只读，2026-11-23）：`modules/connection/`、`vfs/providers/sftp.provider.ts`、`vfs/sftp-errors.ts`、`vfs/remote-access.ts`、`vfs/remote-op.ts`、`scanner/enum/{composite,remote}-enumerator.ts`（见上面的目录树与 7.6 节）；`vfs/location.ts` 增加位置 `remote`（`shareKey` / `hostKey` = `sftp://<connectionId>`）。`vfs/` 中的 `connection-pool.ts`、`remote-cache.ts` 与 SMB / FTP provider 未实现（连接池在 `modules/connection`，经 `SftpSessionSource` 接口注入 provider：`main-vfs` 不 import `main-module`）。
 
 已实现（M3 桌面记录，2026-11-22）：`modules/desktop/`（各文件见上面的目录树，设计与行为见 11.4 节）与 `infra/powershell.ts`（M2 的 `modules/launcher/powershell.ts` 原样移来，launcher 改为从 infra 引用）。`modules/desktop` 与其他模块一样只依赖 `main-ipc` / `main-vfs` / `main-infra` / `main-core` / `shared`（`modules/*` 通配登记，不 import `modules/launcher`：PowerShell 执行在 infra、存在性检查经注入的 `VfsService`）；组合根 `createDesktop()` 按平台与假模式装配依赖。
 
@@ -473,6 +481,7 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 // entry.{list,add,update,remove,move,setCacheStrategy}、index.{setTarget,list}、
 // vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
 // window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）、
+// connection.{list,save,delete,test,reconnect,trustHostKey,answerHostKey,pendingHostKeyPrompts,home}（M4，7.6 节）、
 // desktop.{list,get,current,save,rename,delete,restore,clear,restorePrompt,exit,cancelExit,exitShown}（M3 桌面记录，11.4 节）；
 // 事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
 // web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）、desktop.changed（广播）、desktop.{exitRequested,exitCancelled}（只发给主窗口）
@@ -554,7 +563,10 @@ export interface IpcEvents {
   'vfs.reachability':  { share: string; state: 'online' | 'offline'; since: number };  // 共享 / 卷断开或恢复
   'settings.changed':  Partial<Settings>;
   'workspace.changed': { id: string };
-  'connection.status': { id: string; status: 'idle' | 'connecting' | 'online' | 'error' };
+  'connection.changed': Record<string, never>;      // M4：连接列表有变化（保存 / 删除 / 信任密钥 / 重新连接 / 测试之后）
+  'connection.status': { id: string; state: 'idle' | 'connecting' | 'online' | 'offline' | 'auth-failed' | 'host-key-pending' | 'host-key-changed' };  // M4：连接池的状态
+  'connection.hostKeyPrompt': HostKeyPrompt;        // M4：首次连接时请求确认主机密钥（只发给主窗口）；以 connection.answerHostKey 回答，5 分钟未回答按拒绝
+  'connection.hostKeyPromptClosed': { promptId: string };  // M4：询问已结束（回答 / 超时），渲染端移除确认框
   'editSession.changed': EditSessionDto;
   'window.stateChanged': WindowState;
   'doc.progress':      DocProgressEvent;              // 只发给文档所属的窗口
@@ -622,7 +634,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）、`LAUNCH_FAILED`（启动本机程序失败：Office 等的打开方式不可用、启动失败、对象不是文件，M2 `modules/launcher`，10 节）、`DESKTOP_SNAPSHOT_NOT_FOUND`（桌面记录的快照不存在：已删除、恢复后已清空，或属于别的机器，M3，11.4 节；属于正常流程，IPC 路由按 warn 记录，见 `ipc/log-error.ts`）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4 增加 `CONN_AUTH_FAILED`、`CONN_TIMEOUT`、`CONN_HOST_KEY_CHANGED` 等。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）、`LAUNCH_FAILED`（启动本机程序失败：Office 等的打开方式不可用、启动失败、对象不是文件，M2 `modules/launcher`，10 节）、`DESKTOP_SNAPSHOT_NOT_FOUND`（桌面记录的快照不存在：已删除、恢复后已清空，或属于别的机器，M3，11.4 节；属于正常流程，IPC 路由按 warn 记录，见 `ipc/log-error.ts`）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4（已实现）增加 `CONN_*`：`NOT_FOUND`（连接不存在）、`AUTH_FAILED`（登录认证失败，锁定）、`KEY_INVALID`（私钥读不了 / 格式不支持 / 口令错误：本机错误，不连接、不锁定）、`HOST_KEY_REJECTED`、`HOST_KEY_CHANGED`、`SUDO_AUTH_FAILED`（sudo 密码错误，按连接锁定所有切换身份）、`SUDO_DENIED`、`SUDO_FAILED`、`SFTP_SERVER_NOT_FOUND`、`PROCESS_LIST_HIDDEN`、`SECRET_UNAVAILABLE`（语义见 7.6 节）；超时沿用 `FS_TIMEOUT`、断开沿用 `FS_UNAVAILABLE`（设计草案中的 `CONN_TIMEOUT` 未采用）。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -633,7 +645,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 ```ts
 // apps/desktop/src/main/vfs/types.ts
 export interface FileSystemProvider {
-  readonly scheme: 'file' | 'smb' | 'ftp' | 'sftp';
+  readonly scheme: 'file' | 'sftp';   // 已实现：file、sftp（M4）；smb 放弃，ftp 在「后续」
   readonly capabilities: { rangeRead: boolean; write: boolean };
 
   stat(uri: URL, signal?: AbortSignal): Promise<FileStat>;
@@ -651,6 +663,7 @@ export interface FileEntry {
   size: number;
   mtime: number;
   hidden: boolean;
+  owner?: string;                          // M4：远程目录的属主名（取自 SFTP longname），供「无权限」提示
 }
 ```
 
@@ -685,13 +698,13 @@ M1-2 曾用 `fs.watch` 监听已展开的目录，实测监听句柄会阻止上
 
 **LocalProvider**（已实现）：基于 `fs/promises`，同时处理盘符路径与 UNC（`file://server/share`），路径与 URI 的转换只用 `node:url` 的 `pathToFileURL` / `fileURLToPath`。`list` 不跟随符号链接（报告为 `symlink`，避免循环；Windows 的目录联接 junction 同样报告为 `symlink`，并附带目标类型 `target`，见 7.1）；`stat` 跟随链接（因此指向目录的链接可按 `folder` 添加为条目）；不监听（`watch` 已于 2026-11-19 删除）；子项 lstat 最多 16 个并发、每开始一项前检查中止信号（避免占满 libuv 线程池、取消后不再发出新工作；这部分在 `vfs/fs-list.ts`，与扫描进程的 fs 回退枚举器共用）；子项在列出后被删除时跳过，存在但读不到（权限不足、网络瞬断）时保留并降级（类型取自 readdir，大小与时间为 0），不让整个列表失败、也不让文件「消失」。名称：驱动器根显示为 `C:`、UNC 共享根显示为 `\\server\share`。隐藏文件：LocalProvider 只把以 `.` 开头的名称视为隐藏。按 Windows 隐藏属性判断（有 `FILE_ATTRIBUTE_HIDDEN` 即隐藏，只有 SYSTEM 的照常显示）的实现在扫描进程的 koffi 枚举器 `scanner/enum/win32-enumerator.ts` 中，它同时以 LastAccessTime = -1 的句柄枚举、不更新目录自身的最后访问时间（本机 NTFS 已实测；网络共享未验证）；资源树的目录列表经扫描进程，因此按属性判断；只有降级模式（扫描进程不可用、由 `VfsService` 直接枚举）按 `.` 判断。
 
-**SmbProvider（未挂载 SMB）**：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
+**SmbProvider（未挂载 SMB）**（**放弃**：需求方 2026-11-22「意义不是很大」；以下为原设想，保留备查）：以 Windows 为主要目标平台。将 `smb://{connId}/share/path` 解析为 `\\host\share\path`；首次访问某个共享时，用 `execFile('net', ['use', '\\\\host\\share', password, '/user:DOMAIN\\user', '/persistent:no'])` 建立**不占盘符**的会话（用 execFile 而非 shell，避免注入），之后委托给 LocalProvider 读写。后续阶段可用 koffi 调用 `WNetAddConnection2` 替换 `net use`，避免密码出现在进程参数中。macOS/Linux 如需支持，再单独实现。
 
-**FtpProvider**：basic-ftp 的一个客户端同一时刻只能执行一个操作，因此连接池按连接配置维护少量客户端（默认 2 个：列目录与传输分离），每个客户端内部串行队列。支持 FTPS、主动/被动模式、文件名编码（日本服务器常见 Shift_JIS）等选项，存于连接的 `options`。
+**FtpProvider**（路线图「后续」）：basic-ftp 的一个客户端同一时刻只能执行一个操作，因此连接池按连接配置维护少量客户端（默认 2 个：列目录与传输分离），每个客户端内部串行队列。支持 FTPS、主动/被动模式、文件名编码（日本服务器常见 Shift_JIS）等选项，存于连接的 `options`。
 
-**SftpProvider**：ssh2-sftp-client，单连接可复用；首次连接时展示主机密钥指纹由用户确认并保存（TOFU），之后指纹变化报 `CONN_HOST_KEY_CHANGED` 拒绝连接。支持密码与私钥两种认证。
+**SftpProvider**（M4 已实现，详见 7.6 节）：直接使用 `ssh2`（不用原计划的 `ssh2-sftp-client`：它不能在命令通道上走 SFTP），只读（`stat` / `list`；`read` / `createReadStream` 以 `FS_UNSUPPORTED_SCHEME` 拒绝且不连接）；首次连接时展示主机密钥指纹由用户确认并保存（TOFU），之后指纹变化报 `CONN_HOST_KEY_CHANGED` 拒绝连接。支持密码与私钥两种认证。
 
-**连接池通用策略**：懒连接、空闲 5 分钟回收、断线自动重连一次、连接状态通过 `connection.status` 推送到状态栏。
+**连接池通用策略**：懒连接、空闲 5 分钟回收、断线时用户操作发起的请求自动重连并重试一次（后台读取不重试，由扫描进程的退避探测重连）、认证失败绝不自动重试、连接状态通过 `connection.status` 推送到「远程连接」视图（M4 已实现，7.6 节）。
 
 ### 7.3 `pcfs://` 协议：让预览插件「像访问网页资源一样」访问任意文件
 
@@ -726,6 +739,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 ### 7.4 远程文件缓存
 
+> 路线图「后续」（需求方 2026-11-22：M4 只做 SFTP 只读，远程文件不下载、不预览内容）。设置 `remote.cacheSizeMB` 保留但暂无用途。
+
 缓存路径为 `userData/cache/remote/<sha1(uri)>/<mtime>-<size>/<原文件名>`，远端 mtime 或 size 变化即视为新版本。按设置项 `remote.cacheSizeMB` 做 LRU 淘汰。缓存同时服务于「用系统应用打开远程文件」（下载后 `shell.openPath`）——**需求方决定（2026-11-19）：资源树只用于展示，对文件的操作都放在将来的预览窗口中**，因此这一打开动作只由将来的预览窗口提供，资源树的右键菜单不提供。Office 文件的远程编辑与回传由独立的「远程编辑会话」处理（第 10.5 节），不与只读缓存混用。
 
 ### 7.5 文本文档（分页模型）与编码
@@ -746,6 +761,45 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 已实现（2026-11-20，文本预览 Task 5）：文档归属的生命周期补全——主框架开始载入新文档（重新加载 / 导航，同文档导航与子框架除外）与渲染进程崩溃 / 被终止（`render-process-gone`）时关闭该窗口的全部文档（`DocumentService.resetOwner`；旧页面发起、之后才完成的 open 也关闭并以 `DOC_NOT_FOUND` 拒绝），窗口销毁时 `releaseOwner`（`vfs/document/document-owner.ts` 的 `bindDocumentOwner`）；文档关闭后，关闭前已开始的刷新 / 编码重新判断不再发 `doc.changed`。渲染端的调用、自动刷新与「按位置 sniff 选插件」见 9.1、9.3 节；文本插件的界面尚未实现（Task 6）。
 已实现（2026-11-20，文本预览 Task 6）：界面——文本插件 `pch.preview.text`（9.4 节：自绘分页视图、块缓存、编码下拉、跟随末尾、部分模式「读取全部」）；视口数学 `pager-model`（`@pch/text-engine`：`clampTop` / `maxTop` / `scrollLines` / `thumb` / `topFromThumb`，拇指最小 20px 的缩放滚动条，纯函数）。Chromium 渲染端的 `TextDecoder` 支持上述 9 个标签（e2e 中除 UTF-8 外 8 个标签的样本都显示正确）。
+
+### 7.6 远程目录（SFTP，M4）
+
+设计（已批准）：`devDoc/2026-11-22-37-m4-sftp-design.md`；计划：`devDoc/2026-11-22-38-m4-sftp-plan.md`；总结（控制者裁定 D1–D10 / R1–R25、推迟项、未验证项）：`devDoc/2026-11-22-40-m4.md`。需求方 2026-11-22：M4 只做 **SFTP 只读**（放弃 SMB；FTP、远程编辑、下载缓存在「后续」）。
+
+**目标结构**（设计第 5 节，M4 范围内已全部实现，取值与实际行为见下面的「已实现」）：
+
+- 资源：`sftp://<connectionId>/<绝对路径>`（登录用户）、`sftp://<身份>@<connectionId>/<绝对路径>`（以该身份浏览；同一路径不同身份是不同的资源，缓存分开）。路径逐段 `encodeURIComponent`；子项 / 父目录 / 名称的推导只在 `packages/shared/src/vfs/sftp-uri.ts` 定义一次（渲染端、主进程、扫描进程共用）。
+- 主进程持有 SSH 连接（`modules/connection`，每个连接一条 SSH 连接）；扫描进程读远程目录时经 `remoteOp` 请主进程代读（设计 4.1 方案 A），缓存、调度、搜索沿用扫描进程与 `index.db`。
+- 只读：provider 只发读取类请求；切换身份后在服务器上以 `sftp-server -R` 运行；文件只显示兜底的文件信息（不读内容、不 sniff、不下载）。
+- 反目标：账号被锁（错误密码被自动重试、一次输错记多次）；机密进入渲染进程 / 日志 / URI / 命令行；未经确认接受主机密钥；向服务器写入；每读一个目录在 sudo 审计日志留一行；后台读取压垮服务器。
+
+**已实现（2026-11-23，分支 `feat/m4-sftp`）**：
+
+- **连接与凭据**：表 `connections`（迁移 0007，13 节）；机密以 safeStorage 加密，渲染端只见 `hasSecret` / `hasSudoSecret`。认证：密码（服务器只提供 `keyboard-interactive` 时以密码作答）、私钥（OpenSSH / PEM；PuTTY `.ppk` 只支持 v2 的 RSA / DSA，v3 与 Ed25519 的 `.ppk` → `CONN_KEY_INVALID`；未加密的 `.ppk` 不传口令——先不带口令解析，需要时再带）。`CONN_KEY_INVALID` 是本机错误，不连接、不锁定（D5）。删除连接时引用它的条目保留（显示「连接不存在」），确认框显示被引用的条目数。编辑时 `host` 或 `port` 变化清除已信任的主机密钥（D6 前半）。
+- **一次连接只交一次密码**：自定义 `authHandler` 按服务器提供的方式只选一种（优先 `password`，没有时 `keyboard-interactive`），失败即结束；`keyboard-interactive` 一轮必须恰好 1 个非回显提示，否则中止（detail `keyboard-interactive: unsupported prompt …`，未交出密码，但按 `CONN_AUTH_FAILED` 锁定，见残余风险）。服务器不提供可用方式（detail 以 `no acceptable method` 开头）时报 `CONN_AUTH_FAILED` 但不锁定（未提交凭据）。
+- **连接池**（`connection-pool.ts`）：懒连接，同一连接的并发请求共享一次连接尝试；请求被取消只让该请求离开，不中止共享的尝试；新的尝试先等同一连接上进行中（含已丢弃）的尝试结束再重读记录（R12）。登录用户的 SFTP 子系统按连接共享（打开以 `vfs.timeoutSec.remote` 为上限）；每个使用中的切换身份 1 个通道。保活 `keepaliveInterval = remote.keepaliveSec`（15 秒）、`keepaliveCountMax = 3`，静默断线约 `15 × 4 = 60` 秒发现；空闲 `remote.idleDisconnectMin`（5 分钟）无请求时断开（含 sudo 通道；进行中的身份打开过程计入「进行中」）。断线时**用户操作**发起的请求重连并重试一次，后台读取不重试。状态 `idle` / `connecting` / `online` / `offline` / `auth-failed` / `host-key-pending` / `host-key-changed` 经 `connection.status` 推送。
+- **主机密钥**（`host-key-gate.ts`）：`hostVerifier` 必须设置（`ssh2` 不设置时自动接受）。首次连接向主窗口发 `connection.hostKeyPrompt`（算法 + `SHA256:` 指纹），5 分钟未回答按拒绝；回答 / 超时后发 `connection.hostKeyPromptClosed`，渲染端移除确认框；渲染端重新加载后以 `connection.pendingHostKeyPrompts` 取回未回答的询问（R17）。拒绝 / 超时 / 无窗口在内存中记住：后台请求直接 `CONN_HOST_KEY_REJECTED` 不再询问，用户操作重新询问（R13）。已保存的指纹不一致 → `CONN_HOST_KEY_CHANGED`，「远程连接」视图显示新旧指纹；「信任新的密钥」（`connection.trustHostKey { id, key }`）带**用户看到的**密钥，与服务器最新出示的不一致时以 `CONN_HOST_KEY_CHANGED` 拒绝、不保存（R24 I4）。
+- **身份切换**（`sudo-switch.ts`、`identity-sessions.ts`、`server-probe.ts`）：第一次使用切换身份时（每条 SSH 连接一次，D4）以登录用户探测 sftp-server 位置（`/usr/libexec/openssh/`、`/usr/lib/openssh/`、`/usr/libexec/ssh/`、`/usr/lib/ssh/` 下第一个可执行的，连接设置可指定）与「能否看到 root 的进程」；看不到 → `CONN_PROCESS_LIST_HIDDEN`，不执行 sudo。命令通道执行 `printf 'PCHPID:%s\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p '<标记>' su - <身份>`（目标为 root 时 `su -`；`LC_ALL=C` 使日文 locale 的服务器也输出英文信息，R8；目标用户与路径先按白名单正则校验，密码绝不进命令行）。同时开**一个长寿命的轮询通道**（D2）：`i=0; while [ $i -lt N ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep 0.15; i=$((i+1)); done`，N = ceil(2 × 切换超时 / 间隔) = 200（约 30 秒）；**服务器端的终止条件**：客户端关闭通道后写失败即退出（不依赖 SIGPIPE 的默认处理），且最多 N 次（R24 I2b）。sudo 的子孙中出现 `su` = 认证成功，之后才写 `printf '\120CHSTART\n'; exec <sftp-server> -R`，标记之前的输出全部跳过。提示出现 → 写一次密码；再次出现提示 = 密码错误 → `CONN_SUDO_AUTH_FAILED`。stderr 含拒绝措辞（传统 sudo 的 `is not allowed to execute` 等、sudo-rs 的 `I'm afraid I can't do that`）→ `CONN_SUDO_DENIED`；`must have a tty` → 以终端方式（pty，`stty raw -echo …`）重试一次并按「连接 + 身份」记住；标记前通道关闭 / 15 秒超时 → `CONN_SUDO_FAILED`。sudo 密码 = 另设的 sudo 密码 ?? 密码登录的登录密码（私钥登录且未另设时 sudo 若要密码 → `CONN_SUDO_AUTH_FAILED`，不写入任何东西）。用户取消不中止进行中的身份打开（15 秒上限内跑完，结果留作会话，R11a）。
+  - **服务器配置类失败的记忆**（R10 / R16 / R24 Minor 2）：身份打开以 `CONN_SUDO_FAILED` / `CONN_SUDO_DENIED` / `CONN_PROCESS_LIST_HIDDEN` / `CONN_SFTP_SERVER_NOT_FOUND` 失败时，按（连接, 身份）在内存中记住：后台请求直接以同一错误失败、不再执行 sudo；用户操作才重试一次，且距上次失败 **30 秒内**（`IDENTITY_RETRY_COOLDOWN_MS`）的用户操作也直接以记住的错误失败（防止启动时恢复的多个标签各触发一次 sudo）。**随断线 / 空闲断开清除的只有 `CONN_SUDO_FAILED`**（偶发失败）；其余三种是服务器配置，只在 `unlock`（「重新连接」）、`disconnect`（编辑连接等）时清除。冷却期内服务器修好时「测试连接」可立即重试。
+- **认证锁定与解除**（反目标「账号被锁」的核心；`auth_state` 写库并同时记在内存，**跨重启有效**）：
+  - 登录认证失败 → `auth-failed`：此后所有请求直接 `CONN_AUTH_FAILED`（detail `locked`），不连服务器。sudo 认证失败 → `sudo-auth-failed`，**按连接锁住所有切换身份**（`pam_faillock` 按登录用户计数），登录用户自己的 SFTP 不受影响。
+  - **已交出密码而结果未定也按失败锁定**：登录——交出密码之后、`ready` 之前的超时 / 断开 → `CONN_AUTH_FAILED`（detail `undetermined after password (…)`，R24 I1）；sudo——已写入密码而未判定成功时通道关闭 / 超时 / 轮询通道关闭 / 断线 / teardown → `CONN_SUDO_AUTH_FAILED`（R7、R11b）。
+  - **解除**：(1) **编辑连接**只在对应的凭据有变化时解除（R24 C1 / R25，推翻计划 D6「编辑一律解除」，以设计 5.3 为准）：登录锁定看 `secret`（密文）/ `auth` / `keyPath` / `username` / `host` / `port`；sudo 锁定看**实际使用的 sudo 密码**的密文（另设的 sudo 密码；「同登录密码」模式下即登录密码）。判定（`credentials.ts` 的 `sameLoginCredentials` / `sameSudoCredentials`）比较编辑前后的记录，不看字段是否出现在输入里（渲染端在「同登录密码」模式下每次都发 `sudoSecret: null`、无口令私钥每次都发 `secret: ''`，R25）；提交了密码即得到新的密文（safeStorage 每次加密结果不同），重输同一个密码也算变化。只改名称 / 身份列表 / sftp-server 路径保留锁定；只改名称时不断开、不重新检查条目根。(2) **「重新连接」**（`connection.reconnect`）：解除并断开，之后的请求重新连接。(3) **「测试连接」**（D3）：用户的明确动作，锁定中也尝试一次，成功则解除（`auth_state = ok`），失败则写入对应的锁定。
+  - **串行化**：测试连接与连接池的尝试串行——测试先等进行中的池尝试结束，那次尝试若是交出了凭据的认证失败则直接作为测试的认证步骤结果、不再拨号；测试自己的拨号也登记为尝试，池随后的请求等它（R24 C2）。sudo 切换按连接串行（`withSudoTurn`：池的身份打开与测试的身份步骤共用一把按 connectionId 的锁，拿到锁后再查一次 sudo 锁定，锁定写入在锁内完成），一个错误的 sudo 密码不会被并发提交两次。拨号之后凭据被编辑过的旧尝试失败时不写锁定（比较凭据字段，不比较 `updatedAt`）。
+- **超时语义**：`ssh2` 的 `readyTimeout` 从连接开始计时，到 `USERAUTH_SUCCESS` 才清除——**覆盖认证阶段与主机密钥确认的等待**；平时取 `vfs.timeoutSec.remote`（20 秒），主机密钥尚未信任的首次连接取 `max(timeoutSec × 1000, 300_000)` ms（R5）；握手超时与保活超时同为 `client-timeout`，按消息区分（握手 → `FS_TIMEOUT`，保活 → 断开 `FS_UNAVAILABLE`）。扫描进程的看门狗按「没有进展的时间」计 `vfs.timeoutSec.remote`：`statDir` 探测阶段超时 → 该连接断开（进入退避探测）；**`list` 阶段超时只把该目录记为超时（`FS_TIMEOUT`），不算断开**（R24 I3）。provider 对符号链接的目标 stat 以有界并发 32 执行（`LINK_STAT_CONCURRENCY`），`/usr/lib64` 之类大量链接的目录不至于超时；attrs 缺 `mtime` / `size` 时取 0。
+- **扫描进程中的远程目录**：复合枚举器按 scheme 分派，`sftp:` 交给远程枚举器（`remoteOp`，5.2 节）。位置 `remote`：`shareKey` / `hostKey` = `sftp://<connectionId>`（不含身份：一条 SSH 连接是一个可达性与并发单位），每连接同时 1 个用户读取（P0）+ 1 个后台读取，不计入本地 / 网络的线程池名额。**只在用户动作时读取**：展开、选中、标签中新显示的目录（P0，有缓存先显示缓存）、F5 / 刷新 / 状态行「重试」（强制）；关注点 / 近层 / 远层的定期确认、热点、窗口重新获得焦点、滚回视口都不读远程。**后台**只读「建立索引」的远程目录（整棵子树），每个目录距上次读取超过 `cache.remoteIndexIntervalMin`（30 分钟）才再读，每个目录之后休息 `cache.backgroundGapMs.remote`（500 ms）。检查 = 每次完整重新列出。远程条目的右键菜单隐藏「缓存策略」与「在资源管理器中显示」，保留「建立索引」。`CONN_AUTH_FAILED` / `CONN_HOST_KEY_*` / `CONN_SUDO_*` 等不算断开（显示错误行，不进入退避探测）；`FS_UNAVAILABLE` / 探测超时 → 断开，显示缓存与断开图标，退避探测（30 秒起翻倍、最长 5 分钟），探测即重连。`remoteOp` 的 `userAction`：P0 为 true（断线时连接池重连并重试一次），探测与后台为 false。
+- **断线在树上的显示**（R21 / R22 / R24 I2，`offline-refresh.ts`）：远程目录没有定期确认，连接池发现断线（状态 `online → offline`）本身不会让树显示断开。因此**已建立的连接稳定存续超过一个保活周期（`remote.keepaliveSec`）之后因错误断开**时，主进程对该连接的远程条目根调用一次 `scanner.refresh`（每个连接 60 秒内最多一次，`OFFLINE_REFRESH_GAP_MS`）；读取失败后由扫描进程的退避探测负责重连。连接失败造成的 offline、短暂 online 后的断开都不触发（防止「认证成功后服务器立即断开」的服务器上形成无退避的重连循环）。实测（WSL Ubuntu，冻结 sshd 不关 TCP，无用户操作）：冻结后约 58 秒保活发现，约 78 秒树显示断开（再加一次 20 秒的连接超时）；之后 +108 秒、+128 秒为退避探测，全程 3 次拨号，无紧循环；解冻后下一次退避探测成功、树恢复。
+- **访问范围**（设计 5.7，M1-K17 的 sftp 部分，D10）：`sftp:` URI 必须在某个工作区的远程 folder 条目之下，否则 `IPC_FORBIDDEN`——在 IPC handler（`vfs.*`、`doc.*`、`web.*`、`launcher.*`；`system.*` 只接受本地路径 / `file:`）与扫描进程 `remoteOp` 的入口检查（`vfs/remote-access.ts`；解码后含 `.` / `..` 段或 NUL 的路径一律拒绝），不放在 `VfsService`（`entry.add` 校验新条目时要对尚不是条目的 URI 调 `vfs.stat`）。远程 file 条目不提供（`entry.add` 拒绝，R14）；sftp 条目的身份必须为 null 或已登记在连接的 identities 中（`entry.add` 与 `pool.session` 都检查）。连接管理的通道按 connectionId 操作，不受此限。
+- **界面**：活动栏「远程连接」视图（`features/connections`：列表、状态点、新建 / 编辑 / 删除 / 测试 / 重新连接 / 信任新的密钥；测试逐步显示连接 → 主机密钥 → 认证 → SFTP（home）→ 各身份（sftp-server 路径与方式「非终端 / 终端」），第一次 sudo 认证失败即停止）。资源管理器：「添加远程文件夹…」（连接、身份、路径；默认路径经 `connection.home`：登录用户为 `realpath('.')`，其他身份为 `/`，D8），远程条目用 `ServerIcon`；读取得到权限不足时状态行显示「无权限」，属主（SFTP `longname` 第 3 列，随列表进入缓存 `entries.owner`，D9）在连接登记的身份中时给出「以 <属主> 身份添加为条目」（不自动切换身份）。「复制路径」复制服务器上的绝对路径；地址栏 / 文件信息显示 `<连接名>:<路径>`（切换身份时 `<身份>@<连接名>:<路径>`）。远程文件只匹配兜底插件（office / html / markdown / text 的 manifest 声明 `schemes: ['file']`），兜底插件对非本地资源隐藏「用系统应用打开」「在资源管理器中显示」「作为文本查看」（SDK `fs.isLocal`）；渲染端对非 `file:` 资源不 sniff（D7）。
+- **升级影响**：`pch.db` 迁移 0007（新增表，不改旧表）；`index.db` 的 `CACHE_VERSION` 5 → 6（`entries.owner`），**升级后首次启动删表重建整个 `index.db`，本地目录的缓存也全部重建**（重建完成前搜索只能查到已重新读取的目录）。
+- **残余风险**（接受，记录）：
+  - 交出 sudo 密码后恰好断线 → 判为 `CONN_SUDO_AUTH_FAILED` 锁定（误锁，需「重新连接」；R11）。
+  - 已交出 sudo 密码后，非终端方式的 stdout 有输出或 stderr 出现 `su:` 行视为「已通过认证」，之后的失败降级为 `CONN_SUDO_FAILED`（不锁定，随断线清除，后台受 R10 记忆约束）——若这种迹象出现在密码错误的情形，错密码可能在用户操作时再交一次（R9-5）。
+  - 交出登录密码后结果未定（超时 / 断开）→ 锁定（I1）：服务器认证慢于超时时，正确的密码也会被锁，需「重新连接」。
+  - `keyboard-interactive` 不支持的提示形式（一轮多个提示、回显提示）以「认证失败」锁定，但**没有交出密码**；界面文案目前与密码错误相同（待改进）。
+  - 进程表轮询中 `ps` 一时失败会提前结束轮询，已交出密码时按 R7 锁定（保守）。
+- **限制**：只有 `sudo su - <身份>` 一种切换方式（sudo-rs 不支持 `requiretty` / `targetpw` / `logfile`，其 `requiretty` 场景不存在）；依赖服务器上的 `env` 与 `ps`（`ps -eo pid=,ppid=,comm=`）；`.ppk` 只支持 v2 RSA / DSA；`remote.cacheSizeMB` 暂无用途；非 UTF-8 文件名不支持（`ssh2` 按 UTF-8 编解码）；不支持堡垒机 / ProxyJump、ssh-agent / Pageant、证书 / Kerberos；密码只能保存（不提供「连接时询问」）；在命令通道上走 SFTP 借用 `ssh2` 1.17.0 的内部类（固定精确版本，`sftp-bridge.ts` 一处）；**产品代码不得用 `ssh2` 的 `utils.generateKeyPairSync` 生成 ed25519 密钥**（约 1/256 生成 31 字节公钥的畸形密钥，`knowledge/libraries.md`；只用于测试夹具时也要按根因检查输出，`testing/test-keys.ts`）。
+- **验证**：单元 / 集成（进程内 `ssh2` Server 的假 SFTP 服务器 `modules/connection/testing/fake-sftp-server.ts`）、e2e（`e2e/connections.spec.ts`、`e2e/remote.spec.ts`，同一假服务器，`e2e/sftp-support.ts`）、WSL 4 个发行版的实机测试（`wsl.test.ts`，`PCH_WSL_SFTP=1` 才运行，README「WSL 实机测试」）。错误的登录 / sudo 密码各只记 1 次失败（4 个发行版的 journald 与传统 sudo 的 logfile 核对）；数字与未验证项见 `devDoc/2026-11-22-40-m4.md`。
 
 ---
 
@@ -825,8 +879,8 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 | 资源 | 检查方式 |
 |---|---|
 | 本地磁盘 | 目录修改时间 + 枚举（koffi 原生枚举，只读句柄；目录的访问时间由系统按设置更新）；只有关注点每次完整枚举，其余先比较目录修改时间 |
-| 网络路径：UNC、映射的网络盘（M1）、未挂载 SMB（M4，内部转换为 UNC） | 同本地；每台服务器同时 1 个后台检查 + 1 个用户动作；断开时显示缓存、按退避重试 |
-| FTP / SFTP（M4） | 目录修改时间不可靠 → 检查 = 重新列出 |
+| 网络路径：UNC、映射的网络盘（M1）（未挂载 SMB 已放弃） | 同本地；每台服务器同时 1 个后台检查 + 1 个用户动作；断开时显示缓存、按退避重试 |
+| SFTP（M4 已实现，7.6 节；FTP 在「后续」） | 检查 = 每次完整重新列出（不比较目录修改时间）；**只在展开 / 选中 / 标签中新显示 / F5 与「建立索引」时读取**，没有关注点 / 近层 / 远层的定期确认、热点、聚焦 / 滚回视口的读取；每条 SSH 连接同时 1 个后台读取 + 1 个用户读取；断开时显示缓存、按退避重试 |
 
 优先级与间隔（设计 8.2；设置键见 14.1 节）。缓存不设过期 / 失效时间，只在发现信息错误时更新或删除；三种来源并行：
 
@@ -1069,6 +1123,8 @@ PowerShell 启动约需 0.5～1 秒，相对 Office 自身数秒的启动可以�
 缓存副本保持原文件名，使 Office 标题栏显示正确。
 
 ### 10.5 远程编辑会话（FTP / SFTP）
+
+> 路线图「后续」（需求方 2026-11-22：M4 只做 SFTP 只读；远程文件只显示兜底的文件信息）。以下为原设想。
 
 FTP/SFTP 上的文件无法被 Office 直接写回，因此由本应用代理：
 
@@ -1377,18 +1433,22 @@ CREATE TABLE desktop_items (                          -- 迁移 0006 已实现
 );
 CREATE INDEX idx_desktop_items_snapshot ON desktop_items (snapshot_id);
 
-CREATE TABLE connections (
-  id         TEXT PRIMARY KEY,
-  kind       TEXT NOT NULL CHECK (kind IN ('smb', 'ftp', 'sftp')),
-  name       TEXT NOT NULL,
-  host       TEXT NOT NULL,
-  port       INTEGER,
-  username   TEXT,
-  domain     TEXT,
-  secret     BLOB,                                    -- safeStorage 加密后的密码或私钥口令
-  options    TEXT,                                    -- JSON：编码、被动模式、私钥路径、主机指纹……
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+CREATE TABLE connections (                            -- 迁移 0007 已实现（M4，取代原草案：删去 kind / domain，只有 SFTP）
+  id          TEXT PRIMARY KEY,                       -- crypto.randomUUID()
+  name        TEXT NOT NULL,                          -- 显示名
+  host        TEXT NOT NULL,
+  port        INTEGER NOT NULL,                       -- 默认 22
+  username    TEXT NOT NULL,                          -- 登录用户
+  auth        TEXT NOT NULL,                          -- 'password' | 'key'
+  key_path    TEXT,                                   -- 私钥文件的本地路径（连接时读取，不复制）
+  secret      TEXT,                                   -- safeStorage 加密（base64）：密码，或私钥口令；NULL = 无
+  sudo_secret TEXT,                                   -- safeStorage 加密：另设的 sudo 密码；NULL = 同登录密码（私钥登录时为无）
+  identities  TEXT NOT NULL,                          -- JSON 字符串数组：可切换的目标用户（app1、root…）
+  host_key    TEXT,                                   -- JSON {algorithm, fingerprint(SHA256:…)}：已信任的主机密钥；NULL = 未信任
+  options     TEXT NOT NULL,                          -- JSON：sftpServerPath（NULL = 自动探测）
+  auth_state  TEXT NOT NULL DEFAULT 'ok',             -- 'ok' | 'auth-failed' | 'sudo-auth-failed'：认证锁定，跨重启保留（7.6 节）
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
 );
 
 CREATE TABLE sessions (                               -- 原 M3 的应用内会话，已移到「后续」（11.3 节）
@@ -1424,9 +1484,9 @@ CREATE TABLE recent_items (
 );
 ```
 
-密码等机密永远不发送到渲染进程：返回给前端的 `ConnectionDto` 只包含 `hasSecret: boolean`。ID 使用 `crypto.randomUUID()`，不额外引入 ID 库。
+密码等机密永远不发送到渲染进程：返回给前端的 `ConnectionDto` 只包含 `hasSecret` / `hasSudoSecret: boolean`（M4 已实现；渲染端保存时传一次明文，主进程立即加密；`safeStorage` 不可用时拒绝保存机密 `CONN_SECRET_UNAVAILABLE`，不以明文保存）。`auth_state` 的写入与解除见 7.6 节。ID 使用 `crypto.randomUUID()`，不额外引入 ID 库。
 
-**目录缓存库 `index.db`（已实现，2026-11-19）**：与 `pch.db` 分开，位于 `userData/cache/index.db`，只由扫描进程打开（`scanner/cache/cache.ts`，node:sqlite 直接使用，不经 Kysely；`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`）。它是可随时删除重建的缓存：**不做迁移**，表结构在 `scanner/cache/cache-schema.ts`，变化时递增 `CACHE_VERSION`，打开时 `user_version` 不符即删表重建；打不开（例如损坏）时删除 `index.db` / `-wal` / `-shm` 重建一次（5.2 节）。表：`dirs`（整数编号 `id INTEGER PRIMARY KEY AUTOINCREMENT`（编号不复用：目录删除后以同一 URI 重建得到新编号）、目录 URI `uri`（`UNIQUE`）、父目录编号 `parent_id`（NULL 表示根、父行尚不存在的孤儿，或父行已被清理的根；新建目录行与 `prune` 之后由 `adoptOrphans` 认领孤儿，`applyListing` 不以 NULL 覆盖已有值）、上次枚举时目录自身的修改时间 `dir_mtime`、`listed_at` / `checked_at`、`state`（ok / not-found / denied / unreachable）与 `error_code`、热点计分 `visited_at` / `visit_score`、生成列 `depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；索引 `dirs_parent (parent_id)`，后台队列用的两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL` 与 `dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`，热点查询用的覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`）、`entries`（`dir_id` 引用 `dirs.id`、`(dir_id, name)` 为主键，随目录级联删除：`entries` 不再保存目录 URI，长路径下体积约为原来的 1/3，见 devDoc 11；删除子树只需按 `dirs.uri` 的区间删 `dirs`，条目与 `entries_fts` 的触发器随外键级联生效；搜索由命中的 `entries.dir_id` 关联 `dirs.uri` 做范围筛选与结果 URI 拼接）、FTS5 external content 表 `entries_fts`（`tokenize='trigram'`，由触发器与 `entries` 同步，供文件名搜索使用，8.4 节）。`CACHE_VERSION` = 5。写入只在内容有差异时发生；配置下发后删除不在任何工作区任何 folder 条目之下的目录缓存。占用与清空经 `vfs.cacheInfo` / `vfs.clearCache`（界面随 M5）。
+**目录缓存库 `index.db`（已实现，2026-11-19）**：与 `pch.db` 分开，位于 `userData/cache/index.db`，只由扫描进程打开（`scanner/cache/cache.ts`，node:sqlite 直接使用，不经 Kysely；`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`）。它是可随时删除重建的缓存：**不做迁移**，表结构在 `scanner/cache/cache-schema.ts`，变化时递增 `CACHE_VERSION`，打开时 `user_version` 不符即删表重建；打不开（例如损坏）时删除 `index.db` / `-wal` / `-shm` 重建一次（5.2 节）。表：`dirs`（整数编号 `id INTEGER PRIMARY KEY AUTOINCREMENT`（编号不复用：目录删除后以同一 URI 重建得到新编号）、目录 URI `uri`（`UNIQUE`）、父目录编号 `parent_id`（NULL 表示根、父行尚不存在的孤儿，或父行已被清理的根；新建目录行与 `prune` 之后由 `adoptOrphans` 认领孤儿，`applyListing` 不以 NULL 覆盖已有值）、上次枚举时目录自身的修改时间 `dir_mtime`、`listed_at` / `checked_at`、`state`（ok / not-found / denied / unreachable）与 `error_code`、热点计分 `visited_at` / `visit_score`、生成列 `depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；索引 `dirs_parent (parent_id)`，后台队列用的两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL` 与 `dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`，热点查询用的覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`）、`entries`（`dir_id` 引用 `dirs.id`、`(dir_id, name)` 为主键，随目录级联删除：`entries` 不再保存目录 URI，长路径下体积约为原来的 1/3，见 devDoc 11；删除子树只需按 `dirs.uri` 的区间删 `dirs`，条目与 `entries_fts` 的触发器随外键级联生效；搜索由命中的 `entries.dir_id` 关联 `dirs.uri` 做范围筛选与结果 URI 拼接）、FTS5 external content 表 `entries_fts`（`tokenize='trigram'`，由触发器与 `entries` 同步，供文件名搜索使用，8.4 节）。`CACHE_VERSION` = 6（M4：`entries` 加列 `owner TEXT`，远程目录的属主名；从 5 升级时按「`user_version` 不符即删表重建」重建整个库，本地目录的缓存也随之重建）。写入只在内容有差异时发生；配置下发后删除不在任何工作区任何 folder 条目之下的目录缓存。占用与清空经 `vfs.cacheInfo` / `vfs.clearCache`（界面随 M5）。
 
 ---
 
@@ -1448,7 +1508,12 @@ export const settingsSchema = z.object({
   'preview.maxTextSizeMB':       z.number().int().min(1).max(500).default(50),   // 自动建立完整行索引的上限（超过时只显示开头 / 末尾 4MB 的部分模式，7.5 节）
   'session.restoreOnStartup':    z.boolean().default(true),   // 原 M3 的应用内会话（11.3 节，已移到「后续」）：暂无用途，是否删除待确认
   'window.onDetachedClose':      z.enum(['close-tabs', 'return-to-main']).default('return-to-main'),   // 同上（多窗口）
-  'remote.cacheSizeMB':          z.number().int().min(100).default(1024),
+  'remote.cacheSizeMB':          z.number().int().min(100).default(1024),   // 下载缓存（7.4 节，「后续」）：暂无用途，保留
+  'remote.keepaliveSec':         z.number().int().min(5).max(120).default(15),   // M4：SSH 保活间隔（秒），keepaliveCountMax = 3
+  'remote.idleDisconnectMin':    z.number().int().min(1).max(60).default(5),     // M4：无请求多少分钟后断开（含 sudo 通道）
+  'vfs.timeoutSec.remote':       z.number().int().min(5).max(120).default(20),   // M4：远程目录读取 / 连接的超时
+  'cache.backgroundGapMs.remote': z.number().int().min(100).default(500),        // M4：远程「建立索引」每个目录之后的休息
+  'cache.remoteIndexIntervalMin': z.number().int().min(5).max(1440).default(30), // M4：建立索引的远程目录距上次读取超过此值才再读
   'cache.strategy.local':        z.enum(['passive', 'default', 'active', 'all']).default('active'),
   'cache.strategy.network':      z.enum(['passive', 'default', 'active', 'all']).default('default'),
   'cache.activeDepth':           z.number().int().min(1).max(10).default(3),
@@ -1578,9 +1643,9 @@ export default defineConfig({
 | M1 工作区与本地文件（✅ 2026-11-20 完成，合并到 `main`，标签 `m1`；总结与待确认清单见 `devDoc/2026-11-20-21-m1-summary.md`） | 能日常使用 | 分子计划：M1-1 数据层（工作区与条目的存储与规则、本地 Provider、VFS 与 IPC）；M1-2 资源树（工作区切换、虚拟化条目树、懒加载、拖入添加、右键菜单、变更感知；✅ 2026-11-18 完成，从系统资源管理器真实拖入待需求方确认）；**目录刷新与缓存引擎**（插入在 M1-2 之后：去掉 `fs.watch`，扫描进程 + `index.db`、koffi 枚举、4 级刷新级别与建立索引、断开显示、按松手位置插入、拒绝临时文件拖入；✅ 2026-11-19 完成，设计第 7 节的决定待需求方确认，见 `devDoc/2026-11-19-06-refresh-cache.md`）；**文件名搜索**（复用 `index.db` 的 FTS5 trigram 索引：活动栏的搜索视图、`Ctrl+Shift+F`、在资源树中定位；✅ 2026-11-19 完成，设计 `devDoc/2026-11-19-02-search-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-07-search.md`）；**M1-3 标签与目录视图（✅ 2026-11-19 完成，为「最低可用原型」：单窗口 layoutReducer、标签栏与预览模式、最小插件体系与 folder / fallback 插件、激活目录按关注点处理；设计 `devDoc/2026-11-19-12-m1-3-design.md` 第 6 节的决定待需求方确认，见 `devDoc/2026-11-19-14-m1-3.md`；标签拖拽 / 固定 / 溢出菜单、网格视图、会话恢复均推迟）**；**M1-3b 导航、同步与资源树改进（✅ 2026-11-20 完成：标签历史与逻辑路径、浏览器式打开（取消预览标签）、应用地址栏、树与预览区双向同步、类型图标、定位 / 全部折叠与分组抽屉；设计 `devDoc/2026-11-19-15-navigation-design.md`，部分决定待需求方确认，见 `devDoc/2026-11-19-17-navigation.md`）**；**文本 / 日志预览（✅ 2026-11-20 完成：`@pch/text-engine`、provider `read`、主进程文档服务与 `vfs.sniff`、自写编码判断、文本插件（自绘分页、日志跟随、部分模式）、`PreviewHost.doc`；设计 `devDoc/2026-11-20-18-text-preview-design.md` 第 7 节的决定待需求方确认，见 `devDoc/2026-11-20-20-text-preview.md`）** |
 | M2 预览插件体系（✅ 2026-11-21 完成，合并到 `main`，标签 `m2`；总结与待确认清单见 `devDoc/2026-11-21-29-m2-summary.md`；设计 `devDoc/2026-11-20-22-m2-design.md`，实现记录 `devDoc/2026-11-20-25-m2.md`，待需求方确认的决定见其第 4 节；试用反馈的修改 `devDoc/2026-11-21-26-m2-feedback.md`、`devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`） | 插件化落地 | 查看器切换与「常にこれで開く」、应用消息收纳、浏览器视图（`WebContentsView` + `pch-web://` 范围协议，取代原计划的 `pcfs://`）与 `PreviewHost.web`、html（含 PDF / 图片）/ markdown（GFM、脚注、mermaid）/ office 启动面板插件、Office 打开方式检测与启动（本地 / SMB 文件：编辑 / 保护视图 / 新建，Excel 另有只读）；text 在 M1 内已提前完成；专用 image / pdf / media 插件与 `pcfs://` 推迟 |
 | M3 桌面记录（✅ 2026-11-22 完成，合并到 `main`，标签 `m3`；总结与待确认清单见 `devDoc/2026-11-22-36-m3-summary.md`；设计 `devDoc/2026-11-21-31-m3-desktop-snapshot-design.md`，实现记录 `devDoc/2026-11-22-34-m3.md`，试用反馈第 2 轮 `devDoc/2026-11-22-35-m3-feedback-2.md`；Eclipse 实机与真实重启 / 关机场景未验证） | 重启后恢复现场 | 需求方 2026-11-21 改定（取代原「多窗口与会话」）：监控资源管理器（含标签）/ Office 三件套 / VS Code / Eclipse，自动（每次登录一份、原地更新）/ 手动 / 退出时快照（可见快照最多 3 个），关机时不冲掉记录（消失 1 分钟后才移除、会话结束冻结、登录标识），重启后的恢复提示与挑选恢复（exe 白名单、恢复后清空并重新扫描），活动栏视图、快照页与卡片式清单（11.4 节） |
-| M4 远程目录 | 覆盖全部资源类型 | 连接管理界面、safeStorage、SMB/FTP/SFTP Provider、连接池、远程缓存、主机密钥确认、连接状态显示；FTP/SFTP 上 Office 文件的远程编辑会话与冲突处理 |
+| M4 远程目录（SFTP 只读）（✅ 2026-11-23 完成，分支 `feat/m4-sftp`，尚未合并；设计 `devDoc/2026-11-22-37-m4-sftp-design.md`，计划 `devDoc/2026-11-22-38-m4-sftp-plan.md`，台账 `devDoc/2026-11-22-39-m4-ledger.md`，总结（控制者裁定、推迟项、未验证项）`devDoc/2026-11-22-40-m4.md`） | 登录客户服务器看目录 | 需求方 2026-11-22 改定：**只做 SFTP 只读**——「远程连接」视图（新建 / 编辑 / 删除 / 测试）、safeStorage 保存凭据、连接池（保活、空闲断开、认证锁定跨重启）、主机密钥确认、以 `sudo su - <身份>` 切换身份浏览、远程目录作为资源管理器条目（只在展开 / 选中时读取，「建立索引」的目录定期读取）、断开显示、远程文件只显示文件信息（7.6 节）。**SMB 放弃**（需求方：意义不是很大）；FTP / FTPS、Office 远程编辑会话（10.5 节）、远程文件下载缓存（7.4 节）移到「后续」 |
 | M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |
-| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构）；**多窗口与应用内会话**（原 M3：LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换，11.1–11.3 节；需求方 2026-11-21 决定移出 M3，是否还做以后再定）；桌面记录的扩展（恢复窗口位置、更多程序、从本应用启动 VS Code / Eclipse 并与监控结合） |
+| 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构）；**远程的扩展**（原 M4：FTP / FTPS、Office 文件的远程编辑会话与冲突处理（10.5 节）、远程文件下载缓存与预览（7.4 节）；堡垒机 / ProxyJump、ssh-agent / Pageant、「不保存密码、连接时询问」按需追加）；**多窗口与应用内会话**（原 M3：LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换，11.1–11.3 节；需求方 2026-11-21 决定移出 M3，是否还做以后再定）；桌面记录的扩展（恢复窗口位置、更多程序、从本应用启动 VS Code / Eclipse 并与监控结合） |
 
 原计划把「多窗口与会话」放在 M4 之前，理由是它决定标签和插件 viewState 的数据结构，越早定型返工越少；该项移到「后续」后，标签状态仍按 M1-3 的单窗口子集由渲染端持有（11.2 节「已实现」），将来再做多窗口时需重新评估这部分返工。
 
@@ -1594,8 +1659,10 @@ export default defineConfig({
 | Kysely 0.x 版本的 API 调整（如 0.29 将迁移 API 移到 `kysely/migration`） | 数据层 | 升级时跑全部数据库测试；使用面收敛在 `infra/db` |
 | 公司漏洞管理（TVM）封锁构建工具链中的旧版程序 | 无法打包 | 7-Zip 使用 25.01 以上版本并以环境变量指定；若恢复 NSIS 目标则用 3.12 工具包；新增构建工具时先确认版本 |
 | 自绘窗口按钮失去 Windows 11 的贴靠布局面板（Snap Layouts） | 少一种窗口布局入口 | 双击标题栏最大化已验证可用；拖动贴靠、Win+方向键预期可用（未逐一验证）；如用户需要再评估恢复系统按钮 |
-| SMB 认证依赖 `net use`，且仅限 Windows | 未挂载 SMB | 先满足主要平台；后续用 koffi 调用 Windows API；接口不变 |
-| FTP 单连接串行、日文服务器编码各异 | 远程性能与乱码 | 连接池 + 队列；连接级编码选项 |
+| ~~SMB 认证依赖 `net use`，且仅限 Windows~~（SMB 已放弃，需求方 2026-11-22） | — | — |
+| FTP 单连接串行、日文服务器编码各异（FTP 在「后续」） | 远程性能与乱码 | 连接池 + 队列；连接级编码选项 |
+| M4：在命令通道上走 SFTP 借用 `ssh2` 的内部类 `ssh2/lib/protocol/SFTP.js` | 升级 `ssh2` 后身份切换可能失效 | 固定精确版本（1.17.0）；借用只在 `modules/connection/sftp-bridge.ts` 一个文件；假服务器的集成测试与 WSL 实机测试兜底；退路是自写只读 SFTP v3 客户端（设计 4.3 节） |
+| M4：sudo / sudo-rs 的输出措辞与行为因发行版、版本、locale 而异 | 身份切换误判（误报失败 / 误锁） | 命令以 `exec env LC_ALL=C sudo …` 执行；成功以进程表判定而不是输出；4 个发行版（Ubuntu sudo-rs / Debian / Alma / openSUSE）实机测试；残余风险见 7.6 节 |
 | 终端策略禁止 PowerShell | Office 打开动作（只在将来的预览窗口中提供） | 改用 koffi 调用 `ShellExecuteExW`（koffi 已引入）；默认「编辑打开」也可退回 `shell.openPath` |
 | 文件关联被第三方软件改写或 Office 修复后变化 | 打开方式显示不准 | 检测结果按机器持久保存，可在面板上手动「再検出」刷新（不再每次启动重新检测） |
 | Excel 不能同时打开两个同名工作簿 | 远程缓存副本与本地同名文件冲突 | 属 Office 自身限制，检测到同名已打开时给出提示 |

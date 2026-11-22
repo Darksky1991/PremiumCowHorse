@@ -279,3 +279,11 @@
 - 原因：`bash -c` 的命令行里也含有字符串 `sshd.*pchuser`，被 `pkill -f` 匹配并冻结（SIGSTOP），后面的命令不再执行。
 - 解决：按进程名精确匹配（`pgrep -x` / `pkill -u <用户> <进程名>`），或把模式写成不会匹配自身的形式（如 `'[s]shd.*pchuser'`）。
 - 预防：在脚本中慎用 `pkill -f`，尤其是 `-STOP` / `-KILL`。
+
+### `wsl.exe -d <实例> -u root -e <命令>`：PATH 不含 `/usr/local/sbin`
+
+- 日期：2026-11-23
+- 症状（M4 Task 14a）：`wsl.exe -d Debian -u root -e pch-scenario all quiet` 找不到命令（`scripts/wsl-sftp/README.md` 中经默认 shell 的写法 `wsl -d Debian -u root -- pch-scenario …` 照常可用）。
+- 原因：`-e` 不经 WSL 的默认 shell 直接执行，得到的 PATH 不含 `/usr/local/sbin`（为什么经 shell 时含有，推测是 shell 的初始化补上的，未核实）。
+- 解决：`-e` 时用绝对路径（`/usr/local/sbin/pch-scenario`）。`-e` 的好处是参数不再经 shell 二次解析（见上一条），测试中从 Node `spawn('wsl.exe', ['-d', …, '-u', 'root', '-e', …])` 更可靠。
+- 预防：经 `-e` 执行的命令一律写绝对路径。
