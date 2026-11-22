@@ -1,8 +1,9 @@
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { hostname } from 'node:os'
 import { app, net, session, shell } from 'electron'
 import type { i18n } from 'i18next'
-import { resolveLanguage, type LocationKind } from '@pch/shared'
+import { parseSftpUri, resolveLanguage, type LocationKind } from '@pch/shared'
 import { EventBus } from '../core/event-bus'
 import type { MainEvents } from '../core/events'
 import { openDatabase, type Database } from '../infra/db/client'
@@ -14,6 +15,16 @@ import { SettingsService } from '../modules/settings/settings.service'
 import { WindowService } from '../windows/window.service'
 import { WorkspaceService } from '../modules/workspace/workspace.service'
 import { LocalProvider } from '../vfs/providers/local.provider'
+import { SftpProvider } from '../vfs/providers/sftp.provider'
+import { RemoteAccess, remoteFolderRoots } from '../vfs/remote-access'
+import { ConnectionPool } from '../modules/connection/connection-pool'
+import { ConnectionRepo } from '../modules/connection/connection.repo'
+import { ConnectionService } from '../modules/connection/connection.service'
+import { createHostKeyGate, type HostKeyGate } from '../modules/connection/host-key-gate'
+import { electronSecretBox } from '../modules/connection/secret-box'
+import { sftpOverChannel } from '../modules/connection/sftp-bridge'
+import { connectSsh } from '../modules/connection/ssh-session'
+import { openIdentityChannel } from '../modules/connection/sudo-switch'
 import { location } from '../vfs/location'
 import { ScannerClient } from '../vfs/scanner-client'
 import { forkScanner } from '../vfs/scanner-process'
@@ -71,6 +82,12 @@ export interface Container {
   launcher: LauncherService
   desktop: DesktopService
   exitGuard: ExitGuard
+  /** 远程连接（M4） */
+  connections: ConnectionService
+  pool: ConnectionPool
+  hostKeys: HostKeyGate
+  /** sftp: URI 的访问范围（根由 bootstrap 的 wireScanner 随扫描配置一并更新） */
+  remoteAccess: RemoteAccess
 }
 
 /**
@@ -84,8 +101,46 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const bus = new EventBus<MainEvents>()
 
   const settings = await SettingsService.create(new SettingsRepo(db), bus)
+  const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
+  const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))
+
+  // 远程连接（设计 devDoc/2026-11-22-37 第 5.2、5.3 节）：连接池以 SftpSessionSource 注入 SftpProvider
+  const connectionRepo = new ConnectionRepo(db)
+  const secrets = electronSecretBox()
+  const hostKeys = createHostKeyGate({
+    describe: async (id) => {
+      const rec = await connectionRepo.get(id)
+      return rec && { name: rec.name, host: rec.host, port: rec.port }
+    },
+    // 只发给主窗口；没有主窗口（或渲染端已崩溃）→ false → 按拒绝处理
+    send: (p) => {
+      if (!windows.mainRendererAlive()) return false
+      windows.sendToMain('connection.hostKeyPrompt', p)
+      return true
+    }
+  })
+  const pool = new ConnectionPool({
+    repo: connectionRepo,
+    secrets,
+    connect: connectSsh,
+    openIdentity: openIdentityChannel,
+    bridge: sftpOverChannel,
+    readKeyFile: (file) => readFile(file),
+    hostKeys,
+    settings: () => ({
+      keepaliveSec: settings.get('remote.keepaliveSec'),
+      idleDisconnectMin: settings.get('remote.idleDisconnectMin'),
+      timeoutSec: settings.get('vfs.timeoutSec.remote')
+    }),
+    onStatus: (id, state) => bus.emit('connection.status', { id, state }),
+    now: Date.now,
+    setTimer: setTimeout,
+    clearTimer: clearTimeout,
+    log: logger
+  })
+
   // 一次性调用（stat、条目添加的校验、降级模式的直接枚举）的超时按位置取 vfs.timeoutSec.*（总时长）
-  const vfs = new VfsService([new LocalProvider()], {
+  const vfs = new VfsService([new LocalProvider(), new SftpProvider(pool)], {
     timeoutMs: (uri) => {
       let where: LocationKind = 'network'
       try {
@@ -106,8 +161,23 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     log: logger
   })
   scanner.start()
-  const i18n = createMainI18n(resolveLanguage(settings.get('general.language'), app.getLocale()))
-  const windows = new WindowService(paths, settings, rendererUrl, () => i18n.t('common.appName'))
+  const remoteAccess = new RemoteAccess()
+  const connections = new ConnectionService({
+    repo: connectionRepo,
+    secrets,
+    pool,
+    emitChanged: () => bus.emit('connection.changed', {}),
+    // 连接被重置（编辑 / 删除 / 重新连接 / 信任新密钥）：立即重新检查该连接的远程条目根
+    onConnectionReset: (id) => {
+      remoteRootsOf(workspaces, id)
+        .then((roots) => {
+          if (roots.length > 0) scanner.refresh(roots)
+        })
+        .catch((e: unknown) => logger.error(`[connection] refresh roots of ${id} failed`, e))
+    },
+    now: Date.now,
+    timeoutMs: () => settings.get('vfs.timeoutSec.remote') * 1000
+  })
   // 文本文档：读取经 VfsService（开-读-关、按位置超时）；事件只发给文档所属的窗口
   const documents = new DocumentService({
     source: vfs,
@@ -173,8 +243,24 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     web,
     launcher,
     desktop,
-    exitGuard
+    exitGuard,
+    connections,
+    pool,
+    hostKeys,
+    remoteAccess
   }
+}
+
+/** 所有工作区中指向该连接的远程 folder 条目根（已规范化） */
+async function remoteRootsOf(
+  workspaces: WorkspaceService,
+  connectionId: string
+): Promise<string[]> {
+  const all = await workspaces.list()
+  const entries = (await Promise.all(all.map((w) => workspaces.listEntries(w.id)))).flat()
+  return remoteFolderRoots(entries).filter(
+    (uri) => parseSftpUri(uri)?.connectionId === connectionId
+  )
 }
 
 /**

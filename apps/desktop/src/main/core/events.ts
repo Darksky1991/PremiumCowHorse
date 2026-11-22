@@ -1,4 +1,4 @@
-import type { ReachabilityEvent, Settings } from '@pch/shared'
+import type { ConnectionState, ReachabilityEvent, Settings } from '@pch/shared'
 
 /** 主进程内部事件。新增模块时在这里登记事件类型。 */
 export interface MainEvents extends Record<string, unknown> {
@@ -9,4 +9,8 @@ export interface MainEvents extends Record<string, unknown> {
   'vfs.changed': { uri: string }
   /** 共享 / 卷断开或恢复（扫描进程） */
   'vfs.reachability': ReachabilityEvent
+  /** 连接列表有变化（connection 模块） */
+  'connection.changed': Record<string, never>
+  /** 连接状态变化（连接池） */
+  'connection.status': { id: string; state: ConnectionState }
 }

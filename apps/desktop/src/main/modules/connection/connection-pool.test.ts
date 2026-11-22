@@ -916,6 +916,75 @@ describe('ConnectionPool: 断开', () => {
   })
 })
 
+describe('ConnectionPool: dispose', () => {
+  it('中止打开中的身份（已交出 sudo 密码）→ 等锁定写入完成后才结束', async () => {
+    const h = setup()
+    const write = deferred<void>()
+    h.repo.setAuthState.mockImplementation(async (id: string, s: ConnectionRecord['authState']) => {
+      await write.promise
+      h.repo.records.get(id)!.authState = s
+    })
+    h.identityPlan = (d) =>
+      new Promise((_, reject) => {
+        d.signal?.addEventListener('abort', () =>
+          setTimeout(() =>
+            reject(
+              new AppError({ code: 'CONN_SUDO_AUTH_FAILED', detail: 'aborted after password' })
+            )
+          )
+        )
+      })
+    const p = h.pool.session(APP1, opts())
+    p.catch(() => undefined)
+    await flush()
+    let done = false
+    const disposing = h.pool.dispose().then(() => (done = true))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.repo.setAuthState).toHaveBeenCalledWith('c1', 'sudo-auth-failed')
+    expect(done).toBe(false)
+    write.resolve()
+    await disposing
+    expect(h.repo.records.get('c1')!.authState).toBe('sudo-auth-failed')
+    expect((await errorOf(h.pool.session(LOGIN, opts()))).code).toBe('FS_UNAVAILABLE')
+  })
+
+  it('连接尝试在 dispose 之后认证失败 → 等锁定写入完成后才结束', async () => {
+    const answer = deferred<boolean>()
+    const h = setup({ records: [record({ hostKey: null })], ask: () => answer.promise })
+    h.authResult.value = new AppError({ code: 'CONN_AUTH_FAILED' })
+    const p = h.pool.session(LOGIN, opts())
+    p.catch(() => undefined)
+    await flush()
+    let done = false
+    const disposing = h.pool.dispose().then(() => (done = true))
+    await flush()
+    expect(done).toBe(false)
+    answer.resolve(true)
+    await disposing
+    expect(h.repo.records.get('c1')!.authState).toBe('auth-failed')
+  })
+
+  it('迟迟不结束的连接尝试（确认框未回答）不让 dispose 无限等待', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const h = setup({ records: [record({ hostKey: null })], ask: () => new Promise(() => {}) })
+    const p = h.pool.session(LOGIN, opts())
+    p.catch(() => undefined)
+    await flush()
+    let done = false
+    const disposing = h.pool.dispose().then(() => (done = true))
+    await flush()
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await disposing
+    expect(done).toBe(true)
+  })
+
+  it('没有连接时立即结束', async () => {
+    const h = setup()
+    await expect(h.pool.dispose()).resolves.toBeUndefined()
+  })
+})
+
 describe('ConnectionPool: home', () => {
   it('登录用户为 realpath(.)；身份为 /', async () => {
     const h = setup()

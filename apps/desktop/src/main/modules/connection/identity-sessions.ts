@@ -302,16 +302,20 @@ export class ConnIdentities {
 
   /**
    * SSH 连接被丢弃：中止打开中的过程，关闭全部身份通道。等待者得到 FS_UNAVAILABLE；
-   * 已交出 sudo 密码而未判定成功的，sudo-switch 以 CONN_SUDO_AUTH_FAILED 结束（锁定）
+   * 已交出 sudo 密码而未判定成功的，sudo-switch 以 CONN_SUDO_AUTH_FAILED 结束（锁定）。
+   * 返回的 Promise 在被中止的打开过程全部结束（含其锁定写入）后完成（连接池 dispose 等待它）
    */
-  close(): void {
+  close(): Promise<void> {
     this.closed = true
+    const opening: Promise<SftpSession>[] = []
     for (const entry of this.entries.values()) {
+      if (!entry.wrapper) opening.push(entry.promise)
       entry.ctrl.abort()
       entry.opened?.channel.close()
     }
     this.entries.clear()
     this.probe = null
+    return Promise.allSettled(opening).then(() => undefined)
   }
 
   private start(identity: string): Entry {

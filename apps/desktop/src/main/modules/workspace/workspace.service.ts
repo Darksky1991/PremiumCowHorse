@@ -3,8 +3,10 @@ import { realpathSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import {
   AppError,
+  formatSftpUri,
   isUnderUri,
   normalizeRootUri,
+  parseSftpUri,
   DEFAULT_WORKSPACE_ID,
   type EntryAddInput,
   type EntryMoveInput,
@@ -25,6 +27,18 @@ import { fileUriToLocalPath } from '../../vfs/local-path'
 import type { VfsService } from '../../vfs/vfs.service'
 import { EntryRepo, IndexTargetRepo } from './entry.repo'
 import { WorkspaceRepo } from './workspace.repo'
+
+/**
+ * 条目 URI 的规范形式：sftp: 经解析再格式化（scheme 小写、消去 . / ..、逐段重新编码、去掉结尾 /），
+ * 与渲染端 / 扫描进程推导的子项 URI 逐字符一致；其余按 normalizeRootUri
+ */
+function entryUri(raw: string): string {
+  const url = URL.canParse(raw) ? new URL(raw) : null
+  if (url?.protocol !== 'sftp:') return normalizeRootUri(raw)
+  const loc = parseSftpUri(url.href)
+  if (!loc) throw new AppError({ code: 'FS_INVALID_URI', detail: raw })
+  return formatSftpUri(loc)
+}
 
 /**
  * 工作区与条目的业务规则。所有写操作各自在一个事务内完成（多步写入保持原子性），
@@ -132,9 +146,13 @@ export class WorkspaceService {
     let uri: string | null = null
     let defaultLabel = ''
     if (input.kind !== 'group') {
-      uri = input.path !== undefined ? toFileUri(input.path) : normalizeRootUri(input.uri as string)
-      // 先于 stat 检查：临时副本即使存在也不接受
-      if (input.rejectTemporary === true && (await this.isTemporary(fileUriToLocalPath(uri)))) {
+      uri = input.path !== undefined ? toFileUri(input.path) : entryUri(input.uri as string)
+      // 先于 stat 检查：临时副本即使存在也不接受（只对本地 file:；sftp: 的存在与类型经 VFS → SftpProvider 校验）
+      if (
+        input.rejectTemporary === true &&
+        uri.startsWith('file:') &&
+        (await this.isTemporary(fileUriToLocalPath(uri)))
+      ) {
         throw new AppError({ code: 'ENTRY_TEMPORARY_PATH', detail: uri })
       }
       const stat = await this.vfs.stat(uri)

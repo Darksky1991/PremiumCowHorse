@@ -1,6 +1,7 @@
 import { AppError, type DirectoryListing } from '@pch/shared'
 import { sniff, SNIFF_BYTES } from '@pch/text-engine'
 import type { HandlersOf } from '../ipc/router'
+import type { RemoteScope } from './remote-access'
 import type { ScannerClient } from './scanner-client'
 import type { VfsService } from './vfs.service'
 
@@ -27,10 +28,13 @@ const isUnavailable = (e: unknown): boolean =>
 /**
  * 参数已由路由按契约校验。目录列表经扫描进程（缓存 + 调度）；扫描进程不可用时退回
  * VfsService 直接枚举、不缓存（降级模式，设计 4.1）。
+ * 访问范围（设计 5.7）：stat / list / sniff 的 sftp: URI 必须在远程条目之下（IPC_FORBIDDEN）；
+ * interest / refresh 丢弃范围外的 URI
  */
 export function vfsHandlers(
   vfs: VfsService,
-  scanner: ScannerApi
+  scanner: ScannerApi,
+  scope: RemoteScope
 ): HandlersOf<
   | 'vfs.stat'
   | 'vfs.list'
@@ -48,8 +52,12 @@ export function vfsHandlers(
     checkedAt: Date.now()
   })
   return {
-    'vfs.stat': ({ uri }) => vfs.stat(uri),
+    'vfs.stat': async ({ uri }) => {
+      await scope.check(uri)
+      return vfs.stat(uri)
+    },
     'vfs.list': async ({ uri, requestId }) => {
+      await scope.check(uri)
       if (!scanner.available) return listDirectly(uri, requestId)
       try {
         return await scanner.list(uri)
@@ -62,12 +70,28 @@ export function vfsHandlers(
       vfs.cancel(requestId)
       scanner.cancelSearch(requestId)
     },
-    'vfs.interest': async (interest, ctx) => scanner.interest(ctx.senderId, interest),
-    'vfs.refresh': async ({ uris }) => scanner.refresh(uris),
+    'vfs.interest': async ({ focus, visible, offscreen, tabs }, ctx) => {
+      const [focusOk, v, o, t] = await Promise.all([
+        focus === null ? [] : scope.filter([focus]),
+        scope.filter(visible),
+        scope.filter(offscreen),
+        scope.filter(tabs)
+      ])
+      scanner.interest(ctx.senderId, {
+        focus: focusOk[0] ?? null,
+        visible: v,
+        offscreen: o,
+        tabs: t
+      })
+    },
+    'vfs.refresh': async ({ uris }) => scanner.refresh(await scope.filter(uris)),
     'vfs.offlineShares': async () => scanner.offlineShares(),
     'vfs.cacheInfo': () => scanner.cacheInfo(),
     'vfs.clearCache': () => scanner.clearCache(),
     // 开头 8KB（开-读-关）判断文本 / 二进制；BOM 等细节由 doc.open 的 DocumentInfo 提供
-    'vfs.sniff': async ({ uri }) => ({ kind: sniff(await vfs.read(uri, 0, SNIFF_BYTES)).kind })
+    'vfs.sniff': async ({ uri }) => {
+      await scope.check(uri)
+      return { kind: sniff(await vfs.read(uri, 0, SNIFF_BYTES)).kind }
+    }
   }
 }

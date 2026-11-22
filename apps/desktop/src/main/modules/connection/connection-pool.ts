@@ -51,6 +51,11 @@ export interface PoolDeps {
 
 /** 首次连接（需要用户确认主机密钥）时 readyTimeout 的下限：计时包含用户确认的时间（R5） */
 const FIRST_CONNECT_READY_MS = 300_000
+/**
+ * dispose 等待进行中的连接尝试 / 身份打开结束（及其锁定写入）的上限：确认框未回答、TCP 连接未超时的尝试
+ * 可能要几分钟才结束，不能让退出一直等
+ */
+const DISPOSE_WAIT_MS = 5_000
 
 type Timer = ReturnType<typeof setTimeout>
 
@@ -107,6 +112,8 @@ export class ConnectionPool implements SftpSessionSource {
   private readonly memory = new IdentityMemory()
   private readonly identityDeps: IdentityDeps
   private readonly owners = new WeakMap<SftpSession, Owner>()
+  /** 进行中的 auth_state 写入（dispose 等它们结束后才返回，之后才关闭数据库） */
+  private readonly writes = new Set<Promise<void>>()
   private disposed = false
 
   constructor(private readonly deps: PoolDeps) {
@@ -190,7 +197,7 @@ export class ConnectionPool implements SftpSessionSource {
 
   disconnect(connectionId: string): void {
     const conn = this.conns.get(connectionId)
-    if (conn) this.teardown(conn)
+    if (conn) void this.teardown(conn)
     // 编辑 / 删除 / 重新连接都是用户的明确操作：内存中的记忆一并清除（持久的锁定以 auth_state 为准）
     this.memory.clearFailures(connectionId)
     this.memory.clearModes(connectionId)
@@ -280,9 +287,16 @@ export class ConnectionPool implements SftpSessionSource {
     }
   }
 
-  dispose(): void {
+  /**
+   * 关闭全部连接。中止进行中的身份打开（已交出 sudo 密码）与之后才失败的连接尝试会异步写入锁定状态：
+   * 等它们结束（上限 DISPOSE_WAIT_MS）与已开始的写入完成后再返回（调用方随后关闭数据库）
+   */
+  async dispose(): Promise<void> {
     this.disposed = true
-    for (const conn of [...this.conns.values()]) this.teardown(conn)
+    const pending: Promise<unknown>[] = [...this.attempts.values()]
+    for (const conn of [...this.conns.values()]) pending.push(this.teardown(conn))
+    await this.settleWithin(pending, DISPOSE_WAIT_MS)
+    while (this.writes.size > 0) await Promise.allSettled([...this.writes])
   }
 
   // ---- SSH 连接 ----
@@ -483,33 +497,54 @@ export class ConnectionPool implements SftpSessionSource {
     await this.writeAuthState(id, 'auth-failed')
   }
 
-  private async writeAuthState(id: string, state: ConnectionAuthState): Promise<void> {
+  private writeAuthState(id: string, state: ConnectionAuthState): Promise<void> {
+    const p = (async (): Promise<void> => {
+      try {
+        await this.deps.repo.setAuthState(id, state)
+      } catch (e) {
+        this.deps.log.error(
+          `connection ${id}: write auth_state ${state} failed (${toAppError(e).code})`
+        )
+      }
+    })()
+    this.writes.add(p)
+    void p.finally(() => this.writes.delete(p))
+    return p
+  }
+
+  /** 等这些 Promise 全部结束，最多 ms 毫秒 */
+  private async settleWithin(ps: Promise<unknown>[], ms: number): Promise<void> {
+    if (ps.length === 0) return
+    let timer: Timer | undefined
+    const cap = new Promise<void>((resolve) => {
+      timer = this.deps.setTimer(resolve, ms)
+      ;(timer as { unref?: () => void }).unref?.()
+    })
     try {
-      await this.deps.repo.setAuthState(id, state)
-    } catch (e) {
-      this.deps.log.error(
-        `connection ${id}: write auth_state ${state} failed (${toAppError(e).code})`
-      )
+      await Promise.race([Promise.allSettled(ps), cap])
+    } finally {
+      if (timer !== undefined) this.deps.clearTimer(timer)
     }
   }
 
   private onSshClosed(conn: Conn, err: AppError | null): void {
     if (this.conns.get(conn.id) !== conn) return
-    this.teardown(conn)
+    void this.teardown(conn)
     this.memory.clearFailures(conn.id)
     this.deps.log.info(`connection ${conn.id}: closed (${err ? err.code : 'normal'})`)
     this.setState(conn.id, err ? 'offline' : 'idle')
   }
 
-  /** 从池中移除并关闭连接与全部身份通道 */
-  private teardown(conn: Conn): void {
+  /** 从池中移除并关闭连接与全部身份通道；返回被中止的身份打开过程全部结束的 Promise */
+  private teardown(conn: Conn): Promise<void> {
     if (this.conns.get(conn.id) === conn) this.conns.delete(conn.id)
     conn.discarded = true
     this.clearIdle(conn)
-    conn.identities?.close()
+    const closing = conn.identities?.close() ?? Promise.resolve()
     conn.identities = null
     conn.login = null
     conn.ssh?.close()
+    return closing
   }
 
   // ---- 空闲断开 ----
@@ -542,7 +577,7 @@ export class ConnectionPool implements SftpSessionSource {
     if (this.conns.get(conn.id) !== conn || conn.active > 0) return
     const left = this.idleMs() - (this.deps.now() - conn.lastUsed)
     if (left > 0) return this.scheduleIdle(conn, left)
-    this.teardown(conn)
+    void this.teardown(conn)
     this.memory.clearFailures(conn.id)
     this.deps.log.info(`connection ${conn.id}: idle disconnect`)
     this.setState(conn.id, 'idle')

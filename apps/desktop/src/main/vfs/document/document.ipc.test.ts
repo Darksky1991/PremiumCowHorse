@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import {
+  AppError,
   DOC_ENCODINGS,
   DOC_READ_LINES_MAX,
   ipcContract,
@@ -54,7 +55,9 @@ describe('documentHandlers', () => {
       buildIndex: vi.fn(async () => 'info'),
       close: vi.fn()
     }
-    const handlers = documentHandlers(docs as unknown as DocumentApi)
+    const handlers = documentHandlers(docs as unknown as DocumentApi, {
+      check: async () => undefined
+    })
     const ctx = { senderId: 9 }
     await handlers['doc.open']({ uri: 'file:///C:/a.log', at: 'end' }, ctx)
     await handlers['doc.readLines']({ docId: 'd', start: 5, count: 10 }, ctx)
@@ -68,5 +71,18 @@ describe('documentHandlers', () => {
     expect(docs.setEncoding).toHaveBeenCalledWith(9, 'd', null)
     expect(docs.buildIndex).toHaveBeenCalledWith(9, 'd')
     expect(docs.close).toHaveBeenCalledWith(9, 'd')
+  })
+
+  it('doc.open checks the remote access scope before opening', async () => {
+    const docs = { open: vi.fn(async () => 'info') }
+    const forbidden = new AppError({ code: 'IPC_FORBIDDEN' })
+    const check = vi.fn(async (uri: string) => {
+      if (uri.startsWith('sftp:')) throw forbidden
+    })
+    const handlers = documentHandlers(docs as unknown as DocumentApi, { check })
+    await expect(
+      handlers['doc.open']({ uri: 'sftp://c1/etc/passwd' }, { senderId: 9 })
+    ).rejects.toBe(forbidden)
+    expect(docs.open).not.toHaveBeenCalled()
   })
 })

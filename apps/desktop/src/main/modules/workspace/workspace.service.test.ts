@@ -2,13 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_WORKSPACE_ID, type WorkspaceEntry } from '@pch/shared'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AppError, DEFAULT_WORKSPACE_ID, type WorkspaceEntry } from '@pch/shared'
 import { EventBus } from '../../core/event-bus'
 import type { MainEvents } from '../../core/events'
 import { openDatabase, type Database } from '../../infra/db/client'
 import type { Logger } from '../../infra/logger'
 import { LocalProvider } from '../../vfs/providers/local.provider'
+import type { FileSystemProvider } from '../../vfs/types'
 import { VfsService } from '../../vfs/vfs.service'
 import { WorkspaceService } from './workspace.service'
 
@@ -237,6 +238,68 @@ describe('WorkspaceService', () => {
       it('allows temp paths when rejectTemporary is not set', async () => {
         const e = await addPath(at('Temp', 'zip-copy', 'f.txt'))
         expect(e.label).toBe('f.txt')
+      })
+    })
+
+    describe('sftp: folders', () => {
+      const ID = '3f2a0000-0000-4000-8000-000000000001'
+      const sftpStat = vi.fn(async (uri: URL) => ({
+        uri: uri.href,
+        name: 'opt',
+        kind: 'directory' as const,
+        size: 0,
+        mtime: 0
+      }))
+      const sftpProvider: FileSystemProvider = {
+        scheme: 'sftp',
+        stat: sftpStat,
+        list: async () => [],
+        read: async () => new Uint8Array(),
+        createReadStream: async () => {
+          throw new Error('unused')
+        },
+        dispose: async () => undefined
+      }
+      const addSftp = (uri: string, rejectTemporary?: boolean): Promise<WorkspaceEntry> =>
+        service.addEntry({
+          kind: 'folder',
+          workspaceId: DEFAULT_WORKSPACE_ID,
+          parentId: null,
+          uri,
+          ...(rejectTemporary === undefined ? {} : { rejectTemporary })
+        })
+
+      beforeEach(() => {
+        sftpStat.mockClear()
+        service = new WorkspaceService(
+          db,
+          new VfsService([new LocalProvider(), sftpProvider]),
+          new EventBus<MainEvents>(),
+          at('Temp')
+        )
+      })
+
+      it('validates through the VFS (stat) and ignores rejectTemporary (only for file:)', async () => {
+        const e = await addSftp(`sftp://${ID}/opt/`, true)
+        expect(e.uri).toBe(`sftp://${ID}/opt`)
+        expect(e.label).toBe('opt')
+        expect(sftpStat).toHaveBeenCalledTimes(1)
+      })
+
+      it('stores the canonical form (dot segments resolved, segments re-encoded)', async () => {
+        const e = await addSftp(`sftp://${ID}/var/../opt/%E6%97%A5%E5%BF%97/`)
+        expect(e.uri).toBe(`sftp://${ID}/opt/%E6%97%A5%E5%BF%97`)
+      })
+
+      it('propagates CONN_NOT_FOUND from the provider', async () => {
+        sftpStat.mockRejectedValueOnce(new AppError({ code: 'CONN_NOT_FOUND' }))
+        await expect(addSftp(`sftp://${ID}/opt`)).rejects.toMatchObject({ code: 'CONN_NOT_FOUND' })
+        expect(await order()).toEqual([])
+      })
+
+      it('rejects an unparsable sftp URI with FS_INVALID_URI', async () => {
+        await expect(addSftp('sftp://')).rejects.toMatchObject({ code: 'FS_INVALID_URI' })
+        expect(sftpStat).not.toHaveBeenCalled()
       })
     })
 
