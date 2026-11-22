@@ -224,3 +224,11 @@
 - 原因：两层延迟。① 界面显示哪个工作区取决于 `useActiveWorkspace()` 的查询，它要等主进程的 `workspace.changed` → `invalidateQueries` → 再调用一次 `workspace.active` 才更新，`activate` 的 IPC 返回时还没开始。② 即使先 `await refetchQueries(...)`，`@tanstack/query-core` 5.107 的 `notifyManager` 默认用 `setTimeout(cb, 0)` 通知观察者（`notifyManager.js` 的 `defaultScheduler = systemSetTimeoutZero`），Promise 返回时组件仍拿着旧数据；而 zustand 的 `set` 同步通知订阅者，React 19 在微任务中渲染——于是先渲染了「旧工作区 + 后退后的标签」。
 - 解决：不在「切换的 Promise 返回后」做依赖界面已切换的操作，改为在因切换而卸载的组件（工作区一览）的 effect 清理中做：清理在新界面提交之后执行，用 `queryClient.getQueryData` 读到的已是新值（`features/workspace/workspaces-page.tsx` + `data/workspace.ts` 的 `useReadActiveWorkspaceId`）。
 - 预防：需要「界面已显示新状态之后」再执行的副作用，挂在渲染结果上（effect / 卸载清理），不要挂在 mutation 或 refetch 的 Promise 上；混用 TanStack Query 与 zustand 时注意两者的通知时机不同。
+
+### koffi 3：`struct` / `proto` 同名重复定义抛 `Duplicate type name`（第二次加载静默落入退路）
+
+- 日期：2026-11-21（2026-11-22 复现核对）
+- 症状（M3 Task 5）：`loadListWindows()` / `getLogonTime()` 每次调用都重新声明 `RECT`、`WTSINFOW`、`EnumWindowsProc` 等，第一次正常，第二次调用时 `loadListWindows()` 返回 null、`getLogonTime()` 悄悄改用 shell 进程创建时刻的退路，没有明显报错（异常被各自的 try/catch 吞掉）。
+- 原因：koffi 的类型注册表是进程全局的，`koffi.struct('X', …)` / `koffi.proto('… X(…)')` 对已存在的名字抛 `Duplicate type name 'X'`（koffi 3.3.8，Node 26 实测）。
+- 解决：原生声明在进程内只做一次（`modules/desktop/window-list.ts`、`logon.ts` 用模块级变量缓存声明结果，失败也只记一次）。
+- 预防：koffi 的声明放在模块级的「首次使用时初始化」函数里，不要放在每次调用的路径上；单元测试里多次调用加载函数，确认第二次的结果与第一次相同。

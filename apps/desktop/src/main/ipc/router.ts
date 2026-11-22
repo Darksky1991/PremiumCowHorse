@@ -11,6 +11,7 @@ import {
   type IpcResult
 } from '@pch/shared'
 import type { Logger } from '../infra/logger'
+import { logHandlerError } from './log-error'
 
 export interface IpcContext {
   senderId: number
@@ -56,7 +57,7 @@ export function registerIpc(
       const data = await handler(parsed.data as never, { senderId: event.sender.id })
       return { ok: true, data } satisfies IpcResult<unknown>
     } catch (e) {
-      logger.error(`[ipc] ${channel}`, e)
+      logHandlerError(logger, channel, e)
       return { ok: false, error: toErrorPayload(e) } satisfies IpcResult<unknown>
     }
   })

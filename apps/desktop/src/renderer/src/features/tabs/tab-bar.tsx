@@ -4,6 +4,7 @@ import {
   FolderIcon,
   GalleryVerticalIcon,
   LayoutGridIcon,
+  MonitorIcon,
   XIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import { panelDomId, tabDomId } from './dom-ids'
 const KIND_ICON: Record<TabState['kind'], LucideIcon> = {
   workspace: LayoutGridIcon,
   workspaces: GalleryVerticalIcon,
+  desktop: MonitorIcon,
   directory: FolderIcon,
   file: FileIcon
 }
@@ -103,9 +105,9 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             aria-controls={active ? panelDomId(baseId) : undefined}
             aria-labelledby={`${domId}-title`}
             tabIndex={active ? 0 : -1}
-            // 悬停提示为完整路径；工作区总览 / 一览（不是文件系统）为标题
+            // 悬停提示为完整路径；工作区总览 / 一览 / 桌面记录（不是文件系统）为标题
             title={
-              tab.kind === 'workspace' || tab.kind === 'workspaces'
+              tab.kind === 'workspace' || tab.kind === 'workspaces' || tab.kind === 'desktop'
                 ? title
                 : (fileUriToWindowsPath(tab.uri) ?? tab.uri)
             }

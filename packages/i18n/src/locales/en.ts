@@ -129,6 +129,85 @@ export default {
     renameMenu: 'Rename…',
     deleteMenu: 'Delete…'
   },
+  desktop: {
+    title: 'Desktop snapshots',
+    listLabel: 'Desktop snapshots',
+    saveNow: 'Save now',
+    current: 'Now',
+    kind: {
+      auto: 'Autosave',
+      manual: 'Manual save',
+      exit: 'Saved on exit',
+      exitNone: 'Exited without saving'
+    },
+    beforeRestart: 'Before restart',
+    itemCount: 'Items: {{count}}',
+    renameMenu: 'Rename…',
+    deleteMenu: 'Delete…',
+    renameTitle: 'Rename snapshot',
+    renameDescription: 'Leave it empty to show the snapshot type instead.',
+    nameLabel: 'Name',
+    cancel: 'Cancel',
+    renameSubmit: 'Rename',
+    deleteTitle: 'Delete this snapshot?',
+    deleteDescription:
+      'Only the snapshot is deleted. Open files and folders, and files on disk, are not affected.',
+    deleteSubmit: 'Delete',
+    noSnapshots: 'No snapshots yet',
+    snapshotGone: 'This snapshot no longer exists. It may have been deleted',
+    saved: 'Desktop saved (items: {{count}})',
+    nothingToSave: 'There is nothing to save',
+    category: {
+      explorer: 'File Explorer',
+      word: 'Word',
+      excel: 'Excel',
+      powerpoint: 'PowerPoint',
+      vscode: 'VS Code',
+      eclipse: 'Eclipse'
+    },
+    groupSelected: '{{selected}} / {{total}} selected',
+    checklistLabel: 'Items',
+    specialLocation: 'Special location',
+    tabCount: ' ({{count}} tab(s))',
+    readOnly: 'Read-only',
+    selectedCount: '{{selected}} of {{total}} selected',
+    unreadable: 'Could not read: {{names}}',
+    sharePointNote: 'Files on SharePoint / OneDrive are not recorded',
+    emptyCurrent: 'Nothing is open right now',
+    emptySnapshot: 'This snapshot has no items',
+    restoreSelected: 'Restore selected items',
+    saveSelected: 'Save',
+    restoreTitle: 'Restore your previous desktop?',
+    restoreDescription: 'These items were open before the restart. Choose what to restore.',
+    restoreSubmit: 'Restore',
+    restoreLater: 'Later',
+    explorerWindow: 'Same window · {{count}} tab(s)',
+    clearTitle: 'Delete the saved snapshots?',
+    clearDescription:
+      'Restore finished. All {{count}} saved snapshot(s) will be deleted and the current desktop recorded again.',
+    clearFailedNote:
+      'Some items could not be restored (unreachable or failed to start). Keep the snapshots to try again later.',
+    clearKeep: 'Keep',
+    clearConfirm: 'Delete',
+    exitTitle: 'Save your desktop before exiting?',
+    exitDescription: 'Choose the items to save. You can restore them next time you start.',
+    exitNoItems: 'Nothing is open right now',
+    exitLoading: 'Reading what is open…',
+    exitSave: 'Save and exit',
+    exitNoSave: 'Exit without saving',
+    dontAskAgain: "Don't ask again",
+    askOnExit: 'Ask before exiting',
+    moreActions: 'More actions',
+    restored: 'Restored items: {{count}}',
+    restoredNone: 'No items were restored',
+    skipped: 'Skipped: {{details}}',
+    skipReason: {
+      open: '{{count}} already open',
+      missing: '{{count}} not found',
+      unreachable: '{{count}} unreachable',
+      failed: '{{count}} failed to start'
+    }
+  },
   connections: {
     emptyTitle: 'No remote connections yet',
     emptyHint: 'Add an SMB, FTP or SFTP server once and use it from any workspace.'
@@ -199,6 +278,7 @@ export default {
     FS_UNAVAILABLE: 'The location is unavailable',
     INDEX_UNAVAILABLE: 'The index is unavailable',
     DOC_NOT_FOUND: 'The document was closed. Open it again',
-    LAUNCH_FAILED: 'Could not launch the app. Check the associated application'
+    LAUNCH_FAILED: 'Could not launch the app. Check the associated application',
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'The desktop snapshot was not found. It may have been deleted'
   }
 } satisfies Resource

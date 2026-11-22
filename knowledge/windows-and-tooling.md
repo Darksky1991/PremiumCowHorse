@@ -47,6 +47,8 @@
 - 原因：不加引号时 heredoc 本身会做反斜杠处理（`\\` → `\`、`\$` → `$`）；加引号时真正的 bash 不处理，但本 AI 工具环境在交给 shell 之前仍把 `\\` 折叠为 `\`（推测在工具层，未深究）。
 - 解决：**含反斜杠的文件一律用 Write / Edit 工具写**（包括由脚本生成的文件：把脚本本身用 Write 写到临时目录再执行）。不要用 Bash heredoc 写含 `\\` 的内容，加引号也不行。
 - 预防：写完后 `grep` / `od -c` 检查一次关键的转义序列；用 heredoc 写的补丁脚本只在确认内容不含 `\\` 时使用。
+- 再次踩到（2026-11-21，M3 Task 2 / Task 11）：用 heredoc 写测试文件，路径字面量 `'C:\\work\\a.xlsx'` 落盘成 `'C:\work\a.xlsx'`（运行时成了控制字符），`keys.test.ts` / `item-label.test.ts` 因此失败，改用 Write 工具后通过。2026-11-22 在命令行里直接 `node -e '…`^\\d+$`…'` 也被折叠成 `^\d+$`：**不只是 heredoc，Bash 工具命令文本中的 `\\` 都可能被折叠**，验证转义的实验要把脚本写成文件再运行。
+- 再次踩到（2026-11-22，M3 合并前修正波）：在 heredoc 里写 Python 补丁脚本，Python 源码中的 `'C:\\x'`、`r"""…\\…"""` 落盘前已被折叠成一个反斜杠（TS 测试报 `Invalid escape sequence`）；`git commit -F - <<'EOF'` 的提交信息里 `\\` 同样变成 `\`。含反斜杠的补丁脚本、提交信息改用 Write 工具写成文件再执行 / `git commit -F <文件>`。
 
 ### `fs.watch` 的句柄阻止被监听目录的上级改名 / 移动（2026-11-19 起不再使用 `fs.watch`）
 
@@ -186,6 +188,7 @@
 - 原因：5.1 的 `ConvertFrom-Json` 把 JSON 数组作为**一个** `Object[]` 写出，`@()` 只包一层，`$list` 变成「只有一个元素（数组）」，`ForEach-Object` 的 `$_` 是整个数组。
 - 解决：`foreach ($x in (ConvertFrom-Json …)) { $list += [string]$x }`（`foreach` 会遍历数组本身，5.1 / 7 都适用）。
 - 预防：在 PowerShell 中处理 JSON 数组一律用 `foreach` 遍历；脚本逻辑要在真实 PowerShell 上跑一遍（见 `detect-script.test.ts`），不要只看字符串。另：Excel 把**加了引号的开关**（`"/r"`）当作文件名，开关不加引号、路径加引号。
+- 再次踩到（2026-11-21，M3 Task 9，资源管理器多标签恢复脚本 `EXPLORER_RESTORE_SCRIPT`）：`$tabs = @(ConvertFrom-Json $env:PCH_TABS)` 后 `$tabs.Count` 为 1、`[string]$tabs[0]` 是用空格连起来的全部路径，资源管理器打不开这个「路径」、回落打开「文档」；单元测试（假 PowerShell）发现不了，实机才发现。另一种写法：`@(ConvertFrom-Json $json | ForEach-Object { $_ })`（管道把 `$_` 输出的数组展开，2026-11-22 实测：两元素数组得到 Count 2，单元素数组得到 Count 1）。凡是经环境变量传 JSON 数组的脚本都按此处理。
 
 ### `execFile` 的 `timeout`：子进程已以 0 退出、孙进程持有管道时，超时被当作成功
 
@@ -194,3 +197,61 @@
 - 原因：.NET Framework 在 `UseShellExecute = $false` 时以继承句柄创建进程，孙进程继承了 Node 给 powershell 建的 stdout / stderr 管道；`execFile` 等到管道关闭（`close`）才回调。超时时 Node 结束子进程并销毁流，但子进程早已以 0 退出，于是按「退出码 0、无信号」回调成功。
 - 解决：启动外部程序的脚本一律 `UseShellExecute = $true`（经 ShellExecute，不继承管道）；`launcher/detect-script.test.ts` 有回归测试（孙进程睡 6 秒，脚本须在 3 秒内返回）。
 - 预防：不要把 `execFile` 的超时当作失败的保证；从脚本启动长期运行的程序时确认不继承标准输入输出句柄。
+
+### TS 模板字符串里内嵌的 PowerShell 脚本：正则 `\d` 变成 `d`，采集器静默返回空
+
+- 日期：2026-11-21
+- 症状（M3 Task 6）：`collectors/scripts.ts` 中以模板字符串定义的 Explorer / Office 脚本，用 `if ($s -match '^\d+$')` 过滤环境变量传入的 hwnd / pid，实机运行时所有 hwnd / pid 都被丢弃，采集器不报错、返回空数组；单元测试（假 `runPowerShell`）全部通过。
+- 原因：JS 的模板字符串（未加标签）会处理反斜杠转义，`\d` 不是合法转义、按字面得到 `d`，PowerShell 收到的是 `'^d+$'`。同理 `\.`、`\s` 等都会丢掉反斜杠，`\n`、`\t` 变成换行 / 制表符。
+- 解决：模板字符串里的 PowerShell / 正则反斜杠写成 `\\d`（`scripts.ts` 现为 `'^\\d+$'`）。需要大量反斜杠时可改用 `String.raw` 标签模板。
+- 预防：内嵌脚本至少在真实 PowerShell 上跑一次（单元测试的假执行器看不到脚本文本被改了什么）；写完用 `node -e "console.log(require(...).SCRIPT)"` 之类打印实际字符串核对。另见「Bash 工具：命令中的反斜杠被吞」——这里的问题出在 JS 源码本身，与工具无关。
+
+### PowerShell：UI Automation 的类型在程序集加载之前被解析（`Unable to find type [System.Windows.Automation.AutomationElement]`）
+
+- 日期：2026-11-21（2026-11-22 复现核对）
+- 症状（M3 Task 1 / Task 6）：脚本里用 `[System.Windows.Automation.AutomationElement]` 等类型字面量，而 `Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes` 写在同一个脚本块里，部分写法报 `TypeNotFound`。2026-11-22 实测：`& { param([System.Windows.Automation.AutomationElement]$e) … }` 在**外层没有先加载程序集**时报 `Unable to find type`；外层先 `Add-Type` 再进入该脚本块则正常。普通语句中（`-Command` 顶层、函数体、`try` 块内）在 `Add-Type` 之后使用类型字面量，本机 5.1 未复现问题。
+- 原因：参数的类型约束、特性等在脚本块编译 / 绑定参数时解析，早于脚本块内 `Add-Type` 的执行；普通表达式中的类型字面量在运行到该语句时才解析。哪些位置属于前者不容易一眼看出。
+- 解决：`Add-Type -AssemblyName …` 放在脚本的最外层、最前面；采集脚本 `EXPLORER_SCRIPT` 另以 `$AE = [type]::GetType('System.Windows.Automation.AutomationElement, UIAutomationTypes')` 取类型（运行时解析，与写法位置无关）。
+- 预防：固定脚本不在 `param()` 中用需要 `Add-Type` 的类型；在真实 PowerShell 的 `-Command` 方式（与 `runPowerShell` 相同）下跑一遍。
+
+### 多标签的资源管理器窗口：`WM_CLOSE` / 逐个 `Quit()` 关不掉，用 UI Automation 的 `CloseButton`
+
+- 日期：2026-11-21
+- 症状（M3 Task 1 / 6 / 9 的测试窗口清理）：对含 3 个以上标签的资源管理器窗口，连续 5 轮「对每个标签项 `Shell.Application` 的 `Quit()` + 对 hwnd 发 `WM_CLOSE`」后窗口仍在；另一个测试窗口则在几轮之后被关掉，两次结果不一致，原因未查清。
+- 原因：未查清（推测 Windows 11 资源管理器的多标签窗口不按经典方式处理 `WM_CLOSE`）。
+- 解决：UI Automation 找 `AutomationId = CloseButton` 并 `Invoke`，循环直到 `IsWindow(hwnd)` 为假（最多 10 轮，每轮间隔约 0.7 秒；参考 `.superpowers/sdd/2026-11-21-32-m3-desktop-snapshot-plan/spikes/explorer-closetabs.ps1`）。观察到的点击效果不一致：Task 1 一次点击关掉了整个窗口，Task 6 / 9 是每次点击关一个标签（2 个标签点 2 次、3 个标签点 3 次），所以必须循环到窗口消失。
+- 预防：测试只按「启动前已有 hwnd」之差识别并关闭自己打开的窗口，`finally` 中确认窗口已消失；不要对需求方的资源管理器窗口发任何消息。
+
+### Office 自动化：顶层窗口取不到对象；没有文档时没有 `EXCEL7` 等子窗口；弹着对话框时属性静默为 `$null`
+
+- 日期：2026-11-21
+- 症状（M3 Task 1 / Task 6）：① 对 `XLMAIN` / `OpusApp` / `PPTFrameClass` 顶层窗口 `AccessibleObjectFromWindow(OBJID_NATIVEOM)` 返回非零 HRESULT；② 修正为取子窗口后，Excel 开着但没有工作簿时采集器一直报 `busy`（审查判为 Critical：该类永远保留上一次结果）；③ Word 弹着 Copilot 介绍框 / 「另存为」时，`$doc.FullName` 不抛错而返回 `$null`。
+- 原因：① Office 的 NativeOM 挂在文档窗口（子窗口：Excel `EXCEL7`、Word `_WwG`、PowerPoint `mdiClass`）上，取到的是 Window 对象，再 `.Application`；这也是逐进程取 Application 的办法（`GetActiveObject` 只拿到一个）。② 没有文档时根本没有这些子窗口，「找不到子窗口」不等于「忙」。③ 模态对话框期间 COM 调用被拒绝（`RPC_E_CALL_REJECTED 0x80010001`），PowerShell 的属性访问把它吞掉返回 `$null`。
+- 解决：`OFFICE_SCRIPT`：没有子窗口 → 不算忙、看同 pid 的下一个顶层窗口；找到子窗口但取不到对象 / `FullName` 为空 → 输出 `{"error":"busy"}`（本轮失败、保留上一次结果）。Word 的 `Documents.Item` 要传 `[ref]`；用原生属性访问，不用 `InvokeMember`（`DISP_E_UNKNOWNNAME`）。
+- 预防：每个进程只开一个文档、PowerPoint 的「另存为」等情形未实测（台账 `devDoc/2026-11-21-33-m3-ledger.md` Step 1）；改脚本时在真实 Office 上覆盖「无文档」「弹对话框」两种状态。
+
+### VS Code 的 `storage.json`：打开窗口后才写、关闭窗口不写；最小化窗口的矩形在屏幕外
+
+- 日期：2026-11-21
+- 症状（M3 Task 1 / Task 7）：用 `%APPDATA%\Code\User\globalStorage\storage.json` 的 `windowsState.openedWindows` 判断「开着哪些文件夹」，关闭窗口后它仍列着已关闭的窗口；新开的窗口要过几秒才出现。另：最小化的 VS Code 窗口 `GetWindowRect` 为 (-21333, -21333, 158x26)。
+- 原因：VS Code 在打开窗口后约 4–9 秒写一次「那一刻开着的窗口集合」，关闭窗口不触发写入（关闭后至少 30 秒不变），下一次打开窗口时才刷新。workspace 窗口的字段是 `workspaceIdentifier.configURIPath`（不是 `workspace.configPath`），`folder` 是 `file:///c%3A/...` 的 URI。全局 `state.vscdb` 中没有「最近打开」列表的键（本机版本）。最小化窗口被系统移到屏幕外（经典值 -32000，按显示缩放换算）。
+- 解决：以可见 `Code.exe` 窗口的标题（`… - <根名> - Visual Studio Code`，workspace 为 `<名> (Workspace)`）为准，与 `storage.json` 各项的根名匹配，只输出匹配上的项；VS Code 类的采集防抖 10 秒（等写入）；矩形 x、y 均 ≤ -20000 时 bounds 退回该项的 `uiState`（`collectors/vscode.ts`）。
+- 预防：`storage.json` 只读打开、读完即关；验证时 `Code.exe -n` 新开窗口会让 VS Code 自己改写需求方的 `storage.json`（台账 Step 3 的副作用登记），只读取已开着的窗口。标题的 `(Workspace)` 按英文界面写，其他界面语言、用户改过 `window.title` 时匹配不到（未验证）。
+
+### 资源管理器 `Shell.Application`：CLSID 位置要加 `shell:`；新标签对象不能用 `ReferenceEquals` 识别
+
+- 日期：2026-11-21
+- 症状（M3 Task 1 / Task 9）：① `Navigate2('::{645FF040-…}')` 报 `Value does not fall within the expected range`；② 多标签恢复时按「点 `AddButton` 前已知的项之外的那一个」（`[object]::ReferenceEquals`）找新标签，选错标签、窗口多开；③ 对已处于主文件夹页的新标签再 `Navigate2('shell:::{F874310E-…}')` 也报同一错误。
+- 原因：① 采集到的特殊位置路径是 `::{CLSID}`，`Navigate2` 只接受 `shell:::{CLSID}` 或 `shell:RecycleBinFolder` 之类的 shell 名。② 每次枚举 `Windows()` 得到的 COM 包装对象都是新的，引用比较永远不相等。③ 原因未查清。
+- 解决：恢复时 CLSID 加 `shell:` 前缀（`explorer.exe shell:::{CLSID}` 开新窗口同理）；新标签按初始路径 `::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}`（主文件夹页）取最后一个，退路取同 hwnd 的最后一项；当前路径已等于目标时跳过 `Navigate2`（`EXPLORER_RESTORE_SCRIPT`）。
+- 预防：同一窗口的各标签在 `Windows()` 中各是一项、HWND 相同；UIA 的 `TabItem` 还包含主文件夹页内的「お気に入り」「最近使った」等子标签，按 `Shell.Application` 的项过滤。
+- 再次踩到（2026-11-22，M3 合并前审查 I1）：`EXPLORER_RESTORE_SCRIPT` 只给**第一个**标签（`explorer.exe` 的参数）加了 `shell:`，第 2 个及以后的标签直接 `Navigate2('::{CLSID}')`，必定失败：窗口里留下一个停在主文件夹的空标签，其余标签被逐个开成独立窗口。改为每个 `Navigate2` 的目标都加前缀（与当前路径比较仍用原值），实机 `[folder-a, 此电脑, folder-b]` 恢复为 1 个窗口 3 个标签（台账 33「合并前修正波」）。预防：同一种转换（这里是 CLSID → `shell:`）在脚本中出现两处时，实机用例要覆盖「特殊位置不在第一个」的情况。
+- 观察（2026-11-22）：脚本整体包在 `try { … } catch {}` 里、异常被吞掉时，`powershell.exe -Command` 的退出码仍为 1（stderr 为空）。`runPowerShell` 因此以拒绝返回（带已输出的 `stdout`），`restore.ts` 按已输出的 `OK` 行数续开——依赖的是 stdout 而不是退出码。原因推测为最后一条语句失败后 `$?` 为假，未查证。
+
+### Claude Code 的 Bash 工具：heredoc 交给 Python 的反斜杠被减半
+
+- 日期：2026-11-22
+- 症状：用 `python - <<'EOF'`（引号 heredoc）批量改 TS 测试文件，Python 字符串中写四个反斜杠（期望文件中的 TS 源码为 `'C:\\a'`），结果文件中只有一个，`\a` 被 Python 当作 BEL 控制字符写进文件（路径变成 `C:` + BEL），测试与类型检查不一定报错。同一次会话中出现三次（连写本条目时也是）。
+- 原因：未查明（引号 heredoc 本不该处理反斜杠；推测是工具传参时多做了一层转义还原）。
+- 解决：含反斜杠的修改用 Edit 工具直接写；必须用脚本时，在脚本中用 `chr(92)` 拼反斜杠，或测试数据改用正斜杠路径；改完用 `grep -c $'\a' <文件>` 查控制字符、`grep -n 'C:\\[A-Za-z]'` 查单个反斜杠的路径。
+- 预防：批量修改前先确认要写入的文本里有没有反斜杠；有就不用 heredoc 传给解释器。CLAUDE.md「长 heredoc 易解析失败，批量修改改用脚本文件」同理。

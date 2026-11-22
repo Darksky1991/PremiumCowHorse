@@ -128,6 +128,85 @@ export default {
     renameMenu: '名前の変更…',
     deleteMenu: '削除…'
   },
+  desktop: {
+    title: 'デスクトップ記録',
+    listLabel: 'デスクトップ記録の一覧',
+    saveNow: '今すぐ保存',
+    current: '現在',
+    kind: {
+      auto: '自動保存',
+      manual: '手動保存',
+      exit: '終了時に保存',
+      exitNone: '保存せずに終了'
+    },
+    beforeRestart: '再起動前',
+    itemCount: '{{count}} 件',
+    renameMenu: '名前の変更…',
+    deleteMenu: '削除…',
+    renameTitle: '記録の名前を変更',
+    renameDescription: '空にすると、種類名の表示に戻ります。',
+    nameLabel: '名前',
+    cancel: 'キャンセル',
+    renameSubmit: '変更',
+    deleteTitle: 'この記録を削除しますか？',
+    deleteDescription:
+      '記録だけを削除します。いま開いているファイルやフォルダー、ディスク上のファイルには影響しません。',
+    deleteSubmit: '削除',
+    noSnapshots: '記録はまだありません',
+    snapshotGone: 'この記録はもうありません。削除された可能性があります',
+    saved: 'デスクトップを保存しました（{{count}} 件）',
+    nothingToSave: '保存できる項目がありません',
+    category: {
+      explorer: 'エクスプローラー',
+      word: 'Word',
+      excel: 'Excel',
+      powerpoint: 'PowerPoint',
+      vscode: 'VS Code',
+      eclipse: 'Eclipse'
+    },
+    groupSelected: '{{selected}} / {{total}} 選択中',
+    checklistLabel: '項目の一覧',
+    specialLocation: '特殊な場所',
+    tabCount: '（{{count}} 個のタブ）',
+    readOnly: '読み取り専用',
+    selectedCount: '{{selected}} / {{total}} 件を選択中',
+    unreadable: '読み取れません：{{names}}',
+    sharePointNote: 'SharePoint / OneDrive 上のファイルは記録されません',
+    emptyCurrent: '現在開いている項目はありません',
+    emptySnapshot: 'この記録には項目がありません',
+    restoreSelected: '選択した項目を復元',
+    saveSelected: '保存',
+    restoreTitle: '前回のデスクトップを復元しますか？',
+    restoreDescription: '再起動前に開いていた項目です。復元する項目を選んでください。',
+    restoreSubmit: '復元',
+    restoreLater: '後で',
+    explorerWindow: '同じウィンドウ・{{count}} 個のタブ',
+    clearTitle: '保存済みのスナップショットを削除しますか？',
+    clearDescription:
+      '復元が終わりました。保存済みのスナップショット {{count}} 件をすべて削除し、現在のデスクトップを記録し直します。',
+    clearFailedNote:
+      '復元できなかった項目があります（接続できない / 起動に失敗）。スナップショットを残すと後でやり直せます。',
+    clearKeep: '残す',
+    clearConfirm: '削除',
+    exitTitle: '終了前にデスクトップを保存しますか？',
+    exitDescription: '保存する項目を選んでください。次回の起動時に復元できます。',
+    exitNoItems: '現在開いている項目はありません',
+    exitLoading: '開いている項目を読み込んでいます…',
+    exitSave: '保存して終了',
+    exitNoSave: '保存しないで終了',
+    dontAskAgain: '次回から確認しない',
+    askOnExit: '終了時に確認する',
+    moreActions: 'その他の操作',
+    restored: '{{count}} 件を復元しました',
+    restoredNone: '復元した項目はありません',
+    skipped: 'スキップ：{{details}}',
+    skipReason: {
+      open: 'すでに開いている {{count}} 件',
+      missing: '見つからない {{count}} 件',
+      unreachable: '接続できない {{count}} 件',
+      failed: '起動に失敗した {{count}} 件'
+    }
+  },
   connections: {
     emptyTitle: 'リモート接続はまだありません',
     emptyHint: 'SMB・FTP・SFTP サーバーを登録すると、どのワークスペースからでも参照できます。'
@@ -198,6 +277,7 @@ export default {
     FS_UNAVAILABLE: '場所にアクセスできません',
     INDEX_UNAVAILABLE: 'インデックスを利用できません',
     DOC_NOT_FOUND: 'ドキュメントが閉じられています。もう一度開いてください',
-    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください'
+    LAUNCH_FAILED: '起動できませんでした。関連付けられたアプリを確認してください',
+    DESKTOP_SNAPSHOT_NOT_FOUND: 'デスクトップの記録が見つかりません。削除された可能性があります'
   }
 }

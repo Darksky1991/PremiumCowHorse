@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TabLocation, WorkspaceEntry } from '@pch/shared'
-import { logicalPath, parentLocation, type LogicalPathContext } from './logical-path'
+import { entryOf, logicalPath, parentLocation, type LogicalPathContext } from './logical-path'
 
 /** 案件 = %E6%A1%88%E4%BB%B6、設計書 = %E8%A8%AD%E8%A8%88%E6%9B%B8 */
 const ANKEN = 'file:///C:/%E6%A1%88%E4%BB%B6'
@@ -56,6 +56,15 @@ const brief = (loc: TabLocation): string[] =>
   logicalPath(loc, ctx).map((s) => `${s.kind}:${s.label}`)
 
 describe('logicalPath', () => {
+  it('桌面记录：只有一段（标签为位置标题，不含工作区段），上一级为 null，不属于任何条目', () => {
+    const loc: TabLocation = { uri: 'pch-desktop:3', kind: 'desktop', title: '2026-11-21 10:00' }
+    expect(logicalPath(loc, ctx)).toEqual([
+      { label: '2026-11-21 10:00', kind: 'desktop', target: loc }
+    ])
+    expect(parentLocation(loc, ctx)).toBeNull()
+    expect(entryOf(loc, ctx.entries)).toBeNull()
+  })
+
   it('工作区总览：只有工作区一段，目标为总览', () => {
     expect(logicalPath(OVERVIEW, ctx)).toEqual([
       { label: '保守', kind: 'workspace', target: OVERVIEW }

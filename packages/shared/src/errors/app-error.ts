@@ -29,7 +29,9 @@ export const ERROR_CODES = [
   /** 文本文档不存在：已关闭、因每窗口上限被关闭，或其窗口已销毁 */
   'DOC_NOT_FOUND',
   /** 启动本机程序（Office 等）失败 */
-  'LAUNCH_FAILED'
+  'LAUNCH_FAILED',
+  /** 桌面记录的快照不存在（已删除，或属于别的机器） */
+  'DESKTOP_SNAPSHOT_NOT_FOUND'
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]

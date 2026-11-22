@@ -293,9 +293,14 @@ ${t('addressBar:copyHint')}`
   )
 }
 
-/** 段的可复制路径：文件 / 目录为 Windows 路径，其他（网页等）为 URI；工作区 / 一览段没有路径 */
+/** 段的可复制路径：文件 / 目录为 Windows 路径，其他（网页等）为 URI；工作区 / 一览 / 桌面记录段没有路径 */
 function pathOf(segment: PathSegment | undefined): string | null {
-  if (segment === undefined || segment.kind === 'workspace' || segment.kind === 'workspaces') {
+  if (
+    segment === undefined ||
+    segment.kind === 'workspace' ||
+    segment.kind === 'workspaces' ||
+    segment.kind === 'desktop'
+  ) {
     return null
   }
   return fileUriToWindowsPath(segment.target.uri) ?? segment.target.uri

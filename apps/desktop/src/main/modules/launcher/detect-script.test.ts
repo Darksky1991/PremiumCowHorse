@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseDetectOutput } from './association'
 import { DETECT_SCRIPT, LAUNCH_SWITCH_SCRIPT, LAUNCH_VERB_SCRIPT } from './detect-script'
-import { runPowerShell } from './powershell'
+import { runPowerShell } from '../../infra/powershell'
 
 describe('fixed PowerShell scripts', () => {
   it.each([

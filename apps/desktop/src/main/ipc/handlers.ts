@@ -1,4 +1,5 @@
 import type { Container } from '../bootstrap/container'
+import { desktopHandlers } from '../modules/desktop/desktop.ipc'
 import { launcherHandlers } from '../modules/launcher/launcher.ipc'
 import { settingsHandlers } from '../modules/settings/settings.ipc'
 import { systemHandlers } from '../modules/system/system.ipc'
@@ -22,6 +23,7 @@ export function createHandlers(c: Container): Handlers {
     ...documentHandlers(c.documents),
     ...searchHandlers(c.workspaces, c.settings, c.scanner),
     ...webHandlers(c.web, ownerWindowOf),
-    ...launcherHandlers(c.launcher)
+    ...launcherHandlers(c.launcher),
+    ...desktopHandlers(c.desktop, c.exitGuard)
   }
 }

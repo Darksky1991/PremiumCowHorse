@@ -5,7 +5,7 @@ import { fileUriToLocalPath } from '../../vfs/local-path'
 import { parseDetectOutput, toCapabilities } from './association'
 import { DETECT_SCRIPT, LAUNCH_SWITCH_SCRIPT, LAUNCH_VERB_SCRIPT } from './detect-script'
 import type { LaunchCapabilitiesRepo } from './launch-capabilities.repo'
-import type { runPowerShell } from './powershell'
+import type { runPowerShell } from '../../infra/powershell'
 
 /** Office 启动超时（全局约束） */
 const LAUNCH_TIMEOUT_MS = 15_000

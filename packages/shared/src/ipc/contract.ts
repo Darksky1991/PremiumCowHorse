@@ -25,6 +25,12 @@ import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
 import type { Workspace, WorkspaceEntry } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
+import type {
+  DesktopCurrent,
+  DesktopRestoreResult,
+  DesktopSnapshot,
+  DesktopSnapshotSummary
+} from '../desktop/types'
 
 /** vfs.interest 的 visible / offscreen 与 vfs.refresh 的 uris 的上限（渲染端超过时截断） */
 export const VFS_INTEREST_VISIBLE_MAX = 2000
@@ -32,6 +38,16 @@ export const VFS_INTEREST_OFFSCREEN_MAX = 5000
 /** vfs.interest 的 tabs（标签中显示的目录）的上限 */
 export const VFS_INTEREST_TABS_MAX = 8
 export const VFS_REFRESH_MAX = 500
+
+/**
+ * desktop.save / desktop.exit 的项目 key 的长度上限：Explorer 的 key 由全部标签路径拼成，
+ * 多标签、长路径（最长约 32_767 字符）时会超过 4096；放宽为 65_536（只是输入上限，不影响存储）
+ */
+export const DESKTOP_KEY_MAX = 65_536
+
+/** Explorer 选中标签的下标（DesktopPick / DesktopRestorePick 的 tabs） */
+const DesktopTabs = z.array(z.number().int().nonnegative()).max(500).optional()
+const DesktopPickInput = z.strictObject({ key: z.string().max(DESKTOP_KEY_MAX), tabs: DesktopTabs })
 
 /** 浏览器视图（web.*）的标签 id 与位置：DIP 整数，宿主自行取整（Electron 对小数隐式四舍五入，不依赖它） */
 const WebTabId = z.string().min(1).max(200)
@@ -216,6 +232,55 @@ export const ipcContract = {
     z.strictObject({ uri: z.string().min(1), mode: z.enum(LAUNCH_MODES) })
   ),
   'launcher.redetect': route<void>()(z.void()),
+  /**
+   * 桌面记录（M3，主进程 modules/desktop）。快照只含本机的；id 不存在 → DESKTOP_SNAPSHOT_NOT_FOUND。
+   * desktop.current：当前现场（开着的项目）与本轮无法读取的类别；非 Windows 为空
+   */
+  'desktop.list': route<DesktopSnapshotSummary[]>()(z.void()),
+  'desktop.get': route<DesktopSnapshot>()(z.strictObject({ id: z.number().int().positive() })),
+  'desktop.current': route<DesktopCurrent>()(z.void()),
+  /** 手动快照：当前现场中选中的项目（Explorer 可只选部分标签）；返回快照 id */
+  'desktop.save': route<number>()(
+    z.strictObject({
+      picks: z.array(DesktopPickInput).max(500),
+      name: z.string().max(100).nullable()
+    })
+  ),
+  'desktop.rename': route<void>()(
+    z.strictObject({ id: z.number().int().positive(), name: z.string().max(100).nullable() })
+  ),
+  'desktop.delete': route<void>()(z.strictObject({ id: z.number().int().positive() })),
+  /**
+   * 按快照恢复：只传快照 id 与项目 id，程序路径与参数由主进程从数据库取出（不属于该快照的项目 id 忽略）。
+   * 已开着的项目跳过；Explorer 可只恢复部分标签（tabs）。不删除快照（删除由用户确认后 desktop.clear）
+   */
+  'desktop.restore': route<DesktopRestoreResult>()(
+    z.strictObject({
+      snapshotId: z.number().int().positive(),
+      picks: z
+        .array(z.strictObject({ id: z.number().int().positive(), tabs: DesktopTabs }))
+        .max(500)
+    })
+  ),
+  /** 删除全部快照（含 exit-none；恢复后经用户确认调用），之后立即写一份本次登录的自动快照 */
+  'desktop.clear': route<void>()(z.void()),
+  /** 启动时的恢复候选（items 已滤掉开着的）；没有可提示的 → null。每次启动只返回一次 */
+  'desktop.restorePrompt': route<DesktopSnapshot | null>()(z.void()),
+  /**
+   * 回应 desktop.exitRequested：save 为真时保存 picks 选中的项目，否则记为「不保存」；
+   * dontAskAgain 时写设置 desktop.askOnExit = false。之后主进程关闭主窗口
+   */
+  'desktop.exit': route<void>()(
+    z.strictObject({
+      save: z.boolean(),
+      picks: z.array(DesktopPickInput).max(500),
+      dontAskAgain: z.boolean()
+    })
+  ),
+  /** 回应 desktop.exitRequested：取消退出 */
+  'desktop.cancelExit': route<void>()(z.void()),
+  /** 渲染端已显示退出对话框（收到 desktop.exitRequested 后调用）；之后主进程不再超时 */
+  'desktop.exitShown': route<void>()(z.void()),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -266,6 +331,17 @@ export interface IpcEvents {
   'web.notice': { tabId: string; notice: WebNotice }
   /** 焦点在视图中时按下的应用快捷键（以及鼠标侧键 → Alt+←/→），由应用窗口执行 */
   'web.shortcut': { tabId: string } & WebShortcut
+  /** 桌面记录有变化：current = 当前现场，snapshots = 快照列表（写入 / 改名 / 删除）。广播 */
+  'desktop.changed': { scope: 'current' | 'snapshots' }
+  /**
+   * 用户关闭主窗口、需要询问是否保存（只发给主窗口；询问中再次关闭会重发）：渲染端显示对话框后立即调用
+   * desktop.exitShown，再以 desktop.exit 或 desktop.cancelExit 回应。10 秒内没有 exitShown 按「全部保存并退出」
+   * 处理；收到 exitShown 后无限等待。对话框已开着时收到重复请求，也必须再调一次 desktop.exitShown（重发会重新开始
+   * 10 秒计时）。页面重新加载 / 渲染进程退出时询问作废
+   */
+  'desktop.exitRequested': Record<string, never>
+  /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
+  'desktop.exitCancelled': Record<string, never>
 }
 export type IpcEventName = keyof IpcEvents
 

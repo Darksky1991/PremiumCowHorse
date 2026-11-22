@@ -1,5 +1,12 @@
 import type { JSX } from 'react'
-import { FolderTreeIcon, SearchIcon, ServerIcon, SettingsIcon, type LucideIcon } from 'lucide-react'
+import {
+  FolderTreeIcon,
+  MonitorIcon,
+  SearchIcon,
+  ServerIcon,
+  SettingsIcon,
+  type LucideIcon
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
@@ -10,6 +17,7 @@ import { notifyComingSoon } from '../coming-soon'
 const VIEWS: { view: SidebarView; icon: LucideIcon; labelKey: string }[] = [
   { view: 'explorer', icon: FolderTreeIcon, labelKey: 'explorer' },
   { view: 'search', icon: SearchIcon, labelKey: 'search:title' },
+  { view: 'desktop', icon: MonitorIcon, labelKey: 'desktop:title' },
   { view: 'connections', icon: ServerIcon, labelKey: 'connections' }
 ]
 

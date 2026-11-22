@@ -1,5 +1,5 @@
 import { DETECT_SCRIPT } from './detect-script'
-import type { runPowerShell } from './powershell'
+import type { runPowerShell } from '../../infra/powershell'
 import type { RawAssociation } from './association'
 
 const EXCEL_EXE = 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE'

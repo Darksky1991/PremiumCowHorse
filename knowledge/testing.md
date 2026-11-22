@@ -147,6 +147,7 @@
 - 解决：确认桌面可用（解锁）后重试；无法解锁时退回 Playwright 的 `page.screenshot`（看不到系统绘制的窗口边框与按钮），并在报告中说明未做系统级截图。
 - 预防：做系统级截图前先用上面的最小命令探测。
 - 补充（2026-11-21，M2 反馈第 6–8 项）：同一会话中先后出现两种表现——先报 `The handle is invalid`，几分钟后 `CopyFromScreen` 不再报错、但保存的是**全白图像**（窗口区域没有任何内容）。不报错不等于截到了：截图后必须打开看一眼；全白时同样按上面退回 `page.screenshot`，并在报告中写明没有系统级截图。
+- 再次出现（2026-11-21 / 2026-11-22，M3 Task 11 与 Task 13）：两次都报 `The handle is invalid`，系统级截图退回 Playwright 的 `page.screenshot`。此时 COM（Office 自动化、`Shell.Application`）与 UI Automation 的 `Invoke` 仍可用，资源管理器 / Office 的窗口也能正常创建与关闭（Task 13 的实机端到端在这种状态下完成），只是看不到真实像素。**注意**：`CopyFromScreen` 的异常在 `-Command` 中是非终止错误，PowerShell 继续执行 `$bmp.Save` 并以退出码 0 结束，`execFileSync` 不抛错——`scripts/os-screenshot.mjs` 与同类脚本会照常打印 `saved`，留下一张全空的 PNG（本次 1920x1128 时约 8.5KB）。判断成败要看 stderr 里有没有该异常、再打开图片确认，不能只看退出码。
 
 ### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
 
@@ -302,3 +303,11 @@
 - 原因：`@renderer` 别名只在仓库根目录的 `vitest.config.ts` 中配置；`apps/desktop` 下没有 vitest 配置，在那里运行时没有别名。只有类型导入（编译时擦除）或不经过别名的文件能通过。
 - 解决：在仓库根目录运行，路径写全：`pnpm exec vitest run apps/desktop/src/renderer/src/features/explorer/`。
 - 预防：单元测试一律在仓库根目录运行（`pnpm test` 或 `pnpm exec vitest run <从根开始的路径>`）。
+
+### e2e：M3 起点击「閉じる」/ `window.close` 会先弹出退出对话框，等 `close` 事件的用例超时
+
+- 日期：2026-11-22
+- 症状（M3 Task 13 全量 e2e）：`e2e/app.spec.ts` 的「custom window controls replace the native ones and work」报 `electronApplication.waitForEvent: Timeout 30000ms exceeded while waiting for event "close"`；分支内各任务只跑 `e2e/desktop.spec.ts`，到全量时才暴露。
+- 原因：桌面记录的 `ExitGuard` 在 Windows 上（监控启用）且设置 `desktop.askOnExit` 为默认值 true 时拦截主窗口的 `close`，发出 `desktop.exitRequested`，渲染端显示退出对话框，窗口不关。`app.close()`（经 `before-quit`）不受影响，所以其他用例没事。
+- 解决：用例点「閉じる」后等对话框出现，再点「保存しないで終了 / 不保存并退出 / Exit without saving」（提交 `335c6d5`）。只是要关闭应用、不关心退出询问的用例，用 `app.close()`，或先 `settings.set({ 'desktop.askOnExit': false })`。
+- 预防：给主窗口的关闭加拦截之类改变全局行为的改动，要跑全量 e2e，而不只是本功能的 spec；`grep` 一下 e2e 里点关闭按钮 / 调 `window.close` 的地方。

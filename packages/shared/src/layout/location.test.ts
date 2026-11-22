@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  desktopIdOfUri,
+  desktopLocation,
+  desktopUri,
   isWorkspacesUri,
   WORKSPACES_URI,
   workspaceIdOfUri,
@@ -40,5 +43,24 @@ describe('工作区一览的位置', () => {
     expect(isWorkspacesUri('pch-workspaces:')).toBe(true)
     expect(isWorkspacesUri('pch-workspace:w1')).toBe(false)
     expect(isWorkspacesUri('file:///C:/a')).toBe(false)
+  })
+})
+
+describe('桌面记录的位置', () => {
+  it('URI 为 pch-desktop:<id|current>，可以取回 id', () => {
+    expect(desktopIdOfUri(desktopUri(12))).toBe(12)
+    expect(desktopIdOfUri('pch-desktop:current')).toBe('current')
+    expect(desktopIdOfUri(desktopUri('current'))).toBe('current')
+  })
+  it('不是桌面记录 URI 时为 null', () => {
+    expect(desktopIdOfUri('pch-desktop:abc')).toBeNull()
+    expect(desktopIdOfUri('pch-workspace:1')).toBeNull()
+  })
+  it('位置的 kind 为 desktop', () => {
+    expect(desktopLocation(3, '标题')).toEqual({
+      uri: 'pch-desktop:3',
+      kind: 'desktop',
+      title: '标题'
+    })
   })
 })

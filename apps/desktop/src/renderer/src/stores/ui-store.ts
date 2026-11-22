@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type SidebarView = 'explorer' | 'search' | 'connections'
+export type SidebarView = 'explorer' | 'search' | 'desktop' | 'connections'
 
 interface UiState {
   sidebarView: SidebarView

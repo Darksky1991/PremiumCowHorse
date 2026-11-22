@@ -77,6 +77,20 @@ describe('bridgeMainEvents', () => {
     expect(client.getQueryState(other)?.isInvalidated).toBe(false)
   })
 
+  it('desktop.changed 按 scope 使现场或快照相关缓存失效', () => {
+    const current = queryKeys.desktopCurrent
+    const list = queryKeys.desktopSnapshots
+    const one = queryKeys.desktopSnapshot(3)
+    for (const k of [current, list, one]) client.setQueryData(k, [])
+    emit('desktop.changed', { scope: 'current' })
+    expect(client.getQueryState(current)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(list)?.isInvalidated).toBe(false)
+    expect(client.getQueryState(one)?.isInvalidated).toBe(false)
+    emit('desktop.changed', { scope: 'snapshots' })
+    expect(client.getQueryState(list)?.isInvalidated).toBe(true)
+    expect(client.getQueryState(one)?.isInvalidated).toBe(true)
+  })
+
   it('共享恢复在线（online）时，让该共享 / 卷下的目录查询失效；offline 不失效', () => {
     const onShare = queryKeys.directory('file://Srv/Share/a')
     const shareRoot = queryKeys.directory('file://srv/share')

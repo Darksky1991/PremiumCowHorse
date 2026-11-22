@@ -66,6 +66,7 @@ export async function bootstrap(): Promise<void> {
   wireDocuments(c)
   app.on('browser-window-created', (_event, win) => bindWebViewOwner(win.webContents, c.web))
   registerShutdown(c, disposeIpc)
+  wireDesktop(c)
 
   c.windows.openMainWindow()
 
@@ -95,6 +96,32 @@ function wireEvents(c: Container): void {
 
   // 主题模式为「跟随系统」时，系统切换明暗也要同步窗口底色
   nativeTheme.on('updated', () => c.windows.syncChrome())
+}
+
+/**
+ * 桌面记录（设计 5.3、5.7）：启动服务（先取恢复候选再写本次快照）；主窗口关闭经退出守卫
+ * （询问 / 全部保存后再关闭）；会话结束时立即写自动记录并冻结现场，session-end 时停止监控
+ */
+function wireDesktop(c: Container): void {
+  c.desktop.start().catch((e: unknown) => c.logger.error('[desktop] start failed', e))
+  c.windows.setMainWindowHooks({
+    close: (event) => {
+      if (c.exitGuard.onClose()) event.preventDefault()
+    },
+    querySessionEnd: (event) => {
+      c.logger.info(`[desktop] query-session-end (${event.reasons.join(',')})`)
+      c.exitGuard.sessionEnding()
+      c.desktop
+        .querySessionEnd()
+        .catch((e: unknown) => c.logger.error('[desktop] saving on session end failed', e))
+    },
+    sessionEnd: (event) => {
+      c.logger.info(`[desktop] session-end (${event.reasons.join(',')})`)
+      c.exitGuard.sessionEnded()
+      c.desktop.sessionEnded()
+    },
+    rendererReset: () => c.exitGuard.rendererReset()
+  })
 }
 
 /**

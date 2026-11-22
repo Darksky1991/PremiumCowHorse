@@ -9,13 +9,13 @@ import {
 
 /**
  * 逻辑路径的一段（设计 devDoc/2026-11-19-15 第 2.1 节）：地址栏与预览区共用。
- * workspaces：工作区一览（只在一览页本身的路径中出现）；workspace：工作区（目标为工作区总览）；
+ * workspaces：工作区一览（只在一览页本身的路径中出现）；desktop：桌面记录页（只有这一段，标签为位置标题）；workspace：工作区（目标为工作区总览）；
  * entry：条目（显示别名 = 条目标签）；dir：目录（条目内的相对路径，或条目之外的绝对路径各段）；file：文件名
  */
 export interface PathSegment {
   label: string
   target: TabLocation
-  kind: 'workspaces' | 'workspace' | 'entry' | 'dir' | 'file'
+  kind: 'workspaces' | 'desktop' | 'workspace' | 'entry' | 'dir' | 'file'
 }
 
 export interface LogicalPathContext {
@@ -43,7 +43,7 @@ export function entryOf(
   loc: TabLocation,
   entries: readonly WorkspaceEntry[]
 ): (WorkspaceEntry & { uri: string }) | null {
-  if (loc.kind === 'workspace' || loc.kind === 'workspaces') return null
+  if (loc.kind === 'workspace' || loc.kind === 'workspaces' || loc.kind === 'desktop') return null
   let best: (WorkspaceEntry & { uri: string }) | null = null
   for (const e of entries) {
     if (e.uri === null) continue
@@ -99,7 +99,7 @@ function absoluteSegments(loc: TabLocation): PathSegment[] {
 /**
  * 位置的逻辑路径：`工作区` ›（分组不出现）› `条目别名` › 相对路径各段 ›（文件时）文件名。
  * 工作区总览只有工作区一段；条目之外的位置在工作区之后退化为绝对路径（驱动器 / 共享开始）。
- * 工作区一览只有一览一段（名称取 ctx 中的本地化名称，不用标签标题的快照）；
+ * 桌面记录页只有一段（标题取 loc.title）。工作区一览只有一览一段（名称取 ctx 中的本地化名称，不用标签标题的快照）；
  * 其他位置的路径不含一览这一段（地址栏前置的工作区按钮已代表这一级）
  */
 export function logicalPath(loc: TabLocation, ctx: LogicalPathContext): PathSegment[] {
@@ -112,6 +112,8 @@ export function logicalPath(loc: TabLocation, ctx: LogicalPathContext): PathSegm
       }
     ]
   }
+  // 桌面记录页：只有一段（标签为位置标题，不含工作区段）
+  if (loc.kind === 'desktop') return [{ label: loc.title, kind: 'desktop', target: loc }]
   const workspace: PathSegment = {
     label: ctx.workspace.name,
     kind: 'workspace',
