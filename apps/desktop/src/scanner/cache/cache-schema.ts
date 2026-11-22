@@ -2,7 +2,7 @@
  * 缓存库 index.db 的表结构。这是可随时删除重建的缓存：不做迁移，
  * 结构变化时递增 CACHE_VERSION，打开时发现 user_version 不符就删表重建。
  */
-export const CACHE_VERSION = 5
+export const CACHE_VERSION = 6
 
 export const DROP_SQL = `
 DROP TABLE IF EXISTS entries_fts;
@@ -47,6 +47,8 @@ CREATE TABLE entries (
   size    INTEGER NOT NULL,
   mtime   REAL NOT NULL,
   hidden  INTEGER NOT NULL,
+  -- 属主名（远程目录：SFTP longname 的第 3 列）；本地与取不到时为 NULL
+  owner   TEXT,
   PRIMARY KEY (dir_id, name)
 );
 

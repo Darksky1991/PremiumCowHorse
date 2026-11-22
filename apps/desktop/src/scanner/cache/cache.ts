@@ -138,7 +138,8 @@ function sameEntry(a: RawEntry, b: RawEntry): boolean {
     (a.target ?? null) === (b.target ?? null) &&
     a.size === b.size &&
     a.mtime === b.mtime &&
-    a.hidden === b.hidden
+    a.hidden === b.hidden &&
+    (a.owner ?? null) === (b.owner ?? null)
   )
 }
 
@@ -151,6 +152,7 @@ function toEntry(r: Row): RawEntry {
     hidden: r.hidden === 1
   }
   if (e.kind === 'symlink') e.target = (r.target as 'file' | 'directory' | null) ?? null
+  if (r.owner != null) e.owner = r.owner as string
   return e
 }
 
@@ -268,10 +270,10 @@ export class Cache {
       )
       const seen = new Set<string>()
       const insert = this.db.prepare(
-        'INSERT INTO entries (dir_id, name, kind, target, size, mtime, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO entries (dir_id, name, kind, target, size, mtime, hidden, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
       const update = this.db.prepare(
-        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ? WHERE dir_id = ? AND name = ?'
+        'UPDATE entries SET kind = ?, target = ?, size = ?, mtime = ?, hidden = ?, owner = ? WHERE dir_id = ? AND name = ?'
       )
       const remove = this.db.prepare('DELETE FROM entries WHERE dir_id = ? AND name = ?')
       const childDirUris = new Set<string>()
@@ -280,11 +282,12 @@ export class Cache {
         if (e.kind === 'directory') childDirUris.add(childUri(uri, e.name))
         const before = old.get(e.name)
         const target = e.kind === 'symlink' ? (e.target ?? null) : null
+        const owner = e.owner ?? null
         if (!before) {
-          insert.run(dirId, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0)
+          insert.run(dirId, e.name, e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, owner)
           changed = true
         } else if (!sameEntry(before, e)) {
-          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, dirId, e.name)
+          update.run(e.kind, target, e.size, e.mtime, e.hidden ? 1 : 0, owner, dirId, e.name)
           changed = true
         }
       }

@@ -2,7 +2,9 @@ import { rmSync } from 'node:fs'
 import { AppError, MainToScanner, type AppErrorPayload, type ScannerToMain } from '@pch/shared'
 import { toAppError } from '../main/vfs/errors'
 import { Cache } from './cache/cache'
+import { createCompositeEnumerator } from './enum/composite-enumerator'
 import { createEnumerator } from './enum/create-enumerator'
+import { createRemoteEnumerator, createRemoteRpc } from './enum/remote-enumerator'
 import type { Enumerator } from './enum/types'
 import { search } from './search/search'
 import { Scheduler } from './schedule/scheduler'
@@ -20,7 +22,7 @@ export interface ScannerHostDeps {
   exit: (code: number) => void
   /** libuv 线程池大小（fork 时由主进程经 UV_THREADPOOL_SIZE 设置），传给调度器 */
   threadPoolSize?: number
-  /** 测试用：替换枚举器 */
+  /** 测试用：替换本地枚举器（sftp: 始终经远程枚举器请主进程读取） */
   createEnumerator?: (log: (msg: string) => void) => Enumerator
 }
 
@@ -69,6 +71,8 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
   const log = (level: Level, msg: string): void => deps.post({ type: 'log', level, message: msg })
   let state: HostState = { kind: 'idle' }
   let stopped = false
+  // 远程目录的请求通道：不依赖缓存库，进程存续期间只有一个（remoteResult 在任何状态下都交给它）
+  const rpc = createRemoteRpc(deps.post)
 
   const reply = (id: number, run: (r: Ready) => unknown): void => {
     if (state.kind !== 'ready') {
@@ -100,7 +104,10 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
       state = { kind: 'unavailable', reason }
       return
     }
-    const enumerator = (deps.createEnumerator ?? createEnumerator)((msg) => log('warn', msg))
+    const enumerator = createCompositeEnumerator(
+      (deps.createEnumerator ?? createEnumerator)((msg) => log('warn', msg)),
+      createRemoteEnumerator(rpc)
+    )
     const scheduler = new Scheduler({
       enumerator,
       cache,
@@ -132,6 +139,8 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
     const r = state.kind === 'ready' ? state.r : null
     state = { kind: 'unavailable', reason: 'scanner is shutting down' }
     try {
+      // 先拒绝进行中的远程请求（FS_CANCELLED）：不再等主进程的结果
+      rpc.dispose()
       r?.scheduler.dispose()
     } finally {
       try {
@@ -194,6 +203,8 @@ export function createScannerHost(deps: ScannerHostDeps): ScannerHost {
         return
       case 'shutdown':
         return shutdown()
+      case 'remoteResult':
+        return rpc.settle(m)
     }
   }
 

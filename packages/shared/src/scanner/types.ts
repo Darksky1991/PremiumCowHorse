@@ -62,3 +62,23 @@ export interface OfflineShare {
   share: string
   since: number
 }
+
+/**
+ * 一个目录的直接子项（扫描进程的枚举结果，缓存的条目）。不含子项 URI：调用方按与 provider 相同的方式
+ * 由目录 URI 与 name 生成（file: 为 pathToFileURL(path.join(fileURLToPath(dir), name))，sftp: 为
+ * sftpChildUri），缓存以此为键。远程目录的列表由主进程经 remoteResult 传给扫描进程（协议的
+ * RawEntrySchema 与本类型一致）。
+ */
+export interface RawEntry {
+  name: string
+  kind: 'file' | 'directory' | 'symlink'
+  /** 只有 symlink 才有：链接目标的类型；目标不存在或无法读取时为 null */
+  target?: 'file' | 'directory' | null
+  /** 文件的字节数；目录与链接为 0 */
+  size: number
+  /** 修改时间（Unix 毫秒，可带小数，与 fs.Stats.mtimeMs 相同） */
+  mtime: number
+  hidden: boolean
+  /** 属主名（远程目录：SFTP longname 的第 3 列；本地与取不到时没有） */
+  owner?: string
+}

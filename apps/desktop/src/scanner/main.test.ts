@@ -94,6 +94,90 @@ describe('scanner host (handleMessage)', () => {
     expect(info.ok && (info.value as { bytes: number }).bytes).toBeGreaterThan(0)
   })
 
+  it('lists an sftp directory through remoteOp / remoteResult with the main process', async () => {
+    const root = 'sftp://c1/var/log'
+    host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
+    host.handleMessage({
+      type: 'configure',
+      config: {
+        roots: [
+          { entryId: 'e1', workspaceId: 'w', uri: root, strategy: 'default', location: 'remote' }
+        ],
+        allRootUris: [root],
+        indexTargets: [],
+        settings
+      }
+    })
+    host.handleMessage({ type: 'list', id: 1, uri: root })
+
+    type Op = Extract<ScannerToMain, { type: 'remoteOp' }>
+    const opOf = (op: 'stat' | 'list'): Promise<Op> =>
+      vi.waitFor(() => {
+        const m = posts.find((x): x is Op => x.type === 'remoteOp' && x.op === op)
+        if (!m) throw new Error(`no ${op} yet`)
+        return m
+      })
+    const stat = await opOf('stat')
+    // 用户请求（P0）带 userAction
+    expect(stat).toMatchObject({ uri: root, userAction: true })
+    host.handleMessage({ type: 'remoteResult', id: stat.id, ok: true, value: { mtime: 5 } })
+    const list = await opOf('list')
+    expect(list).toMatchObject({ uri: root, userAction: true })
+    host.handleMessage({
+      type: 'remoteResult',
+      id: list.id,
+      ok: true,
+      value: [
+        { name: 'app.log', kind: 'file', size: 3, mtime: 7, hidden: false, owner: 'app1' },
+        { name: 'old', kind: 'directory', size: 0, mtime: 8, hidden: false }
+      ]
+    })
+
+    const r = await resultOf(1)
+    expect(r.ok).toBe(true)
+    const listing = (r as { value: DirectoryListing }).value
+    expect(listing.items).toEqual([
+      {
+        uri: 'sftp://c1/var/log/app.log',
+        name: 'app.log',
+        kind: 'file',
+        size: 3,
+        mtime: 7,
+        hidden: false,
+        owner: 'app1'
+      },
+      {
+        uri: 'sftp://c1/var/log/old',
+        name: 'old',
+        kind: 'directory',
+        size: 0,
+        mtime: 8,
+        hidden: false
+      }
+    ])
+  })
+
+  it('fails an in-flight sftp request with FS_CANCELLED on shutdown', async () => {
+    const root = 'sftp://c1/var/log'
+    host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
+    host.handleMessage({
+      type: 'configure',
+      config: {
+        roots: [
+          { entryId: 'e1', workspaceId: 'w', uri: root, strategy: 'default', location: 'remote' }
+        ],
+        allRootUris: [root],
+        indexTargets: [],
+        settings
+      }
+    })
+    host.handleMessage({ type: 'list', id: 2, uri: root })
+    await vi.waitFor(() => expect(posts.some((m) => m.type === 'remoteOp')).toBe(true))
+    host.handleMessage({ type: 'shutdown' })
+    expect(await resultOf(2)).toMatchObject({ ok: false, error: { code: 'FS_CANCELLED' } })
+    expect(exit).toHaveBeenCalledWith(0)
+  })
+
   it('reports an error result for a missing directory', async () => {
     host.handleMessage({ type: 'init', cacheFile: path.join(tmp, 'index.db') })
     host.handleMessage({ type: 'list', id: 7, uri: url(path.join(tmp, 'missing')) })

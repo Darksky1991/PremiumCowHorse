@@ -152,6 +152,7 @@ function toFileEntry(dirUri: string, e: RawEntry): FileEntry {
     hidden: e.hidden
   }
   if (e.kind === 'symlink') f.target = e.target ?? null
+  if (e.owner !== undefined) f.owner = e.owner
   return f
 }
 
@@ -822,7 +823,11 @@ export class Scheduler {
     const share = this.enumerator.shareKey(uri)
     let probe = true
     try {
-      const { mtime } = await this.guard(uri, run, (signal) => this.enumerator.statDir(uri, signal))
+      // userAction：用户请求（P0）的远程读取在断线时重连并重试一次；后台与定期确认不重试
+      const userAction = task.prio === 'P0'
+      const { mtime } = await this.guard(uri, run, (signal) =>
+        this.enumerator.statDir(uri, signal, { userAction })
+      )
       if (this.disposed) return { ok: false, error: cancelled() }
       this.markReachable(share)
       this.queue.clearMissing(uri)
@@ -843,7 +848,7 @@ export class Scheduler {
 
       run.batches = 0
       const entries = await this.guard(uri, run, (signal, onBatch) =>
-        this.enumerator.list(uri, { signal, onBatch })
+        this.enumerator.list(uri, { signal, onBatch, userAction })
       )
       probe = false
       if (this.disposed) return { ok: false, error: cancelled() }

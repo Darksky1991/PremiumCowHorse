@@ -11,6 +11,7 @@ import {
   type SearchResult
 } from '@pch/shared'
 import type { Logger } from '../infra/logger'
+import { toAppError } from './errors'
 
 /** 扫描进程的通信端口（生产环境为 UtilityProcess，测试中为假实现） */
 export interface ScannerPort {
@@ -41,6 +42,15 @@ export interface ScannerClientOptions {
    */
   requestTimeoutMs?: number
   now?: () => number
+  /**
+   * 扫描进程的远程目录读取（remoteOp）：由 bootstrap 组装为「访问范围检查 + SftpProvider」。
+   * 未配置时一律以 FS_UNSUPPORTED_SCHEME 回应。signal 在扫描进程发来 remoteCancel、扫描进程退出、
+   * dispose 时中止
+   */
+  remoteOp?: (
+    req: { op: 'stat' | 'list'; uri: string; userAction: boolean },
+    signal: AbortSignal
+  ) => Promise<unknown>
 }
 
 interface Pending {
@@ -81,6 +91,11 @@ export class ScannerClient {
   private readonly searches = new Map<string, number>()
   /** 当前断开的共享 → 断开时刻（随 reachability 事件维护；渲染端启动 / 重新加载时查询） */
   private readonly offline = new Map<string, number>()
+  /**
+   * 进行中的远程读取：扫描进程分配的 id → 中止控制器。与 pending（主进程分配的请求 id）是两个独立的
+   * 编号空间；只属于当前进程，进程退出时全部中止并清空（新进程的编号从头开始）
+   */
+  private readonly remoteOps = new Map<number, AbortController>()
 
   constructor(private readonly opts: ScannerClientOptions) {
     this.maxRestarts = opts.maxRestarts ?? 3
@@ -187,6 +202,7 @@ export class ScannerClient {
     const port = this.state === 'running' ? this.port : null
     this.state = 'disposed'
     this.rejectAll('scanner client disposed')
+    this.abortRemoteOps()
     if (!port) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const exited = new Promise<void>((resolve) => {
@@ -249,6 +265,7 @@ export class ScannerClient {
     }
     this.port = null
     this.rejectAll(`scanner exited (code ${code})`)
+    this.abortRemoteOps()
     this.resetReachability()
     const t = this.now()
     this.exits = [...this.exits.filter((x) => t - x < this.windowMs), t]
@@ -266,6 +283,7 @@ export class ScannerClient {
     this.state = 'unavailable'
     this.port = null
     this.rejectAll(`scanner unavailable: ${reason}`)
+    this.abortRemoteOps()
     this.resetReachability()
     this.opts.log.error(
       `[scanner] ${reason}; not restarting (degraded mode: directories are listed directly without the cache)`
@@ -300,7 +318,55 @@ export class ScannerClient {
         return this.opts.log[m.level](`[scanner] ${m.message}`)
       case 'ready':
         return this.opts.log.info('[scanner] ready')
+      case 'remoteOp':
+        return this.runRemoteOp(m)
+      case 'remoteCancel': {
+        const c = this.remoteOps.get(m.id)
+        this.remoteOps.delete(m.id)
+        c?.abort(new AppError({ code: 'FS_CANCELLED' }))
+        return
+      }
     }
+  }
+
+  /** 执行扫描进程的远程读取，结果以 remoteResult 回给发出请求的那个进程（已取消 / 进程已换则丢弃） */
+  private runRemoteOp(m: Extract<ScannerToMain, { type: 'remoteOp' }>): void {
+    const port = this.port
+    if (!port) return
+    const { id, op, uri, userAction } = m
+    const remoteOp = this.opts.remoteOp
+    if (!remoteOp) {
+      this.post(port, {
+        type: 'remoteResult',
+        id,
+        ok: false,
+        error: { code: 'FS_UNSUPPORTED_SCHEME', detail: `remote access is not available: ${uri}` }
+      })
+      return
+    }
+    // 同一 id 重复（不应发生）：旧的中止，以新的为准
+    this.remoteOps.get(id)?.abort(new AppError({ code: 'FS_CANCELLED' }))
+    const controller = new AbortController()
+    this.remoteOps.set(id, controller)
+    const finish = (r: MainToScanner): void => {
+      if (this.remoteOps.get(id) !== controller) return
+      this.remoteOps.delete(id)
+      if (this.port === port) this.post(port, r)
+    }
+    Promise.resolve()
+      .then(() => remoteOp({ op, uri, userAction }, controller.signal))
+      .then(
+        (value) => finish({ type: 'remoteResult', id, ok: true, value }),
+        (e: unknown) =>
+          finish({ type: 'remoteResult', id, ok: false, error: toAppError(e).toPayload() })
+      )
+  }
+
+  /** 中止全部进行中的远程读取（扫描进程退出 / 不可用 / dispose） */
+  private abortRemoteOps(): void {
+    const all = [...this.remoteOps.values()]
+    this.remoteOps.clear()
+    for (const c of all) c.abort(new AppError({ code: 'FS_CANCELLED' }))
   }
 
   private request<T>(build: (id: number) => MainToScanner): Promise<T> {

@@ -27,6 +27,7 @@ import { connectSsh } from '../modules/connection/ssh-session'
 import { openIdentityChannel } from '../modules/connection/sudo-switch'
 import { location } from '../vfs/location'
 import { ScannerClient } from '../vfs/scanner-client'
+import { createRemoteOp } from '../vfs/remote-op'
 import { forkScanner } from '../vfs/scanner-process'
 import { VfsService } from '../vfs/vfs.service'
 import { DocumentService } from '../vfs/document/document-service'
@@ -140,7 +141,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   })
 
   // 一次性调用（stat、条目添加的校验、降级模式的直接枚举）的超时按位置取 vfs.timeoutSec.*（总时长）
-  const vfs = new VfsService([new LocalProvider(), new SftpProvider(pool)], {
+  const sftp = new SftpProvider(pool)
+  const vfs = new VfsService([new LocalProvider(), sftp], {
     timeoutMs: (uri) => {
       let where: LocationKind = 'network'
       try {
@@ -154,16 +156,18 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const workspaces = new WorkspaceService(db, vfs, bus, app.getPath('temp'), {
     identities: async (id) => (await connectionRepo.get(id))?.identities ?? null
   })
-  // 扫描进程随主进程启动；配置（根、设置）由 bootstrap 在启动与工作区 / 设置变化时下发
+  const remoteAccess = new RemoteAccess()
+  // 扫描进程随主进程启动；配置（根、设置）由 bootstrap 在启动与工作区 / 设置变化时下发。
+  // 远程目录由扫描进程经 remoteOp 请主进程代读：访问范围检查 + SftpProvider（设计 4.1、5.6）
   const scanner = new ScannerClient({
     fork: () => forkScanner(logger),
     cacheFile: paths.indexDb,
     onChanged: (uri) => bus.emit('vfs.changed', { uri }),
     onReachability: (e) => bus.emit('vfs.reachability', e),
-    log: logger
+    log: logger,
+    remoteOp: createRemoteOp({ access: remoteAccess, provider: sftp })
   })
   scanner.start()
-  const remoteAccess = new RemoteAccess()
   const connections = new ConnectionService({
     repo: connectionRepo,
     secrets,
