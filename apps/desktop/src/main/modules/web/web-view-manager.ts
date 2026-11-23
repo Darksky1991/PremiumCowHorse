@@ -244,6 +244,7 @@ export class WebViewManager {
         : `document.documentElement.dataset.theme = '${theme}'`
     for (const entries of this.windows.values()) {
       for (const entry of entries.values()) {
+        // 注入仅限应用自己生成的 Markdown 外壳页（?pch-view=markdown）与固定脚本；其他网页视图一律不注入
         if (entry.destroyed || !entry.url.endsWith(MARKDOWN_QUERY)) continue
         entry.view.webContents.executeJavaScript(code).catch((e: unknown) => {
           this.deps.logger.debug(`[web] cannot apply the theme to tab ${entry.tabId}`, e)

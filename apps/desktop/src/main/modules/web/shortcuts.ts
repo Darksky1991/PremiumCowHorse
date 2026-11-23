@@ -10,7 +10,8 @@ import type { WebShortcut } from '@pch/shared'
  * 为它们夺走页面的按键得不偿失——网页常用 Ctrl+K 作搜索）。渲染端增减全局快捷键时同步这里。
  * 不区分页面中的焦点是否在输入框：Alt+↑ / F5 在页面的 `<select>` / `<textarea>` 中也转发（渲染端对应用自己的
  * 输入框豁免，对视图不豁免）。`before-input-event` 必须同步决定是否拦截，而 Input 与 WebContents 都不含页面的
- * 焦点元素，只有向页面执行脚本才能知道；视图没有 preload，不为此注入脚本。
+ * 焦点元素，只有向页面执行脚本才能知道；视图没有 preload，不为此注入脚本（唯一的注入是 WebViewManager.setMarkdownTheme
+ * 对应用自己的 Markdown 外壳页执行的固定主题切换脚本，与按键无关）。
  */
 export const APP_SHORTCUTS: readonly WebShortcut[] = [
   { key: 'F5', ctrl: false, shift: false, alt: false },
