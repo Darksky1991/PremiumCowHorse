@@ -19,6 +19,14 @@ describe('connectionStatus', () => {
     expect(status('host-key-pending')).toMatchObject({ kind: 'hostKeyPending', action: null })
   })
 
+  it('K2：服务器要求追加认证 → 与「認証失敗」不同的状态，提供「重新连接」', () => {
+    expect(status('auth-unsupported')).toEqual({
+      kind: 'authUnsupported',
+      tone: 'error',
+      action: 'reconnect'
+    })
+  })
+
   it('认证失败：持久化的锁定优先于连接池状态（重启后状态为 idle），提供「重新连接」', () => {
     expect(status('idle', 'auth-failed')).toEqual({
       kind: 'authFailed',

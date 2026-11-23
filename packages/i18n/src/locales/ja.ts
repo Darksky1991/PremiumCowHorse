@@ -309,6 +309,7 @@ export default {
       connecting: '接続中',
       offline: 'オフライン',
       authFailed: '認証失敗',
+      authUnsupported: '追加認証が必要（未対応）',
       sudoAuthFailed: 'sudo 認証失敗',
       hostKeyPending: 'ホストキーの確認待ち',
       hostKeyChanged: 'ホストキー変更'

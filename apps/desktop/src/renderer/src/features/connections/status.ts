@@ -6,6 +6,7 @@ export type ConnectionStatusKind =
   | 'connecting'
   | 'offline'
   | 'authFailed'
+  | 'authUnsupported'
   | 'sudoAuthFailed'
   | 'hostKeyPending'
   | 'hostKeyChanged'
@@ -38,6 +39,9 @@ export function connectionStatus(
       tone: 'error',
       action: c.presentedHostKey === null ? null : 'trustNewKey'
     }
+  }
+  if (c.state === 'auth-unsupported') {
+    return { kind: 'authUnsupported', tone: 'error', action: 'reconnect' }
   }
   if (c.state === 'host-key-pending') return { kind: 'hostKeyPending', tone: 'busy', action: null }
   if (c.authState === 'sudo-auth-failed') {

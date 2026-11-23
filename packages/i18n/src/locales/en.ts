@@ -310,6 +310,7 @@ export default {
       connecting: 'Connecting',
       offline: 'Offline',
       authFailed: 'Authentication failed',
+      authUnsupported: 'Extra authentication required (unsupported)',
       sudoAuthFailed: 'sudo authentication failed',
       hostKeyPending: 'Waiting for host key confirmation',
       hostKeyChanged: 'Host key changed'

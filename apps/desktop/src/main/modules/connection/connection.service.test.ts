@@ -351,6 +351,18 @@ describe('ConnectionService', () => {
       )
       expect(byPort.authState).toBe('ok')
       await repo.setAuthState(id, 'sudo-auth-failed')
+      const byUser = await service.save(
+        input({
+          id,
+          secret: undefined,
+          sudoSecret: undefined,
+          host: 'other.example',
+          port: 2222,
+          username: 'ope02'
+        })
+      )
+      expect(byUser.authState).toBe('ok')
+      await repo.setAuthState(id, 'sudo-auth-failed')
       const renamed = await service.save(
         input({
           id,
@@ -358,7 +370,8 @@ describe('ConnectionService', () => {
           secret: undefined,
           sudoSecret: undefined,
           host: 'other.example',
-          port: 2222
+          port: 2222,
+          username: 'ope02'
         })
       )
       expect(renamed.authState).toBe('sudo-auth-failed')

@@ -36,6 +36,8 @@ export interface FakeSftpServerOptions {
   authMethod?: FakeAuthMethod | FakeAuthMethod[]
   /** keyboard-interactive 的提示，默认 [{ prompt: 'Password: ', echo: false }]；第一个提示的应答与密码比较 */
   kbdPrompts?: { prompt: string; echo: boolean }[]
+  /** 第 1 轮应答之后的第 2 轮提示（pam_unix + OTP：密码错误时服务器仍会继续问） */
+  kbdFollowUp?: { prompt: string; echo: boolean }[]
   /** 监听端口，默认 0（随机）；e2e 用同端口同密钥重启 */
   port?: number
   /** 收到密码（password / keyboard-interactive 的应答）之后：hang = 不回应，close = 断开连接 */
@@ -209,6 +211,12 @@ export async function startFakeSftpServer(opts: FakeSftpServerOptions): Promise<
       if (ctx.method === 'keyboard-interactive' && methods.includes('keyboard-interactive')) {
         return ctx.prompt(kbdPrompts, (answers) => {
           kbdAnswers.push(answers)
+          if (opts.kbdFollowUp) {
+            return ctx.prompt(opts.kbdFollowUp, (more) => {
+              kbdAnswers.push(more)
+              ctx.reject(methods)
+            })
+          }
           if (stall()) return
           const a = answers[0]
           if (expected !== undefined && a !== undefined && sameSecret(a, expected)) ctx.accept()

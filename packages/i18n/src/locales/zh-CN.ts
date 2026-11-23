@@ -300,6 +300,7 @@ export default {
       connecting: '正在连接',
       offline: '离线',
       authFailed: '认证失败',
+      authUnsupported: '需要追加认证（不支持）',
       sudoAuthFailed: 'sudo 认证失败',
       hostKeyPending: '等待确认主机密钥',
       hostKeyChanged: '主机密钥已变化'

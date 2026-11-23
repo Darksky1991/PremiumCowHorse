@@ -26,7 +26,10 @@ export interface SftpSession {
   lstat(path: string, signal: AbortSignal): Promise<SftpAttrs>
   readdir(path: string, signal: AbortSignal): Promise<SftpDirEntry[]>
   realpath(path: string, signal: AbortSignal): Promise<string>
-  /** 关闭 SFTP 通道（可选；超时后才就绪的会话由连接池关闭，K4） */
+  /**
+   * 关闭 SFTP 通道（可选；超时后才就绪的会话由连接池关闭，K4）。登录用户的 SFTP 子系统通道只关这条通道；
+   * 经 sftp-bridge 的身份会话关闭的是 sudo 的 exec 通道（连接池目前只对登录路径调用）
+   */
   close?(): void
 }
 export interface SftpTarget {

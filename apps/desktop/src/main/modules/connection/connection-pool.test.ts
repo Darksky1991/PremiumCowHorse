@@ -539,17 +539,35 @@ describe('ConnectionPool: 认证锁定', () => {
     expect(h.connect).toHaveBeenCalledTimes(2)
   })
 
-  it('K2：服务器要求追加认证（unsupported prompt）→ 不写锁定，状态 idle，下次照常尝试', async () => {
+  it('K2 修正：unsupported 之后后台请求不再拨号（状态 auth-unsupported）；用户操作过了冷却才重试一次；重新连接清除', async () => {
+    vi.useFakeTimers()
     const h = setup()
     h.authResult.value = new AppError({
       code: 'CONN_AUTH_UNSUPPORTED',
       detail: 'keyboard-interactive: unsupported prompt (echo): Verification code: '
     })
-    expect((await errorOf(h.pool.session(LOGIN, opts()))).code).toBe('CONN_AUTH_UNSUPPORTED')
-    expect(h.repo.setAuthState).not.toHaveBeenCalled()
-    expect(h.pool.state('c1')).toBe('idle')
-    await errorOf(h.pool.session(LOGIN, opts()))
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    expect(h.pool.state('c1')).toBe('auth-unsupported')
+    // 后台请求：不拨号，同一错误
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    // 用户操作：冷却之内也不拨号
+    expect((await errorOf(h.pool.session(LOGIN, opts(true)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    // 冷却之后：用户操作重试一次（仍失败 → 再次记住）
+    await vi.advanceTimersByTimeAsync(IDENTITY_RETRY_COOLDOWN_MS + 1000)
+    await errorOf(h.pool.session(LOGIN, opts(true)))
     expect(h.connect).toHaveBeenCalledTimes(2)
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.connect).toHaveBeenCalledTimes(2)
+    expect(h.repo.setAuthState).not.toHaveBeenCalled()
+    // 重新连接（disconnect）清除：后台请求也可以拨号
+    h.pool.disconnect('c1')
+    expect(h.pool.state('c1')).toBe('idle')
+    h.authResult.value = null
+    await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
+    expect(h.connect).toHaveBeenCalledTimes(3)
   })
 
   it('私钥文件读取失败 → CONN_KEY_INVALID，不连接、不写锁定', async () => {

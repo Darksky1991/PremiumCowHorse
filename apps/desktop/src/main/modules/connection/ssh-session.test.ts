@@ -238,6 +238,28 @@ describe('authentication is submitted once', () => {
     expect(s.kbdAnswers).toEqual([])
   })
 
+  it('K2 修正：第 1 轮已交出密码，第 2 轮出现回显 / 多个提示 → CONN_AUTH_FAILED（锁定用），密码只交出 1 次', async () => {
+    for (const followUp of [
+      [{ prompt: 'Verification code: ', echo: true }],
+      [
+        { prompt: 'OTP: ', echo: false },
+        { prompt: 'PIN: ', echo: false }
+      ],
+      [{ prompt: 'OTP: ', echo: false }]
+    ]) {
+      const s = await server({
+        authMethod: 'keyboard-interactive',
+        kbdPrompts: [{ prompt: 'Password: ', echo: false }],
+        kbdFollowUp: followUp
+      })
+      const err = await errorOf(connectSsh(cfg(s)))
+      expect(err.code).toBe('CONN_AUTH_FAILED')
+      expect(err.detail).toContain('unsupported prompt')
+      expect(err.detail).toContain('after password')
+      expect(s.kbdAnswers).toHaveLength(1)
+    }
+  })
+
   it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_UNSUPPORTED, password not handed over', async () => {
     const s = await server({
       authMethod: 'keyboard-interactive',
