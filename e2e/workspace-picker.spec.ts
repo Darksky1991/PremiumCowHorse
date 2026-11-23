@@ -289,6 +289,13 @@ test.describe('workspace picker', () => {
     }
   })
 
+  /**
+   * 绕环跳转（Home / End）后等退场中的旧正面卡片消失：它在退场动画的头一帧还没有 pointer-events: none，
+   * `front` 的排除条件可能还不生效（strict mode violation 不重试）
+   */
+  const settle = async (page: Page): Promise<void> => {
+    await expect(dialog(page).getByRole('option', { selected: true })).toHaveCount(1)
+  }
   const editSwitch = (page: Page): Locator =>
     dialog(page).getByRole('switch', { name: '編集', exact: true })
   const nameField = (page: Page): Locator => front(page).getByRole('textbox', { name: '名前' })
@@ -392,6 +399,7 @@ test.describe('workspace picker', () => {
 
       // End：转到最后的「+」卡片；Enter 新建，不切换，新卡片在正面、名称全选
       await page.keyboard.press('End')
+      await settle(page)
       await expect(front(page)).toHaveAttribute('aria-label', '新しいワークスペースを作成')
       await page.keyboard.press('Enter')
       await expect(nameField(page)).toBeFocused()
@@ -416,8 +424,29 @@ test.describe('workspace picker', () => {
       await expect(dialog(page)).toBeVisible()
       await expect(filter(page)).toBeFocused()
 
+      // 同一次打开中继续删除第二个：同样成功（互斥在第一次完成时已解除）
+      await page.keyboard.press('End')
+      await settle(page)
+      await expect(front(page)).toHaveAttribute('aria-label', '新しいワークスペースを作成')
+      await page.keyboard.press('Enter')
+      await expect(nameField(page)).toBeFocused()
+      await expect(nameField(page)).toHaveValue('新しいワークスペース')
+      await expect.poll(() => listNames(page)).toContain('新しいワークスペース')
+      await page.keyboard.press('Enter')
+      await front(page).getByRole('button', { name: '削除…' }).click()
+      const back2 = front(page).getByRole('group', {
+        name: '「新しいワークスペース」を削除しますか？'
+      })
+      await expect(back2.getByRole('button', { name: 'キャンセル' })).toBeFocused()
+      await back2.getByRole('button', { name: '削除', exact: true }).click()
+      await expect(page.getByText('「新しいワークスペース」を削除しました')).toBeVisible()
+      await expect.poll(() => listNames(page)).not.toContain('新しいワークスペース')
+      await expect(dialog(page)).toBeVisible()
+      await expect(filter(page)).toBeFocused()
+
       // 默认工作区没有「削除…」
       await page.keyboard.press('Home')
+      await settle(page)
       await expect(nameField(page)).toHaveAttribute('placeholder', 'デフォルト')
       await expect(front(page).getByRole('button', { name: '削除…' })).toHaveCount(0)
 

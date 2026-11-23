@@ -24,8 +24,10 @@ export interface FocusRequest {
 export interface PickerEdit {
   focusRequest: FocusRequest | null
   clearFocusRequest: () => void
-  /** 正在删除的工作区（按钮禁用；卡片离开圆环时收缩淡出） */
+  /** 正在删除中的工作区（互斥：同一时刻只删一个；背面按钮禁用）；完成（成功或失败）后为 null */
   deleting: string | null
+  /** 最近一次删除成功的工作区：只供退场动画（卡片随列表重取离开圆环时在原位收缩淡出） */
+  removed: string | null
   /** 即时保存一个字段；失败时已提示，返回的 Promise 拒绝（表单据此还原显示） */
   save: (id: string, patch: WorkspacePatch) => Promise<void>
   /** 背面的「削除」：沿用现有删除流程（当前工作区先切到默认工作区） */
@@ -58,6 +60,7 @@ export function usePickerEdit({
   const { create, update, remove, activate, reorder } = useWorkspaceActions()
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [removed, setRemoved] = useState<string | null>(null)
   const creating = useRef(false)
   // 新建的工作区：等它出现在圆环中（workspace.changed → 列表重取）再转到正面
   const arrival = useRef<string | null>(null)
@@ -118,11 +121,10 @@ export function usePickerEdit({
       id,
       activeId
     )
-    // 成功时保持 deleting：卡片随列表重取离开圆环时据此收缩淡出
-    if (!done) {
-      setDeleting(null)
-      return
-    }
+    // 互斥在完成时解除（之后可以继续删除下一个）；成功时另记 removed 供退场收缩
+    setDeleting(null)
+    if (!done) return
+    setRemoved(id)
     notify('success', t('workspace:deleted', { name }))
     focusFilter()
   }
@@ -131,6 +133,7 @@ export function usePickerEdit({
     focusRequest,
     clearFocusRequest: () => setFocusRequest(null),
     deleting,
+    removed,
     save,
     remove: (id) => void removeOne(id),
     handle: (effect) => {

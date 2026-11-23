@@ -360,7 +360,7 @@ function PickerBody({
           reduced={reduced}
           now={now}
           dispatch={run}
-          deletingId={edit.deleting}
+          deletingId={edit.deleting ?? edit.removed}
           renderFront={
             state.mode === 'edit'
               ? (row) => (

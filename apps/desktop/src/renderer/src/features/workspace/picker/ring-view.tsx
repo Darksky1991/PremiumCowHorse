@@ -40,7 +40,7 @@ export interface RingViewProps {
   dispatch: (action: PickerAction) => void
   /** 编辑模式的正面卡片（表单 + 删除确认）；返回 null 时用普通卡面 */
   renderFront?: (row: PickerRow) => ReactNode
-  /** 正在删除的工作区：离开圆环时收缩淡出 */
+  /** 正在删除 / 刚删除成功的工作区：离开圆环时收缩淡出 */
   deletingId?: string | null
 }
 
