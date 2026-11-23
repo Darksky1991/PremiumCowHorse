@@ -92,7 +92,8 @@ export class WindowService {
   }
 
   syncChrome(): void {
-    for (const win of this.all()) syncWindowChrome(win)
+    const themeName = this.settings.get('appearance.theme')
+    for (const win of this.all()) syncWindowChrome(win, themeName)
   }
 
   setTitle(title: string): void {

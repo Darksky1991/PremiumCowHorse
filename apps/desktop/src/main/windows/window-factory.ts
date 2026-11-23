@@ -6,11 +6,20 @@ import {
   type BootstrapData,
   type EventEnvelope,
   type Language,
-  type Settings
+  type Settings,
+  type ThemeName
 } from '@pch/shared'
 
-/** 与 --background 一致：窗口出现前的底色，防止白屏闪烁 */
-const BACKGROUND = { light: '#ffffff', dark: '#0a0a0a' }
+/**
+ * 与各主题的 --background 一致（oklch 换算为 sRGB 十六进制）：窗口出现前的底色，防止白屏闪烁。
+ * 新增主题时同步 packages/ui/src/styles/globals.css
+ */
+const BACKGROUND: Record<ThemeName, { light: string; dark: string }> = {
+  default: { light: '#ffffff', dark: '#0a0a0a' },
+  aitetsu: { light: '#f8fafd', dark: '#0a111a' },
+  washi: { light: '#f9f6f1', dark: '#1a1713' },
+  matsuba: { light: '#f6f9f7', dark: '#0d1613' }
+}
 
 export interface CreateWindowOptions {
   url: string
@@ -32,6 +41,7 @@ export function createAppWindow(opts: CreateWindowOptions): BrowserWindow {
     platform: process.platform,
     language: opts.language,
     theme,
+    themeName: opts.settings['appearance.theme'],
     accent: opts.settings['appearance.accent'],
     density: opts.settings['appearance.density'],
     // 测试用的崩溃插件：打包后的应用绝不启用（与 PCH_USER_DATA_DIR 相同，只在未打包时读取环境变量）
@@ -47,7 +57,7 @@ export function createAppWindow(opts: CreateWindowOptions): BrowserWindow {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    backgroundColor: BACKGROUND[theme],
+    backgroundColor: BACKGROUND[opts.settings['appearance.theme']][theme],
     // 隐藏系统标题栏：Windows / Linux 不显示原生窗口按钮（由渲染端自绘），保留可调整大小的边框；
     // macOS 保留系统惯例的红绿灯
     titleBarStyle: 'hidden',
@@ -81,6 +91,6 @@ export function createAppWindow(opts: CreateWindowOptions): BrowserWindow {
 }
 
 /** 主题变化时同步窗口底色（窗口尺寸变化时露出的区域） */
-export function syncWindowChrome(win: BrowserWindow): void {
-  win.setBackgroundColor(BACKGROUND[currentTheme()])
+export function syncWindowChrome(win: BrowserWindow, themeName: ThemeName): void {
+  win.setBackgroundColor(BACKGROUND[themeName][currentTheme()])
 }

@@ -24,6 +24,23 @@ describe('resolveSettings', () => {
   })
 })
 
+describe('M5 appearance and picker settings', () => {
+  it('has the documented defaults', () => {
+    const s = resolveSettings({})
+    expect(s['appearance.theme']).toBe('default')
+    expect(s['appearance.reduceMotion']).toBe('system')
+    expect(s['workspace.pickerStyle']).toBe('carousel')
+    expect(s['workspace.pickerDetail']).toBe(false)
+    expect(s['workspace.pickerView']).toBe('ring')
+  })
+
+  it('rejects an unknown theme and falls back to the default', () => {
+    expect(SettingsPatch.safeParse({ 'appearance.theme': 'neon' }).success).toBe(false)
+    expect(resolveSettings({ 'appearance.theme': 'neon' })['appearance.theme']).toBe('default')
+    expect(SettingsPatch.safeParse({ 'appearance.theme': 'washi' }).success).toBe(true)
+  })
+})
+
 describe('SettingsPatch', () => {
   it('rejects unknown keys', () => {
     expect(SettingsPatch.safeParse({ 'nope.key': 1 }).success).toBe(false)

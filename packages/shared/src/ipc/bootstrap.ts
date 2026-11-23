@@ -1,4 +1,4 @@
-import type { Language } from '../settings/schema'
+import type { Language, ThemeName } from '../settings/schema'
 
 /**
  * 主进程通过 additionalArguments 传给 preload 的首屏数据，
@@ -9,6 +9,8 @@ export interface BootstrapData {
   platform: NodeJS.Platform
   language: Language
   theme: 'light' | 'dark'
+  /** 配色主题名；default 时 theme-init.js 不写 data-theme */
+  themeName: ThemeName
   accent: string
   density: 'comfortable' | 'compact'
   /**

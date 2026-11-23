@@ -7,6 +7,9 @@ export type Language = (typeof LANGUAGES)[number]
 export const ACCENTS = ['neutral', 'blue', 'green', 'violet', 'orange'] as const
 export type Accent = (typeof ACCENTS)[number]
 
+export const THEMES = ['default', 'aitetsu', 'washi', 'matsuba'] as const
+export type ThemeName = (typeof THEMES)[number]
+
 /**
  * 设置项的唯一定义：同时提供默认值与校验。数据库只保存与默认值不同的键。
  * 新增设置项时只需在这里加一行。
@@ -14,8 +17,18 @@ export type Accent = (typeof ACCENTS)[number]
 export const settingsSchema = z.object({
   'general.language': z.enum(['system', ...LANGUAGES]).default('system'),
   'appearance.themeMode': z.enum(['system', 'light', 'dark']).default('system'),
+  /** 配色主题（与明暗 themeMode 正交）：default = shadcn neutral，其余见 doc 5.A */
+  'appearance.theme': z.enum(THEMES).default('default'),
+  /** 减少动效：system 跟随系统；on = 总是减少；off = 不减少 */
+  'appearance.reduceMotion': z.enum(['system', 'on', 'off']).default('system'),
   'appearance.accent': z.enum(ACCENTS).default('neutral'),
   'appearance.density': z.enum(['comfortable', 'compact']).default('comfortable'),
+  /** 工作区选择器的样式：圆环轮盘 / 菜单 */
+  'workspace.pickerStyle': z.enum(['carousel', 'menu']).default('carousel'),
+  /** 工作区选择器卡片：false = 简要，true = 详细 */
+  'workspace.pickerDetail': z.boolean().default(false),
+  /** 工作区选择器头部「リング / リスト」，记住上次选择（界面记忆，不在设置页显示） */
+  'workspace.pickerView': z.enum(['ring', 'list']).default('ring'),
   'explorer.showHiddenFiles': z.boolean().default(false),
   /**
    * 资源树：单击 / 键盘移动选中（400ms 防抖）即在当前标签打开（M1-3b 设计 2.8；键名沿用 M1-3 以免迁移）。

@@ -83,6 +83,8 @@ function wireEvents(c: Container): void {
   c.bus.on('settings.changed', (patch) => {
     const mode = patch['appearance.themeMode']
     if (mode) nativeTheme.themeSource = mode
+    // 配色主题变化时同步窗口底色（明暗变化由 nativeTheme 的 updated 事件处理）
+    if (patch['appearance.theme']) c.windows.syncChrome()
 
     const language = patch['general.language']
     if (language) {
