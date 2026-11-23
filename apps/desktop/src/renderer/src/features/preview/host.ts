@@ -78,7 +78,7 @@ const HOST_SETTING_KEYS: ReadonlySet<string> = new Set<keyof HostSettings>([
 ])
 
 /** URI 最后一段的显示名（百分号解码失败时保留原样；驱动器根 file:///C:/ 为 C:；远程的根为 /） */
-function nameOfUri(uri: string): string {
+export function nameOfUri(uri: string): string {
   if (isSftpUri(uri)) return sftpNameOf(uri) || '/'
   const path = URL.canParse(uri) ? new URL(uri).pathname : uri
   const last = path.split('/').filter(Boolean).pop() ?? uri

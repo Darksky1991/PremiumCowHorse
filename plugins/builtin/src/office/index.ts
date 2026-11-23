@@ -14,6 +14,8 @@ export const officePlugin = definePreviewPlugin({
       kinds: ['file'],
       // 只处理本机文件（远程资源没有读取 / 系统应用打开；M4 设计 5.8）
       schemes: ['file'],
+      // 与主进程 launcher 的白名单（packages/shared 的 OFFICE_EXTENSIONS）同一份清单：插件不能依赖 shared，
+      // 一致性由 apps/desktop/src/renderer/src/app/office-extensions.test.ts 保证
       extensions: [
         'xlsx',
         'xlsm',

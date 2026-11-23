@@ -346,6 +346,8 @@ function PluginView({
         roots: [],
         tabs: { open: () => undefined, navigate: () => undefined },
         onError: (e) => reportError(e, 'web view'),
+        confirmExecutable: (name) =>
+          new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
         onRefresh: (listener) => onTabRefresh(tabId, listener),
         stashToasts: () => useMessagesStore.getState().stashVisible()
       }),
@@ -448,7 +450,9 @@ function PluginView({
     webHost.setLinks({
       roots,
       tabs: host.tabs,
-      onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error')
+      onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error'),
+      confirmExecutable: (name) =>
+        new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false }))
     })
   }, [webHost, host, roots])
 

@@ -13,7 +13,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@pch/ui/components/dropdown-menu'
+import { useQueryClient } from '@tanstack/react-query'
+import type { Settings } from '@pch/shared'
 import { useSetting, useUpdateSettings } from '@renderer/data/settings'
+import { queryKeys } from '@renderer/lib/query-keys'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { useViewerStore } from '@renderer/stores/viewer-store'
 
@@ -29,13 +32,16 @@ export function ViewerMenu({ tabId }: { tabId: string | null }): JSX.Element {
   const setViewer = useTabsStore((s) => s.setViewer)
   const associations = useSetting('preview.associations')
   const update = useUpdateSettings()
+  const queryClient = useQueryClient()
   const candidates = viewers?.candidates ?? []
   const current = candidates.find((c) => c.current)
   const ext = viewers?.ext ?? null
 
   const toggleAssociation = (checked: boolean): void => {
     if (ext === null || current === undefined) return
-    const next = { ...associations }
+    // 读缓存中的最新值而不是渲染时快照：连续两次勾选（第一次的保存回写前）不会互相覆盖
+    const latest = queryClient.getQueryData<Settings>(queryKeys.settings)?.['preview.associations']
+    const next = { ...latest }
     if (checked) next[ext] = current.id
     else delete next[ext]
     update.mutate({ 'preview.associations': next })
@@ -47,7 +53,8 @@ export function ViewerMenu({ tabId }: { tabId: string | null }): JSX.Element {
         render={
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="sm"
+            className="max-w-40"
             aria-label={t('addressBar:viewer')}
             title={t('addressBar:viewer')}
             disabled={tabId === null || candidates.length < 2}
@@ -55,6 +62,7 @@ export function ViewerMenu({ tabId }: { tabId: string | null }): JSX.Element {
         }
       >
         <EyeIcon />
+        {current === undefined ? null : <span className="truncate">{current.name}</span>}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuGroup>
@@ -77,6 +85,7 @@ export function ViewerMenu({ tabId }: { tabId: string | null }): JSX.Element {
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem
               checked={associations?.[ext] === current.id}
+              closeOnClick
               onCheckedChange={toggleAssociation}
             >
               {t('addressBar:alwaysOpenWith', { ext })}

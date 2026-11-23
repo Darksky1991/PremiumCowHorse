@@ -1,5 +1,6 @@
 import {
   AppError,
+  hasDotSegment,
   normalizeRootUri,
   parseSftpUri,
   SFTP_SCHEME,
@@ -107,8 +108,7 @@ function locate(uri: string): SftpLocation | null {
 
 /** 解码后的路径不含 `.` / `..` 段与 NUL（服务器会据此解析到别处） */
 function safePath(path: string): boolean {
-  if (path.includes('\0')) return false
-  return path.split('/').every((seg) => seg !== '.' && seg !== '..')
+  return !hasDotSegment(path)
 }
 
 /** 条目中的远程（sftp:）folder 根（规范化后，去重）：RemoteAccess 的根与连接重置时的刷新对象 */

@@ -94,8 +94,34 @@ describe('LauncherService.capabilities', () => {
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValue(JSON.stringify([EXCEL]))
     const { service } = await setup(run)
-    expect((await service.capabilities('file:///C:/a.xlsx')).options).toEqual([])
-    expect((await service.capabilities('file:///C:/a.xlsx')).options.length).toBeGreaterThan(0)
+    expect(await service.capabilities('file:///C:/a.xlsx')).toEqual({
+      ext: 'xlsx',
+      appName: null,
+      options: [],
+      detectFailed: true
+    })
+    const retried = await service.capabilities('file:///C:/a.xlsx')
+    expect(retried.options.length).toBeGreaterThan(0)
+    expect(retried.detectFailed).toBeUndefined()
+  })
+
+  it('does not flag detectFailed when detection succeeds but the extension has no association', async () => {
+    const { service } = await setup(vi.fn<Run>(async () => '[]'))
+    expect(await service.capabilities('file:///C:/a.xlsx')).toEqual({
+      ext: 'xlsx',
+      appName: null,
+      options: []
+    })
+  })
+
+  it('answers an empty result for an extension outside the Office whitelist without running PowerShell', async () => {
+    const { service, run } = await setup()
+    expect(await service.capabilities('file:///C:/tool/run.bat')).toEqual({
+      ext: 'bat',
+      appName: null,
+      options: []
+    })
+    expect(run).not.toHaveBeenCalled()
   })
 
   it('rejects non-file URIs; a file without an extension has no options', async () => {
@@ -123,6 +149,16 @@ describe('LauncherService.open', () => {
     expect(script).not.toContain('xlsx')
     expect(script).not.toContain('Start-Process')
     expect(script).toContain('ProcessStartInfo')
+  })
+
+  it('refuses an executable-class extension with LAUNCH_FAILED without running anything', async () => {
+    const { service, run } = await setup()
+    for (const name of ['run.bat', 'setup.exe', 'x.ps1', 'noext']) {
+      await expect(service.open(`file:///C:/tool/${name}`, 'edit')).rejects.toMatchObject({
+        code: 'LAUNCH_FAILED'
+      })
+    }
+    expect(run).not.toHaveBeenCalled()
   })
 
   it('refuses a directory (only files are launched) without running anything', async () => {

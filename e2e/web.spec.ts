@@ -372,6 +372,45 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
+  test('a page script that navigates to an external URL on load does not open the system browser (no user gesture); a click still does', async () => {
+    writeFileSync(
+      path.join(project, 'proto', 'auto.html'),
+      `<!doctype html><title>Auto</title><p id="auto">auto</p>
+<p><a id="go" href="https://clicked.invalid/">go</a></p>
+<script>location.href = 'https://auto.invalid/'</script>
+`
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+      await tree.getByRole('treeitem', { name: 'auto.html' }).dblclick()
+      await expect(tabs(page)).toHaveText(['auto.html'])
+      const view = await viewPage(app, '/proto/auto.html')
+      // Playwright 的定位器会等待「导航完成」，而被拒绝的脚本导航让它一直等待：改用主进程执行脚本读取
+      await expect
+        .poll(() => evalIn(app, view, 'document.getElementById("auto")?.textContent ?? null'))
+        .toBe('auto')
+      // 脚本的导航已被拒绝（留出时间让它到达主进程）：没有交给系统浏览器，视图仍在原页
+      await page.waitForTimeout(1500)
+      expect(
+        await app.evaluate(() => (globalThis as { __pchExternal?: string[] }).__pchExternal)
+      ).toEqual([])
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/proto\/auto\.html$/)
+      ])
+
+      // 用户点击链接（有鼠标按下）仍然交给系统浏览器
+      await clickIn(app, view, '#go')
+      await expect
+        .poll(() => app.evaluate(() => (globalThis as { __pchExternal?: string[] }).__pchExternal))
+        .toEqual(['https://clicked.invalid/'])
+    } finally {
+      await app.close()
+    }
+  })
+
   test('pages reached by links keep the scope (a file entry and its subdirectory); #fragments are carried; other scopes cannot be read', async () => {
     // Javadoc 式的文件条目：index.html → pkg/Class.html，子页面用 ../ 引用上一级的样式与页面
     const javadoc = path.join(files, 'javadoc')

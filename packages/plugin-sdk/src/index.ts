@@ -116,6 +116,8 @@ export interface LaunchCapabilities {
   appName: string | null
   /** 只包含检测到的方式，按显示顺序 */
   options: LaunchOption[]
+  /** 检测本身失败（与「没有关联」区分）；插件应说明原因并提示重新检测 */
+  detectFailed?: true
 }
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error'

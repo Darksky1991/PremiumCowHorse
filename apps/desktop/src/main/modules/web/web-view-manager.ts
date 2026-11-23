@@ -1,7 +1,9 @@
 import {
   AppError,
+  hasDotSegment,
   isUnderUri,
   normalizeRootUri,
+  prefixOf,
   type IpcEvents,
   type ThemeName,
   type WebBounds,
@@ -23,8 +25,28 @@ export const WEB_VIEW_LIMIT = 8
  */
 export const EXTERNAL_INTERVAL_MS = 2_000
 
+/**
+ * 用户手势的近似（D13）：Electron 的 setWindowOpenHandler / will-navigate 不提供用户手势字段，
+ * 以视图内最近一次鼠标按下 / 键盘按下为依据；外部链接要求发生在此时间窗之内，否则丢弃（页面脚本加载时 location.href = … 无输入）
+ */
+export const USER_ACTIVATION_MS = 5_000
+
 /** Markdown 视图的查询参数（协议处理器见到它时返回查看脚本的外壳，Task 8） */
 const MARKDOWN_QUERY = '?pch-view=markdown'
+
+/** 相对 root 的 URI 部分（各段百分号编码）解码后不含 . / .. / NUL；无法解码视为不安全 */
+function isSafeRelative(rel: string): boolean {
+  try {
+    return !hasDotSegment(
+      rel
+        .split('/')
+        .map((seg) => decodeURIComponent(seg))
+        .join('/')
+    )
+  } catch {
+    return false
+  }
+}
 
 /**
  * 加载地址后拼接的片段：页面视图原样（`?查询#锚点`）；Markdown 视图的查询固定为 ?pch-view=markdown，只取 `#锚点`
@@ -126,6 +148,8 @@ interface Entry {
   destroyed: boolean
   /** 最近一次把外部链接交给系统的时刻（节流用；没有时为 -Infinity） */
   lastExternal: number
+  /** 视图内最近一次鼠标按下 / 键盘按下的时刻（用户手势近似；没有时为 -Infinity） */
+  lastInput: number
 }
 
 /**
@@ -161,6 +185,11 @@ export class WebViewManager {
     const root = normalizeRootUri(input.scopeRoot)
     if (!isUnderUri(input.uri, root)) {
       throw new AppError({ code: 'FS_INVALID_URI', detail: `${input.uri} is not under ${root}` })
+    }
+    // 前缀比较挡不住 `<root>/a/%2E%2E/b`：相对部分逐段解码后含 . / .. / NUL（或无法解码）即拒绝
+    const rel = input.uri === root ? '' : input.uri.slice(prefixOf(root).length)
+    if (!isSafeRelative(rel)) {
+      throw new AppError({ code: 'FS_INVALID_URI', detail: `${input.uri} has a dot segment` })
     }
     const scopeId = this.deps.scopes.register(root)
     const url = toWebUrl(input.uri, root) + (input.view === 'markdown' ? MARKDOWN_QUERY : '')
@@ -365,7 +394,8 @@ export class WebViewManager {
       lastShown: 0,
       state: { title: '', loading: false, failed: null },
       destroyed: false,
-      lastExternal: -Infinity
+      lastExternal: -Infinity,
+      lastInput: -Infinity
     }
     return ref.entry
   }
@@ -426,6 +456,12 @@ export class WebViewManager {
           })
         } else if (decision.kind === 'external') {
           const now = (this.deps.now ?? Date.now)()
+          if (now - entry.lastInput > USER_ACTIVATION_MS) {
+            this.deps.logger.warn(
+              `[web] dropped external navigation (no user input): ${decision.url}`
+            )
+            return
+          }
           if (now - entry.lastExternal < EXTERNAL_INTERVAL_MS) {
             this.deps.logger.warn(`[web] dropped external navigation (throttled): ${decision.url}`)
             return
@@ -440,6 +476,7 @@ export class WebViewManager {
       key: (input) => {
         const entry = live()
         if (!entry) return false
+        if (input.type === 'keyDown') entry.lastInput = (this.deps.now ?? Date.now)()
         const match = matchShortcut(input)
         if (!match) return false
         send(entry.ownerId, 'web.shortcut', { tabId: entry.tabId, ...match })
@@ -459,6 +496,7 @@ export class WebViewManager {
       pointerDown: () => {
         const entry = live()
         if (!entry) return
+        entry.lastInput = (this.deps.now ?? Date.now)()
         entry.guardFocus = false
         // 焦点事件可能先于鼠标事件到达并已被交回应用界面：按用户的意图把焦点给视图
         if (!this.hasFocus(entry)) entry.view.webContents.focus()

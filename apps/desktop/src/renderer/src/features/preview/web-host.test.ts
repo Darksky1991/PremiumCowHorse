@@ -178,6 +178,7 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     },
     stashToasts: vi.fn(),
     onError: vi.fn(),
+    confirmExecutable: vi.fn(async () => true),
     env,
     ...overrides
   }
@@ -504,6 +505,44 @@ describe('createWebHost: events from the view', () => {
     s.emit('web.notice', { tabId: 'tab-2', notice: 'download' })
     s.emit('web.notice', { tabId: 'tab-1', notice: 'outOfScope' })
     expect(notices).toEqual(['outOfScope'])
+  })
+})
+
+describe('createWebHost: openExternal', () => {
+  const opens = (calls: Setup['calls']): unknown[] =>
+    calls.filter(([c]) => c === 'system.openPath').map(([, input]) => input)
+
+  it('opens an ordinary file without asking', async () => {
+    const s = setup()
+    await s.host.api.openExternal(PAGE)
+    expect(s.deps.confirmExecutable).not.toHaveBeenCalled()
+    expect(opens(s.calls)).toEqual([{ uri: PAGE }])
+  })
+
+  it('asks first for an executable-class extension and opens only when confirmed', async () => {
+    const uri = 'file:///C:/x/a.bat'
+    const denied = setup({ confirmExecutable: vi.fn(async () => false) })
+    await denied.host.api.openExternal(uri)
+    expect(denied.deps.confirmExecutable).toHaveBeenCalledWith('a.bat')
+    expect(opens(denied.calls)).toEqual([])
+
+    const allowed = setup({ confirmExecutable: vi.fn(async () => true) })
+    await allowed.host.api.openExternal(uri)
+    expect(opens(allowed.calls)).toEqual([{ uri }])
+  })
+
+  it('uses the confirmation of the latest links after setLinks', async () => {
+    const s = setup()
+    const next = vi.fn(async () => false)
+    s.host.setLinks({
+      roots: s.deps.roots,
+      tabs: s.deps.tabs,
+      onError: s.deps.onError,
+      confirmExecutable: next
+    })
+    await s.host.api.openExternal('file:///C:/x/a.bat')
+    expect(next).toHaveBeenCalledWith('a.bat')
+    expect(opens(s.calls)).toEqual([])
   })
 })
 

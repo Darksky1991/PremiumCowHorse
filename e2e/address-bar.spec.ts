@@ -662,8 +662,9 @@ test.describe('the application address bar', () => {
             (await data<Record<string, string>>(page, 'settings.getAll'))['preview.associations']
         )
         .toEqual({ txt: 'pch.preview.fallback' })
-      // 勾选项点击后菜单保持打开
-      await page.keyboard.press('Escape')
+      // 勾选项点击后菜单关闭；按钮显示当前查看器名
+      await expect(page.getByRole('menuitemcheckbox')).toHaveCount(0)
+      await expect(viewerButton).toContainText('File info')
       await button(page, 'Back').click()
       await row(page, 'second.txt').click({ modifiers: ['Control'] })
       await expect(tabs(page)).toHaveCount(2)

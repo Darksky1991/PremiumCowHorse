@@ -9,6 +9,8 @@ import {
 import type { Invoke } from '@renderer/data/vfs'
 import type { WebEvents } from '@renderer/data/web'
 import { consumeViewRefocus, noteViewHeldFocus } from '@renderer/lib/focus-return'
+import { isExecutableExtension } from './executable'
+import { nameOfUri } from './host'
 
 /**
  * 窗口级的浏览器视图登记（每个渲染端一个，preview-container 中创建）：
@@ -170,6 +172,8 @@ export interface WebHostLinks {
   tabs: { open: (uri: string) => void; navigate: (uri: string) => void }
   /** openExternal 失败（提示用户） */
   onError: (error: unknown) => void
+  /** 可执行类扩展名的文件交给系统应用前的确认（与 PreviewHost.system.openWithSystem 相同的对话框）；返回是否继续 */
+  confirmExecutable: (name: string) => Promise<boolean>
 }
 
 export interface WebHostDeps extends WebHostLinks {
@@ -289,7 +293,12 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const { tabId, views, invoke } = deps
   const env: WebHostEnv = { ...browserEnv, ...deps.env }
   const run = (task: () => Promise<unknown>): void => views.run(tabId, task)
-  let links: WebHostLinks = { roots: deps.roots, tabs: deps.tabs, onError: deps.onError }
+  let links: WebHostLinks = {
+    roots: deps.roots,
+    tabs: deps.tabs,
+    onError: deps.onError,
+    confirmExecutable: deps.confirmExecutable
+  }
   let location: WebLocation | null = null
 
   let current: Attachment | null = null
@@ -449,6 +458,9 @@ export function createWebHost(deps: WebHostDeps): WebHost {
     reload: () => run(() => invoke('web.reload', { tabId })),
     openExternal: async (uri) => {
       try {
+        // 与 openWithSystem 一致：可执行类扩展名先确认（页面查看器的「用默认应用打开」也能打开 .bat 等）
+        const name = nameOfUri(uri)
+        if (isExecutableExtension(name) && !(await links.confirmExecutable(name))) return
         await invoke('system.openPath', { uri })
       } catch (e) {
         links.onError(e)

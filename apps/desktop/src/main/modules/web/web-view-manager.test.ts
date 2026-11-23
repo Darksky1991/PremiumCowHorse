@@ -134,6 +134,16 @@ describe('WebViewManager', () => {
     expect(views).toHaveLength(0)
   })
 
+  it.each(['a/%2E%2E/b', 'a/%2e/b', 'a/../b', 'a/./b', 'a/%00/b', 'a/%2E%2E', 'a/%E0%A4%A'])(
+    'uri 含 . / .. / NUL 段（解码后）或无法解码 → 抛 FS_INVALID_URI（%s）',
+    (rel) => {
+      expect(() => manager.attach(win, input('t1', 'x', { uri: `${ROOT}/${rel}` }))).toThrow(
+        expect.objectContaining({ code: 'FS_INVALID_URI' })
+      )
+      expect(views).toHaveLength(0)
+    }
+  )
+
   it('同标签第二次 attach 复用视图，URL 相同不重新加载；URL 不同才 loadURL', () => {
     manager.attach(win, input('t1'))
     manager.hide(win.id, 't1')
@@ -556,7 +566,7 @@ describe('WebViewManager', () => {
     })
 
     it('范围外 → web.notice outOfScope；外部 → openExternal，不发事件', () => {
-      const openExternal = vi.fn()
+      const openExternal = vi.fn<(url: string) => void>()
       const m = new WebViewManager({
         createView: (ev) => {
           const v = new FakeView(ev)
@@ -571,6 +581,7 @@ describe('WebViewManager', () => {
       m.attach(win, input('x'))
       const ev = views.at(-1)!.events
       send.mockClear()
+      ev.pointerDown()
       ev.navigate('file:///C:/Windows/win.ini', false)
       ev.navigate('https://example.com/', true)
       ev.navigate('javascript:alert(1)', false)
@@ -581,8 +592,69 @@ describe('WebViewManager', () => {
       expect(openExternal).toHaveBeenCalledWith('https://example.com/')
     })
 
+    describe('外部链接需要用户手势（近似：最近 5 秒内有鼠标按下 / 键盘按下）', () => {
+      const keyDown = { type: 'keyDown', shift: false, alt: false, meta: false, isComposing: false }
+      let openExternal: ReturnType<typeof vi.fn<(url: string) => void>>
+      let warn: ReturnType<typeof vi.fn<(...args: unknown[]) => void>>
+      let now: number
+      let ev: ViewEvents
+      beforeEach(() => {
+        openExternal = vi.fn<(url: string) => void>()
+        warn = vi.fn<(...args: unknown[]) => void>()
+        now = 100_000
+        const m = new WebViewManager({
+          createView: (e) => {
+            const v = new FakeView(e)
+            views.push(v)
+            return v
+          },
+          send,
+          scopes,
+          openExternal,
+          logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+          now: () => now
+        })
+        m.attach(win, input('g'))
+        ev = views.at(-1)!.events
+      })
+
+      it('没有任何输入（页面脚本加载时 location.href = …）→ 丢弃并记 warn', () => {
+        ev.navigate('https://example.com/', false)
+        expect(openExternal).not.toHaveBeenCalled()
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/'))
+      })
+
+      it('pointerDown 后 1 秒内 → 交给系统', () => {
+        ev.pointerDown()
+        now += 1000
+        ev.navigate('https://example.com/', false)
+        expect(openExternal).toHaveBeenCalledWith('https://example.com/')
+      })
+
+      it('keyDown（Enter 激活链接）后 → 交给系统；keyUp 不算', () => {
+        ev.key({ ...keyDown, type: 'keyUp', key: 'Enter', control: false })
+        ev.navigate('https://example.com/up', false)
+        expect(openExternal).not.toHaveBeenCalled()
+        ev.key({ ...keyDown, key: 'Enter', control: false })
+        ev.navigate('https://example.com/down', false)
+        expect(openExternal).toHaveBeenCalledWith('https://example.com/down')
+      })
+
+      it('恰好 5 秒内仍算，超过 5 秒（6 秒）→ 丢弃并记 warn', () => {
+        ev.pointerDown()
+        now += 5000
+        ev.navigate('https://example.com/edge', false)
+        expect(openExternal).toHaveBeenCalledWith('https://example.com/edge')
+        openExternal.mockClear()
+        now += 6000
+        ev.navigate('https://example.com/late', false)
+        expect(openExternal).not.toHaveBeenCalled()
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('https://example.com/late'))
+      })
+    })
+
     it('外部链接：同一视图 2 秒内最多交给系统一次（页面脚本 / meta refresh 无手势也能触发），超出丢弃并记日志', () => {
-      const openExternal = vi.fn()
+      const openExternal = vi.fn<(url: string) => void>()
       const warn = vi.fn()
       let now = 10_000
       const m = new WebViewManager({
@@ -601,6 +673,8 @@ describe('WebViewManager', () => {
       const a = views.at(-1)!.events
       m.attach(win, input('b'))
       const b = views.at(-1)!.events
+      a.pointerDown()
+      b.pointerDown()
       a.navigate('https://example.com/1', false)
       now += 1999
       a.navigate('https://example.com/2', true)

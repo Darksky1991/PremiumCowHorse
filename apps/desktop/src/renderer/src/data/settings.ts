@@ -22,8 +22,25 @@ export function useSetting<K extends SettingKey>(key: K): Settings[K] | undefine
 }
 
 /** 写入设置：主进程保存后会广播 settings.changed，缓存由 query-client 的桥接更新 */
-export function useUpdateSettings(): UseMutationResult<void, Error, SettingsPatch> {
-  return useMutation({ mutationFn: (patch: SettingsPatch) => call('settings.set', patch) })
+export function useUpdateSettings(): UseMutationResult<
+  void,
+  Error,
+  SettingsPatch,
+  { previous: Settings | undefined }
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: SettingsPatch) => call('settings.set', patch),
+    // 乐观合并：连续写入时后一次读到的缓存已含前一次的结果；失败则回滚到写入前的快照
+    onMutate: (patch) => {
+      const previous = client.getQueryData<Settings>(queryKeys.settings)
+      if (previous) client.setQueryData<Settings>(queryKeys.settings, { ...previous, ...patch })
+      return { previous }
+    },
+    onError: (_error, _patch, context) => {
+      if (context?.previous) client.setQueryData<Settings>(queryKeys.settings, context.previous)
+    }
+  })
 }
 
 /** 缓存占用（字节）：来自扫描进程，不可用（例如尚未启动）时查询失败，由调用方显示「取得できません」 */

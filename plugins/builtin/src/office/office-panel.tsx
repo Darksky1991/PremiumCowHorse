@@ -3,13 +3,22 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   FileSpreadsheetIcon,
+  FileTextIcon,
   FolderOpenIcon,
   LoaderCircleIcon,
-  RefreshCwIcon
+  PresentationIcon,
+  RefreshCwIcon,
+  type LucideIcon
 } from 'lucide-react'
 import type { LaunchCapabilities, LaunchMode, PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
-import { formatBytes, formatDateTime } from './format'
+import { capsForUri, formatBytes, formatDateTime, officeIconFor } from './format'
+
+const ICONS: Record<ReturnType<typeof officeIconFor>, LucideIcon> = {
+  word: FileTextIcon,
+  excel: FileSpreadsheetIcon,
+  powerpoint: PresentationIcon
+}
 
 /** 检测超过这个时间才显示「検出中」（命中缓存时 IPC 只要几毫秒，不显示就不会闪） */
 const DETECTING_DELAY_MS = 300
@@ -28,16 +37,22 @@ const MODE_KEYS: Record<LaunchMode, string> = {
  */
 export default function OfficePanel({ resource, host }: PreviewProps): JSX.Element {
   const { t, language } = host.i18n
-  // undefined：检测中；null：检测失败（宿主已提示）
-  const [caps, setCaps] = useState<LaunchCapabilities | null | undefined>(undefined)
+  // 结果连同检测时的 uri 保存：uri 变化后 capsForUri 给出 undefined（检测中），不沿用上一个文件的结果
+  // caps：undefined 检测中；null 宿主调用失败（宿主已提示）
+  const [detected, setDetected] = useState<
+    { uri: string; caps: LaunchCapabilities | null } | undefined
+  >(undefined)
+  const caps = capsForUri(detected, resource.uri)
   const [launching, setLaunching] = useState<LaunchMode | null>(null)
+  const [openingDefault, setOpeningDefault] = useState(false)
   const [detectRun, setDetectRun] = useState(0)
   const [showDetecting, setShowDetecting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    void host.system.getLaunchCapabilities(resource.uri).then((c) => {
-      if (!cancelled) setCaps(c)
+    const uri = resource.uri
+    void host.system.getLaunchCapabilities(uri).then((c) => {
+      if (!cancelled) setDetected({ uri, caps: c })
     })
     return () => {
       cancelled = true
@@ -65,8 +80,17 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
     [host, resource.uri]
   )
 
+  const openWithDefault = useCallback(async () => {
+    setOpeningDefault(true)
+    try {
+      await host.system.openWithSystem(resource.uri)
+    } finally {
+      setOpeningDefault(false)
+    }
+  }, [host, resource.uri])
+
   const redetect = useCallback(async () => {
-    setCaps(undefined)
+    setDetected(undefined)
     await host.system.redetectLaunchCapabilities()
     setDetectRun((n) => n + 1)
   }, [host])
@@ -75,15 +99,15 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
   // 检测可能给出空串：按没有应用名处理
   const appName = caps?.appName?.trim() ?? ''
   const options = caps?.options ?? []
+  const detectFailed = caps?.detectFailed === true
+  const busy = launching !== null || openingDefault
+  const Icon = ICONS[officeIconFor(caps?.ext ?? extensionOf(resource.name))]
 
   return (
     <div className="h-full overflow-auto">
       <section aria-label={t('name')} className="flex max-w-3xl flex-col gap-6 p-8">
         <div className="flex items-start gap-3">
-          <FileSpreadsheetIcon
-            aria-hidden
-            className="mt-0.5 size-8 shrink-0 text-muted-foreground"
-          />
+          <Icon aria-hidden className="mt-0.5 size-8 shrink-0 text-muted-foreground" />
           <h2 className="min-w-0 text-lg font-semibold break-all select-text">{resource.name}</h2>
         </div>
 
@@ -134,11 +158,24 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
             </div>
           </div>
         ) : (
-          <div>
-            <Button onClick={() => void host.system.openWithSystem(resource.uri)}>
-              <ExternalLinkIcon data-icon="inline-start" />
-              {t('openWithDefault')}
-            </Button>
+          <div className="flex flex-col gap-2">
+            {detectFailed ? (
+              <p role="alert" className="text-sm text-muted-foreground">
+                {t('detectFailed')}
+              </p>
+            ) : null}
+            <div>
+              <Button disabled={busy} onClick={() => void openWithDefault()}>
+                {openingDefault ? (
+                  <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <ExternalLinkIcon data-icon="inline-start" />
+                )}
+                {openingDefault
+                  ? `${t('openWithDefault')} (${t('launching')})`
+                  : t('openWithDefault')}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -151,7 +188,11 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
             <CopyIcon data-icon="inline-start" />
             {t('copyPath')}
           </Button>
-          <Button variant="outline" disabled={caps === undefined} onClick={() => void redetect()}>
+          <Button
+            variant={detectFailed ? 'default' : 'outline'}
+            disabled={caps === undefined || busy}
+            onClick={() => void redetect()}
+          >
             <RefreshCwIcon data-icon="inline-start" />
             {t('redetect')}
           </Button>
@@ -159,4 +200,10 @@ export default function OfficePanel({ resource, host }: PreviewProps): JSX.Eleme
       </section>
     </div>
   )
+}
+
+/** 文件名的小写扩展名（不含点）；没有为空串。检测结果到达前用它选图标 */
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(dot + 1) : ''
 }
