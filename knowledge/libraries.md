@@ -306,3 +306,11 @@
 - 原因：shadcn `Button` 带 `transition-all`，祖先的 `visibility` 变化经继承也被按钮过渡（默认 150 ms）；过渡起点按钮仍是 hidden，不可获得焦点。
 - 解决：要切换显示的一面用 `hidden`（display: none，不参与 `transition-all`），不用 `invisible`。
 - 预防：用 `visibility` 显隐含 shadcn 按钮 / 输入框的区域、并在显隐后立即移动焦点时，改用 display 或在过渡结束后再移焦点；不要靠 rAF 碰运气。
+
+### Base UI Dialog 的初始焦点晚于挂载；TanStack `mutate(…, callbacks)` 在组件卸载后不触发
+
+- 日期：2026-11-23
+- 症状（M5 整体审查）：(1) 按 `Ctrl+K` / `Alt+W` 后立即输入，前几个字符落在原焦点（BODY）上丢失；(2) 命令面板里选工作区后 `activate.mutate(id, { onSuccess })` 的 toast 从不出现，工作区却切换了。
+- 原因：(1) Base UI 1.9.0 `FloatingFocusManager` 的初始焦点经 `queueMicrotask` + `enqueueFocus`（默认 `requestAnimationFrame`）才 `focus()`，实测约 10–28 ms 内 `activeElement` 仍是 BODY；Portal 内容还晚于父组件的首次提交挂载，父组件的 effect 里拿不到内部元素的 ref。(2) `mutate` 的第二个参数回调挂在 observer 上，选择后面板随即卸载（`open ? <PaletteBody/> : null`），回调不再触发。
+- 解决：(1) 在 Dialog 内容里（输入框之后）用 `useLayoutEffect` 聚焦（命令面板给 `CommandInput` 传 ref；选择器用渲染在内容内的 `FocusOnMount`）。(2) 用 `mutateAsync(...).then(ok, fail)`，或把回调放进不会卸载的组件。
+- 预防：e2e 要验证「打开即输入」时，用 `MutationObserver` 在输入框插入 DOM 的同一次提交里记录 `document.activeElement`（确定性），不要只靠 `keyboard.type`（渲染进程忙于挂载时按键排在聚焦之后，修正前也能通过）；对话框挂载本身（选择器约 20–35 ms）之前的按键无法靠聚焦时机补救。
