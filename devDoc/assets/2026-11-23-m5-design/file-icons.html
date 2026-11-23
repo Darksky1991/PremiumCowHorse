@@ -1,0 +1,1940 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>文件图标配色</title>
+    <style>
+      [data-theme='default'] {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --accent: oklch(0.97 0 0);
+        --accent-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.985 0 0);
+        --sidebar-foreground: oklch(0.145 0 0);
+        --sidebar-primary: oklch(0.205 0 0);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.97 0 0);
+        --sidebar-accent-foreground: oklch(0.205 0 0);
+        --sidebar-border: oklch(0.922 0 0);
+        --sidebar-ring: oklch(0.708 0 0);
+        --log-error: oklch(0.54 0.2 27);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.13 250);
+        --log-time: oklch(0.52 0 0);
+      }
+      [data-theme='default'].dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --popover: oklch(0.205 0 0);
+        --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --accent: oklch(0.269 0 0);
+        --accent-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --sidebar-foreground: oklch(0.985 0 0);
+        --sidebar-primary: oklch(0.488 0.243 264.376);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.269 0 0);
+        --sidebar-accent-foreground: oklch(0.985 0 0);
+        --sidebar-border: oklch(1 0 0 / 10%);
+        --sidebar-ring: oklch(0.556 0 0);
+        --log-error: oklch(0.72 0.17 25);
+        --log-warn: oklch(0.82 0.13 80);
+        --log-info: oklch(0.76 0.1 240);
+        --log-time: oklch(0.708 0 0);
+      }
+      [data-theme='aitetsu'] {
+        --background: oklch(0.985 0.004 250);
+        --foreground: oklch(0.22 0.025 258);
+        --card: oklch(0.995 0.002 250);
+        --card-foreground: oklch(0.22 0.025 258);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.22 0.025 258);
+        --primary: oklch(0.5 0.13 248);
+        --primary-foreground: oklch(0.985 0.005 245);
+        --secondary: oklch(0.95 0.01 250);
+        --secondary-foreground: oklch(0.28 0.03 258);
+        --muted: oklch(0.955 0.008 250);
+        --muted-foreground: oklch(0.5 0.025 255);
+        --accent: oklch(0.93 0.022 245);
+        --accent-foreground: oklch(0.25 0.04 255);
+        --destructive: oklch(0.56 0.21 27);
+        --border: oklch(0.9 0.012 250);
+        --input: oklch(0.88 0.014 250);
+        --ring: oklch(0.6 0.12 242);
+        --chart-1: oklch(0.6 0.13 240);
+        --chart-2: oklch(0.62 0.1 190);
+        --chart-3: oklch(0.52 0.13 280);
+        --chart-4: oklch(0.72 0.14 75);
+        --chart-5: oklch(0.6 0.17 25);
+        --sidebar: oklch(0.965 0.008 250);
+        --sidebar-foreground: oklch(0.22 0.025 258);
+        --sidebar-primary: oklch(0.5 0.13 248);
+        --sidebar-primary-foreground: oklch(0.985 0.005 245);
+        --sidebar-accent: oklch(0.925 0.02 248);
+        --sidebar-accent-foreground: oklch(0.25 0.04 255);
+        --sidebar-border: oklch(0.9 0.012 250);
+        --sidebar-ring: oklch(0.6 0.12 242);
+        --log-error: oklch(0.54 0.19 25);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.11 240);
+        --log-time: oklch(0.5 0.025 255);
+      }
+      [data-theme='aitetsu'].dark {
+        --background: oklch(0.175 0.022 256);
+        --foreground: oklch(0.93 0.012 240);
+        --card: oklch(0.21 0.025 256);
+        --card-foreground: oklch(0.93 0.012 240);
+        --popover: oklch(0.225 0.027 256);
+        --popover-foreground: oklch(0.93 0.012 240);
+        --primary: oklch(0.8 0.12 212);
+        --primary-foreground: oklch(0.2 0.035 245);
+        --secondary: oklch(0.27 0.03 256);
+        --secondary-foreground: oklch(0.93 0.012 240);
+        --muted: oklch(0.25 0.026 256);
+        --muted-foreground: oklch(0.71 0.03 245);
+        --accent: oklch(0.29 0.042 250);
+        --accent-foreground: oklch(0.96 0.01 240);
+        --destructive: oklch(0.69 0.18 22);
+        --border: oklch(0.3 0.03 256);
+        --input: oklch(0.33 0.035 256);
+        --ring: oklch(0.72 0.12 212);
+        --chart-1: oklch(0.78 0.12 212);
+        --chart-2: oklch(0.76 0.12 170);
+        --chart-3: oklch(0.7 0.14 285);
+        --chart-4: oklch(0.82 0.13 82);
+        --chart-5: oklch(0.7 0.17 25);
+        --sidebar: oklch(0.15 0.02 256);
+        --sidebar-foreground: oklch(0.93 0.012 240);
+        --sidebar-primary: oklch(0.8 0.12 212);
+        --sidebar-primary-foreground: oklch(0.2 0.035 245);
+        --sidebar-accent: oklch(0.25 0.036 252);
+        --sidebar-accent-foreground: oklch(0.96 0.01 240);
+        --sidebar-border: oklch(0.26 0.03 256);
+        --sidebar-ring: oklch(0.72 0.12 212);
+        --log-error: oklch(0.72 0.16 22);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.8 0.1 212);
+        --log-time: oklch(0.66 0.03 245);
+      }
+      [data-theme='washi'] {
+        --background: oklch(0.975 0.008 85);
+        --foreground: oklch(0.25 0.022 262);
+        --card: oklch(0.99 0.005 85);
+        --card-foreground: oklch(0.25 0.022 262);
+        --popover: oklch(0.99 0.005 85);
+        --popover-foreground: oklch(0.25 0.022 262);
+        --primary: oklch(0.43 0.12 263);
+        --primary-foreground: oklch(0.975 0.008 85);
+        --secondary: oklch(0.94 0.012 85);
+        --secondary-foreground: oklch(0.3 0.03 262);
+        --muted: oklch(0.945 0.01 85);
+        --muted-foreground: oklch(0.5 0.02 70);
+        --accent: oklch(0.915 0.02 82);
+        --accent-foreground: oklch(0.27 0.03 262);
+        --destructive: oklch(0.53 0.19 32);
+        --border: oklch(0.89 0.015 80);
+        --input: oklch(0.87 0.017 80);
+        --ring: oklch(0.55 0.11 263);
+        --chart-1: oklch(0.5 0.12 263);
+        --chart-2: oklch(0.6 0.16 35);
+        --chart-3: oklch(0.6 0.1 135);
+        --chart-4: oklch(0.74 0.14 80);
+        --chart-5: oklch(0.5 0.1 320);
+        --sidebar: oklch(0.955 0.012 82);
+        --sidebar-foreground: oklch(0.25 0.022 262);
+        --sidebar-primary: oklch(0.43 0.12 263);
+        --sidebar-primary-foreground: oklch(0.975 0.008 85);
+        --sidebar-accent: oklch(0.915 0.022 80);
+        --sidebar-accent-foreground: oklch(0.27 0.03 262);
+        --sidebar-border: oklch(0.885 0.016 80);
+        --sidebar-ring: oklch(0.55 0.11 263);
+        --log-error: oklch(0.52 0.18 32);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.45 0.11 263);
+        --log-time: oklch(0.49 0.02 70);
+      }
+      [data-theme='washi'].dark {
+        --background: oklch(0.205 0.008 70);
+        --foreground: oklch(0.9 0.016 85);
+        --card: oklch(0.235 0.009 70);
+        --card-foreground: oklch(0.9 0.016 85);
+        --popover: oklch(0.245 0.01 70);
+        --popover-foreground: oklch(0.9 0.016 85);
+        --primary: oklch(0.75 0.085 258);
+        --primary-foreground: oklch(0.2 0.02 262);
+        --secondary: oklch(0.29 0.01 70);
+        --secondary-foreground: oklch(0.9 0.016 85);
+        --muted: oklch(0.27 0.009 70);
+        --muted-foreground: oklch(0.71 0.02 80);
+        --accent: oklch(0.31 0.015 75);
+        --accent-foreground: oklch(0.93 0.015 85);
+        --destructive: oklch(0.68 0.16 32);
+        --border: oklch(0.32 0.01 70);
+        --input: oklch(0.35 0.012 70);
+        --ring: oklch(0.66 0.085 258);
+        --chart-1: oklch(0.72 0.09 258);
+        --chart-2: oklch(0.7 0.14 38);
+        --chart-3: oklch(0.74 0.1 135);
+        --chart-4: oklch(0.82 0.12 82);
+        --chart-5: oklch(0.7 0.09 320);
+        --sidebar: oklch(0.18 0.007 70);
+        --sidebar-foreground: oklch(0.9 0.016 85);
+        --sidebar-primary: oklch(0.75 0.085 258);
+        --sidebar-primary-foreground: oklch(0.2 0.02 262);
+        --sidebar-accent: oklch(0.28 0.014 72);
+        --sidebar-accent-foreground: oklch(0.93 0.015 85);
+        --sidebar-border: oklch(0.28 0.009 70);
+        --sidebar-ring: oklch(0.66 0.085 258);
+        --log-error: oklch(0.72 0.15 32);
+        --log-warn: oklch(0.82 0.11 82);
+        --log-info: oklch(0.77 0.08 258);
+        --log-time: oklch(0.66 0.02 80);
+      }
+      [data-theme='matsuba'] {
+        --background: oklch(0.98 0.005 160);
+        --foreground: oklch(0.24 0.02 170);
+        --card: oklch(0.995 0.003 160);
+        --card-foreground: oklch(0.24 0.02 170);
+        --popover: oklch(0.995 0.003 160);
+        --popover-foreground: oklch(0.24 0.02 170);
+        --primary: oklch(0.48 0.1 165);
+        --primary-foreground: oklch(0.98 0.01 160);
+        --secondary: oklch(0.95 0.012 160);
+        --secondary-foreground: oklch(0.28 0.03 170);
+        --muted: oklch(0.955 0.01 160);
+        --muted-foreground: oklch(0.5 0.025 170);
+        --accent: oklch(0.93 0.025 162);
+        --accent-foreground: oklch(0.26 0.04 170);
+        --destructive: oklch(0.55 0.2 27);
+        --border: oklch(0.9 0.014 160);
+        --input: oklch(0.88 0.016 160);
+        --ring: oklch(0.6 0.1 165);
+        --chart-1: oklch(0.55 0.11 165);
+        --chart-2: oklch(0.6 0.1 220);
+        --chart-3: oklch(0.72 0.13 85);
+        --chart-4: oklch(0.6 0.15 40);
+        --chart-5: oklch(0.5 0.1 300);
+        --sidebar: oklch(0.965 0.01 160);
+        --sidebar-foreground: oklch(0.24 0.02 170);
+        --sidebar-primary: oklch(0.48 0.1 165);
+        --sidebar-primary-foreground: oklch(0.98 0.01 160);
+        --sidebar-accent: oklch(0.925 0.025 162);
+        --sidebar-accent-foreground: oklch(0.26 0.04 170);
+        --sidebar-border: oklch(0.895 0.014 160);
+        --sidebar-ring: oklch(0.6 0.1 165);
+        --log-error: oklch(0.54 0.19 27);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.48 0.085 220);
+        --log-time: oklch(0.5 0.025 170);
+      }
+      [data-theme='matsuba'].dark {
+        --background: oklch(0.19 0.014 175);
+        --foreground: oklch(0.92 0.012 160);
+        --card: oklch(0.225 0.016 175);
+        --card-foreground: oklch(0.92 0.012 160);
+        --popover: oklch(0.235 0.017 175);
+        --popover-foreground: oklch(0.92 0.012 160);
+        --primary: oklch(0.78 0.11 160);
+        --primary-foreground: oklch(0.2 0.03 170);
+        --secondary: oklch(0.28 0.02 175);
+        --secondary-foreground: oklch(0.92 0.012 160);
+        --muted: oklch(0.26 0.017 175);
+        --muted-foreground: oklch(0.71 0.03 165);
+        --accent: oklch(0.3 0.03 170);
+        --accent-foreground: oklch(0.95 0.01 160);
+        --destructive: oklch(0.69 0.17 25);
+        --border: oklch(0.31 0.02 175);
+        --input: oklch(0.34 0.022 175);
+        --ring: oklch(0.68 0.1 160);
+        --chart-1: oklch(0.76 0.11 160);
+        --chart-2: oklch(0.74 0.09 220);
+        --chart-3: oklch(0.83 0.12 85);
+        --chart-4: oklch(0.73 0.14 42);
+        --chart-5: oklch(0.7 0.1 300);
+        --sidebar: oklch(0.165 0.013 175);
+        --sidebar-foreground: oklch(0.92 0.012 160);
+        --sidebar-primary: oklch(0.78 0.11 160);
+        --sidebar-primary-foreground: oklch(0.2 0.03 170);
+        --sidebar-accent: oklch(0.27 0.03 172);
+        --sidebar-accent-foreground: oklch(0.95 0.01 160);
+        --sidebar-border: oklch(0.27 0.018 175);
+        --sidebar-ring: oklch(0.68 0.1 160);
+        --log-error: oklch(0.72 0.16 25);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.78 0.08 220);
+        --log-time: oklch(0.66 0.03 165);
+      }
+      [data-theme] {
+        --ws-slate: oklch(0.55 0.03 255);
+        --ws-red: oklch(0.58 0.19 27);
+        --ws-orange: oklch(0.64 0.16 50);
+        --ws-amber: oklch(0.64 0.135 72);
+        --ws-green: oklch(0.58 0.14 150);
+        --ws-teal: oklch(0.58 0.1 190);
+        --ws-blue: oklch(0.55 0.16 255);
+        --ws-violet: oklch(0.55 0.17 295);
+        --ws-pink: oklch(0.62 0.18 355);
+        --fi-folder: oklch(0.61 0.13 70);
+        --fi-word: oklch(0.5 0.15 258);
+        --fi-excel: oklch(0.52 0.13 150);
+        --fi-powerpoint: oklch(0.58 0.17 40);
+        --fi-pdf: oklch(0.54 0.2 27);
+        --fi-mail: oklch(0.55 0.105 232);
+        --fi-archive: oklch(0.52 0.08 60);
+        --fi-image: oklch(0.56 0.17 350);
+        --fi-media: oklch(0.53 0.17 318);
+        --fi-csv: oklch(0.52 0.08 155);
+        --fi-log: oklch(0.53 0.08 195);
+        --fi-script: oklch(0.5 0.14 300);
+        --fi-code: oklch(0.5 0.11 275);
+        --fi-config: oklch(0.52 0.07 110);
+        --fi-database: oklch(0.52 0.09 215);
+        --fi-cert: oklch(0.56 0.11 92);
+        --fi-markdown: oklch(0.5 0.05 250);
+        --fi-exe: oklch(0.45 0.025 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 30%);
+      }
+      [data-theme].dark {
+        --ws-slate: oklch(0.72 0.03 255);
+        --ws-red: oklch(0.7 0.17 25);
+        --ws-orange: oklch(0.76 0.14 55);
+        --ws-amber: oklch(0.82 0.14 85);
+        --ws-green: oklch(0.76 0.14 152);
+        --ws-teal: oklch(0.77 0.1 190);
+        --ws-blue: oklch(0.72 0.13 252);
+        --ws-violet: oklch(0.73 0.14 295);
+        --ws-pink: oklch(0.75 0.14 355);
+        --fi-folder: oklch(0.83 0.14 85);
+        --fi-word: oklch(0.72 0.13 255);
+        --fi-excel: oklch(0.76 0.15 152);
+        --fi-powerpoint: oklch(0.75 0.15 48);
+        --fi-pdf: oklch(0.7 0.17 24);
+        --fi-mail: oklch(0.77 0.1 228);
+        --fi-archive: oklch(0.76 0.08 68);
+        --fi-image: oklch(0.75 0.14 350);
+        --fi-media: oklch(0.74 0.14 318);
+        --fi-csv: oklch(0.77 0.08 155);
+        --fi-log: oklch(0.77 0.08 195);
+        --fi-script: oklch(0.74 0.12 300);
+        --fi-code: oklch(0.75 0.09 275);
+        --fi-config: oklch(0.79 0.08 110);
+        --fi-database: oklch(0.77 0.09 212);
+        --fi-cert: oklch(0.83 0.12 95);
+        --fi-markdown: oklch(0.78 0.05 250);
+        --fi-exe: oklch(0.82 0.02 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 18%);
+      }
+      :root {
+        --page-bg: oklch(0.97 0.003 250);
+        --page-fg: oklch(0.22 0.02 258);
+        --page-muted: oklch(0.5 0.02 255);
+        --page-line: oklch(0.88 0.01 250);
+        --page-card: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page-bg: oklch(0.16 0.01 256);
+          --page-fg: oklch(0.92 0.01 240);
+          --page-muted: oklch(0.7 0.02 245);
+          --page-line: oklch(0.3 0.02 256);
+          --page-card: oklch(0.2 0.015 256);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page-bg);
+        color: var(--page-fg);
+        font:
+          14px/1.7 'Segoe UI Variable Text',
+          'Segoe UI',
+          'Yu Gothic UI',
+          'Microsoft YaHei UI',
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1,
+      h2 {
+        font-family: 'BIZ UDPGothic', 'Yu Gothic UI', sans-serif;
+        letter-spacing: 0.02em;
+      }
+      h1 {
+        font-size: 26px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 20px;
+        margin: 40px 0 6px;
+      }
+      .lead {
+        color: var(--page-muted);
+        max-width: 80ch;
+        margin: 0 0 8px;
+      }
+      ul.rules {
+        max-width: 86ch;
+        padding-left: 20px;
+        color: var(--page-muted);
+      }
+      ul.rules b {
+        color: var(--page-fg);
+      }
+      .wrap {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        font-size: 12.5px;
+        min-width: 1060px;
+        width: 100%;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--page-line);
+        vertical-align: middle;
+      }
+      th {
+        color: var(--page-muted);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: var(--page-bg);
+      }
+      td.ic {
+        padding: 0;
+        width: 60px;
+      }
+      td.ic div {
+        display: grid;
+        place-items: center;
+        height: 40px;
+      }
+      td.ic svg {
+        width: 18px;
+        height: 18px;
+      }
+      td.ex {
+        color: var(--page-muted);
+        font-family: 'Cascadia Mono', Consolas, monospace;
+        font-size: 11.5px;
+        max-width: 280px;
+      }
+      td.n {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .tier {
+        font-size: 11px;
+        padding: 0 6px;
+        border-radius: 8px;
+        border: 1px solid var(--page-line);
+        white-space: nowrap;
+      }
+      .tier.A {
+        background: color-mix(in oklch, var(--page-fg) 10%, transparent);
+      }
+      .sw {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        vertical-align: -1px;
+        margin-right: 5px;
+      }
+      .note {
+        color: var(--page-muted);
+        font-size: 12px;
+      }
+      code {
+        font-family: 'Cascadia Mono', Consolas, monospace;
+        font-size: 12px;
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px;
+      }
+      .panel {
+        background: var(--sidebar);
+        color: var(--sidebar-foreground);
+        border: 1px solid var(--sidebar-border);
+        border-radius: 10px;
+        padding: 8px 6px;
+        font-size: 12.5px;
+      }
+      .panel h3 {
+        margin: 0 6px 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted-foreground);
+        font-family: inherit;
+      }
+      .panel .r {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .panel .r.sel {
+        background: var(--sidebar-accent);
+        color: var(--sidebar-accent-foreground);
+      }
+      .panel svg {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      .cols {
+        columns: 2;
+        column-gap: 4px;
+      }
+      svg.i {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      pre {
+        background: oklch(0.2 0.02 256);
+        color: oklch(0.9 0.01 240);
+        padding: 14px;
+        border-radius: 10px;
+        overflow: auto;
+        max-height: 460px;
+        font:
+          12px/1.55 'Cascadia Mono',
+          Consolas,
+          monospace;
+      }
+      .size {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .size .panel {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>文件图标：按大众认知着色</h1>
+      <p class="lead">
+        类别 ×
+        颜色。颜色只分明暗两组（与配色主题无关），每个颜色都对四套主题的背景、侧栏、选中行、卡片底逐一计算了对比度，表中给出最差的一处（图形对比度目标
+        3:1，WCAG 1.4.11）。图标字形取自 lucide-react
+        1.73.0（项目已用），表中的字形名都在该版本中存在。
+      </p>
+      <ul class="rules">
+        <li>
+          <b>A 级（饱和）</b>：有大众共识的品牌色——Word 蓝、Excel 绿、PowerPoint 橙、PDF 红、Outlook
+          天蓝、黄色文件夹、茶色压缩包。
+        </li>
+        <li>
+          <b>B 级（降饱和）</b>：没有共识、只为区分的类别，色相避开 A
+          级，饱和度压低。<b>日志</b>是运维最常见的文件，刻意用低饱和青灰，避免整棵树变成一片彩色。
+        </li>
+        <li>
+          <b>中性</b>：纯文本、未知扩展名、文件链接用主题的
+          <code>muted-foreground</code>；失效链接用 <code>destructive</code>（与现状一致）。
+        </li>
+        <li>
+          <b>文件夹</b>额外加 18–30% 同色填充（lucide 的 folder
+          是单一闭合路径，填充可靠），远看是「黄色文件夹」。其他图标只着色描边：lucide 的 file-*
+          图标外形被拆成多段路径，填充会出现残缺。
+        </li>
+        <li>
+          <b>颜色不是唯一线索</b>：同色的类别（csv / Excel、package / archive、audio /
+          video）靠字形区分；PDF 不再沿用 document 的 file-text 字形，改用 file-type。
+        </li>
+      </ul>
+
+      <h2>类别 × 颜色</h2>
+      <div class="wrap"><table id="tbl"></table></div>
+
+      <h2>各主题下的实际效果</h2>
+      <p class="lead">侧栏底色 + 一行选中（sidebar-accent）。每个面板列出全部类别的示例文件。</p>
+      <div class="panels" id="panels"></div>
+
+      <h2>尺寸</h2>
+      <div class="size" id="sizes"></div>
+
+      <h2>扩展名映射建议（替换 file-icon-map.ts 的 BY_EXTENSION）</h2>
+      <p class="lead">
+        类别名与表中一致；同一扩展名只出现在一组。另加两条文件名规则：轮转日志（<code>*.log.1</code>、<code>*.log.2026-11-01</code>、<code>*.log.gz</code>）归
+        log；<code>Dockerfile</code>、<code>Makefile</code>、<code>.env</code>、<code
+          >.gitignore</code
+        >
+        等无扩展名的常见文件按全名映射（config / script）。
+      </p>
+      <pre id="map"></pre>
+      <h2>CSS 令牌</h2>
+      <pre id="css"></pre>
+    </main>
+    <script>
+      const ICONS = {
+        folder: [
+          [
+            'path',
+            {
+              d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
+            }
+          ]
+        ],
+        'folder-open': [
+          [
+            'path',
+            {
+              d: 'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2'
+            }
+          ]
+        ],
+        'folder-symlink': [
+          [
+            'path',
+            {
+              d: 'M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'm8 16 3-3-3-3' }]
+        ],
+        'file-symlink': [
+          [
+            'path',
+            {
+              d: 'M4 11V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm10 18 3-3-3-3' }]
+        ],
+        'file-x': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm14.5 12.5-5 5' }],
+          ['path', { d: 'm9.5 12.5 5 5' }]
+        ],
+        file: [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }]
+        ],
+        'file-text': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 9H8' }],
+          ['path', { d: 'M16 13H8' }],
+          ['path', { d: 'M16 17H8' }]
+        ],
+        'file-spreadsheet': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 13h2' }],
+          ['path', { d: 'M14 13h2' }],
+          ['path', { d: 'M8 17h2' }],
+          ['path', { d: 'M14 17h2' }]
+        ],
+        presentation: [
+          ['path', { d: 'M2 3h20' }],
+          ['path', { d: 'M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3' }],
+          ['path', { d: 'm7 21 5-5 5 5' }]
+        ],
+        mail: [
+          ['path', { d: 'm22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7' }],
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }]
+        ],
+        database: [
+          ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+          ['path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }],
+          ['path', { d: 'M3 12A9 3 0 0 0 21 12' }]
+        ],
+        'file-key': [
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M4 12v6' }],
+          ['path', { d: 'M4 14h2' }],
+          [
+            'path',
+            {
+              d: 'M9.65 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v4'
+            }
+          ],
+          ['circle', { cx: '4', cy: '20', r: '2' }]
+        ],
+        package: [
+          [
+            'path',
+            {
+              d: 'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z'
+            }
+          ],
+          ['path', { d: 'M12 22V12' }],
+          ['polyline', { points: '3.29 7 12 12 20.71 7' }],
+          ['path', { d: 'm7.5 4.27 9 5.15' }]
+        ],
+        'file-archive': [
+          [
+            'path',
+            {
+              d: 'M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 12v-1' }],
+          ['path', { d: 'M8 18v-2' }],
+          ['path', { d: 'M8 7V6' }],
+          ['circle', { cx: '8', cy: '20', r: '2' }]
+        ],
+        'file-image': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['circle', { cx: '10', cy: '12', r: '2' }],
+          ['path', { d: 'm20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22' }]
+        ],
+        'file-headphone': [
+          [
+            'path',
+            {
+              d: 'M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0'
+            }
+          ]
+        ],
+        'file-play': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M15.033 13.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56v-4.704a.645.645 0 0 1 .967-.56z'
+            }
+          ]
+        ],
+        'file-cog': [
+          [
+            'path',
+            { d: 'M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z' }
+          ],
+          ['path', { d: 'M20 8v12a2 2 0 0 1-2 2h-4.182' }],
+          ['path', { d: 'm3.305 19.53.923-.382' }],
+          ['path', { d: 'M4 10.592V4a2 2 0 0 1 2-2h8' }],
+          ['path', { d: 'm4.228 16.852-.924-.383' }],
+          ['path', { d: 'm5.852 15.228-.383-.923' }],
+          ['path', { d: 'm5.852 20.772-.383.924' }],
+          ['path', { d: 'm8.148 15.228.383-.923' }],
+          ['path', { d: 'm8.53 21.696-.382-.924' }],
+          ['path', { d: 'm9.773 16.852.922-.383' }],
+          ['path', { d: 'm9.773 19.148.922.383' }],
+          ['circle', { cx: '7', cy: '18', r: '3' }]
+        ],
+        'file-braces': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1' }],
+          ['path', { d: 'M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1' }]
+        ],
+        'scroll-text': [
+          ['path', { d: 'M15 12h-5' }],
+          ['path', { d: 'M15 8h-5' }],
+          ['path', { d: 'M19 17V5a2 2 0 0 0-2-2H4' }],
+          [
+            'path',
+            {
+              d: 'M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3'
+            }
+          ]
+        ],
+        'file-code': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12.5 8 15l2 2.5' }],
+          ['path', { d: 'm14 12.5 2 2.5-2 2.5' }]
+        ],
+        'file-terminal': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm8 16 2-2-2-2' }],
+          ['path', { d: 'M12 18h4' }]
+        ],
+        'app-window': [
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }],
+          ['path', { d: 'M10 4v4' }],
+          ['path', { d: 'M2 8h20' }],
+          ['path', { d: 'M6 4v4' }]
+        ],
+        'file-type': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M11 18h2' }],
+          ['path', { d: 'M12 12v6' }],
+          ['path', { d: 'M9 13v-.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v.5' }]
+        ],
+        sheet: [
+          ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2', ry: '2' }],
+          ['line', { x1: '3', x2: '21', y1: '9', y2: '9' }],
+          ['line', { x1: '3', x2: '21', y1: '15', y2: '15' }],
+          ['line', { x1: '9', x2: '9', y1: '9', y2: '21' }],
+          ['line', { x1: '15', x2: '15', y1: '9', y2: '21' }]
+        ],
+        'book-text': [
+          [
+            'path',
+            {
+              d: 'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20'
+            }
+          ],
+          ['path', { d: 'M8 11h8' }],
+          ['path', { d: 'M8 7h6' }]
+        ],
+        search: [
+          ['path', { d: 'm21 21-4.34-4.34' }],
+          ['circle', { cx: '11', cy: '11', r: '8' }]
+        ],
+        moon: [
+          [
+            'path',
+            {
+              d: 'M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401'
+            }
+          ]
+        ],
+        sun: [
+          ['circle', { cx: '12', cy: '12', r: '4' }],
+          ['path', { d: 'M12 2v2' }],
+          ['path', { d: 'M12 20v2' }],
+          ['path', { d: 'm4.93 4.93 1.41 1.41' }],
+          ['path', { d: 'm17.66 17.66 1.41 1.41' }],
+          ['path', { d: 'M2 12h2' }],
+          ['path', { d: 'M20 12h2' }],
+          ['path', { d: 'm6.34 17.66-1.41 1.41' }],
+          ['path', { d: 'm19.07 4.93-1.41 1.41' }]
+        ],
+        languages: [
+          ['path', { d: 'm5 8 6 6' }],
+          ['path', { d: 'm4 14 6-6 2-3' }],
+          ['path', { d: 'M2 5h12' }],
+          ['path', { d: 'M7 2h1' }],
+          ['path', { d: 'm22 22-5-10-5 10' }],
+          ['path', { d: 'M14 18h6' }]
+        ],
+        'gallery-vertical': [
+          ['path', { d: 'M3 2h18' }],
+          ['rect', { width: '18', height: '12', x: '3', y: '6', rx: '2' }],
+          ['path', { d: 'M3 22h18' }]
+        ],
+        'folder-tree': [
+          [
+            'path',
+            {
+              d: 'M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          [
+            'path',
+            {
+              d: 'M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          ['path', { d: 'M3 5a2 2 0 0 0 2 2h3' }],
+          ['path', { d: 'M3 3v13a2 2 0 0 0 2 2h3' }]
+        ],
+        server: [
+          ['rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }],
+          ['rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }],
+          ['line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }],
+          ['line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }]
+        ],
+        monitor: [
+          ['rect', { width: '20', height: '14', x: '2', y: '3', rx: '2' }],
+          ['line', { x1: '8', x2: '16', y1: '21', y2: '21' }],
+          ['line', { x1: '12', x2: '12', y1: '17', y2: '21' }]
+        ],
+        minus: [['path', { d: 'M5 12h14' }]],
+        square: [['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }]],
+        x: [
+          ['path', { d: 'M18 6 6 18' }],
+          ['path', { d: 'm6 6 12 12' }]
+        ],
+        'chevron-right': [['path', { d: 'm9 18 6-6-6-6' }]],
+        plus: [
+          ['path', { d: 'M5 12h14' }],
+          ['path', { d: 'M12 5v14' }]
+        ],
+        pencil: [
+          [
+            'path',
+            {
+              d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'
+            }
+          ],
+          ['path', { d: 'm15 5 4 4' }]
+        ],
+        trash: [
+          ['path', { d: 'M10 11v6' }],
+          ['path', { d: 'M14 11v6' }],
+          ['path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }],
+          ['path', { d: 'M3 6h18' }],
+          ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }]
+        ],
+        'layout-list': [
+          ['rect', { width: '7', height: '7', x: '3', y: '3', rx: '1' }],
+          ['rect', { width: '7', height: '7', x: '3', y: '14', rx: '1' }],
+          ['path', { d: 'M14 4h7' }],
+          ['path', { d: 'M14 9h7' }],
+          ['path', { d: 'M14 15h7' }],
+          ['path', { d: 'M14 20h7' }]
+        ],
+        'rotate-ccw': [
+          ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+          ['path', { d: 'M3 3v5h5' }]
+        ],
+        check: [['path', { d: 'M20 6 9 17l-5-5' }]],
+        list: [
+          ['path', { d: 'M3 5h.01' }],
+          ['path', { d: 'M3 12h.01' }],
+          ['path', { d: 'M3 19h.01' }],
+          ['path', { d: 'M8 5h13' }],
+          ['path', { d: 'M8 12h13' }],
+          ['path', { d: 'M8 19h13' }]
+        ],
+        'gallery-horizontal-end': [
+          ['path', { d: 'M2 7v10' }],
+          ['path', { d: 'M6 5v14' }],
+          ['rect', { width: '12', height: '18', x: '10', y: '3', rx: '2' }]
+        ],
+        'gallery-horizontal': [
+          ['path', { d: 'M2 3v18' }],
+          ['rect', { width: '12', height: '18', x: '6', y: '3', rx: '2' }],
+          ['path', { d: 'M22 3v18' }]
+        ],
+        copy: [
+          ['rect', { width: '14', height: '14', x: '8', y: '8', rx: '2', ry: '2' }],
+          ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }]
+        ],
+        clock: [
+          ['circle', { cx: '12', cy: '12', r: '10' }],
+          ['path', { d: 'M12 6v6l4 2' }]
+        ]
+      }
+      const COLORS = {
+        folder: {
+          ja: 'フォルダ',
+          zh: '文件夹',
+          tier: 'A',
+          light: '0.61 0.13 70',
+          dark: '0.83 0.14 85',
+          why: 'Windows 资源管理器的黄色文件夹'
+        },
+        word: {
+          ja: 'Word',
+          zh: 'Word',
+          tier: 'A',
+          light: '0.5 0.15 258',
+          dark: '0.72 0.13 255',
+          why: 'Word 蓝'
+        },
+        excel: {
+          ja: 'Excel',
+          zh: 'Excel',
+          tier: 'A',
+          light: '0.52 0.13 150',
+          dark: '0.76 0.15 152',
+          why: 'Excel 绿'
+        },
+        powerpoint: {
+          ja: 'PowerPoint',
+          zh: 'PowerPoint',
+          tier: 'A',
+          light: '0.58 0.17 40',
+          dark: '0.75 0.15 48',
+          why: 'PowerPoint 橙（偏红橙）'
+        },
+        pdf: {
+          ja: 'PDF',
+          zh: 'PDF',
+          tier: 'A',
+          light: '0.54 0.2 27',
+          dark: '0.7 0.17 24',
+          why: 'Acrobat 红'
+        },
+        mail: {
+          ja: 'メール',
+          zh: '邮件',
+          tier: 'A',
+          light: '0.55 0.105 232',
+          dark: '0.77 0.1 228',
+          why: 'Outlook 的天蓝（比 Word 浅、偏青）'
+        },
+        archive: {
+          ja: '圧縮',
+          zh: '压缩包',
+          tier: 'A',
+          light: '0.52 0.08 60',
+          dark: '0.76 0.08 68',
+          why: '压缩文件夹 / 纸箱的茶色'
+        },
+        image: {
+          ja: '画像',
+          zh: '图片',
+          tier: 'B',
+          light: '0.56 0.17 350',
+          dark: '0.75 0.14 350',
+          why: '无强共识；选与 Office 色不冲突的桃红'
+        },
+        media: {
+          ja: '音声・動画',
+          zh: '音视频',
+          tier: 'B',
+          light: '0.53 0.17 318',
+          dark: '0.74 0.14 318',
+          why: '无强共识；紫红，音频 / 视频用字形区分'
+        },
+        csv: {
+          ja: 'CSV',
+          zh: 'CSV',
+          tier: 'B',
+          light: '0.52 0.08 155',
+          dark: '0.77 0.08 155',
+          why: 'Windows 中 csv 关联 Excel：同色相、降饱和'
+        },
+        log: {
+          ja: 'ログ',
+          zh: '日志',
+          tier: 'B',
+          light: '0.53 0.08 195',
+          dark: '0.77 0.08 195',
+          why: '无共识；最常见的文件，故用低饱和青灰，避免整棵树一片彩色'
+        },
+        script: {
+          ja: 'スクリプト',
+          zh: '脚本',
+          tier: 'B',
+          light: '0.5 0.14 300',
+          dark: '0.74 0.12 300',
+          why: '「会执行」的提示，紫色与代码区分'
+        },
+        code: {
+          ja: 'ソースコード',
+          zh: '源代码',
+          tier: 'B',
+          light: '0.5 0.11 275',
+          dark: '0.75 0.09 275',
+          why: '无共识；靛色，降饱和'
+        },
+        config: {
+          ja: '設定',
+          zh: '配置',
+          tier: 'B',
+          light: '0.52 0.07 110',
+          dark: '0.79 0.08 110',
+          why: '无共识；橄榄色（齿轮）'
+        },
+        database: {
+          ja: 'データベース',
+          zh: '数据库',
+          tier: 'B',
+          light: '0.52 0.09 215',
+          dark: '0.77 0.09 212',
+          why: '数据库工具常见的青蓝圆柱'
+        },
+        cert: {
+          ja: '証明書・鍵',
+          zh: '证书 / 密钥',
+          tier: 'B',
+          light: '0.56 0.11 92',
+          dark: '0.83 0.12 95',
+          why: '金色钥匙：提示「敏感」'
+        },
+        markdown: {
+          ja: 'Markdown',
+          zh: 'Markdown',
+          tier: 'B',
+          light: '0.5 0.05 250',
+          dark: '0.78 0.05 250',
+          why: '无共识；蓝灰，比纯文本多一点颜色'
+        },
+        exe: {
+          ja: '実行ファイル',
+          zh: '可执行文件',
+          tier: 'B',
+          light: '0.45 0.025 255',
+          dark: '0.82 0.02 255',
+          why: '无共识；接近前景色的深灰 + 窗口字形，不鼓励点击'
+        },
+        neutral: {
+          ja: '中性',
+          zh: '中性',
+          tier: 'N',
+          light: null,
+          dark: null,
+          why: '随主题的 muted-foreground（文本 / 未知 / 文件链接）'
+        },
+        danger: {
+          ja: '危険',
+          zh: '危险',
+          tier: 'N',
+          light: null,
+          dark: null,
+          why: '随主题的 destructive（失效链接）'
+        }
+      }
+      const CATS = [
+        {
+          id: 'folder',
+          color: 'folder',
+          glyph: 'folder',
+          fill: true,
+          exts: '（目录）',
+          note: '展开时 folder-open；文件夹加 18–22% 同色填充'
+        },
+        {
+          id: 'folder-link',
+          color: 'folder',
+          glyph: 'folder-symlink',
+          fill: true,
+          exts: '（指向目录的链接 / 联接点）'
+        },
+        { id: 'file-link', color: 'neutral', glyph: 'file-symlink', exts: '（指向文件的链接）' },
+        { id: 'link-broken', color: 'danger', glyph: 'file-x', exts: '（失效链接）' },
+        {
+          id: 'document',
+          color: 'word',
+          glyph: 'file-text',
+          exts: 'doc docx docm dot dotx dotm odt rtf',
+          note: 'rtf 由 text 移入（Windows 默认用 Word 打开）'
+        },
+        {
+          id: 'spreadsheet',
+          color: 'excel',
+          glyph: 'file-spreadsheet',
+          exts: 'xls xlsx xlsm xlsb xlt xltx xltm ods'
+        },
+        {
+          id: 'presentation',
+          color: 'powerpoint',
+          glyph: 'presentation',
+          exts: 'ppt pptx pptm pps ppsx pot potx odp'
+        },
+        {
+          id: 'pdf',
+          color: 'pdf',
+          glyph: 'file-type',
+          exts: 'pdf',
+          note: '字形改为 file-type（现状与 text 同为 file-text，只靠颜色区分不够）'
+        },
+        {
+          id: 'csv',
+          color: 'csv',
+          glyph: 'sheet',
+          exts: 'csv tsv',
+          note: '新增：由 spreadsheet 拆出'
+        },
+        {
+          id: 'mail',
+          color: 'mail',
+          glyph: 'mail',
+          exts: 'msg eml oft emlx mbox',
+          note: '新增（对日保守常收 .msg 附件）'
+        },
+        { id: 'text', color: 'neutral', glyph: 'file-text', exts: 'txt text' },
+        {
+          id: 'markdown',
+          color: 'markdown',
+          glyph: 'book-text',
+          exts: 'md markdown mdx',
+          note: '新增：由 text 拆出'
+        },
+        {
+          id: 'log',
+          color: 'log',
+          glyph: 'scroll-text',
+          exts: 'log out err trc trace audit',
+          note: '另按文件名规则：*.log.1、*.log.2024-11-01、*.log.gz（轮转日志）也归 log'
+        },
+        {
+          id: 'script',
+          color: 'script',
+          glyph: 'file-terminal',
+          exts: 'sh bash zsh ksh csh bat cmd ps1 psm1 psd1 vbs vbe wsf',
+          note: '新增：由 code / executable 拆出；仍属「打开前需确认」清单（那份清单独立维护）'
+        },
+        {
+          id: 'code',
+          color: 'code',
+          glyph: 'file-code',
+          exts: 'java kt scala groovy py rb php go rs c h cpp hpp cs vb js mjs cjs jsx ts tsx vue html htm css scss jsp asp aspx swift pl'
+        },
+        {
+          id: 'sql',
+          color: 'database',
+          glyph: 'file-code',
+          exts: 'sql ddl dml pls pck plsql',
+          note: '新增：SQL 脚本（字形同代码、颜色同数据库）'
+        },
+        {
+          id: 'database',
+          color: 'database',
+          glyph: 'database',
+          exts: 'db sqlite sqlite3 mdb accdb dmp bak frm ibd',
+          note: '新增：数据文件 / 导出'
+        },
+        {
+          id: 'json',
+          color: 'config',
+          glyph: 'file-braces',
+          exts: 'json jsonc json5 ndjson',
+          note: '颜色并入配置色，字形保留花括号'
+        },
+        {
+          id: 'config',
+          color: 'config',
+          glyph: 'file-cog',
+          exts: 'ini conf cfg cnf yaml yml toml properties env xml xsd plist service',
+          note: 'xml 由 code 移入（对运维而言多是配置）；reg 留在可执行（双击即导入注册表）'
+        },
+        {
+          id: 'cert',
+          color: 'cert',
+          glyph: 'file-key',
+          exts: 'pem crt cer der p12 pfx key pub jks keystore csr ppk',
+          note: '新增：证书 / 私钥 / 密钥库'
+        },
+        {
+          id: 'archive',
+          color: 'archive',
+          glyph: 'file-archive',
+          exts: 'zip 7z rar lzh tar gz tgz bz2 xz zst cab iso'
+        },
+        {
+          id: 'package',
+          color: 'archive',
+          glyph: 'package',
+          exts: 'jar war ear rpm deb whl nupkg apk',
+          note: '新增：部署包（色同压缩，字形是包裹）'
+        },
+        {
+          id: 'image',
+          color: 'image',
+          glyph: 'file-image',
+          exts: 'png jpg jpeg gif bmp webp svg ico tif tiff heic'
+        },
+        {
+          id: 'audio',
+          color: 'media',
+          glyph: 'file-headphone',
+          exts: 'mp3 wav flac aac ogg m4a wma'
+        },
+        {
+          id: 'video',
+          color: 'media',
+          glyph: 'file-play',
+          exts: 'mp4 mkv avi mov wmv webm flv m4v'
+        },
+        {
+          id: 'executable',
+          color: 'exe',
+          glyph: 'app-window',
+          exts: 'exe com msi msc scr lnk reg hta cpl pif scf msp url'
+        },
+        { id: 'file', color: 'neutral', glyph: 'file', exts: '（未知扩展名 / 无扩展名）' }
+      ]
+      const CONTRAST = {
+        folder: {
+          light: { min: 3.03, where: '和紙・sidebar-accent', hex: '#b47308', gamut: true },
+          dark: { min: 8.59, where: '和紙・sidebar-accent', hex: '#f1bf4e', gamut: true }
+        },
+        word: {
+          light: { min: 4.73, where: '和紙・sidebar-accent', hex: '#2460b7', gamut: true },
+          dark: { min: 5.89, where: '和紙・sidebar-accent', hex: '#6aa7f4', gamut: true }
+        },
+        excel: {
+          light: { min: 4.03, where: '和紙・sidebar-accent', hex: '#1d7d3e', gamut: true },
+          dark: { min: 7.22, where: '和紙・sidebar-accent', hex: '#5bcc80', gamut: true }
+        },
+        powerpoint: {
+          light: { min: 3.58, where: '和紙・sidebar-accent', hex: '#c94c18', gamut: true },
+          dark: { min: 6.26, where: '和紙・sidebar-accent', hex: '#f98e52', gamut: true }
+        },
+        pdf: {
+          light: { min: 4.35, where: '和紙・sidebar-accent', hex: '#c92324', gamut: true },
+          dark: { min: 5.07, where: '和紙・sidebar-accent', hex: '#f66c69', gamut: true }
+        },
+        mail: {
+          light: { min: 3.68, where: '和紙・sidebar-accent', hex: '#197ba4', gamut: true },
+          dark: { min: 7.22, where: '和紙・sidebar-accent', hex: '#69c1e6', gamut: true }
+        },
+        archive: {
+          light: { min: 4.38, where: '和紙・sidebar-accent', hex: '#8b5d37', gamut: true },
+          dark: { min: 6.72, where: '和紙・sidebar-accent', hex: '#d3a87a', gamut: true }
+        },
+        image: {
+          light: { min: 3.97, where: '和紙・sidebar-accent', hex: '#b94082', gamut: true },
+          dark: { min: 6.15, where: '和紙・sidebar-accent', hex: '#ef87ba', gamut: true }
+        },
+        media: {
+          light: { min: 4.48, where: '和紙・sidebar-accent', hex: '#9344aa', gamut: true },
+          dark: { min: 5.98, where: '和紙・sidebar-accent', hex: '#cf8de4', gamut: true }
+        },
+        csv: {
+          light: { min: 4.11, where: '和紙・sidebar-accent', hex: '#407754', gamut: true },
+          dark: { min: 7.29, where: '和紙・sidebar-accent', hex: '#8bc49e', gamut: true }
+        },
+        log: {
+          light: { min: 3.94, where: '和紙・sidebar-accent', hex: '#227a7a', gamut: true },
+          dark: { min: 7.29, where: '和紙・sidebar-accent', hex: '#73c5c4', gamut: true }
+        },
+        script: {
+          light: { min: 4.96, where: '和紙・sidebar-accent', hex: '#714ca6', gamut: true },
+          dark: { min: 6.09, where: '和紙・sidebar-accent', hex: '#b699eb', gamut: true }
+        },
+        code: {
+          light: { min: 4.78, where: '和紙・sidebar-accent', hex: '#525ca1', gamut: true },
+          dark: { min: 6.49, where: '和紙・sidebar-accent', hex: '#9daae7', gamut: true }
+        },
+        config: {
+          light: { min: 4.22, where: '和紙・sidebar-accent', hex: '#6b6d3b', gamut: true },
+          dark: { min: 7.65, where: '和紙・sidebar-accent', hex: '#bdc083', gamut: true }
+        },
+        database: {
+          light: { min: 4.14, where: '和紙・sidebar-accent', hex: '#097689', gamut: true },
+          dark: { min: 7.27, where: '和紙・sidebar-accent', hex: '#69c4d6', gamut: true }
+        },
+        cert: {
+          light: { min: 3.62, where: '和紙・sidebar-accent', hex: '#8c7210', gamut: true },
+          dark: { min: 8.68, where: '和紙・sidebar-accent', hex: '#e0c766', gamut: true }
+        },
+        markdown: {
+          light: { min: 4.64, where: '和紙・sidebar-accent', hex: '#4d667f', gamut: true },
+          dark: { min: 7.33, where: '和紙・sidebar-accent', hex: '#a0bbd7', gamut: true }
+        },
+        exe: {
+          light: { min: 5.77, where: '和紙・sidebar-accent', hex: '#4c5663', gamut: true },
+          dark: { min: 8.38, where: '和紙・sidebar-accent', hex: '#bcc5d1', gamut: true }
+        }
+      }
+      const THEMES = [
+        {
+          id: 'default',
+          names: { ja: '標準', zh: '默认', en: 'Default' },
+          concept: '现有 shadcn neutral（保持不变，作为对照）。',
+          light: {
+            background: 'oklch(1 0 0)',
+            foreground: 'oklch(0.145 0 0)',
+            card: 'oklch(1 0 0)',
+            'card-foreground': 'oklch(0.145 0 0)',
+            popover: 'oklch(1 0 0)',
+            'popover-foreground': 'oklch(0.145 0 0)',
+            primary: 'oklch(0.205 0 0)',
+            'primary-foreground': 'oklch(0.985 0 0)',
+            secondary: 'oklch(0.97 0 0)',
+            'secondary-foreground': 'oklch(0.205 0 0)',
+            muted: 'oklch(0.97 0 0)',
+            'muted-foreground': 'oklch(0.556 0 0)',
+            accent: 'oklch(0.97 0 0)',
+            'accent-foreground': 'oklch(0.205 0 0)',
+            destructive: 'oklch(0.577 0.245 27.325)',
+            border: 'oklch(0.922 0 0)',
+            input: 'oklch(0.922 0 0)',
+            ring: 'oklch(0.708 0 0)',
+            'chart-1': 'oklch(0.87 0 0)',
+            'chart-2': 'oklch(0.556 0 0)',
+            'chart-3': 'oklch(0.439 0 0)',
+            'chart-4': 'oklch(0.371 0 0)',
+            'chart-5': 'oklch(0.269 0 0)',
+            sidebar: 'oklch(0.985 0 0)',
+            'sidebar-foreground': 'oklch(0.145 0 0)',
+            'sidebar-primary': 'oklch(0.205 0 0)',
+            'sidebar-primary-foreground': 'oklch(0.985 0 0)',
+            'sidebar-accent': 'oklch(0.97 0 0)',
+            'sidebar-accent-foreground': 'oklch(0.205 0 0)',
+            'sidebar-border': 'oklch(0.922 0 0)',
+            'sidebar-ring': 'oklch(0.708 0 0)',
+            'log-error': 'oklch(0.54 0.2 27)',
+            'log-warn': 'oklch(0.53 0.12 65)',
+            'log-info': 'oklch(0.5 0.13 250)',
+            'log-time': 'oklch(0.52 0 0)'
+          },
+          dark: {
+            background: 'oklch(0.145 0 0)',
+            foreground: 'oklch(0.985 0 0)',
+            card: 'oklch(0.205 0 0)',
+            'card-foreground': 'oklch(0.985 0 0)',
+            popover: 'oklch(0.205 0 0)',
+            'popover-foreground': 'oklch(0.985 0 0)',
+            primary: 'oklch(0.922 0 0)',
+            'primary-foreground': 'oklch(0.205 0 0)',
+            secondary: 'oklch(0.269 0 0)',
+            'secondary-foreground': 'oklch(0.985 0 0)',
+            muted: 'oklch(0.269 0 0)',
+            'muted-foreground': 'oklch(0.708 0 0)',
+            accent: 'oklch(0.269 0 0)',
+            'accent-foreground': 'oklch(0.985 0 0)',
+            destructive: 'oklch(0.704 0.191 22.216)',
+            border: 'oklch(1 0 0 / 10%)',
+            input: 'oklch(1 0 0 / 15%)',
+            ring: 'oklch(0.556 0 0)',
+            'chart-1': 'oklch(0.87 0 0)',
+            'chart-2': 'oklch(0.556 0 0)',
+            'chart-3': 'oklch(0.439 0 0)',
+            'chart-4': 'oklch(0.371 0 0)',
+            'chart-5': 'oklch(0.269 0 0)',
+            sidebar: 'oklch(0.205 0 0)',
+            'sidebar-foreground': 'oklch(0.985 0 0)',
+            'sidebar-primary': 'oklch(0.488 0.243 264.376)',
+            'sidebar-primary-foreground': 'oklch(0.985 0 0)',
+            'sidebar-accent': 'oklch(0.269 0 0)',
+            'sidebar-accent-foreground': 'oklch(0.985 0 0)',
+            'sidebar-border': 'oklch(1 0 0 / 10%)',
+            'sidebar-ring': 'oklch(0.556 0 0)',
+            'log-error': 'oklch(0.72 0.17 25)',
+            'log-warn': 'oklch(0.82 0.13 80)',
+            'log-info': 'oklch(0.76 0.1 240)',
+            'log-time': 'oklch(0.708 0 0)'
+          }
+        },
+        {
+          id: 'aitetsu',
+          names: { ja: '藍鉄', zh: '蓝铁', en: 'Indigo Steel' },
+          concept:
+            '偏「酷」的一套：深蓝铁色底 + 冷青色强调。暗色是主打（夜间值守、长时间看日志），亮色是同一色相的冷灰白。',
+          light: {
+            background: 'oklch(0.985 0.004 250)',
+            foreground: 'oklch(0.22 0.025 258)',
+            card: 'oklch(0.995 0.002 250)',
+            'card-foreground': 'oklch(0.22 0.025 258)',
+            popover: 'oklch(1 0 0)',
+            'popover-foreground': 'oklch(0.22 0.025 258)',
+            primary: 'oklch(0.5 0.13 248)',
+            'primary-foreground': 'oklch(0.985 0.005 245)',
+            secondary: 'oklch(0.95 0.01 250)',
+            'secondary-foreground': 'oklch(0.28 0.03 258)',
+            muted: 'oklch(0.955 0.008 250)',
+            'muted-foreground': 'oklch(0.5 0.025 255)',
+            accent: 'oklch(0.93 0.022 245)',
+            'accent-foreground': 'oklch(0.25 0.04 255)',
+            destructive: 'oklch(0.56 0.21 27)',
+            border: 'oklch(0.9 0.012 250)',
+            input: 'oklch(0.88 0.014 250)',
+            ring: 'oklch(0.6 0.12 242)',
+            'chart-1': 'oklch(0.6 0.13 240)',
+            'chart-2': 'oklch(0.62 0.1 190)',
+            'chart-3': 'oklch(0.52 0.13 280)',
+            'chart-4': 'oklch(0.72 0.14 75)',
+            'chart-5': 'oklch(0.6 0.17 25)',
+            sidebar: 'oklch(0.965 0.008 250)',
+            'sidebar-foreground': 'oklch(0.22 0.025 258)',
+            'sidebar-primary': 'oklch(0.5 0.13 248)',
+            'sidebar-primary-foreground': 'oklch(0.985 0.005 245)',
+            'sidebar-accent': 'oklch(0.925 0.02 248)',
+            'sidebar-accent-foreground': 'oklch(0.25 0.04 255)',
+            'sidebar-border': 'oklch(0.9 0.012 250)',
+            'sidebar-ring': 'oklch(0.6 0.12 242)',
+            'log-error': 'oklch(0.54 0.19 25)',
+            'log-warn': 'oklch(0.53 0.12 65)',
+            'log-info': 'oklch(0.5 0.11 240)',
+            'log-time': 'oklch(0.5 0.025 255)'
+          },
+          dark: {
+            background: 'oklch(0.175 0.022 256)',
+            foreground: 'oklch(0.93 0.012 240)',
+            card: 'oklch(0.21 0.025 256)',
+            'card-foreground': 'oklch(0.93 0.012 240)',
+            popover: 'oklch(0.225 0.027 256)',
+            'popover-foreground': 'oklch(0.93 0.012 240)',
+            primary: 'oklch(0.8 0.12 212)',
+            'primary-foreground': 'oklch(0.2 0.035 245)',
+            secondary: 'oklch(0.27 0.03 256)',
+            'secondary-foreground': 'oklch(0.93 0.012 240)',
+            muted: 'oklch(0.25 0.026 256)',
+            'muted-foreground': 'oklch(0.71 0.03 245)',
+            accent: 'oklch(0.29 0.042 250)',
+            'accent-foreground': 'oklch(0.96 0.01 240)',
+            destructive: 'oklch(0.69 0.18 22)',
+            border: 'oklch(0.3 0.03 256)',
+            input: 'oklch(0.33 0.035 256)',
+            ring: 'oklch(0.72 0.12 212)',
+            'chart-1': 'oklch(0.78 0.12 212)',
+            'chart-2': 'oklch(0.76 0.12 170)',
+            'chart-3': 'oklch(0.7 0.14 285)',
+            'chart-4': 'oklch(0.82 0.13 82)',
+            'chart-5': 'oklch(0.7 0.17 25)',
+            sidebar: 'oklch(0.15 0.02 256)',
+            'sidebar-foreground': 'oklch(0.93 0.012 240)',
+            'sidebar-primary': 'oklch(0.8 0.12 212)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.035 245)',
+            'sidebar-accent': 'oklch(0.25 0.036 252)',
+            'sidebar-accent-foreground': 'oklch(0.96 0.01 240)',
+            'sidebar-border': 'oklch(0.26 0.03 256)',
+            'sidebar-ring': 'oklch(0.72 0.12 212)',
+            'log-error': 'oklch(0.72 0.16 22)',
+            'log-warn': 'oklch(0.83 0.12 82)',
+            'log-info': 'oklch(0.8 0.1 212)',
+            'log-time': 'oklch(0.66 0.03 245)'
+          }
+        },
+        {
+          id: 'washi',
+          names: { ja: '和紙', zh: '和纸', en: 'Washi' },
+          concept:
+            '护眼的一套：生成色（未漂白）纸色底 + 藍（靛蓝）墨字；暗色是暖墨色，降低蓝光与眩光。强调色是藍而不是赤陶色。',
+          light: {
+            background: 'oklch(0.975 0.008 85)',
+            foreground: 'oklch(0.25 0.022 262)',
+            card: 'oklch(0.99 0.005 85)',
+            'card-foreground': 'oklch(0.25 0.022 262)',
+            popover: 'oklch(0.99 0.005 85)',
+            'popover-foreground': 'oklch(0.25 0.022 262)',
+            primary: 'oklch(0.43 0.12 263)',
+            'primary-foreground': 'oklch(0.975 0.008 85)',
+            secondary: 'oklch(0.94 0.012 85)',
+            'secondary-foreground': 'oklch(0.3 0.03 262)',
+            muted: 'oklch(0.945 0.01 85)',
+            'muted-foreground': 'oklch(0.5 0.02 70)',
+            accent: 'oklch(0.915 0.02 82)',
+            'accent-foreground': 'oklch(0.27 0.03 262)',
+            destructive: 'oklch(0.53 0.19 32)',
+            border: 'oklch(0.89 0.015 80)',
+            input: 'oklch(0.87 0.017 80)',
+            ring: 'oklch(0.55 0.11 263)',
+            'chart-1': 'oklch(0.5 0.12 263)',
+            'chart-2': 'oklch(0.6 0.16 35)',
+            'chart-3': 'oklch(0.6 0.1 135)',
+            'chart-4': 'oklch(0.74 0.14 80)',
+            'chart-5': 'oklch(0.5 0.1 320)',
+            sidebar: 'oklch(0.955 0.012 82)',
+            'sidebar-foreground': 'oklch(0.25 0.022 262)',
+            'sidebar-primary': 'oklch(0.43 0.12 263)',
+            'sidebar-primary-foreground': 'oklch(0.975 0.008 85)',
+            'sidebar-accent': 'oklch(0.915 0.022 80)',
+            'sidebar-accent-foreground': 'oklch(0.27 0.03 262)',
+            'sidebar-border': 'oklch(0.885 0.016 80)',
+            'sidebar-ring': 'oklch(0.55 0.11 263)',
+            'log-error': 'oklch(0.52 0.18 32)',
+            'log-warn': 'oklch(0.52 0.11 65)',
+            'log-info': 'oklch(0.45 0.11 263)',
+            'log-time': 'oklch(0.49 0.02 70)'
+          },
+          dark: {
+            background: 'oklch(0.205 0.008 70)',
+            foreground: 'oklch(0.9 0.016 85)',
+            card: 'oklch(0.235 0.009 70)',
+            'card-foreground': 'oklch(0.9 0.016 85)',
+            popover: 'oklch(0.245 0.01 70)',
+            'popover-foreground': 'oklch(0.9 0.016 85)',
+            primary: 'oklch(0.75 0.085 258)',
+            'primary-foreground': 'oklch(0.2 0.02 262)',
+            secondary: 'oklch(0.29 0.01 70)',
+            'secondary-foreground': 'oklch(0.9 0.016 85)',
+            muted: 'oklch(0.27 0.009 70)',
+            'muted-foreground': 'oklch(0.71 0.02 80)',
+            accent: 'oklch(0.31 0.015 75)',
+            'accent-foreground': 'oklch(0.93 0.015 85)',
+            destructive: 'oklch(0.68 0.16 32)',
+            border: 'oklch(0.32 0.01 70)',
+            input: 'oklch(0.35 0.012 70)',
+            ring: 'oklch(0.66 0.085 258)',
+            'chart-1': 'oklch(0.72 0.09 258)',
+            'chart-2': 'oklch(0.7 0.14 38)',
+            'chart-3': 'oklch(0.74 0.1 135)',
+            'chart-4': 'oklch(0.82 0.12 82)',
+            'chart-5': 'oklch(0.7 0.09 320)',
+            sidebar: 'oklch(0.18 0.007 70)',
+            'sidebar-foreground': 'oklch(0.9 0.016 85)',
+            'sidebar-primary': 'oklch(0.75 0.085 258)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.02 262)',
+            'sidebar-accent': 'oklch(0.28 0.014 72)',
+            'sidebar-accent-foreground': 'oklch(0.93 0.015 85)',
+            'sidebar-border': 'oklch(0.28 0.009 70)',
+            'sidebar-ring': 'oklch(0.66 0.085 258)',
+            'log-error': 'oklch(0.72 0.15 32)',
+            'log-warn': 'oklch(0.82 0.11 82)',
+            'log-info': 'oklch(0.77 0.08 258)',
+            'log-time': 'oklch(0.66 0.02 80)'
+          }
+        },
+        {
+          id: 'matsuba',
+          names: { ja: '松葉', zh: '松针', en: 'Pine' },
+          concept:
+            '沉静的一套：带绿意的灰 + 松叶绿强调，低饱和，长时间看目录与日志不抢眼；暗色是深苔灰。',
+          light: {
+            background: 'oklch(0.98 0.005 160)',
+            foreground: 'oklch(0.24 0.02 170)',
+            card: 'oklch(0.995 0.003 160)',
+            'card-foreground': 'oklch(0.24 0.02 170)',
+            popover: 'oklch(0.995 0.003 160)',
+            'popover-foreground': 'oklch(0.24 0.02 170)',
+            primary: 'oklch(0.48 0.1 165)',
+            'primary-foreground': 'oklch(0.98 0.01 160)',
+            secondary: 'oklch(0.95 0.012 160)',
+            'secondary-foreground': 'oklch(0.28 0.03 170)',
+            muted: 'oklch(0.955 0.01 160)',
+            'muted-foreground': 'oklch(0.5 0.025 170)',
+            accent: 'oklch(0.93 0.025 162)',
+            'accent-foreground': 'oklch(0.26 0.04 170)',
+            destructive: 'oklch(0.55 0.2 27)',
+            border: 'oklch(0.9 0.014 160)',
+            input: 'oklch(0.88 0.016 160)',
+            ring: 'oklch(0.6 0.1 165)',
+            'chart-1': 'oklch(0.55 0.11 165)',
+            'chart-2': 'oklch(0.6 0.1 220)',
+            'chart-3': 'oklch(0.72 0.13 85)',
+            'chart-4': 'oklch(0.6 0.15 40)',
+            'chart-5': 'oklch(0.5 0.1 300)',
+            sidebar: 'oklch(0.965 0.01 160)',
+            'sidebar-foreground': 'oklch(0.24 0.02 170)',
+            'sidebar-primary': 'oklch(0.48 0.1 165)',
+            'sidebar-primary-foreground': 'oklch(0.98 0.01 160)',
+            'sidebar-accent': 'oklch(0.925 0.025 162)',
+            'sidebar-accent-foreground': 'oklch(0.26 0.04 170)',
+            'sidebar-border': 'oklch(0.895 0.014 160)',
+            'sidebar-ring': 'oklch(0.6 0.1 165)',
+            'log-error': 'oklch(0.54 0.19 27)',
+            'log-warn': 'oklch(0.52 0.11 65)',
+            'log-info': 'oklch(0.48 0.085 220)',
+            'log-time': 'oklch(0.5 0.025 170)'
+          },
+          dark: {
+            background: 'oklch(0.19 0.014 175)',
+            foreground: 'oklch(0.92 0.012 160)',
+            card: 'oklch(0.225 0.016 175)',
+            'card-foreground': 'oklch(0.92 0.012 160)',
+            popover: 'oklch(0.235 0.017 175)',
+            'popover-foreground': 'oklch(0.92 0.012 160)',
+            primary: 'oklch(0.78 0.11 160)',
+            'primary-foreground': 'oklch(0.2 0.03 170)',
+            secondary: 'oklch(0.28 0.02 175)',
+            'secondary-foreground': 'oklch(0.92 0.012 160)',
+            muted: 'oklch(0.26 0.017 175)',
+            'muted-foreground': 'oklch(0.71 0.03 165)',
+            accent: 'oklch(0.3 0.03 170)',
+            'accent-foreground': 'oklch(0.95 0.01 160)',
+            destructive: 'oklch(0.69 0.17 25)',
+            border: 'oklch(0.31 0.02 175)',
+            input: 'oklch(0.34 0.022 175)',
+            ring: 'oklch(0.68 0.1 160)',
+            'chart-1': 'oklch(0.76 0.11 160)',
+            'chart-2': 'oklch(0.74 0.09 220)',
+            'chart-3': 'oklch(0.83 0.12 85)',
+            'chart-4': 'oklch(0.73 0.14 42)',
+            'chart-5': 'oklch(0.7 0.1 300)',
+            sidebar: 'oklch(0.165 0.013 175)',
+            'sidebar-foreground': 'oklch(0.92 0.012 160)',
+            'sidebar-primary': 'oklch(0.78 0.11 160)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.03 170)',
+            'sidebar-accent': 'oklch(0.27 0.03 172)',
+            'sidebar-accent-foreground': 'oklch(0.95 0.01 160)',
+            'sidebar-border': 'oklch(0.27 0.018 175)',
+            'sidebar-ring': 'oklch(0.68 0.1 160)',
+            'log-error': 'oklch(0.72 0.16 25)',
+            'log-warn': 'oklch(0.83 0.12 82)',
+            'log-info': 'oklch(0.78 0.08 220)',
+            'log-time': 'oklch(0.66 0.03 165)'
+          }
+        }
+      ]
+      const svg = (n, st = '') =>
+        '<svg class="i" viewBox="0 0 24 24" style="' +
+        st +
+        '">' +
+        ICONS[n]
+          .map(
+            ([t, a]) =>
+              '<' +
+              t +
+              ' ' +
+              Object.entries(a)
+                .map(([k, v]) => k + '="' + v + '"')
+                .join(' ') +
+              '/>'
+          )
+          .join('') +
+        '</svg>'
+      const style = (c) =>
+        'color:var(--fi-' + c.color + ')' + (c.fill ? ';fill:var(--fi-folder-fill)' : '')
+      const SAMPLE = {
+        folder: '本番ログ',
+        'folder-link': 'logs → \\\\fs01\\logs',
+        'file-link': 'latest.log.lnk',
+        'link-broken': 'old-share（切断）',
+        document: '障害報告書.docx',
+        spreadsheet: '障害管理表.xlsx',
+        presentation: '切替手順.pptx',
+        pdf: '仕様書.pdf',
+        csv: 'sales_20261121.csv',
+        mail: 'Re_ ご連絡.msg',
+        text: 'メモ.txt',
+        markdown: 'README.md',
+        log: 'app-server.log',
+        script: 'collect-logs.ps1',
+        code: 'OrderDao.java',
+        sql: 'lock_check.sql',
+        database: 'wms_20261122.dmp',
+        json: 'package.json',
+        config: 'application.yaml',
+        cert: 'server.pem',
+        archive: 'release.7z',
+        package: 'shop.war',
+        image: 'screenshot.png',
+        audio: 'call.wav',
+        video: '操作手順.mp4',
+        executable: 'setup.exe',
+        file: 'core.48211'
+      }
+
+      // 表
+      const head =
+        '<tr><th>类别</th><th>ライト</th><th>ダーク</th><th>字形（lucide）</th><th>颜色键</th><th>级</th><th>oklch ライト</th><th>oklch ダーク</th><th>最低对比度 ライト / ダーク</th><th>扩展名</th><th>说明</th></tr>'
+      document.getElementById('tbl').innerHTML =
+        head +
+        CATS.map((c) => {
+          const col = COLORS[c.color]
+          const ct = CONTRAST[c.color]
+          const cell = (mode) =>
+            '<td class="ic"><div data-theme="default" class="' +
+            (mode === 'dark' ? 'dark' : '') +
+            '" style="background:var(--sidebar)">' +
+            svg(c.glyph, style(c)) +
+            '</div></td>'
+          const ok = (m) =>
+            ct ? '<span title="' + ct[m].where + '">' + ct[m].min.toFixed(2) + '</span>' : '—'
+          return (
+            '<tr><td><b>' +
+            c.id +
+            '</b><br><span class="note">' +
+            col.ja +
+            '</span></td>' +
+            cell('light') +
+            cell('dark') +
+            '<td><code>' +
+            c.glyph +
+            '</code></td><td><code>--fi-' +
+            c.color +
+            '</code></td><td><span class="tier ' +
+            col.tier +
+            '">' +
+            col.tier +
+            '</span></td>' +
+            '<td class="n">' +
+            (col.light
+              ? '<span class="sw" style="background:oklch(' + col.light + ')"></span>' + col.light
+              : '主题变量') +
+            '</td>' +
+            '<td class="n">' +
+            (col.dark
+              ? '<span class="sw" style="background:oklch(' + col.dark + ')"></span>' + col.dark
+              : '主题变量') +
+            '</td>' +
+            '<td class="n">' +
+            ok('light') +
+            ' / ' +
+            ok('dark') +
+            '</td><td class="ex">' +
+            c.exts +
+            '</td><td class="note">' +
+            (c.note || col.why) +
+            '</td></tr>'
+          )
+        }).join('')
+
+      // 面板
+      document.getElementById('panels').innerHTML = THEMES.flatMap((t) =>
+        ['light', 'dark'].map(
+          (m) =>
+            '<div class="panel' +
+            (m === 'dark' ? ' dark' : '') +
+            '" data-theme="' +
+            t.id +
+            '"><h3>' +
+            t.names.ja +
+            '・' +
+            (m === 'dark' ? 'ダーク' : 'ライト') +
+            '</h3><div class="cols">' +
+            CATS.map(
+              (c) =>
+                '<div class="r' +
+                (c.id === 'log' ? ' sel' : '') +
+                '">' +
+                svg(c.id === 'folder' ? 'folder-open' : c.glyph, style(c)) +
+                '<span>' +
+                SAMPLE[c.id] +
+                '</span></div>'
+            ).join('') +
+            '</div></div>'
+        )
+      ).join('')
+
+      // 尺寸
+      const pick = [
+        'folder',
+        'document',
+        'spreadsheet',
+        'presentation',
+        'pdf',
+        'log',
+        'script',
+        'config',
+        'archive'
+      ]
+      document.getElementById('sizes').innerHTML = ['light', 'dark']
+        .map((m) =>
+          [14, 16, 20]
+            .map(
+              (z) =>
+                '<div class="panel' +
+                (m === 'dark' ? ' dark' : '') +
+                '" data-theme="aitetsu"><span class="note" style="color:var(--muted-foreground)">' +
+                z +
+                'px</span>' +
+                pick
+                  .map((id) => {
+                    const c = CATS.find((x) => x.id === id)
+                    return svg(c.glyph, style(c) + ';width:' + z + 'px;height:' + z + 'px')
+                  })
+                  .join('') +
+                '</div>'
+            )
+            .join('')
+        )
+        .join('')
+
+      // 映射
+      const groups = CATS.filter((c) => /^[a-z0-9 ]+$/.test(c.exts))
+      document.getElementById('map').textContent =
+        'const BY_EXTENSION: ReadonlyMap<string, IconCategory> = new Map<string, IconCategory>([\n' +
+        groups.map((c) => "  ...group('" + c.id + "', '" + c.exts + "'),").join('\n') +
+        '\n])\n\n' +
+        '// 类别 → 字形 / 颜色（FileIcon 中）\n' +
+        'const ICONS: Record<IconCategory, { Icon: LucideIcon; color: string }> = {\n' +
+        CATS.map(
+          (c) =>
+            "  '" +
+            c.id +
+            "': { Icon: " +
+            c.glyph
+              .split('-')
+              .map((s) => s[0].toUpperCase() + s.slice(1))
+              .join('') +
+            "Icon, color: 'text-fi-" +
+            c.color +
+            "' },"
+        ).join('\n') +
+        '\n}'
+      document.getElementById('css').textContent =
+        ':root {\n  --ws-slate: oklch(0.55 0.03 255);\n  --ws-red: oklch(0.58 0.19 27);\n  --ws-orange: oklch(0.64 0.16 50);\n  --ws-amber: oklch(0.64 0.135 72);\n  --ws-green: oklch(0.58 0.14 150);\n  --ws-teal: oklch(0.58 0.1 190);\n  --ws-blue: oklch(0.55 0.16 255);\n  --ws-violet: oklch(0.55 0.17 295);\n  --ws-pink: oklch(0.62 0.18 355);\n  --fi-folder: oklch(0.61 0.13 70);\n  --fi-word: oklch(0.5 0.15 258);\n  --fi-excel: oklch(0.52 0.13 150);\n  --fi-powerpoint: oklch(0.58 0.17 40);\n  --fi-pdf: oklch(0.54 0.2 27);\n  --fi-mail: oklch(0.55 0.105 232);\n  --fi-archive: oklch(0.52 0.08 60);\n  --fi-image: oklch(0.56 0.17 350);\n  --fi-media: oklch(0.53 0.17 318);\n  --fi-csv: oklch(0.52 0.08 155);\n  --fi-log: oklch(0.53 0.08 195);\n  --fi-script: oklch(0.5 0.14 300);\n  --fi-code: oklch(0.5 0.11 275);\n  --fi-config: oklch(0.52 0.07 110);\n  --fi-database: oklch(0.52 0.09 215);\n  --fi-cert: oklch(0.56 0.11 92);\n  --fi-markdown: oklch(0.5 0.05 250);\n  --fi-exe: oklch(0.45 0.025 255);\n  --fi-neutral: var(--muted-foreground);\n  --fi-danger: var(--destructive);\n  --fi-folder-fill: oklch(0.83 0.14 85 / 30%);\n}\n.dark {\n  --ws-slate: oklch(0.72 0.03 255);\n  --ws-red: oklch(0.7 0.17 25);\n  --ws-orange: oklch(0.76 0.14 55);\n  --ws-amber: oklch(0.82 0.14 85);\n  --ws-green: oklch(0.76 0.14 152);\n  --ws-teal: oklch(0.77 0.1 190);\n  --ws-blue: oklch(0.72 0.13 252);\n  --ws-violet: oklch(0.73 0.14 295);\n  --ws-pink: oklch(0.75 0.14 355);\n  --fi-folder: oklch(0.83 0.14 85);\n  --fi-word: oklch(0.72 0.13 255);\n  --fi-excel: oklch(0.76 0.15 152);\n  --fi-powerpoint: oklch(0.75 0.15 48);\n  --fi-pdf: oklch(0.7 0.17 24);\n  --fi-mail: oklch(0.77 0.1 228);\n  --fi-archive: oklch(0.76 0.08 68);\n  --fi-image: oklch(0.75 0.14 350);\n  --fi-media: oklch(0.74 0.14 318);\n  --fi-csv: oklch(0.77 0.08 155);\n  --fi-log: oklch(0.77 0.08 195);\n  --fi-script: oklch(0.74 0.12 300);\n  --fi-code: oklch(0.75 0.09 275);\n  --fi-config: oklch(0.79 0.08 110);\n  --fi-database: oklch(0.77 0.09 212);\n  --fi-cert: oklch(0.83 0.12 95);\n  --fi-markdown: oklch(0.78 0.05 250);\n  --fi-exe: oklch(0.82 0.02 255);\n  --fi-neutral: var(--muted-foreground);\n  --fi-danger: var(--destructive);\n  --fi-folder-fill: oklch(0.83 0.14 85 / 18%);\n}'
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 C「括り（くくり）」〔稳重商务〕：日文鉤括弧「」把一件事括起来 = 工作区收拢一个案件；
+       同时像取景框的对焦角 = 保持专注。深色底板 + 内描边（深色任务栏上靠描边与白色笔画区分轮廓）。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <rect x="1" y="1" width="30" height="30" rx="7" style="fill: var(--logo-deep, #19263f)"/>
+  <rect x="1.75" y="1.75" width="28.5" height="28.5" rx="6.25" fill="none" style="stroke: var(--logo-rim, #3a6aa7)" stroke-width="1.5"/>
+  <path d="M8 18V8h10" fill="none" style="stroke: var(--logo-ink-on-deep, #ffffff)" stroke-width="3.5" stroke-linecap="square"/>
+  <path d="M24 14v10H14" fill="none" style="stroke: var(--logo-ink-on-deep, #ffffff)" stroke-width="3.5" stroke-linecap="square"/>
+  <rect x="13" y="13" width="6" height="6" rx="1.2" style="fill: var(--logo-accent, #f9b73f)"/>
+</svg>

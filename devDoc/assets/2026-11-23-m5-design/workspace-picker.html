@@ -1,0 +1,3410 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ワークスペース選択 原型</title>
+    <!--
+  PremiumCowHorse M5 设计原型：工作区选择器（3D 圆环轮播）
+  单文件、离线可开；图标路径取自 lucide-react 1.73.0（ISC License）
+  主题变量由 themes-data 生成，与 themes.html 中的 CSS 一致
+-->
+    <style>
+      [data-theme='default'] {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --accent: oklch(0.97 0 0);
+        --accent-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.985 0 0);
+        --sidebar-foreground: oklch(0.145 0 0);
+        --sidebar-primary: oklch(0.205 0 0);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.97 0 0);
+        --sidebar-accent-foreground: oklch(0.205 0 0);
+        --sidebar-border: oklch(0.922 0 0);
+        --sidebar-ring: oklch(0.708 0 0);
+        --log-error: oklch(0.54 0.2 27);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.13 250);
+        --log-time: oklch(0.52 0 0);
+      }
+      [data-theme='default'].dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --popover: oklch(0.205 0 0);
+        --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --accent: oklch(0.269 0 0);
+        --accent-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --sidebar-foreground: oklch(0.985 0 0);
+        --sidebar-primary: oklch(0.488 0.243 264.376);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.269 0 0);
+        --sidebar-accent-foreground: oklch(0.985 0 0);
+        --sidebar-border: oklch(1 0 0 / 10%);
+        --sidebar-ring: oklch(0.556 0 0);
+        --log-error: oklch(0.72 0.17 25);
+        --log-warn: oklch(0.82 0.13 80);
+        --log-info: oklch(0.76 0.1 240);
+        --log-time: oklch(0.708 0 0);
+      }
+      [data-theme='aitetsu'] {
+        --background: oklch(0.985 0.004 250);
+        --foreground: oklch(0.22 0.025 258);
+        --card: oklch(0.995 0.002 250);
+        --card-foreground: oklch(0.22 0.025 258);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.22 0.025 258);
+        --primary: oklch(0.5 0.13 248);
+        --primary-foreground: oklch(0.985 0.005 245);
+        --secondary: oklch(0.95 0.01 250);
+        --secondary-foreground: oklch(0.28 0.03 258);
+        --muted: oklch(0.955 0.008 250);
+        --muted-foreground: oklch(0.5 0.025 255);
+        --accent: oklch(0.93 0.022 245);
+        --accent-foreground: oklch(0.25 0.04 255);
+        --destructive: oklch(0.56 0.21 27);
+        --border: oklch(0.9 0.012 250);
+        --input: oklch(0.88 0.014 250);
+        --ring: oklch(0.6 0.12 242);
+        --chart-1: oklch(0.6 0.13 240);
+        --chart-2: oklch(0.62 0.1 190);
+        --chart-3: oklch(0.52 0.13 280);
+        --chart-4: oklch(0.72 0.14 75);
+        --chart-5: oklch(0.6 0.17 25);
+        --sidebar: oklch(0.965 0.008 250);
+        --sidebar-foreground: oklch(0.22 0.025 258);
+        --sidebar-primary: oklch(0.5 0.13 248);
+        --sidebar-primary-foreground: oklch(0.985 0.005 245);
+        --sidebar-accent: oklch(0.925 0.02 248);
+        --sidebar-accent-foreground: oklch(0.25 0.04 255);
+        --sidebar-border: oklch(0.9 0.012 250);
+        --sidebar-ring: oklch(0.6 0.12 242);
+        --log-error: oklch(0.54 0.19 25);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.11 240);
+        --log-time: oklch(0.5 0.025 255);
+      }
+      [data-theme='aitetsu'].dark {
+        --background: oklch(0.175 0.022 256);
+        --foreground: oklch(0.93 0.012 240);
+        --card: oklch(0.21 0.025 256);
+        --card-foreground: oklch(0.93 0.012 240);
+        --popover: oklch(0.225 0.027 256);
+        --popover-foreground: oklch(0.93 0.012 240);
+        --primary: oklch(0.8 0.12 212);
+        --primary-foreground: oklch(0.2 0.035 245);
+        --secondary: oklch(0.27 0.03 256);
+        --secondary-foreground: oklch(0.93 0.012 240);
+        --muted: oklch(0.25 0.026 256);
+        --muted-foreground: oklch(0.71 0.03 245);
+        --accent: oklch(0.29 0.042 250);
+        --accent-foreground: oklch(0.96 0.01 240);
+        --destructive: oklch(0.69 0.18 22);
+        --border: oklch(0.3 0.03 256);
+        --input: oklch(0.33 0.035 256);
+        --ring: oklch(0.72 0.12 212);
+        --chart-1: oklch(0.78 0.12 212);
+        --chart-2: oklch(0.76 0.12 170);
+        --chart-3: oklch(0.7 0.14 285);
+        --chart-4: oklch(0.82 0.13 82);
+        --chart-5: oklch(0.7 0.17 25);
+        --sidebar: oklch(0.15 0.02 256);
+        --sidebar-foreground: oklch(0.93 0.012 240);
+        --sidebar-primary: oklch(0.8 0.12 212);
+        --sidebar-primary-foreground: oklch(0.2 0.035 245);
+        --sidebar-accent: oklch(0.25 0.036 252);
+        --sidebar-accent-foreground: oklch(0.96 0.01 240);
+        --sidebar-border: oklch(0.26 0.03 256);
+        --sidebar-ring: oklch(0.72 0.12 212);
+        --log-error: oklch(0.72 0.16 22);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.8 0.1 212);
+        --log-time: oklch(0.66 0.03 245);
+      }
+      [data-theme='washi'] {
+        --background: oklch(0.975 0.008 85);
+        --foreground: oklch(0.25 0.022 262);
+        --card: oklch(0.99 0.005 85);
+        --card-foreground: oklch(0.25 0.022 262);
+        --popover: oklch(0.99 0.005 85);
+        --popover-foreground: oklch(0.25 0.022 262);
+        --primary: oklch(0.43 0.12 263);
+        --primary-foreground: oklch(0.975 0.008 85);
+        --secondary: oklch(0.94 0.012 85);
+        --secondary-foreground: oklch(0.3 0.03 262);
+        --muted: oklch(0.945 0.01 85);
+        --muted-foreground: oklch(0.5 0.02 70);
+        --accent: oklch(0.915 0.02 82);
+        --accent-foreground: oklch(0.27 0.03 262);
+        --destructive: oklch(0.53 0.19 32);
+        --border: oklch(0.89 0.015 80);
+        --input: oklch(0.87 0.017 80);
+        --ring: oklch(0.55 0.11 263);
+        --chart-1: oklch(0.5 0.12 263);
+        --chart-2: oklch(0.6 0.16 35);
+        --chart-3: oklch(0.6 0.1 135);
+        --chart-4: oklch(0.74 0.14 80);
+        --chart-5: oklch(0.5 0.1 320);
+        --sidebar: oklch(0.955 0.012 82);
+        --sidebar-foreground: oklch(0.25 0.022 262);
+        --sidebar-primary: oklch(0.43 0.12 263);
+        --sidebar-primary-foreground: oklch(0.975 0.008 85);
+        --sidebar-accent: oklch(0.915 0.022 80);
+        --sidebar-accent-foreground: oklch(0.27 0.03 262);
+        --sidebar-border: oklch(0.885 0.016 80);
+        --sidebar-ring: oklch(0.55 0.11 263);
+        --log-error: oklch(0.52 0.18 32);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.45 0.11 263);
+        --log-time: oklch(0.49 0.02 70);
+      }
+      [data-theme='washi'].dark {
+        --background: oklch(0.205 0.008 70);
+        --foreground: oklch(0.9 0.016 85);
+        --card: oklch(0.235 0.009 70);
+        --card-foreground: oklch(0.9 0.016 85);
+        --popover: oklch(0.245 0.01 70);
+        --popover-foreground: oklch(0.9 0.016 85);
+        --primary: oklch(0.75 0.085 258);
+        --primary-foreground: oklch(0.2 0.02 262);
+        --secondary: oklch(0.29 0.01 70);
+        --secondary-foreground: oklch(0.9 0.016 85);
+        --muted: oklch(0.27 0.009 70);
+        --muted-foreground: oklch(0.71 0.02 80);
+        --accent: oklch(0.31 0.015 75);
+        --accent-foreground: oklch(0.93 0.015 85);
+        --destructive: oklch(0.68 0.16 32);
+        --border: oklch(0.32 0.01 70);
+        --input: oklch(0.35 0.012 70);
+        --ring: oklch(0.66 0.085 258);
+        --chart-1: oklch(0.72 0.09 258);
+        --chart-2: oklch(0.7 0.14 38);
+        --chart-3: oklch(0.74 0.1 135);
+        --chart-4: oklch(0.82 0.12 82);
+        --chart-5: oklch(0.7 0.09 320);
+        --sidebar: oklch(0.18 0.007 70);
+        --sidebar-foreground: oklch(0.9 0.016 85);
+        --sidebar-primary: oklch(0.75 0.085 258);
+        --sidebar-primary-foreground: oklch(0.2 0.02 262);
+        --sidebar-accent: oklch(0.28 0.014 72);
+        --sidebar-accent-foreground: oklch(0.93 0.015 85);
+        --sidebar-border: oklch(0.28 0.009 70);
+        --sidebar-ring: oklch(0.66 0.085 258);
+        --log-error: oklch(0.72 0.15 32);
+        --log-warn: oklch(0.82 0.11 82);
+        --log-info: oklch(0.77 0.08 258);
+        --log-time: oklch(0.66 0.02 80);
+      }
+      [data-theme='matsuba'] {
+        --background: oklch(0.98 0.005 160);
+        --foreground: oklch(0.24 0.02 170);
+        --card: oklch(0.995 0.003 160);
+        --card-foreground: oklch(0.24 0.02 170);
+        --popover: oklch(0.995 0.003 160);
+        --popover-foreground: oklch(0.24 0.02 170);
+        --primary: oklch(0.48 0.1 165);
+        --primary-foreground: oklch(0.98 0.01 160);
+        --secondary: oklch(0.95 0.012 160);
+        --secondary-foreground: oklch(0.28 0.03 170);
+        --muted: oklch(0.955 0.01 160);
+        --muted-foreground: oklch(0.5 0.025 170);
+        --accent: oklch(0.93 0.025 162);
+        --accent-foreground: oklch(0.26 0.04 170);
+        --destructive: oklch(0.55 0.2 27);
+        --border: oklch(0.9 0.014 160);
+        --input: oklch(0.88 0.016 160);
+        --ring: oklch(0.6 0.1 165);
+        --chart-1: oklch(0.55 0.11 165);
+        --chart-2: oklch(0.6 0.1 220);
+        --chart-3: oklch(0.72 0.13 85);
+        --chart-4: oklch(0.6 0.15 40);
+        --chart-5: oklch(0.5 0.1 300);
+        --sidebar: oklch(0.965 0.01 160);
+        --sidebar-foreground: oklch(0.24 0.02 170);
+        --sidebar-primary: oklch(0.48 0.1 165);
+        --sidebar-primary-foreground: oklch(0.98 0.01 160);
+        --sidebar-accent: oklch(0.925 0.025 162);
+        --sidebar-accent-foreground: oklch(0.26 0.04 170);
+        --sidebar-border: oklch(0.895 0.014 160);
+        --sidebar-ring: oklch(0.6 0.1 165);
+        --log-error: oklch(0.54 0.19 27);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.48 0.085 220);
+        --log-time: oklch(0.5 0.025 170);
+      }
+      [data-theme='matsuba'].dark {
+        --background: oklch(0.19 0.014 175);
+        --foreground: oklch(0.92 0.012 160);
+        --card: oklch(0.225 0.016 175);
+        --card-foreground: oklch(0.92 0.012 160);
+        --popover: oklch(0.235 0.017 175);
+        --popover-foreground: oklch(0.92 0.012 160);
+        --primary: oklch(0.78 0.11 160);
+        --primary-foreground: oklch(0.2 0.03 170);
+        --secondary: oklch(0.28 0.02 175);
+        --secondary-foreground: oklch(0.92 0.012 160);
+        --muted: oklch(0.26 0.017 175);
+        --muted-foreground: oklch(0.71 0.03 165);
+        --accent: oklch(0.3 0.03 170);
+        --accent-foreground: oklch(0.95 0.01 160);
+        --destructive: oklch(0.69 0.17 25);
+        --border: oklch(0.31 0.02 175);
+        --input: oklch(0.34 0.022 175);
+        --ring: oklch(0.68 0.1 160);
+        --chart-1: oklch(0.76 0.11 160);
+        --chart-2: oklch(0.74 0.09 220);
+        --chart-3: oklch(0.83 0.12 85);
+        --chart-4: oklch(0.73 0.14 42);
+        --chart-5: oklch(0.7 0.1 300);
+        --sidebar: oklch(0.165 0.013 175);
+        --sidebar-foreground: oklch(0.92 0.012 160);
+        --sidebar-primary: oklch(0.78 0.11 160);
+        --sidebar-primary-foreground: oklch(0.2 0.03 170);
+        --sidebar-accent: oklch(0.27 0.03 172);
+        --sidebar-accent-foreground: oklch(0.95 0.01 160);
+        --sidebar-border: oklch(0.27 0.018 175);
+        --sidebar-ring: oklch(0.68 0.1 160);
+        --log-error: oklch(0.72 0.16 25);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.78 0.08 220);
+        --log-time: oklch(0.66 0.03 165);
+      }
+      [data-theme] {
+        --ws-slate: oklch(0.55 0.03 255);
+        --ws-red: oklch(0.58 0.19 27);
+        --ws-orange: oklch(0.64 0.16 50);
+        --ws-amber: oklch(0.64 0.135 72);
+        --ws-green: oklch(0.58 0.14 150);
+        --ws-teal: oklch(0.58 0.1 190);
+        --ws-blue: oklch(0.55 0.16 255);
+        --ws-violet: oklch(0.55 0.17 295);
+        --ws-pink: oklch(0.62 0.18 355);
+        --fi-folder: oklch(0.61 0.13 70);
+        --fi-word: oklch(0.5 0.15 258);
+        --fi-excel: oklch(0.52 0.13 150);
+        --fi-powerpoint: oklch(0.58 0.17 40);
+        --fi-pdf: oklch(0.54 0.2 27);
+        --fi-mail: oklch(0.55 0.105 232);
+        --fi-archive: oklch(0.52 0.08 60);
+        --fi-image: oklch(0.56 0.17 350);
+        --fi-media: oklch(0.53 0.17 318);
+        --fi-csv: oklch(0.52 0.08 155);
+        --fi-log: oklch(0.53 0.08 195);
+        --fi-script: oklch(0.5 0.14 300);
+        --fi-code: oklch(0.5 0.11 275);
+        --fi-config: oklch(0.52 0.07 110);
+        --fi-database: oklch(0.52 0.09 215);
+        --fi-cert: oklch(0.56 0.11 92);
+        --fi-markdown: oklch(0.5 0.05 250);
+        --fi-exe: oklch(0.45 0.025 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 30%);
+      }
+      [data-theme].dark {
+        --ws-slate: oklch(0.72 0.03 255);
+        --ws-red: oklch(0.7 0.17 25);
+        --ws-orange: oklch(0.76 0.14 55);
+        --ws-amber: oklch(0.82 0.14 85);
+        --ws-green: oklch(0.76 0.14 152);
+        --ws-teal: oklch(0.77 0.1 190);
+        --ws-blue: oklch(0.72 0.13 252);
+        --ws-violet: oklch(0.73 0.14 295);
+        --ws-pink: oklch(0.75 0.14 355);
+        --fi-folder: oklch(0.83 0.14 85);
+        --fi-word: oklch(0.72 0.13 255);
+        --fi-excel: oklch(0.76 0.15 152);
+        --fi-powerpoint: oklch(0.75 0.15 48);
+        --fi-pdf: oklch(0.7 0.17 24);
+        --fi-mail: oklch(0.77 0.1 228);
+        --fi-archive: oklch(0.76 0.08 68);
+        --fi-image: oklch(0.75 0.14 350);
+        --fi-media: oklch(0.74 0.14 318);
+        --fi-csv: oklch(0.77 0.08 155);
+        --fi-log: oklch(0.77 0.08 195);
+        --fi-script: oklch(0.74 0.12 300);
+        --fi-code: oklch(0.75 0.09 275);
+        --fi-config: oklch(0.79 0.08 110);
+        --fi-database: oklch(0.77 0.09 212);
+        --fi-cert: oklch(0.83 0.12 95);
+        --fi-markdown: oklch(0.78 0.05 250);
+        --fi-exe: oklch(0.82 0.02 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 18%);
+      }
+
+      /* ---------- 动效令牌（与 design-notes.md 第 5 节一致；CSS 近似 motion 的弹簧） ---------- */
+      :root {
+        --dur-fast: 120ms;
+        --dur-base: 200ms;
+        --dur-slow: 280ms;
+        --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+        --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+        --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+        /* spring.ring ≈ { type: 'spring', visualDuration: 0.26, bounce: 0 } */
+        --ease-ring: cubic-bezier(0.22, 0.9, 0.24, 1);
+        --dur-ring: 260ms;
+      }
+      .reduced {
+        --dur-fast: 0ms;
+        --dur-base: 120ms;
+        --dur-slow: 120ms;
+        --dur-ring: 0ms;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        :root {
+          --dur-fast: 0ms;
+          --dur-base: 120ms;
+          --dur-slow: 120ms;
+          --dur-ring: 0ms;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        font-family:
+          'Segoe UI Variable Text', 'Segoe UI', 'Yu Gothic UI', 'Meiryo UI', 'Microsoft YaHei UI',
+          system-ui, sans-serif;
+        font-size: 13px;
+        background: oklch(0.3 0 0);
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        -webkit-font-smoothing: antialiased;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      svg.i {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* ---------- 原型控制条（不属于设计） ---------- */
+      .proto {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 18px;
+        padding: 8px 16px;
+        background: #1a1a1a;
+        color: #ccc;
+        font-size: 12px;
+        border-bottom: 1px solid #000;
+      }
+      .proto b {
+        color: #fff;
+        font-weight: 600;
+        margin-right: 4px;
+      }
+      .proto label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .proto .seg {
+        display: inline-flex;
+        border: 1px solid #444;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .proto .seg button {
+        background: none;
+        border: 0;
+        padding: 3px 10px;
+        cursor: pointer;
+        color: #bbb;
+      }
+      .proto .seg button[aria-pressed='true'] {
+        background: #444;
+        color: #fff;
+      }
+      .proto select {
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+      .proto .note {
+        color: #888;
+        margin-left: auto;
+      }
+
+      /* ---------- 应用外壳（模拟） ---------- */
+      .app {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--background);
+        color: var(--foreground);
+        overflow: hidden;
+      }
+      .titlebar {
+        height: 36px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding-left: 8px;
+        background: var(--sidebar);
+        color: var(--sidebar-foreground);
+        border-bottom: 1px solid var(--border);
+      }
+      .appmark {
+        width: 16px;
+        height: 16px;
+        margin: 0 4px;
+        flex: none;
+      }
+      .appname {
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-right: 8px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: none;
+        cursor: default;
+        white-space: nowrap;
+        transition: background-color var(--dur-fast) var(--ease-standard);
+      }
+      .btn:hover {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .btn:focus-visible,
+      .ctl:focus-visible,
+      .row:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 1px;
+      }
+      .btn.icon {
+        width: 28px;
+        padding: 0;
+        justify-content: center;
+      }
+      .btn.outline {
+        border-color: var(--border);
+        background: var(--background);
+      }
+      .wsbtn {
+        max-width: 240px;
+        color: var(--sidebar-foreground);
+        font-weight: 500;
+      }
+      .wsbtn .nm {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--c, var(--muted-foreground));
+        box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 12%, transparent);
+      }
+      .dot.none {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+      }
+      .searchbox {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        padding: 0 16px;
+        min-width: 0;
+      }
+      .searchbox .btn {
+        width: 100%;
+        max-width: 420px;
+        justify-content: space-between;
+        color: var(--muted-foreground);
+        height: 26px;
+      }
+      kbd {
+        font-family: inherit;
+        font-size: 11px;
+        line-height: 16px;
+        min-width: 18px;
+        padding: 0 4px;
+        text-align: center;
+        border-radius: 4px;
+        background: var(--muted);
+        color: var(--muted-foreground);
+        border: 1px solid var(--border);
+      }
+      .winbtns {
+        display: flex;
+        height: 100%;
+        margin-left: 4px;
+      }
+      .winbtns span {
+        width: 46px;
+        display: grid;
+        place-items: center;
+        color: var(--muted-foreground);
+      }
+
+      .body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .activity {
+        width: 44px;
+        flex: none;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding-top: 6px;
+        color: var(--muted-foreground);
+      }
+      .activity span {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+      }
+      .activity span.on {
+        color: var(--sidebar-foreground);
+        background: var(--sidebar-accent);
+      }
+      .sidebar {
+        width: 250px;
+        flex: none;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+        padding: 8px 6px;
+        overflow: hidden;
+      }
+      .sidebar h4 {
+        margin: 2px 8px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted-foreground);
+      }
+      .tree div {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tree div.sel {
+        background: var(--sidebar-accent);
+        color: var(--sidebar-accent-foreground);
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .tabs {
+        height: 34px;
+        display: flex;
+        align-items: end;
+        gap: 2px;
+        padding: 0 8px;
+        background: var(--sidebar);
+        border-bottom: 1px solid var(--border);
+      }
+      .tab {
+        height: 28px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        border-radius: 6px 6px 0 0;
+        color: var(--muted-foreground);
+      }
+      .tab.on {
+        background: var(--background);
+        color: var(--foreground);
+        box-shadow: 0 0 0 1px var(--border);
+      }
+      .addr {
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+      .addr .crumb {
+        color: var(--foreground);
+      }
+      .log {
+        flex: 1;
+        min-height: 0;
+        margin: 0;
+        padding: 10px 16px;
+        overflow: hidden;
+        font:
+          12.5px/1.65 'Cascadia Mono',
+          'BIZ UDGothic',
+          Consolas,
+          monospace;
+        color: var(--foreground);
+        white-space: pre;
+      }
+      .log .t {
+        color: var(--log-time);
+      }
+      .log .e {
+        color: var(--log-error);
+        font-weight: 600;
+      }
+      .log .w {
+        color: var(--log-warn);
+        font-weight: 600;
+      }
+      .log .n {
+        color: var(--log-info);
+      }
+
+      /* ---------- 选择器 ---------- */
+      .scrim {
+        position: absolute;
+        inset: 36px 0 0 0;
+        z-index: 10;
+        background: oklch(0.1 0.01 260 / 0.28);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--dur-base) var(--ease-standard);
+      }
+      .dark .scrim {
+        background: oklch(0 0 0 / 0.45);
+      }
+      .open .scrim {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .panel {
+        position: absolute;
+        z-index: 11;
+        top: 44px;
+        left: 50%;
+        width: min(880px, calc(100% - 32px));
+        margin-left: calc(min(880px, calc(100% - 32px)) / -2);
+        background: var(--popover);
+        color: var(--popover-foreground);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow:
+          0 24px 48px -12px oklch(0 0 0 / 0.35),
+          0 2px 6px oklch(0 0 0 / 0.08);
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        transform: translateY(-8px) scale(0.985);
+        pointer-events: none;
+        visibility: hidden;
+        transition:
+          opacity var(--dur-fast) var(--ease-exit),
+          transform var(--dur-fast) var(--ease-exit),
+          visibility 0s linear var(--dur-fast);
+      }
+      .open .panel {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+        visibility: visible;
+        transition:
+          opacity var(--dur-base) var(--ease-enter),
+          transform var(--dur-slow) var(--ease-enter),
+          visibility 0s;
+      }
+      .phead {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .filter {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 8px;
+        border: 1px solid var(--input);
+        background: var(--background);
+        color: var(--muted-foreground);
+      }
+      .filter:focus-within {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 35%, transparent);
+      }
+      .filter input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: none;
+        color: var(--foreground);
+      }
+      .filter input::placeholder {
+        color: var(--muted-foreground);
+      }
+      .count {
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .seg2 {
+        display: inline-flex;
+        padding: 2px;
+        gap: 2px;
+        border-radius: 8px;
+        background: var(--muted);
+      }
+      .seg2 button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 9px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--muted-foreground);
+        cursor: default;
+      }
+      .seg2 button[aria-pressed='true'] {
+        background: var(--background);
+        color: var(--foreground);
+        box-shadow: 0 1px 2px oklch(0 0 0 / 0.12);
+      }
+      .seg2 button:focus-visible {
+        outline: 2px solid var(--ring);
+      }
+      .sw {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        white-space: nowrap;
+        cursor: default;
+        user-select: none;
+      }
+      .sw button {
+        width: 30px;
+        height: 18px;
+        border-radius: 9px;
+        border: 0;
+        padding: 2px;
+        background: var(--input);
+        position: relative;
+        transition: background-color var(--dur-fast) var(--ease-standard);
+      }
+      .sw button::after {
+        content: '';
+        display: block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--background);
+        box-shadow: 0 1px 2px oklch(0 0 0 / 0.2);
+        transition: transform var(--dur-fast) var(--ease-standard);
+      }
+      .sw button[aria-checked='true'] {
+        background: var(--primary);
+      }
+      .sw button[aria-checked='true']::after {
+        transform: translateX(12px);
+        background: var(--primary-foreground);
+      }
+      .sw button:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+      }
+      .sw.edit button[aria-checked='true'] {
+        background: var(--ws-amber);
+      }
+
+      .stage {
+        --cw: 204px;
+        --ch: 176px;
+        position: relative;
+        height: 286px;
+        perspective: 1150px;
+        perspective-origin: 50% 40%;
+        overflow: hidden;
+        touch-action: none;
+      }
+      .detail .stage {
+        --cw: 244px;
+        --ch: 304px;
+        height: 404px;
+      }
+      .editing .stage {
+        --cw: 244px;
+        --ch: 304px;
+        height: 404px;
+      }
+      .stage::before {
+        /* 地面：只用一层很淡的椭圆让 3D 有落脚点 */
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: 26px;
+        width: 70%;
+        height: 46px;
+        transform: translateX(-50%);
+        background: radial-gradient(
+          closest-side,
+          color-mix(in oklch, var(--foreground) 9%, transparent),
+          transparent
+        );
+        pointer-events: none;
+      }
+      .ring {
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+        pointer-events: none;
+      } /* 3D 中位于 z<0 的卡片会被 z=0 的容器挡住命中测试 */
+      .ring .card {
+        pointer-events: auto;
+      }
+      .card {
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        width: var(--cw);
+        height: var(--ch);
+        margin: calc(var(--ch) / -2) 0 0 calc(var(--cw) / -2);
+        transform-style: preserve-3d;
+        cursor: default;
+        transition:
+          transform var(--dur-ring) var(--ease-ring),
+          opacity var(--dur-base) var(--ease-standard),
+          width var(--dur-slow) var(--ease-standard),
+          height var(--dur-slow) var(--ease-standard),
+          margin var(--dur-slow) var(--ease-standard);
+        will-change: transform, opacity;
+      }
+      .card.nojump {
+        transition: none !important;
+      }
+      .card.side:hover .face.f {
+        border-color: color-mix(in oklch, var(--foreground) 30%, var(--border));
+      }
+      .card.side .face.f::after {
+        /* 侧面卡片稍暗，正面卡片明确 */
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: var(--popover);
+        opacity: var(--dim, 0);
+        pointer-events: none;
+        transition: opacity var(--dur-base) var(--ease-standard);
+      }
+      .inner {
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+        transition: transform var(--dur-slow) var(--ease-standard);
+      }
+      .flipped .inner {
+        transform: rotateY(180deg);
+      }
+      .face {
+        position: absolute;
+        inset: 0;
+        backface-visibility: hidden;
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+      }
+      .face.b {
+        transform: rotateY(180deg);
+        padding: 18px 16px 14px;
+        gap: 10px;
+      }
+      .reduced .inner,
+      .reduced .card {
+        transition-property: opacity;
+      }
+      .reduced .flipped .inner {
+        transform: none;
+      }
+      .reduced .flipped .face.f {
+        visibility: hidden;
+      }
+      .reduced .face.b {
+        transform: none;
+        visibility: hidden;
+      }
+      .reduced .flipped .face.b {
+        visibility: visible;
+      }
+      .card.front .face.f,
+      .card.front .face.b {
+        border-color: color-mix(in oklch, var(--primary) 70%, var(--border));
+        box-shadow:
+          0 0 0 1px color-mix(in oklch, var(--primary) 70%, transparent),
+          0 18px 36px -14px oklch(0 0 0 / 0.4);
+      }
+      .band {
+        height: 5px;
+        flex: none;
+        background: var(--c, var(--border));
+      }
+      .cbody {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px 14px 12px;
+      }
+      .ctop {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 18px;
+      }
+      .pill {
+        margin-left: auto;
+        font-size: 11px;
+        line-height: 18px;
+        padding: 0 7px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+      .pill.cur {
+        border-color: transparent;
+        background: color-mix(in oklch, var(--primary) 14%, transparent);
+        color: var(--foreground);
+      }
+      .name {
+        font-size: 16px;
+        line-height: 1.35;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .detail .name {
+        font-size: 15px;
+        -webkit-line-clamp: 2;
+      }
+      .name mark {
+        background: none;
+        color: inherit;
+        text-decoration: underline 2px color-mix(in oklch, var(--primary) 80%, transparent);
+        text-underline-offset: 3px;
+      }
+      .meta {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .meta .row2 {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .desc {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--muted-foreground);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .entries {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 8px 0 0;
+        border-top: 1px dashed var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 12px;
+      }
+      .entries li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .entries li span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .entries li.more {
+        color: var(--muted-foreground);
+        padding-left: 22px;
+      }
+      .hint {
+        font-size: 11.5px;
+        color: var(--muted-foreground);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border);
+      }
+      .card:not(.front) .hint {
+        visibility: hidden;
+      }
+      .newcard .face.f {
+        border-style: dashed;
+        border-width: 1.5px;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: var(--muted-foreground);
+        background: var(--card);
+      }
+      .newcard .face.f svg {
+        width: 28px;
+        height: 28px;
+      }
+
+      /* 编辑模式的正面卡片 */
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px 12px;
+        flex: 1;
+        min-height: 0;
+      }
+      .form label {
+        font-size: 11px;
+        color: var(--muted-foreground);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .form input[type='text'],
+      .form textarea {
+        width: 100%;
+        border: 1px solid var(--input);
+        border-radius: 6px;
+        background: var(--background);
+        padding: 5px 8px;
+        outline: 0;
+        resize: none;
+        font-size: 12.5px;
+      }
+      .form input[type='text'] {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .form input:focus,
+      .form textarea:focus {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 30%, transparent);
+      }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .swatches button {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 0;
+        padding: 0;
+        background: var(--c);
+        cursor: default;
+        box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 15%, transparent);
+      }
+      .swatches button.none {
+        background: none;
+        box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+        position: relative;
+      }
+      .swatches button.none::after {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 2px;
+        width: 1.5px;
+        height: 14px;
+        background: var(--muted-foreground);
+        transform: rotate(45deg);
+      }
+      .swatches button[aria-checked='true'] {
+        box-shadow:
+          0 0 0 2px var(--card),
+          0 0 0 3.5px var(--foreground);
+      }
+      .swatches button:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 3px;
+      }
+      .ffoot {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--muted-foreground);
+      }
+      .ffoot .btn {
+        height: 24px;
+        padding: 0 8px;
+        font-size: 12px;
+        margin-left: auto;
+        color: var(--destructive);
+      }
+      .ffoot .btn:hover {
+        background: color-mix(in oklch, var(--destructive) 12%, transparent);
+        color: var(--destructive);
+      }
+      .linkbtn {
+        border: 0;
+        background: none;
+        padding: 0;
+        color: var(--primary);
+        cursor: default;
+        font-size: 11px;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .face.b h3 {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+      .face.b p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--muted-foreground);
+      }
+      .face.b .acts {
+        margin-top: auto;
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .btn.solid-d {
+        background: var(--destructive);
+        color: oklch(0.985 0 0);
+      }
+      .btn.solid-d:hover {
+        background: color-mix(in oklch, var(--destructive) 88%, black);
+        color: oklch(0.985 0 0);
+      }
+
+      .indicator {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 10px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
+      }
+      .indicator button {
+        width: 7px;
+        height: 7px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: var(--border);
+        cursor: default;
+        transition:
+          background-color var(--dur-fast),
+          transform var(--dur-fast) var(--ease-standard);
+      }
+      .indicator button.on {
+        background: var(--foreground);
+        transform: scale(1.3);
+      }
+      .indicator button.cur {
+        box-shadow: 0 0 0 1.5px var(--primary);
+      }
+      .indicator .tip {
+        margin-left: 10px;
+      }
+
+      .empty {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        gap: 10px;
+        color: var(--muted-foreground);
+      }
+      .empty strong {
+        color: var(--foreground);
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      /* 列表视图 */
+      .list {
+        list-style: none;
+        margin: 0;
+        padding: 6px;
+        max-height: 392px;
+        min-height: 200px;
+        overflow-y: auto;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 4px 22px minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px 7px 0;
+        border-radius: 8px;
+        cursor: default;
+      }
+      .row .bar {
+        align-self: stretch;
+        border-radius: 0 3px 3px 0;
+        background: var(--c, transparent);
+      }
+      .row .nm {
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row .sub {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row .tm {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+      .row:hover {
+        background: color-mix(in oklch, var(--accent) 60%, transparent);
+      }
+      .row.on {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+
+      .pfoot {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        padding: 9px 14px;
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .pfoot .k {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pfoot .manage {
+        margin-left: auto;
+      }
+      .pfoot .editnote {
+        color: var(--foreground);
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .pfoot .editnote::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--ws-amber);
+      }
+
+      .toast {
+        position: absolute;
+        z-index: 20;
+        right: 16px;
+        bottom: 16px;
+        padding: 9px 14px;
+        border-radius: 8px;
+        background: var(--popover);
+        color: var(--popover-foreground);
+        border: 1px solid var(--border);
+        box-shadow: 0 8px 24px -8px oklch(0 0 0 / 0.35);
+        opacity: 0;
+        transform: translateY(6px);
+        transition:
+          opacity var(--dur-base) var(--ease-standard),
+          transform var(--dur-base) var(--ease-standard);
+        pointer-events: none;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .press {
+        animation: press var(--dur-base) var(--ease-standard);
+      }
+      @keyframes press {
+        40% {
+          scale: 0.975;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto" role="region" aria-label="原型の設定（原型控制，不属于设计）">
+      <span><b>原型設定</b></span>
+      <label
+        >テーマ
+        <select id="pTheme">
+          <option value="default">標準</option>
+          <option value="aitetsu" selected>藍鉄</option>
+          <option value="washi">和紙</option>
+          <option value="matsuba">松葉</option>
+        </select></label
+      >
+      <span class="seg" id="pMode"
+        ><button data-v="light">ライト</button
+        ><button data-v="dark" aria-pressed="true">ダーク</button></span
+      >
+      <span
+        >件数
+        <span class="seg" id="pCount"
+          ><button data-v="3">3</button><button data-v="8" aria-pressed="true">8</button
+          ><button data-v="20">20</button></span
+        ></span
+      >
+      <label><input type="checkbox" id="pReduced" /> 動きを減らす（アプリ内設定の代わり）</label>
+      <span class="note">Alt+W またはタイトルバーのワークスペース名で開く</span>
+    </div>
+
+    <div class="app dark" id="app" data-theme="aitetsu">
+      <header class="titlebar">
+        <svg class="appmark" viewBox="0 0 32 32" aria-hidden="true">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#3778d7" />
+              <stop offset="1" stop-color="#2a5fb7" />
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#lg)" />
+          <rect x="12" y="5" width="14" height="17" rx="2.5" fill="#a0c0eb" />
+          <rect x="6" y="10" width="14" height="17" rx="2.5" fill="#fff" />
+          <rect x="9" y="14" width="6" height="2.5" rx="1.25" fill="#f9b73f" />
+        </svg>
+        <span class="appname">PremiumCowHorse</span>
+        <button
+          class="btn wsbtn"
+          id="wsBtn"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          title="ワークスペースを選択（Alt+W）"
+        >
+          <span class="dot" id="wsDot"></span><span class="nm" id="wsName"></span>
+        </button>
+        <div class="searchbox">
+          <span class="btn outline"
+            ><span style="display: flex; gap: 8px; align-items: center"
+              ><svg class="i" data-i="search"></svg>ファイルやコマンドを検索…</span
+            ><span><kbd>Ctrl</kbd> <kbd>K</kbd></span></span
+          >
+        </div>
+        <span class="btn icon" aria-hidden="true"><svg class="i" data-i="moon"></svg></span>
+        <span class="btn icon" aria-hidden="true"><svg class="i" data-i="languages"></svg></span>
+        <div class="winbtns" aria-hidden="true">
+          <span><svg class="i" data-i="minus"></svg></span
+          ><span><svg class="i" data-i="square" style="width: 13px; height: 13px"></svg></span
+          ><span><svg class="i" data-i="x"></svg></span>
+        </div>
+      </header>
+      <div class="body">
+        <nav class="activity" aria-hidden="true">
+          <span class="on"><svg class="i" data-i="folder-tree"></svg></span
+          ><span><svg class="i" data-i="search"></svg></span
+          ><span><svg class="i" data-i="server"></svg></span
+          ><span><svg class="i" data-i="monitor"></svg></span>
+        </nav>
+        <aside class="sidebar" aria-hidden="true">
+          <h4 id="treeTitle"></h4>
+          <div class="tree" id="tree"></div>
+        </aside>
+        <main class="main" aria-hidden="false">
+          <div class="tabs" aria-hidden="true">
+            <span class="tab on" id="tabName"></span><span class="tab">手順書.docx</span>
+          </div>
+          <div class="addr">
+            <button
+              class="btn icon"
+              id="addrBtn"
+              aria-haspopup="dialog"
+              title="ワークスペースを選択（Alt+W）"
+            >
+              <svg class="i" data-i="gallery-vertical"></svg>
+            </button>
+            <span class="crumb" id="crumbWs"></span
+            ><svg class="i" data-i="chevron-right" style="width: 14px"></svg
+            ><span class="crumb">本番ログ</span
+            ><svg class="i" data-i="chevron-right" style="width: 14px"></svg
+            ><span class="crumb" id="crumbFile"></span>
+          </div>
+          <pre class="log" id="log" aria-hidden="true"></pre>
+        </main>
+      </div>
+
+      <div class="scrim" id="scrim"></div>
+      <section class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="pTitle">
+        <h2 id="pTitle" class="sr-only">ワークスペースを選択</h2>
+        <div class="phead">
+          <div class="filter">
+            <svg class="i" data-i="search"></svg>
+            <input
+              id="filter"
+              type="text"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="ring"
+              aria-autocomplete="list"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="名前で絞り込み"
+              aria-label="ワークスペースを名前で絞り込み"
+            />
+            <span class="count" id="count"></span>
+          </div>
+          <div class="seg2" role="group" aria-label="表示">
+            <button class="ctl" id="vRing" aria-pressed="true" title="リング表示">
+              <svg class="i" data-i="gallery-horizontal"></svg>リング
+            </button>
+            <button class="ctl" id="vList" aria-pressed="false" title="リスト表示">
+              <svg class="i" data-i="list"></svg>リスト
+            </button>
+          </div>
+          <span class="sw"
+            ><button
+              role="switch"
+              id="swDetail"
+              aria-checked="false"
+              aria-labelledby="swDetailL"
+            ></button
+            ><span id="swDetailL">詳細</span></span
+          >
+          <span class="sw edit"
+            ><button
+              role="switch"
+              id="swEdit"
+              aria-checked="false"
+              aria-labelledby="swEditL"
+            ></button
+            ><span id="swEditL">編集</span></span
+          >
+        </div>
+        <div class="stage" id="stage">
+          <div
+            class="ring"
+            id="ring"
+            role="listbox"
+            aria-orientation="horizontal"
+            aria-label="ワークスペース"
+          ></div>
+          <div class="empty" id="empty" hidden></div>
+          <div class="indicator" id="indicator"></div>
+        </div>
+        <ul class="list" id="list" role="listbox" aria-label="ワークスペース" hidden></ul>
+        <div class="pfoot" id="pfoot"></div>
+      </section>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="sr-only" id="live" aria-live="polite"></div>
+    </div>
+
+    <script>
+      const ICONS = {
+        folder: [
+          [
+            'path',
+            {
+              d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
+            }
+          ]
+        ],
+        'folder-open': [
+          [
+            'path',
+            {
+              d: 'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2'
+            }
+          ]
+        ],
+        'folder-symlink': [
+          [
+            'path',
+            {
+              d: 'M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'm8 16 3-3-3-3' }]
+        ],
+        'file-symlink': [
+          [
+            'path',
+            {
+              d: 'M4 11V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm10 18 3-3-3-3' }]
+        ],
+        'file-x': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm14.5 12.5-5 5' }],
+          ['path', { d: 'm9.5 12.5 5 5' }]
+        ],
+        file: [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }]
+        ],
+        'file-text': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 9H8' }],
+          ['path', { d: 'M16 13H8' }],
+          ['path', { d: 'M16 17H8' }]
+        ],
+        'file-spreadsheet': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 13h2' }],
+          ['path', { d: 'M14 13h2' }],
+          ['path', { d: 'M8 17h2' }],
+          ['path', { d: 'M14 17h2' }]
+        ],
+        presentation: [
+          ['path', { d: 'M2 3h20' }],
+          ['path', { d: 'M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3' }],
+          ['path', { d: 'm7 21 5-5 5 5' }]
+        ],
+        mail: [
+          ['path', { d: 'm22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7' }],
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }]
+        ],
+        database: [
+          ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+          ['path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }],
+          ['path', { d: 'M3 12A9 3 0 0 0 21 12' }]
+        ],
+        'file-key': [
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M4 12v6' }],
+          ['path', { d: 'M4 14h2' }],
+          [
+            'path',
+            {
+              d: 'M9.65 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v4'
+            }
+          ],
+          ['circle', { cx: '4', cy: '20', r: '2' }]
+        ],
+        package: [
+          [
+            'path',
+            {
+              d: 'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z'
+            }
+          ],
+          ['path', { d: 'M12 22V12' }],
+          ['polyline', { points: '3.29 7 12 12 20.71 7' }],
+          ['path', { d: 'm7.5 4.27 9 5.15' }]
+        ],
+        'file-archive': [
+          [
+            'path',
+            {
+              d: 'M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 12v-1' }],
+          ['path', { d: 'M8 18v-2' }],
+          ['path', { d: 'M8 7V6' }],
+          ['circle', { cx: '8', cy: '20', r: '2' }]
+        ],
+        'file-image': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['circle', { cx: '10', cy: '12', r: '2' }],
+          ['path', { d: 'm20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22' }]
+        ],
+        'file-headphone': [
+          [
+            'path',
+            {
+              d: 'M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0'
+            }
+          ]
+        ],
+        'file-play': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M15.033 13.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56v-4.704a.645.645 0 0 1 .967-.56z'
+            }
+          ]
+        ],
+        'file-cog': [
+          [
+            'path',
+            { d: 'M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z' }
+          ],
+          ['path', { d: 'M20 8v12a2 2 0 0 1-2 2h-4.182' }],
+          ['path', { d: 'm3.305 19.53.923-.382' }],
+          ['path', { d: 'M4 10.592V4a2 2 0 0 1 2-2h8' }],
+          ['path', { d: 'm4.228 16.852-.924-.383' }],
+          ['path', { d: 'm5.852 15.228-.383-.923' }],
+          ['path', { d: 'm5.852 20.772-.383.924' }],
+          ['path', { d: 'm8.148 15.228.383-.923' }],
+          ['path', { d: 'm8.53 21.696-.382-.924' }],
+          ['path', { d: 'm9.773 16.852.922-.383' }],
+          ['path', { d: 'm9.773 19.148.922.383' }],
+          ['circle', { cx: '7', cy: '18', r: '3' }]
+        ],
+        'file-braces': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1' }],
+          ['path', { d: 'M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1' }]
+        ],
+        'scroll-text': [
+          ['path', { d: 'M15 12h-5' }],
+          ['path', { d: 'M15 8h-5' }],
+          ['path', { d: 'M19 17V5a2 2 0 0 0-2-2H4' }],
+          [
+            'path',
+            {
+              d: 'M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3'
+            }
+          ]
+        ],
+        'file-code': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12.5 8 15l2 2.5' }],
+          ['path', { d: 'm14 12.5 2 2.5-2 2.5' }]
+        ],
+        'file-terminal': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm8 16 2-2-2-2' }],
+          ['path', { d: 'M12 18h4' }]
+        ],
+        'app-window': [
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }],
+          ['path', { d: 'M10 4v4' }],
+          ['path', { d: 'M2 8h20' }],
+          ['path', { d: 'M6 4v4' }]
+        ],
+        'file-type': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M11 18h2' }],
+          ['path', { d: 'M12 12v6' }],
+          ['path', { d: 'M9 13v-.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v.5' }]
+        ],
+        sheet: [
+          ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2', ry: '2' }],
+          ['line', { x1: '3', x2: '21', y1: '9', y2: '9' }],
+          ['line', { x1: '3', x2: '21', y1: '15', y2: '15' }],
+          ['line', { x1: '9', x2: '9', y1: '9', y2: '21' }],
+          ['line', { x1: '15', x2: '15', y1: '9', y2: '21' }]
+        ],
+        'book-text': [
+          [
+            'path',
+            {
+              d: 'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20'
+            }
+          ],
+          ['path', { d: 'M8 11h8' }],
+          ['path', { d: 'M8 7h6' }]
+        ],
+        search: [
+          ['path', { d: 'm21 21-4.34-4.34' }],
+          ['circle', { cx: '11', cy: '11', r: '8' }]
+        ],
+        moon: [
+          [
+            'path',
+            {
+              d: 'M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401'
+            }
+          ]
+        ],
+        sun: [
+          ['circle', { cx: '12', cy: '12', r: '4' }],
+          ['path', { d: 'M12 2v2' }],
+          ['path', { d: 'M12 20v2' }],
+          ['path', { d: 'm4.93 4.93 1.41 1.41' }],
+          ['path', { d: 'm17.66 17.66 1.41 1.41' }],
+          ['path', { d: 'M2 12h2' }],
+          ['path', { d: 'M20 12h2' }],
+          ['path', { d: 'm6.34 17.66-1.41 1.41' }],
+          ['path', { d: 'm19.07 4.93-1.41 1.41' }]
+        ],
+        languages: [
+          ['path', { d: 'm5 8 6 6' }],
+          ['path', { d: 'm4 14 6-6 2-3' }],
+          ['path', { d: 'M2 5h12' }],
+          ['path', { d: 'M7 2h1' }],
+          ['path', { d: 'm22 22-5-10-5 10' }],
+          ['path', { d: 'M14 18h6' }]
+        ],
+        'gallery-vertical': [
+          ['path', { d: 'M3 2h18' }],
+          ['rect', { width: '18', height: '12', x: '3', y: '6', rx: '2' }],
+          ['path', { d: 'M3 22h18' }]
+        ],
+        'folder-tree': [
+          [
+            'path',
+            {
+              d: 'M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          [
+            'path',
+            {
+              d: 'M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          ['path', { d: 'M3 5a2 2 0 0 0 2 2h3' }],
+          ['path', { d: 'M3 3v13a2 2 0 0 0 2 2h3' }]
+        ],
+        server: [
+          ['rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }],
+          ['rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }],
+          ['line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }],
+          ['line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }]
+        ],
+        monitor: [
+          ['rect', { width: '20', height: '14', x: '2', y: '3', rx: '2' }],
+          ['line', { x1: '8', x2: '16', y1: '21', y2: '21' }],
+          ['line', { x1: '12', x2: '12', y1: '17', y2: '21' }]
+        ],
+        minus: [['path', { d: 'M5 12h14' }]],
+        square: [['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }]],
+        x: [
+          ['path', { d: 'M18 6 6 18' }],
+          ['path', { d: 'm6 6 12 12' }]
+        ],
+        'chevron-right': [['path', { d: 'm9 18 6-6-6-6' }]],
+        plus: [
+          ['path', { d: 'M5 12h14' }],
+          ['path', { d: 'M12 5v14' }]
+        ],
+        pencil: [
+          [
+            'path',
+            {
+              d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'
+            }
+          ],
+          ['path', { d: 'm15 5 4 4' }]
+        ],
+        trash: [
+          ['path', { d: 'M10 11v6' }],
+          ['path', { d: 'M14 11v6' }],
+          ['path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }],
+          ['path', { d: 'M3 6h18' }],
+          ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }]
+        ],
+        'layout-list': [
+          ['rect', { width: '7', height: '7', x: '3', y: '3', rx: '1' }],
+          ['rect', { width: '7', height: '7', x: '3', y: '14', rx: '1' }],
+          ['path', { d: 'M14 4h7' }],
+          ['path', { d: 'M14 9h7' }],
+          ['path', { d: 'M14 15h7' }],
+          ['path', { d: 'M14 20h7' }]
+        ],
+        'rotate-ccw': [
+          ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+          ['path', { d: 'M3 3v5h5' }]
+        ],
+        check: [['path', { d: 'M20 6 9 17l-5-5' }]],
+        list: [
+          ['path', { d: 'M3 5h.01' }],
+          ['path', { d: 'M3 12h.01' }],
+          ['path', { d: 'M3 19h.01' }],
+          ['path', { d: 'M8 5h13' }],
+          ['path', { d: 'M8 12h13' }],
+          ['path', { d: 'M8 19h13' }]
+        ],
+        'gallery-horizontal-end': [
+          ['path', { d: 'M2 7v10' }],
+          ['path', { d: 'M6 5v14' }],
+          ['rect', { width: '12', height: '18', x: '10', y: '3', rx: '2' }]
+        ],
+        'gallery-horizontal': [
+          ['path', { d: 'M2 3v18' }],
+          ['rect', { width: '12', height: '18', x: '6', y: '3', rx: '2' }],
+          ['path', { d: 'M22 3v18' }]
+        ],
+        copy: [
+          ['rect', { width: '14', height: '14', x: '8', y: '8', rx: '2', ry: '2' }],
+          ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }]
+        ],
+        clock: [
+          ['circle', { cx: '12', cy: '12', r: '10' }],
+          ['path', { d: 'M12 6v6l4 2' }]
+        ]
+      }
+      const WS = {
+        slate: {
+          ja: 'スレート',
+          zh: '石板灰',
+          en: 'Slate',
+          light: '0.55 0.03 255',
+          dark: '0.72 0.03 255'
+        },
+        red: { ja: '赤', zh: '红', en: 'Red', light: '0.58 0.19 27', dark: '0.7 0.17 25' },
+        orange: { ja: '橙', zh: '橙', en: 'Orange', light: '0.64 0.16 50', dark: '0.76 0.14 55' },
+        amber: {
+          ja: '山吹',
+          zh: '琥珀',
+          en: 'Amber',
+          light: '0.64 0.135 72',
+          dark: '0.82 0.14 85'
+        },
+        green: { ja: '緑', zh: '绿', en: 'Green', light: '0.58 0.14 150', dark: '0.76 0.14 152' },
+        teal: { ja: '青緑', zh: '青绿', en: 'Teal', light: '0.58 0.1 190', dark: '0.77 0.1 190' },
+        blue: { ja: '青', zh: '蓝', en: 'Blue', light: '0.55 0.16 255', dark: '0.72 0.13 252' },
+        violet: { ja: '紫', zh: '紫', en: 'Violet', light: '0.55 0.17 295', dark: '0.73 0.14 295' },
+        pink: { ja: '桃', zh: '粉', en: 'Pink', light: '0.62 0.18 355', dark: '0.75 0.14 355' }
+      }
+
+      // ---------- 小工具 ----------
+      const $ = (id) => document.getElementById(id)
+      const esc = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        )
+      function svg(name, style = '', cls = 'i') {
+        const n = ICONS[name] || ICONS.file
+        const body = n
+          .map(
+            ([t, a]) =>
+              '<' +
+              t +
+              ' ' +
+              Object.entries(a)
+                .map(([k, v]) => k + '="' + v + '"')
+                .join(' ') +
+              '/>'
+          )
+          .join('')
+        return (
+          '<svg class="' +
+          cls +
+          '" viewBox="0 0 24 24" aria-hidden="true" style="' +
+          style +
+          '">' +
+          body +
+          '</svg>'
+        )
+      }
+      document.querySelectorAll('svg[data-i]').forEach((el) => {
+        el.setAttribute('viewBox', '0 0 24 24')
+        el.innerHTML = svg(el.dataset.i).replace(/^<svg[^>]*>|<\/svg>$/g, '')
+      })
+
+      /** 扩展名 → [字形, 颜色键]（与 file-icons.html 的映射建议一致，只列原型用到的） */
+      function fileIcon(name, kind) {
+        if (kind === 'folder')
+          return svg('folder', 'color:var(--fi-folder);fill:var(--fi-folder-fill)')
+        const ext = name.toLowerCase().split('.').pop()
+        const m = {
+          xlsx: ['file-spreadsheet', 'excel'],
+          xls: ['file-spreadsheet', 'excel'],
+          docx: ['file-text', 'word'],
+          doc: ['file-text', 'word'],
+          pptx: ['presentation', 'powerpoint'],
+          pdf: ['file-type', 'pdf'],
+          msg: ['mail', 'mail'],
+          eml: ['mail', 'mail'],
+          log: ['scroll-text', 'log'],
+          ps1: ['file-terminal', 'script'],
+          sh: ['file-terminal', 'script'],
+          bat: ['file-terminal', 'script'],
+          sql: ['file-code', 'database'],
+          conf: ['file-cog', 'config'],
+          yaml: ['file-cog', 'config'],
+          properties: ['file-cog', 'config'],
+          xml: ['file-cog', 'config'],
+          zip: ['file-archive', 'archive'],
+          war: ['package', 'archive'],
+          jar: ['package', 'archive'],
+          csv: ['sheet', 'csv'],
+          md: ['book-text', 'markdown'],
+          pem: ['file-key', 'cert'],
+          java: ['file-code', 'code'],
+          png: ['file-image', 'image'],
+          txt: ['file-text', 'neutral']
+        }[ext] || ['file', 'neutral']
+        return svg(m[0], 'color:var(--fi-' + m[1] + ')')
+      }
+
+      const NOW = Date.now(),
+        MIN = 60e3,
+        H = 60 * MIN,
+        D = 24 * H
+      function rel(t) {
+        if (t == null) return '未使用'
+        const d = NOW - t
+        if (d < MIN) return 'たった今'
+        if (d < H) return Math.round(d / MIN) + ' 分前'
+        if (d < D) return Math.round(d / H) + ' 時間前'
+        if (d < 2 * D) return '昨日'
+        if (d < 30 * D) return Math.round(d / D) + ' 日前'
+        return Math.round(d / (30 * D)) + ' か月前'
+      }
+      const fmtAbs = (t) =>
+        new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(t)
+      /** 筛选用的规范化：NFKC（全角 / 半角统一）+ 小写 + 平假名转片假名 */
+      const norm = (s) =>
+        s
+          .normalize('NFKC')
+          .toLowerCase()
+          .replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+
+      // ---------- 样本数据（案件名为虚构） ----------
+      const E = (kind, name) => ({ kind, name })
+      const ALL = [
+        {
+          id: 'default',
+          name: '',
+          desc: null,
+          color: null,
+          last: NOW - 26 * D,
+          count: 3,
+          entries: [E('folder', 'デスクトップ'), E('folder', 'ダウンロード'), E('file', 'メモ.txt')]
+        },
+        {
+          id: 'w1',
+          name: 'A銀行 勘定系 保守',
+          desc: '本番・検証の 2 環境。夜間バッチ（23:00–05:00）の監視と月次パッチ適用。',
+          color: 'blue',
+          last: NOW - 2 * H,
+          count: 14,
+          entries: [
+            E('folder', '本番ログ（\\\\fs01\\bank-a\\logs）'),
+            E('file', '障害管理表_2026.xlsx'),
+            E('file', 'Re_ 月次パッチ適用のご連絡.msg'),
+            E('file', 'collect-logs.ps1')
+          ]
+        },
+        {
+          id: 'w2',
+          name: '物流WMS 障害対応 #4128',
+          desc: '出荷指示の二重登録。11/20 発生、DB ロック待ちが原因の可能性。',
+          color: 'red',
+          last: NOW - 4 * MIN,
+          count: 9,
+          entries: [
+            E('folder', 'wms-ap01:/var/log/wms'),
+            E('file', 'wms-app.log'),
+            E('file', '障害報告書_第1報.docx'),
+            E('file', 'lock_check.sql')
+          ]
+        },
+        {
+          id: 'w3',
+          name: '社内ポータル 月次パッチ',
+          desc: 'Windows Update と IIS の定例作業。手順書は共有フォルダー。',
+          color: 'green',
+          last: NOW - 3 * D,
+          count: 6,
+          entries: [
+            E('folder', '作業手順'),
+            E('file', '適用手順書.docx'),
+            E('file', 'web.config.xml'),
+            E('file', '作業ログ.txt')
+          ]
+        },
+        {
+          id: 'w4',
+          name: 'ECサイト リプレイス移行',
+          desc: 'オンプレ → クラウド移行。切替リハーサル 12 月。',
+          color: 'violet',
+          last: NOW - 1 * D - 3 * H,
+          count: 21,
+          entries: [
+            E('folder', '移行計画'),
+            E('file', '移行スケジュール.xlsx'),
+            E('file', '切替手順.pptx'),
+            E('file', 'shop.war')
+          ]
+        },
+        {
+          id: 'w5',
+          name: '保険基幹 夜間バッチ監視',
+          desc: 'ジョブネット JN_DAILY 系の遅延監視。',
+          color: 'amber',
+          last: NOW - 6 * D,
+          count: 7,
+          entries: [
+            E('folder', 'job-logs'),
+            E('file', 'jn_daily.log'),
+            E('file', 'rerun.sh'),
+            E('file', 'batch.properties')
+          ]
+        },
+        {
+          id: 'w6',
+          name: '自治体 住記 年度更新',
+          desc: '年度切替の確認作業。チェックリストに沿って実施。',
+          color: 'teal',
+          last: NOW - 12 * D,
+          count: 5,
+          entries: [
+            E('folder', '年度更新'),
+            E('file', 'チェックリスト.xlsx'),
+            E('file', '仕様書.pdf')
+          ]
+        },
+        {
+          id: 'w7',
+          name: '製造MES サーバ更改',
+          desc: 'ハードウェア保守切れに伴う更改。証明書の入れ替えあり。',
+          color: 'orange',
+          last: NOW - 20 * D,
+          count: 11,
+          entries: [
+            E('folder', '構成資料'),
+            E('file', 'server.pem'),
+            E('file', '更改計画.pptx'),
+            E('file', 'mes.conf')
+          ]
+        },
+        {
+          id: 'w8',
+          name: '電力 需給システム 定期点検',
+          desc: null,
+          color: 'slate',
+          last: NOW - 33 * D,
+          count: 4,
+          entries: [E('folder', '点検記録'), E('file', '点検結果.xlsx')]
+        },
+        {
+          id: 'w9',
+          name: '病院 電子カルテ連携',
+          desc: 'HL7 連携の受信エラー調査。',
+          color: 'pink',
+          last: NOW - 9 * D,
+          count: 8,
+          entries: [E('folder', 'hl7-inbox'), E('file', 'recv_error.log')]
+        },
+        {
+          id: 'w10',
+          name: '証券 約定照会 改修',
+          desc: null,
+          color: 'blue',
+          last: NOW - 15 * D,
+          count: 12,
+          entries: [E('file', '改修一覧.xlsx'), E('file', 'Trade.java')]
+        },
+        {
+          id: 'w11',
+          name: '通信 課金バッチ',
+          desc: null,
+          color: 'violet',
+          last: NOW - 41 * D,
+          count: 6,
+          entries: [E('file', 'billing.log')]
+        },
+        {
+          id: 'w12',
+          name: '大学 履修システム',
+          desc: null,
+          color: null,
+          last: NOW - 60 * D,
+          count: 3,
+          entries: [E('file', '問い合わせ.msg')]
+        },
+        {
+          id: 'w13',
+          name: '小売 POS 集計',
+          desc: null,
+          color: 'green',
+          last: NOW - 5 * D,
+          count: 9,
+          entries: [E('file', 'sales_20261121.csv')]
+        },
+        {
+          id: 'w14',
+          name: '不動産 契約管理',
+          desc: null,
+          color: 'orange',
+          last: NOW - 80 * D,
+          count: 2,
+          entries: [E('file', '契約書.pdf')]
+        },
+        {
+          id: 'w15',
+          name: '鉄道 運行情報配信',
+          desc: null,
+          color: 'teal',
+          last: NOW - 2 * D,
+          count: 10,
+          entries: [E('file', 'deliver.log')]
+        },
+        {
+          id: 'w16',
+          name: 'ホテル 予約連携',
+          desc: null,
+          color: 'pink',
+          last: NOW - 18 * D,
+          count: 4,
+          entries: [E('file', 'api-spec.md')]
+        },
+        {
+          id: 'w17',
+          name: '官公庁 統計基盤',
+          desc: null,
+          color: 'slate',
+          last: NOW - 100 * D,
+          count: 7,
+          entries: [E('file', 'etl.sql')]
+        },
+        {
+          id: 'w18',
+          name: '食品 受発注 EDI',
+          desc: null,
+          color: 'amber',
+          last: NOW - 7 * D,
+          count: 5,
+          entries: [E('file', 'edi.zip')]
+        },
+        {
+          id: 'w19',
+          name: '個人メモ',
+          desc: '雑多なメモ置き場。',
+          color: null,
+          last: NOW - 1 * H,
+          count: 3,
+          entries: [E('file', 'todo.md')]
+        }
+      ]
+      const displayName = (w) => (w.name === '' ? 'デフォルト' : w.name)
+
+      // ---------- 状态 ----------
+      const S = {
+        list: [],
+        currentId: 'w2',
+        open: false,
+        filter: '',
+        pos: 0,
+        detail: false,
+        edit: false,
+        view: 'ring',
+        frontSince: 0,
+        trigger: null,
+        flipped: null,
+        editingField: false
+      }
+      const FRONT_GUARD_MS = 250 // 卡片刚到正面的这段时间内，点击不切换（防止「卡片滑到光标下」的误点）
+      const STEP_DEG = 28,
+        TILT = 0.6,
+        MAX_D = 2
+      const cardEls = new Map()
+
+      function setCount(n) {
+        const keep = ALL.slice(0, n).map((w) => ({ ...w }))
+        // 已在列表中的项保留编辑结果
+        S.list = keep.map((w) => S.list.find((x) => x.id === w.id) || w)
+        if (!S.list.some((w) => w.id === S.currentId))
+          S.currentId = S.list[Math.min(1, S.list.length - 1)].id
+        renderShell()
+        if (S.open) rebuild(true)
+      }
+
+      function visible() {
+        let v = S.list
+        if (S.filter) {
+          const q = norm(S.filter.trim())
+          const scored = v
+            .map((w) => {
+              const n = norm(displayName(w)),
+                d = norm(w.desc || '')
+              const i = n.indexOf(q)
+              return { w, s: i === 0 ? 0 : i > 0 ? 1 : d.includes(q) ? 2 : -1 }
+            })
+            .filter((x) => x.s >= 0)
+          // 保持原有顺序（圆环的位置感），只把最佳匹配转到正面
+          v = scored.map((x) => x.w)
+          S._best = scored.length ? scored.reduce((a, b) => (b.s < a.s ? b : a)).w.id : null
+        }
+        if (S.edit && !S.filter) v = [...v, { id: '__new' }]
+        return v
+      }
+
+      // ---------- 应用外壳 ----------
+      function renderShell() {
+        const cur = S.list.find((w) => w.id === S.currentId)
+        $('wsName').textContent = displayName(cur)
+        const dot = $('wsDot')
+        dot.className = 'dot' + (cur.color ? '' : ' none')
+        dot.style.setProperty('--c', cur.color ? 'var(--ws-' + cur.color + ')' : '')
+        $('crumbWs').textContent = displayName(cur)
+        $('treeTitle').textContent = displayName(cur)
+        const files = cur.entries.filter((e) => e.kind === 'file')
+        const logName = (
+          files.find((e) => /\.log$/.test(e.name)) ||
+          files[0] || { name: 'メモ.txt' }
+        ).name
+        $('crumbFile').textContent = logName
+        $('tabName').innerHTML = fileIcon(logName, 'file') + esc(logName)
+        const tree = [
+          ...cur.entries.map((e) => [e.kind, e.name, 0]),
+          ['folder', 'archive', 1],
+          ['file', 'app-server.log', 1],
+          ['file', 'app-server.log.1', 1],
+          ['file', 'gc.log', 1],
+          ['file', 'deploy.ps1', 1],
+          ['file', 'application.yaml', 1],
+          ['file', 'release-20261101.zip', 1],
+          ['file', '障害報告書.docx', 1],
+          ['file', '設計書.pdf', 1],
+          ['file', '移行手順.pptx', 1],
+          ['file', 'server.pem', 1]
+        ]
+        $('tree').innerHTML = tree
+          .map(
+            ([k, n, lv], i) =>
+              '<div class="' +
+              (n === logName ? 'sel' : '') +
+              '" style="padding-left:' +
+              (8 + lv * 16) +
+              'px">' +
+              fileIcon(n, k) +
+              '<span>' +
+              esc(n) +
+              '</span></div>'
+          )
+          .join('')
+        $('log').innerHTML = [
+          ['2026-11-23 02:14:07.118', 'n', 'INFO ', '[batch-main] JN_DAILY_010 開始 (pid=48211)'],
+          [
+            '2026-11-23 02:14:07.502',
+            'n',
+            'INFO ',
+            '[batch-main] 入力ファイル 3 件を検出: /data/in/20261122/*.csv'
+          ],
+          [
+            '2026-11-23 02:14:09.990',
+            'w',
+            'WARN ',
+            '[db-pool] コネクション取得待ち 1500ms 超過 (active=20/20)'
+          ],
+          [
+            '2026-11-23 02:14:12.004',
+            'e',
+            'ERROR',
+            '[order-svc] ORA-00060: deadlock detected while waiting for resource'
+          ],
+          [
+            '2026-11-23 02:14:12.006',
+            'e',
+            'ERROR',
+            '[order-svc]   at jp.example.wms.OrderDao.insert(OrderDao.java:212)'
+          ],
+          ['2026-11-23 02:14:12.310', 'n', 'INFO ', '[order-svc] リトライ 1/3 ...'],
+          [
+            '2026-11-23 02:14:13.877',
+            'n',
+            'INFO ',
+            '[order-svc] 出荷指示 SO-20261122-00418 登録完了'
+          ],
+          [
+            '2026-11-23 02:14:14.020',
+            'w',
+            'WARN ',
+            '[order-svc] 同一キーの出荷指示が既に存在: SO-20261122-00418'
+          ],
+          [
+            '2026-11-23 02:15:00.000',
+            'n',
+            'INFO ',
+            '[batch-main] JN_DAILY_010 終了 rc=4 (経過 52.9s)'
+          ]
+        ]
+          .map(
+            ([t, c, l, m]) =>
+              '<span class="t">' + t + '</span> <span class="' + c + '">' + l + '</span> ' + esc(m)
+          )
+          .join('\n')
+      }
+
+      // ---------- 打开 / 关闭 ----------
+      function openPicker(trigger) {
+        if (S.open) return
+        S.open = true
+        S.trigger = trigger || $('wsBtn')
+        S.filter = ''
+        S.flipped = null
+        $('filter').value = ''
+        $('app').classList.add('open')
+        $('wsBtn').setAttribute('aria-expanded', 'true')
+        rebuild(true)
+        const v = visible()
+        S.pos = Math.max(
+          0,
+          v.findIndex((w) => w.id === S.currentId)
+        )
+        layout({ reveal: true })
+        requestAnimationFrame(() => requestAnimationFrame(() => layout()))
+        S.frontSince = performance.now()
+        setTimeout(() => $('filter').focus(), 0)
+      }
+      function closePicker() {
+        if (!S.open) return
+        S.open = false
+        $('app').classList.remove('open')
+        $('wsBtn').setAttribute('aria-expanded', 'false')
+        if (S.trigger) S.trigger.focus()
+      }
+      function commit(w) {
+        if (!w || w.id === '__new') return
+        const el = cardEls.get(w.id)
+        if (el) {
+          el.classList.remove('press')
+          void el.offsetWidth
+          el.classList.add('press')
+        }
+        const changed = w.id !== S.currentId
+        setTimeout(
+          () => {
+            S.currentId = w.id
+            renderShell()
+            closePicker()
+            if (changed) toast('「' + displayName(w) + '」に切り替えました')
+          },
+          matchMedia('(prefers-reduced-motion: reduce)').matches ||
+            $('app').classList.contains('reduced')
+            ? 0
+            : 140
+        )
+      }
+
+      // ---------- 圆环 ----------
+      function rebuild(resetPos) {
+        const v = visible()
+        const ring = $('ring')
+        // 复用已有卡片元素（键为工作区 id），新出现的才创建
+        const keep = new Set(v.map((w) => w.id))
+        for (const [id, el] of cardEls)
+          if (!keep.has(id)) {
+            el.remove()
+            cardEls.delete(id)
+          }
+        v.forEach((w) => {
+          let el = cardEls.get(w.id)
+          if (!el) {
+            el = document.createElement('div')
+            el.className = 'card' + (w.id === '__new' ? ' newcard' : '')
+            el.id = 'card-' + w.id
+            el.setAttribute('role', 'option')
+            el.innerHTML =
+              '<div class="inner"><div class="face f"></div><div class="face b"></div></div>'
+            el.addEventListener('click', (e) => onCardClick(e, w.id))
+            ring.appendChild(el)
+            cardEls.set(w.id, el)
+            el._d = undefined
+          }
+          el._front = null // 强制重绘内容
+        })
+        if (resetPos && S.filter && S._best)
+          S.pos = Math.max(
+            0,
+            v.findIndex((w) => w.id === S._best)
+          )
+        S.pos = Math.min(S.pos, Math.max(0, v.length - 1))
+        renderList()
+        layout()
+        renderCount()
+      }
+
+      function wrapDelta(i, pos, n) {
+        let d = i - pos
+        if (n > 1) {
+          d = ((d % n) + n) % n
+          if (d > n / 2) d -= n
+        }
+        return d
+      }
+
+      function layout(opt = {}) {
+        const v = visible()
+        const n = v.length
+        const cw = parseFloat(getComputedStyle($('stage')).getPropertyValue('--cw')) || 196
+        const R = cw * 2.15
+        const step = opt.reveal ? STEP_DEG * 0.45 : STEP_DEG
+        $('empty').hidden = n > 0
+        if (n === 0) renderEmpty()
+        v.forEach((w, i) => {
+          const el = cardEls.get(w.id)
+          if (!el) return
+          const d = wrapDelta(i, S.pos, n)
+          const ad = Math.abs(d)
+          const shown = ad <= MAX_D
+          const dc = shown ? d : Math.sign(d) * (MAX_D + 1)
+          const a = dc * step,
+            rad = (a * Math.PI) / 180
+          const x = Math.sin(rad) * R,
+            z = (Math.cos(rad) - 1) * R
+          const op = opt.reveal ? (ad === 0 ? 1 : 0) : shown ? 1 : 0
+          const tf =
+            'translate3d(' +
+            x.toFixed(1) +
+            'px,0,' +
+            z.toFixed(1) +
+            'px) rotateY(' +
+            (a * TILT).toFixed(2) +
+            'deg)'
+          const jump =
+            el._d !== undefined && Math.abs(d - el._d) > 1.5 && (shown || Math.abs(el._d) <= MAX_D)
+          if (jump) {
+            // 绕环跳转（例如 3 张时最左的卡转到最右）：不穿过正面，淡出后在新位置淡入
+            el.classList.add('nojump')
+            el.style.opacity = '0'
+            el.style.transform = tf
+            void el.offsetWidth
+            el.classList.remove('nojump')
+          } else {
+            el.style.transform = tf
+          }
+          el.style.opacity = op
+          el.style.zIndex = String(10 - ad)
+          el.style.pointerEvents = shown ? '' : 'none'
+          el.style.setProperty('--dim', [0, 0.28, 0.62][ad] ?? 0.62)
+          el.classList.toggle('front', d === 0)
+          el.classList.toggle('side', d !== 0)
+          el.setAttribute('aria-selected', d === 0 ? 'true' : 'false')
+          el.setAttribute('aria-hidden', shown ? 'false' : 'true')
+          el._d = d
+          const isFront = d === 0
+          if (el._front !== isFront || el._detail !== S.detail || el._edit !== S.edit) {
+            el._front = isFront
+            el._detail = S.detail
+            el._edit = S.edit
+            renderCard(el, w, isFront)
+          }
+          if (!isFront && el.classList.contains('flipped')) el.classList.remove('flipped')
+        })
+        const front = v[S.pos]
+        $('filter').setAttribute(
+          'aria-activedescendant',
+          front ? (S.view === 'ring' ? 'card-' : 'row-') + front.id : ''
+        )
+        renderIndicator(v)
+        renderFoot()
+        ;[...$('list').children].forEach((li, i) => {
+          li.classList.toggle('on', i === S.pos)
+          li.setAttribute('aria-selected', i === S.pos ? 'true' : 'false')
+        })
+        const on = $('list').children[S.pos]
+        if (on && S.view === 'list') on.scrollIntoView({ block: 'nearest' })
+      }
+
+      function highlight(name) {
+        if (!S.filter) return esc(name)
+        const q = norm(S.filter.trim()),
+          n = norm(name)
+        const i = n.indexOf(q)
+        if (i < 0 || n.length !== name.length) return esc(name)
+        return (
+          esc(name.slice(0, i)) +
+          '<mark>' +
+          esc(name.slice(i, i + q.length)) +
+          '</mark>' +
+          esc(name.slice(i + q.length))
+        )
+      }
+
+      function renderCard(el, w, isFront) {
+        const f = el.querySelector('.face.f'),
+          b = el.querySelector('.face.b')
+        if (w.id === '__new') {
+          f.innerHTML =
+            svg('plus') +
+            '<span>新しいワークスペース</span>' +
+            (isFront ? '<span style="font-size:11.5px">Enter で作成</span>' : '')
+          el.setAttribute('aria-label', '新しいワークスペースを作成')
+          return
+        }
+        const idx = S.list.indexOf(w)
+        const num = !S.filter && !S.edit && idx < 9 ? idx + 1 : null
+        const cur = w.id === S.currentId
+        const band =
+          '<div class="band" style="' +
+          (w.color ? '--c:var(--ws-' + w.color + ')' : '') +
+          '"></div>'
+        el.setAttribute(
+          'aria-label',
+          (num ? num + '. ' : '') +
+            displayName(w) +
+            (cur ? '（使用中）' : '') +
+            '、最終使用 ' +
+            rel(w.last)
+        )
+        if (S.edit && isFront) {
+          const isDefault = w.id === 'default'
+          f.innerHTML =
+            band +
+            '<div class="form">' +
+            '<label>名前<input type="text" data-f="name" value="' +
+            esc(w.name) +
+            '" placeholder="デフォルト" maxlength="80"></label>' +
+            (isDefault && w.name !== ''
+              ? '<button class="linkbtn" data-act="restore">既定の名前に戻す</button>'
+              : '') +
+            '<label>説明<textarea data-f="desc" rows="' +
+            (S.detail ? 4 : 2) +
+            '" placeholder="案件の概要、環境、連絡先など">' +
+            esc(w.desc || '') +
+            '</textarea></label>' +
+            '<label>色<span class="swatches" role="radiogroup" aria-label="色">' +
+            '<button class="none" role="radio" aria-checked="' +
+            !w.color +
+            '" data-color="" title="なし" aria-label="なし"></button>' +
+            Object.entries(WS)
+              .map(
+                ([k, c]) =>
+                  '<button role="radio" aria-checked="' +
+                  (w.color === k) +
+                  '" data-color="' +
+                  k +
+                  '" title="' +
+                  c.ja +
+                  '" aria-label="' +
+                  c.ja +
+                  '" style="--c:var(--ws-' +
+                  k +
+                  ')"></button>'
+              )
+              .join('') +
+            '</span></label>' +
+            '<div class="ffoot"><span>変更は自動で保存されます</span>' +
+            (isDefault
+              ? ''
+              : '<button class="btn" data-act="delete">' +
+                svg('trash', 'width:14px;height:14px') +
+                '削除…</button>') +
+            '</div></div>'
+          b.innerHTML =
+            '<h3>「' +
+            esc(displayName(w)) +
+            '」を削除しますか？</h3><p>ワークスペースと登録した ' +
+            w.count +
+            ' 項目だけを削除します。ディスク上のファイルやフォルダーは削除されません。</p>' +
+            '<div class="acts"><button class="btn outline" data-act="cancel">キャンセル</button><button class="btn solid-d" data-act="confirm">削除</button></div>'
+          wireForm(el, w)
+          return
+        }
+        const top =
+          '<div class="ctop">' +
+          (num ? '<kbd>' + num + '</kbd>' : '') +
+          (cur ? '<span class="pill cur">使用中</span>' : '') +
+          '</div>'
+        const name = '<div class="name">' + highlight(displayName(w)) + '</div>'
+        let mid = '',
+          meta
+        if (S.detail) {
+          mid =
+            (w.desc
+              ? '<p class="desc">' + esc(w.desc) + '</p>'
+              : '<p class="desc" style="font-style:italic;opacity:.8">説明なし</p>') +
+            '<ul class="entries">' +
+            w.entries
+              .slice(0, 4)
+              .map(
+                (e) => '<li>' + fileIcon(e.name, e.kind) + '<span>' + esc(e.name) + '</span></li>'
+              )
+              .join('') +
+            (w.count > Math.min(4, w.entries.length)
+              ? '<li class="more">ほか ' + (w.count - Math.min(4, w.entries.length)) + ' 項目</li>'
+              : '') +
+            '</ul>'
+          meta =
+            '<div class="meta"><div class="row2"><span>最終使用</span><span>' +
+            (w.last ? fmtAbs(w.last) : '—') +
+            '</span></div></div>'
+        } else {
+          meta =
+            '<div class="meta"><div class="row2"><span>' +
+            rel(w.last) +
+            '</span><span>' +
+            w.count +
+            ' 項目</span></div></div>'
+        }
+        const hint =
+          '<div class="hint">' +
+          (S.edit ? '' : cur ? '使用中のワークスペース' : '<kbd>Enter</kbd> / クリックで切り替え') +
+          '</div>'
+        f.innerHTML =
+          band + '<div class="cbody">' + top + name + mid + meta + (S.edit ? '' : hint) + '</div>'
+      }
+
+      function wireForm(el, w) {
+        const name = el.querySelector('[data-f=name]'),
+          desc = el.querySelector('[data-f=desc]')
+        const save = () => {
+          const nv = name.value.trim()
+          if (w.id !== 'default' && nv === '') {
+            name.value = w.name
+            return
+          } // 非默认工作区名称不能为空：还原
+          if (nv !== w.name || desc.value.trim() !== (w.desc || '')) {
+            w.name = nv
+            w.desc = desc.value.trim() || null
+            renderShell()
+            el._front = null // 名称变了，侧面状态重绘时也更新
+          }
+        }
+        for (const f of [name, desc]) {
+          f.addEventListener('focus', () => (S.editingField = true))
+          f.addEventListener('blur', () => {
+            S.editingField = false
+            save()
+          })
+          f.addEventListener('keydown', (e) => {
+            if (e.isComposing || e.keyCode === 229) return
+            if (e.key === 'Escape') {
+              // 撤销本字段的修改，焦点回到筛选框（不关闭选择器）
+              e.stopPropagation()
+              e.preventDefault()
+              f.value = f === name ? w.name : w.desc || ''
+              $('filter').focus()
+            } else if (e.key === 'Enter' && f === name) {
+              e.preventDefault()
+              e.stopPropagation()
+              $('filter').focus()
+            } else e.stopPropagation() // 输入框中的 ←→ / 数字 / Enter 不交给圆环
+          })
+        }
+        el.querySelectorAll('[data-color]').forEach((bt) =>
+          bt.addEventListener('click', (e) => {
+            e.stopPropagation()
+            w.color = bt.dataset.color || null
+            renderShell()
+            el.querySelectorAll('[data-color]').forEach((x) =>
+              x.setAttribute('aria-checked', String(x === bt))
+            )
+            el.querySelector('.band').style.cssText = w.color ? '--c:var(--ws-' + w.color + ')' : ''
+          })
+        )
+        el.querySelectorAll('[data-act]').forEach((bt) =>
+          bt.addEventListener('click', (e) => {
+            e.stopPropagation()
+            const act = bt.dataset.act
+            if (act === 'restore') {
+              w.name = ''
+              renderShell()
+              el._front = null
+              layout()
+            }
+            if (act === 'delete') {
+              el.classList.add('flipped')
+              S.flipped = w.id
+              setTimeout(() => el.querySelector('[data-act=cancel]').focus(), 30)
+            }
+            if (act === 'cancel') {
+              el.classList.remove('flipped')
+              S.flipped = null
+              el.querySelector('[data-act=delete]').focus()
+            }
+            if (act === 'confirm') removeWs(w)
+          })
+        )
+        el.querySelector('.face.b').addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation()
+            e.preventDefault()
+            el.classList.remove('flipped')
+            S.flipped = null
+            el.querySelector('[data-act=delete]').focus()
+          } else if (e.key !== 'Tab') e.stopPropagation()
+        })
+      }
+
+      function removeWs(w) {
+        const el = cardEls.get(w.id)
+        el.style.transition =
+          'opacity var(--dur-base) var(--ease-exit), transform var(--dur-base) var(--ease-exit)'
+        el.style.opacity = '0'
+        el.style.transform += ' scale(0.9)'
+        setTimeout(() => {
+          S.list = S.list.filter((x) => x !== w)
+          if (S.currentId === w.id) S.currentId = 'default' // 原型简化：实际沿用现有删除流程
+          el.style.transition = ''
+          S.flipped = null
+          renderShell()
+          rebuild()
+          $('filter').focus()
+          toast('「' + displayName(w) + '」を削除しました')
+        }, 200)
+      }
+
+      function createWs() {
+        const n = S.list.filter((w) => w.name.startsWith('新しいワークスペース')).length + 1
+        const w = {
+          id: 'n' + Date.now(),
+          name: '新しいワークスペース' + (n > 1 ? ' ' + n : ''),
+          desc: null,
+          color: null,
+          last: null,
+          count: 0,
+          entries: []
+        }
+        S.list.push(w)
+        rebuild()
+        S.pos = visible().findIndex((x) => x.id === w.id)
+        layout()
+        S.frontSince = performance.now()
+        setTimeout(() => {
+          const i = cardEls.get(w.id).querySelector('[data-f=name]')
+          i.focus()
+          i.select()
+        }, 60)
+      }
+
+      function rotate(delta) {
+        const n = visible().length
+        if (n < 2) return
+        if (S.flipped) {
+          const el = cardEls.get(S.flipped)
+          el && el.classList.remove('flipped')
+          S.flipped = null
+        }
+        S.pos = (((S.pos + delta) % n) + n) % n
+        S.frontSince = performance.now()
+        layout()
+        announce()
+      }
+      function rotateTo(i) {
+        if (i !== S.pos) rotate(wrapDelta(i, S.pos, visible().length))
+      }
+
+      function announce() {
+        const v = visible(),
+          w = v[S.pos]
+        if (!w) return
+        $('live').textContent =
+          w.id === '__new'
+            ? '新しいワークスペースを作成'
+            : S.pos +
+              1 +
+              ' / ' +
+              v.length +
+              '、' +
+              displayName(w) +
+              (w.id === S.currentId ? '（使用中）' : '')
+      }
+
+      function onCardClick(e, id) {
+        const v = visible(),
+          i = v.findIndex((w) => w.id === id)
+        if (i < 0) return
+        if (i !== S.pos) {
+          rotateTo(i)
+          return
+        } // 侧面卡片：只转到正面
+        if (e.target.closest('.form, .face.b')) return // 编辑表单内的点击
+        if (performance.now() - S.frontSince < FRONT_GUARD_MS) return // 刚转到正面：忽略（误点保护）
+        if (id === '__new') {
+          createWs()
+          return
+        }
+        if (S.edit) {
+          const nm = cardEls.get(id).querySelector('[data-f=name]')
+          nm && nm.focus()
+          return
+        }
+        commit(v[i])
+      }
+
+      function renderIndicator(v) {
+        const ind = $('indicator')
+        const real = v.filter((w) => w.id !== '__new')
+        if (S.view !== 'ring' || v.length === 0) {
+          ind.innerHTML = ''
+          return
+        }
+        if (v.length <= 12) {
+          ind.innerHTML = v
+            .map(
+              (w, i) =>
+                '<button tabindex="-1" aria-hidden="true" class="' +
+                (i === S.pos ? 'on' : '') +
+                (w.id === S.currentId ? ' cur' : '') +
+                '" data-i="' +
+                i +
+                '" title="' +
+                esc(w.id === '__new' ? '新規' : displayName(w)) +
+                '"></button>'
+            )
+            .join('')
+        } else {
+          ind.innerHTML =
+            '<span>' +
+            (S.pos + 1) +
+            ' / ' +
+            v.length +
+            '</span>' +
+            (S.filter
+              ? ''
+              : '<span class="tip">数が多いときは文字を入力して絞り込むか、リスト表示へ</span>')
+        }
+        ind
+          .querySelectorAll('button')
+          .forEach((b) => b.addEventListener('click', () => rotateTo(+b.dataset.i)))
+      }
+
+      function renderCount() {
+        const real = visible().filter((w) => w.id !== '__new').length
+        $('count').textContent = S.filter ? real + ' / ' + S.list.length : S.list.length + ' 件'
+      }
+
+      function renderEmpty() {
+        $('empty').innerHTML =
+          '<strong>「' +
+          esc(S.filter) +
+          '」に一致するワークスペースはありません</strong><span>名前と説明を検索しています。<kbd>Esc</kbd> で絞り込みを解除</span>'
+      }
+
+      function renderFoot() {
+        const k = (keys, label) =>
+          '<span class="k">' + keys.map((x) => '<kbd>' + x + '</kbd>').join('') + label + '</span>'
+        let html = ''
+        if (S.edit) {
+          html += '<span class="editnote">編集中：クリックや Enter では切り替わりません</span>'
+          html +=
+            k(['←', '→'], '移動') +
+            (S.filter ? '' : k(['Alt', '←→'], '並べ替え')) +
+            k(['Tab'], '入力欄へ')
+        } else if (S.view === 'ring') {
+          html +=
+            k(['←', '→'], '回転') +
+            k(['Enter'], '切り替え') +
+            (S.filter ? '' : k(['1–9'], '直接切り替え')) +
+            '<span class="k">文字入力で絞り込み</span>'
+        } else {
+          html +=
+            k(['↑', '↓'], '移動') +
+            k(['Enter'], '切り替え') +
+            (S.filter ? '' : k(['1–9'], '直接切り替え'))
+        }
+        html += k(['Esc'], S.filter ? '絞り込み解除' : '閉じる')
+        html +=
+          '<button class="btn manage" id="manage" style="height:24px;font-size:12px">' +
+          svg('layout-list', 'width:14px;height:14px') +
+          'ワークスペース一覧を開く</button>'
+        $('pfoot').innerHTML = html
+        $('manage').addEventListener('click', () => {
+          closePicker()
+          toast('ワークスペース一覧（既存のページ）を開きます')
+        })
+      }
+
+      function renderList() {
+        const v = visible()
+        $('list').innerHTML = v
+          .map((w, i) => {
+            if (w.id === '__new')
+              return (
+                '<li class="row" role="option" id="row-__new" data-i="' +
+                i +
+                '"><span class="bar"></span><span>' +
+                svg('plus') +
+                '</span><span class="nm">新しいワークスペース</span><span></span><span></span></li>'
+              )
+            const idx = S.list.indexOf(w),
+              num = !S.filter && !S.edit && idx < 9 ? idx + 1 : ''
+            return (
+              '<li class="row" role="option" id="row-' +
+              w.id +
+              '" data-i="' +
+              i +
+              '"><span class="bar" style="' +
+              (w.color ? '--c:var(--ws-' + w.color + ')' : '') +
+              '"></span>' +
+              '<span>' +
+              (num ? '<kbd>' + num + '</kbd>' : '') +
+              '</span><span style="min-width:0"><div class="nm">' +
+              highlight(displayName(w)) +
+              '</div>' +
+              (S.detail && w.desc ? '<div class="sub">' + esc(w.desc) + '</div>' : '') +
+              '</span>' +
+              '<span class="tm">' +
+              (S.detail ? w.count + ' 項目・' : '') +
+              rel(w.last) +
+              '</span>' +
+              (w.id === S.currentId ? '<span class="pill cur">使用中</span>' : '<span></span>') +
+              '</li>'
+            )
+          })
+          .join('')
+        ;[...$('list').children].forEach((li) =>
+          li.addEventListener('click', () => {
+            const i = +li.dataset.i,
+              w = visible()[i]
+            S.pos = i
+            layout()
+            if (w.id === '__new') createWsFromList()
+            else if (!S.edit) commit(w)
+          })
+        )
+      }
+      function createWsFromList() {
+        setView('ring')
+        createWs()
+      }
+
+      function setView(v) {
+        S.view = v
+        $('vRing').setAttribute('aria-pressed', String(v === 'ring'))
+        $('vList').setAttribute('aria-pressed', String(v === 'list'))
+        $('stage').hidden = v !== 'ring'
+        $('list').hidden = v !== 'list'
+        $('filter').setAttribute('aria-controls', v === 'ring' ? 'ring' : 'list')
+        layout()
+      }
+
+      // ---------- 键盘 ----------
+      function onKey(e) {
+        if (!S.open || e.isComposing || e.keyCode === 229) return // IME 变换中的按键一律不处理
+        const v = visible()
+        const inFilter = e.target === $('filter')
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          if (S.filter) {
+            S.filter = ''
+            $('filter').value = ''
+            rebuild()
+            S.pos = Math.max(
+              0,
+              visible().findIndex((w) => w.id === S.currentId)
+            )
+            layout()
+            return
+          }
+          closePicker()
+          return
+        }
+        if (e.key === 'Tab') {
+          trapTab(e)
+          return
+        }
+        if (!inFilter && e.target.closest('.seg2, .sw, .pfoot')) {
+          if (e.key === 'Enter' || e.key === ' ') return
+        }
+        if (S.view === 'ring' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          e.preventDefault()
+          const dir = e.key === 'ArrowLeft' ? -1 : 1
+          if (e.altKey && S.edit && !S.filter) {
+            reorder(dir)
+            return
+          }
+          rotate(dir)
+          return
+        }
+        if (S.view === 'list' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault()
+          const n = v.length
+          if (!n) return
+          S.pos = Math.min(n - 1, Math.max(0, S.pos + (e.key === 'ArrowUp' ? -1 : 1)))
+          layout()
+          announce()
+          return
+        }
+        if ((e.key === 'Home' || e.key === 'End') && inFilter && !S.filter) {
+          e.preventDefault()
+          const n = v.length
+          if (n) {
+            S.view === 'ring'
+              ? rotateTo(e.key === 'Home' ? 0 : n - 1)
+              : ((S.pos = e.key === 'Home' ? 0 : n - 1), layout())
+          }
+          return
+        }
+        if (
+          e.key === 'Enter' &&
+          (inFilter || e.target === document.body || e.target.closest('.panel'))
+        ) {
+          if (e.target.closest('.seg2, .sw, .pfoot')) return
+          e.preventDefault()
+          const w = v[S.pos]
+          if (!w) return
+          if (w.id === '__new') {
+            createWs()
+            return
+          }
+          if (S.edit) {
+            const nm = cardEls.get(w.id)?.querySelector('[data-f=name]')
+            nm && nm.focus()
+            return
+          }
+          commit(w)
+          return
+        }
+        // 1–9：筛选框为空、非编辑模式时直接切换（按 sortOrder，卡片上有编号）
+        if (
+          /^[1-9]$/.test(e.key) &&
+          inFilter &&
+          !S.filter &&
+          !S.edit &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.metaKey
+        ) {
+          e.preventDefault()
+          const w = S.list[+e.key - 1]
+          if (!w) return
+          const i = visible().indexOf(w)
+          if (S.view === 'ring') rotateTo(i)
+          else {
+            S.pos = i
+            layout()
+          }
+          commit(w)
+          return
+        }
+        // 其他可打印字符：焦点不在筛选框时转入筛选框（打字即筛选）
+        if (
+          !inFilter &&
+          e.key.length === 1 &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          !e.target.matches('input, textarea')
+        ) {
+          $('filter').focus()
+        }
+      }
+      function trapTab(e) {
+        const f = [
+          ...$('panel').querySelectorAll(
+            'input, textarea, button:not([tabindex="-1"]), [tabindex="0"]'
+          )
+        ].filter(
+          (x) =>
+            x.offsetParent !== null &&
+            !x.closest('.card:not(.front)') &&
+            !x.closest('.flipped .face.f') &&
+            !(x.closest('.face.b') && !x.closest('.flipped'))
+        )
+        if (!f.length) return
+        const i = f.indexOf(document.activeElement)
+        e.preventDefault()
+        const next = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : i === f.length - 1 ? 0 : i + 1
+        f[next].focus()
+      }
+      function reorder(dir) {
+        const list = S.list,
+          w = visible()[S.pos]
+        if (!w || w.id === '__new') return
+        const i = list.indexOf(w),
+          j = i + dir
+        if (j < 0 || j >= list.length) return
+        ;[list[i], list[j]] = [list[j], list[i]]
+        rebuild()
+        S.pos = visible().indexOf(w)
+        layout()
+        $('live').textContent = displayName(w) + 'を ' + (j + 1) + ' 番目に移動'
+      }
+
+      // ---------- 滚轮：只转动 ----------
+      let wheelAcc = 0,
+        wheelLast = 0,
+        wheelIdle
+      $('stage').addEventListener(
+        'wheel',
+        (e) => {
+          e.preventDefault()
+          const dlt = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+          wheelAcc += e.deltaMode === 1 ? dlt * 40 : dlt
+          clearTimeout(wheelIdle)
+          wheelIdle = setTimeout(() => (wheelAcc = 0), 180)
+          const now = performance.now()
+          if (Math.abs(wheelAcc) >= 50 && now - wheelLast > 70) {
+            rotate(Math.sign(wheelAcc))
+            wheelAcc = 0
+            wheelLast = now
+          }
+        },
+        { passive: false }
+      )
+
+      // ---------- 事件 ----------
+      $('wsBtn').addEventListener('click', (e) =>
+        S.open ? closePicker() : openPicker(e.currentTarget)
+      )
+      $('addrBtn').addEventListener('click', (e) => openPicker(e.currentTarget))
+      $('scrim').addEventListener('click', closePicker)
+      $('panel').addEventListener('keydown', onKey)
+      window.addEventListener('keydown', (e) => {
+        if (e.altKey && (e.key === 'w' || e.key === 'W') && !e.ctrlKey) {
+          e.preventDefault()
+          S.open ? closePicker() : openPicker($('wsBtn'))
+        }
+      })
+      $('filter').addEventListener('input', (e) => {
+        if (e.isComposing) return // 变换中先不筛选，确定后（compositionend）再筛
+        applyFilter()
+      })
+      $('filter').addEventListener('compositionend', applyFilter)
+      function applyFilter() {
+        S.filter = $('filter').value
+        rebuild(true)
+        announce()
+      }
+      $('vRing').addEventListener('click', () => setView('ring'))
+      $('vList').addEventListener('click', () => setView('list'))
+      $('swDetail').addEventListener('click', (e) => {
+        S.detail = !S.detail
+        e.currentTarget.setAttribute('aria-checked', String(S.detail))
+        $('panel').classList.toggle('detail', S.detail)
+        renderList()
+        layout()
+      })
+      $('swEdit').addEventListener('click', (e) => {
+        S.edit = !S.edit
+        e.currentTarget.setAttribute('aria-checked', String(S.edit))
+        $('panel').classList.toggle('editing', S.edit)
+        const keep = visible()[S.pos]
+        rebuild()
+        if (keep)
+          S.pos = Math.max(
+            0,
+            visible().findIndex((w) => w.id === keep.id)
+          )
+        layout()
+      })
+
+      function toast(msg) {
+        const t = $('toast')
+        t.textContent = msg
+        t.classList.add('show')
+        clearTimeout(toast._t)
+        toast._t = setTimeout(() => t.classList.remove('show'), 2200)
+      }
+
+      // 原型控制
+      function seg(id, fn) {
+        $(id)
+          .querySelectorAll('button')
+          .forEach((b) =>
+            b.addEventListener('click', () => {
+              $(id)
+                .querySelectorAll('button')
+                .forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+              fn(b.dataset.v)
+            })
+          )
+      }
+      seg('pMode', (v) => $('app').classList.toggle('dark', v === 'dark'))
+      seg('pCount', (v) => setCount(+v))
+      $('pTheme').addEventListener('change', (e) =>
+        $('app').setAttribute('data-theme', e.target.value)
+      )
+      $('pReduced').addEventListener('change', (e) =>
+        $('app').classList.toggle('reduced', e.target.checked)
+      )
+
+      setCount(8)
+      const qs = new URLSearchParams(location.search)
+      if (qs.get('theme')) {
+        $('app').dataset.theme = qs.get('theme')
+        $('pTheme').value = qs.get('theme')
+      }
+      if (qs.get('mode') === 'light') $('pMode').querySelector('[data-v=light]').click()
+      if (qs.get('count'))
+        $('pCount')
+          .querySelector('[data-v="' + qs.get('count') + '"]')
+          .click()
+      if (qs.get('detail')) $('swDetail').click()
+      if (qs.get('edit')) $('swEdit').click()
+      if (qs.get('open')) openPicker($('wsBtn'))
+    </script>
+  </body>
+</html>

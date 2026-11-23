@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 F「角（つの）」〔简约线条〕：一笔画出的牛角，像两只手把下面的案件卡片托起来——
+       「牛马」的牛，也是「扛起案件」。等宽线条，圆头；无底板。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <path d="M4 4.5c0 7 4.5 10.5 12 10.5s12-3.5 12-10.5" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="3.5" stroke-linecap="round"/>
+  <rect x="9.75" y="18.75" width="12.5" height="9.5" rx="2.25" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="3.5"/>
+  <path d="M14 23.5h4" fill="none" style="stroke: var(--logo-accent, #e8a21f)" stroke-width="3" stroke-linecap="round"/>
+</svg>

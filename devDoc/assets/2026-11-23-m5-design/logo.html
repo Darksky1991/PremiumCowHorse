@@ -1,0 +1,1350 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>应用标志方案</title>
+    <style>
+      [data-theme='default'] {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --accent: oklch(0.97 0 0);
+        --accent-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.985 0 0);
+        --sidebar-foreground: oklch(0.145 0 0);
+        --sidebar-primary: oklch(0.205 0 0);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.97 0 0);
+        --sidebar-accent-foreground: oklch(0.205 0 0);
+        --sidebar-border: oklch(0.922 0 0);
+        --sidebar-ring: oklch(0.708 0 0);
+        --log-error: oklch(0.54 0.2 27);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.13 250);
+        --log-time: oklch(0.52 0 0);
+      }
+      [data-theme='default'].dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --popover: oklch(0.205 0 0);
+        --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --accent: oklch(0.269 0 0);
+        --accent-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --sidebar-foreground: oklch(0.985 0 0);
+        --sidebar-primary: oklch(0.488 0.243 264.376);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.269 0 0);
+        --sidebar-accent-foreground: oklch(0.985 0 0);
+        --sidebar-border: oklch(1 0 0 / 10%);
+        --sidebar-ring: oklch(0.556 0 0);
+        --log-error: oklch(0.72 0.17 25);
+        --log-warn: oklch(0.82 0.13 80);
+        --log-info: oklch(0.76 0.1 240);
+        --log-time: oklch(0.708 0 0);
+      }
+      [data-theme='aitetsu'] {
+        --background: oklch(0.985 0.004 250);
+        --foreground: oklch(0.22 0.025 258);
+        --card: oklch(0.995 0.002 250);
+        --card-foreground: oklch(0.22 0.025 258);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.22 0.025 258);
+        --primary: oklch(0.5 0.13 248);
+        --primary-foreground: oklch(0.985 0.005 245);
+        --secondary: oklch(0.95 0.01 250);
+        --secondary-foreground: oklch(0.28 0.03 258);
+        --muted: oklch(0.955 0.008 250);
+        --muted-foreground: oklch(0.5 0.025 255);
+        --accent: oklch(0.93 0.022 245);
+        --accent-foreground: oklch(0.25 0.04 255);
+        --destructive: oklch(0.56 0.21 27);
+        --border: oklch(0.9 0.012 250);
+        --input: oklch(0.88 0.014 250);
+        --ring: oklch(0.6 0.12 242);
+        --chart-1: oklch(0.6 0.13 240);
+        --chart-2: oklch(0.62 0.1 190);
+        --chart-3: oklch(0.52 0.13 280);
+        --chart-4: oklch(0.72 0.14 75);
+        --chart-5: oklch(0.6 0.17 25);
+        --sidebar: oklch(0.965 0.008 250);
+        --sidebar-foreground: oklch(0.22 0.025 258);
+        --sidebar-primary: oklch(0.5 0.13 248);
+        --sidebar-primary-foreground: oklch(0.985 0.005 245);
+        --sidebar-accent: oklch(0.925 0.02 248);
+        --sidebar-accent-foreground: oklch(0.25 0.04 255);
+        --sidebar-border: oklch(0.9 0.012 250);
+        --sidebar-ring: oklch(0.6 0.12 242);
+        --log-error: oklch(0.54 0.19 25);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.11 240);
+        --log-time: oklch(0.5 0.025 255);
+      }
+      [data-theme='aitetsu'].dark {
+        --background: oklch(0.175 0.022 256);
+        --foreground: oklch(0.93 0.012 240);
+        --card: oklch(0.21 0.025 256);
+        --card-foreground: oklch(0.93 0.012 240);
+        --popover: oklch(0.225 0.027 256);
+        --popover-foreground: oklch(0.93 0.012 240);
+        --primary: oklch(0.8 0.12 212);
+        --primary-foreground: oklch(0.2 0.035 245);
+        --secondary: oklch(0.27 0.03 256);
+        --secondary-foreground: oklch(0.93 0.012 240);
+        --muted: oklch(0.25 0.026 256);
+        --muted-foreground: oklch(0.71 0.03 245);
+        --accent: oklch(0.29 0.042 250);
+        --accent-foreground: oklch(0.96 0.01 240);
+        --destructive: oklch(0.69 0.18 22);
+        --border: oklch(0.3 0.03 256);
+        --input: oklch(0.33 0.035 256);
+        --ring: oklch(0.72 0.12 212);
+        --chart-1: oklch(0.78 0.12 212);
+        --chart-2: oklch(0.76 0.12 170);
+        --chart-3: oklch(0.7 0.14 285);
+        --chart-4: oklch(0.82 0.13 82);
+        --chart-5: oklch(0.7 0.17 25);
+        --sidebar: oklch(0.15 0.02 256);
+        --sidebar-foreground: oklch(0.93 0.012 240);
+        --sidebar-primary: oklch(0.8 0.12 212);
+        --sidebar-primary-foreground: oklch(0.2 0.035 245);
+        --sidebar-accent: oklch(0.25 0.036 252);
+        --sidebar-accent-foreground: oklch(0.96 0.01 240);
+        --sidebar-border: oklch(0.26 0.03 256);
+        --sidebar-ring: oklch(0.72 0.12 212);
+        --log-error: oklch(0.72 0.16 22);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.8 0.1 212);
+        --log-time: oklch(0.66 0.03 245);
+      }
+      [data-theme='washi'] {
+        --background: oklch(0.975 0.008 85);
+        --foreground: oklch(0.25 0.022 262);
+        --card: oklch(0.99 0.005 85);
+        --card-foreground: oklch(0.25 0.022 262);
+        --popover: oklch(0.99 0.005 85);
+        --popover-foreground: oklch(0.25 0.022 262);
+        --primary: oklch(0.43 0.12 263);
+        --primary-foreground: oklch(0.975 0.008 85);
+        --secondary: oklch(0.94 0.012 85);
+        --secondary-foreground: oklch(0.3 0.03 262);
+        --muted: oklch(0.945 0.01 85);
+        --muted-foreground: oklch(0.5 0.02 70);
+        --accent: oklch(0.915 0.02 82);
+        --accent-foreground: oklch(0.27 0.03 262);
+        --destructive: oklch(0.53 0.19 32);
+        --border: oklch(0.89 0.015 80);
+        --input: oklch(0.87 0.017 80);
+        --ring: oklch(0.55 0.11 263);
+        --chart-1: oklch(0.5 0.12 263);
+        --chart-2: oklch(0.6 0.16 35);
+        --chart-3: oklch(0.6 0.1 135);
+        --chart-4: oklch(0.74 0.14 80);
+        --chart-5: oklch(0.5 0.1 320);
+        --sidebar: oklch(0.955 0.012 82);
+        --sidebar-foreground: oklch(0.25 0.022 262);
+        --sidebar-primary: oklch(0.43 0.12 263);
+        --sidebar-primary-foreground: oklch(0.975 0.008 85);
+        --sidebar-accent: oklch(0.915 0.022 80);
+        --sidebar-accent-foreground: oklch(0.27 0.03 262);
+        --sidebar-border: oklch(0.885 0.016 80);
+        --sidebar-ring: oklch(0.55 0.11 263);
+        --log-error: oklch(0.52 0.18 32);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.45 0.11 263);
+        --log-time: oklch(0.49 0.02 70);
+      }
+      [data-theme='washi'].dark {
+        --background: oklch(0.205 0.008 70);
+        --foreground: oklch(0.9 0.016 85);
+        --card: oklch(0.235 0.009 70);
+        --card-foreground: oklch(0.9 0.016 85);
+        --popover: oklch(0.245 0.01 70);
+        --popover-foreground: oklch(0.9 0.016 85);
+        --primary: oklch(0.75 0.085 258);
+        --primary-foreground: oklch(0.2 0.02 262);
+        --secondary: oklch(0.29 0.01 70);
+        --secondary-foreground: oklch(0.9 0.016 85);
+        --muted: oklch(0.27 0.009 70);
+        --muted-foreground: oklch(0.71 0.02 80);
+        --accent: oklch(0.31 0.015 75);
+        --accent-foreground: oklch(0.93 0.015 85);
+        --destructive: oklch(0.68 0.16 32);
+        --border: oklch(0.32 0.01 70);
+        --input: oklch(0.35 0.012 70);
+        --ring: oklch(0.66 0.085 258);
+        --chart-1: oklch(0.72 0.09 258);
+        --chart-2: oklch(0.7 0.14 38);
+        --chart-3: oklch(0.74 0.1 135);
+        --chart-4: oklch(0.82 0.12 82);
+        --chart-5: oklch(0.7 0.09 320);
+        --sidebar: oklch(0.18 0.007 70);
+        --sidebar-foreground: oklch(0.9 0.016 85);
+        --sidebar-primary: oklch(0.75 0.085 258);
+        --sidebar-primary-foreground: oklch(0.2 0.02 262);
+        --sidebar-accent: oklch(0.28 0.014 72);
+        --sidebar-accent-foreground: oklch(0.93 0.015 85);
+        --sidebar-border: oklch(0.28 0.009 70);
+        --sidebar-ring: oklch(0.66 0.085 258);
+        --log-error: oklch(0.72 0.15 32);
+        --log-warn: oklch(0.82 0.11 82);
+        --log-info: oklch(0.77 0.08 258);
+        --log-time: oklch(0.66 0.02 80);
+      }
+      [data-theme='matsuba'] {
+        --background: oklch(0.98 0.005 160);
+        --foreground: oklch(0.24 0.02 170);
+        --card: oklch(0.995 0.003 160);
+        --card-foreground: oklch(0.24 0.02 170);
+        --popover: oklch(0.995 0.003 160);
+        --popover-foreground: oklch(0.24 0.02 170);
+        --primary: oklch(0.48 0.1 165);
+        --primary-foreground: oklch(0.98 0.01 160);
+        --secondary: oklch(0.95 0.012 160);
+        --secondary-foreground: oklch(0.28 0.03 170);
+        --muted: oklch(0.955 0.01 160);
+        --muted-foreground: oklch(0.5 0.025 170);
+        --accent: oklch(0.93 0.025 162);
+        --accent-foreground: oklch(0.26 0.04 170);
+        --destructive: oklch(0.55 0.2 27);
+        --border: oklch(0.9 0.014 160);
+        --input: oklch(0.88 0.016 160);
+        --ring: oklch(0.6 0.1 165);
+        --chart-1: oklch(0.55 0.11 165);
+        --chart-2: oklch(0.6 0.1 220);
+        --chart-3: oklch(0.72 0.13 85);
+        --chart-4: oklch(0.6 0.15 40);
+        --chart-5: oklch(0.5 0.1 300);
+        --sidebar: oklch(0.965 0.01 160);
+        --sidebar-foreground: oklch(0.24 0.02 170);
+        --sidebar-primary: oklch(0.48 0.1 165);
+        --sidebar-primary-foreground: oklch(0.98 0.01 160);
+        --sidebar-accent: oklch(0.925 0.025 162);
+        --sidebar-accent-foreground: oklch(0.26 0.04 170);
+        --sidebar-border: oklch(0.895 0.014 160);
+        --sidebar-ring: oklch(0.6 0.1 165);
+        --log-error: oklch(0.54 0.19 27);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.48 0.085 220);
+        --log-time: oklch(0.5 0.025 170);
+      }
+      [data-theme='matsuba'].dark {
+        --background: oklch(0.19 0.014 175);
+        --foreground: oklch(0.92 0.012 160);
+        --card: oklch(0.225 0.016 175);
+        --card-foreground: oklch(0.92 0.012 160);
+        --popover: oklch(0.235 0.017 175);
+        --popover-foreground: oklch(0.92 0.012 160);
+        --primary: oklch(0.78 0.11 160);
+        --primary-foreground: oklch(0.2 0.03 170);
+        --secondary: oklch(0.28 0.02 175);
+        --secondary-foreground: oklch(0.92 0.012 160);
+        --muted: oklch(0.26 0.017 175);
+        --muted-foreground: oklch(0.71 0.03 165);
+        --accent: oklch(0.3 0.03 170);
+        --accent-foreground: oklch(0.95 0.01 160);
+        --destructive: oklch(0.69 0.17 25);
+        --border: oklch(0.31 0.02 175);
+        --input: oklch(0.34 0.022 175);
+        --ring: oklch(0.68 0.1 160);
+        --chart-1: oklch(0.76 0.11 160);
+        --chart-2: oklch(0.74 0.09 220);
+        --chart-3: oklch(0.83 0.12 85);
+        --chart-4: oklch(0.73 0.14 42);
+        --chart-5: oklch(0.7 0.1 300);
+        --sidebar: oklch(0.165 0.013 175);
+        --sidebar-foreground: oklch(0.92 0.012 160);
+        --sidebar-primary: oklch(0.78 0.11 160);
+        --sidebar-primary-foreground: oklch(0.2 0.03 170);
+        --sidebar-accent: oklch(0.27 0.03 172);
+        --sidebar-accent-foreground: oklch(0.95 0.01 160);
+        --sidebar-border: oklch(0.27 0.018 175);
+        --sidebar-ring: oklch(0.68 0.1 160);
+        --log-error: oklch(0.72 0.16 25);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.78 0.08 220);
+        --log-time: oklch(0.66 0.03 165);
+      }
+      [data-theme] {
+        --ws-slate: oklch(0.55 0.03 255);
+        --ws-red: oklch(0.58 0.19 27);
+        --ws-orange: oklch(0.64 0.16 50);
+        --ws-amber: oklch(0.64 0.135 72);
+        --ws-green: oklch(0.58 0.14 150);
+        --ws-teal: oklch(0.58 0.1 190);
+        --ws-blue: oklch(0.55 0.16 255);
+        --ws-violet: oklch(0.55 0.17 295);
+        --ws-pink: oklch(0.62 0.18 355);
+        --fi-folder: oklch(0.61 0.13 70);
+        --fi-word: oklch(0.5 0.15 258);
+        --fi-excel: oklch(0.52 0.13 150);
+        --fi-powerpoint: oklch(0.58 0.17 40);
+        --fi-pdf: oklch(0.54 0.2 27);
+        --fi-mail: oklch(0.55 0.105 232);
+        --fi-archive: oklch(0.52 0.08 60);
+        --fi-image: oklch(0.56 0.17 350);
+        --fi-media: oklch(0.53 0.17 318);
+        --fi-csv: oklch(0.52 0.08 155);
+        --fi-log: oklch(0.53 0.08 195);
+        --fi-script: oklch(0.5 0.14 300);
+        --fi-code: oklch(0.5 0.11 275);
+        --fi-config: oklch(0.52 0.07 110);
+        --fi-database: oklch(0.52 0.09 215);
+        --fi-cert: oklch(0.56 0.11 92);
+        --fi-markdown: oklch(0.5 0.05 250);
+        --fi-exe: oklch(0.45 0.025 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 30%);
+      }
+      [data-theme].dark {
+        --ws-slate: oklch(0.72 0.03 255);
+        --ws-red: oklch(0.7 0.17 25);
+        --ws-orange: oklch(0.76 0.14 55);
+        --ws-amber: oklch(0.82 0.14 85);
+        --ws-green: oklch(0.76 0.14 152);
+        --ws-teal: oklch(0.77 0.1 190);
+        --ws-blue: oklch(0.72 0.13 252);
+        --ws-violet: oklch(0.73 0.14 295);
+        --ws-pink: oklch(0.75 0.14 355);
+        --fi-folder: oklch(0.83 0.14 85);
+        --fi-word: oklch(0.72 0.13 255);
+        --fi-excel: oklch(0.76 0.15 152);
+        --fi-powerpoint: oklch(0.75 0.15 48);
+        --fi-pdf: oklch(0.7 0.17 24);
+        --fi-mail: oklch(0.77 0.1 228);
+        --fi-archive: oklch(0.76 0.08 68);
+        --fi-image: oklch(0.75 0.14 350);
+        --fi-media: oklch(0.74 0.14 318);
+        --fi-csv: oklch(0.77 0.08 155);
+        --fi-log: oklch(0.77 0.08 195);
+        --fi-script: oklch(0.74 0.12 300);
+        --fi-code: oklch(0.75 0.09 275);
+        --fi-config: oklch(0.79 0.08 110);
+        --fi-database: oklch(0.77 0.09 212);
+        --fi-cert: oklch(0.83 0.12 95);
+        --fi-markdown: oklch(0.78 0.05 250);
+        --fi-exe: oklch(0.82 0.02 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 18%);
+      }
+      /* 标志令牌：标题栏标记、关于页的内联 SVG 用；default 写进 :root / .dark，其余与主题块放在一起 */
+      :root,
+      [data-theme='default'] {
+        --logo-base: oklch(0.3 0 0);
+        --logo-base-2: oklch(0.2 0 0);
+        --logo-mid: oklch(0.55 0 0);
+        --logo-soft: oklch(0.8 0 0);
+        --logo-ink: oklch(1 0 0);
+        --logo-accent: oklch(0.7 0.16 62);
+        --logo-deep: oklch(0.22 0 0);
+        --logo-rim: oklch(0.45 0 0);
+        --logo-ink-on-deep: oklch(1 0 0);
+      }
+      .dark,
+      [data-theme='default'].dark {
+        --logo-base: oklch(0.93 0 0);
+        --logo-base-2: oklch(0.8 0 0);
+        --logo-mid: oklch(0.62 0 0);
+        --logo-soft: oklch(0.45 0 0);
+        --logo-ink: oklch(0.2 0 0);
+        --logo-accent: oklch(0.82 0.15 80);
+        --logo-deep: oklch(0.3 0 0);
+        --logo-rim: oklch(0.55 0 0);
+        --logo-ink-on-deep: oklch(0.97 0 0);
+      }
+      [data-theme='aitetsu'] {
+        --logo-base: oklch(0.56 0.15 252);
+        --logo-base-2: oklch(0.48 0.14 258);
+        --logo-mid: oklch(0.64 0.12 255);
+        --logo-soft: oklch(0.8 0.07 255);
+        --logo-ink: oklch(1 0 0);
+        --logo-accent: oklch(0.7 0.16 62);
+        --logo-deep: oklch(0.27 0.05 262);
+        --logo-rim: oklch(0.52 0.11 255);
+        --logo-ink-on-deep: oklch(1 0 0);
+      }
+      [data-theme='aitetsu'].dark {
+        --logo-base: oklch(0.78 0.12 212);
+        --logo-base-2: oklch(0.66 0.12 222);
+        --logo-mid: oklch(0.6 0.09 230);
+        --logo-soft: oklch(0.42 0.06 240);
+        --logo-ink: oklch(0.2 0.035 245);
+        --logo-accent: oklch(0.84 0.14 82);
+        --logo-deep: oklch(0.24 0.04 256);
+        --logo-rim: oklch(0.62 0.1 212);
+        --logo-ink-on-deep: oklch(0.95 0.02 212);
+      }
+      [data-theme='washi'] {
+        --logo-base: oklch(0.45 0.12 263);
+        --logo-base-2: oklch(0.37 0.11 265);
+        --logo-mid: oklch(0.6 0.09 260);
+        --logo-soft: oklch(0.84 0.035 85);
+        --logo-ink: oklch(0.985 0.006 85);
+        --logo-accent: oklch(0.6 0.18 35);
+        --logo-deep: oklch(0.3 0.05 262);
+        --logo-rim: oklch(0.5 0.1 263);
+        --logo-ink-on-deep: oklch(0.975 0.008 85);
+      }
+      [data-theme='washi'].dark {
+        --logo-base: oklch(0.76 0.085 258);
+        --logo-base-2: oklch(0.64 0.09 260);
+        --logo-mid: oklch(0.55 0.06 258);
+        --logo-soft: oklch(0.4 0.025 70);
+        --logo-ink: oklch(0.21 0.01 70);
+        --logo-accent: oklch(0.7 0.15 38);
+        --logo-deep: oklch(0.26 0.012 70);
+        --logo-rim: oklch(0.6 0.07 258);
+        --logo-ink-on-deep: oklch(0.92 0.015 85);
+      }
+      [data-theme='matsuba'] {
+        --logo-base: oklch(0.52 0.1 165);
+        --logo-base-2: oklch(0.43 0.08 168);
+        --logo-mid: oklch(0.62 0.09 165);
+        --logo-soft: oklch(0.84 0.04 160);
+        --logo-ink: oklch(0.99 0.005 160);
+        --logo-accent: oklch(0.7 0.16 62);
+        --logo-deep: oklch(0.28 0.04 170);
+        --logo-rim: oklch(0.5 0.08 165);
+        --logo-ink-on-deep: oklch(0.98 0.01 160);
+      }
+      [data-theme='matsuba'].dark {
+        --logo-base: oklch(0.78 0.11 160);
+        --logo-base-2: oklch(0.66 0.1 163);
+        --logo-mid: oklch(0.56 0.07 165);
+        --logo-soft: oklch(0.42 0.04 170);
+        --logo-ink: oklch(0.2 0.03 170);
+        --logo-accent: oklch(0.84 0.13 85);
+        --logo-deep: oklch(0.24 0.02 175);
+        --logo-rim: oklch(0.6 0.09 160);
+        --logo-ink-on-deep: oklch(0.95 0.01 160);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font:
+          14px/1.7 'Segoe UI Variable Text',
+          'Segoe UI',
+          'Yu Gothic UI',
+          'Microsoft YaHei UI',
+          system-ui,
+          sans-serif;
+      }
+      /* 整页跟随所选主题：用主题自己的 background / foreground 等变量 */
+      #scope {
+        min-height: 100vh;
+        background: var(--background);
+        color: var(--foreground);
+        transition:
+          background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+          color 200ms cubic-bezier(0.2, 0, 0, 1);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 16px 64px;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: 'BIZ UDPGothic', 'Yu Gothic UI', sans-serif;
+        letter-spacing: 0.02em;
+      }
+      h1 {
+        font-size: 26px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 20px;
+        margin: 40px 0 4px;
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      h2 small,
+      .muted {
+        color: var(--muted-foreground);
+        font-weight: 400;
+        font-size: 13px;
+      }
+      .lead {
+        color: var(--muted-foreground);
+        max-width: 80ch;
+        margin: 0 0 10px;
+      }
+      .bar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: color-mix(in oklch, var(--background) 92%, transparent);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(6px);
+      }
+      .bar .in {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 10px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        align-items: center;
+      }
+      .seg {
+        display: inline-flex;
+        padding: 2px;
+        gap: 2px;
+        border-radius: 8px;
+        background: var(--muted);
+      }
+      .seg button {
+        border: 0;
+        background: none;
+        color: var(--muted-foreground);
+        padding: 3px 12px;
+        border-radius: 6px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .seg button[aria-pressed='true'] {
+        background: var(--background);
+        color: var(--foreground);
+        box-shadow: 0 1px 2px oklch(0 0 0 / 0.15);
+      }
+      .seg button:focus-visible {
+        outline: 2px solid var(--ring);
+      }
+      .top {
+        padding: 28px 0 8px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 16px;
+        margin-top: 12px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--card);
+        color: var(--card-foreground);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .card .hero {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 18px;
+      }
+      .card .hero .big {
+        width: 96px;
+        height: 96px;
+        flex: none;
+      }
+      .card .hero .big svg {
+        width: 96px;
+        height: 96px;
+        display: block;
+      }
+      .card h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .card h3 small {
+        font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Yu Gothic UI', sans-serif;
+        font-size: 12px;
+        color: var(--muted-foreground);
+        font-weight: 400;
+        margin-left: 6px;
+      }
+      .tagline {
+        display: inline-block;
+        font-size: 11.5px;
+        padding: 0 8px;
+        border-radius: 10px;
+        background: var(--muted);
+        color: var(--muted-foreground);
+        margin-top: 4px;
+      }
+      .card p {
+        margin: 0;
+        padding: 0 18px;
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .sizes {
+        display: flex;
+        align-items: end;
+        gap: 14px;
+        padding: 14px 18px 4px;
+      }
+      .sizes figure {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        font-size: 10.5px;
+        color: var(--muted-foreground);
+      }
+      .sizes svg {
+        display: block;
+      }
+      .tbx {
+        margin: 10px 18px 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 34px;
+        padding: 0 10px;
+        border-radius: 8px;
+        background: var(--sidebar);
+        color: var(--sidebar-foreground);
+        border: 1px solid var(--sidebar-border);
+        font:
+          600 13px 'Segoe UI Variable Text',
+          'Segoe UI',
+          sans-serif;
+      }
+      .tbx svg {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+      .tbx .ws {
+        margin-left: 8px;
+        font-weight: 500;
+        color: var(--muted-foreground);
+      }
+      .static {
+        margin: 14px 18px 18px;
+        border-top: 1px dashed var(--border);
+        padding-top: 10px;
+      }
+      .static .lbl {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        margin-bottom: 6px;
+      }
+      .tasks {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .task {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 8px;
+        min-width: 0;
+      }
+      .task.d {
+        background: #202020;
+      }
+      .task.l {
+        background: #f3f3f3;
+      }
+      .task canvas {
+        width: 32px;
+        height: 32px;
+        image-rendering: pixelated;
+        border-radius: 3px;
+      }
+      .task img {
+        display: block;
+      }
+      .rules {
+        margin: 8px 18px 0;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .rules code {
+        font-size: 11.5px;
+      }
+      table {
+        border-collapse: collapse;
+        font-size: 12.5px;
+        width: 100%;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted-foreground);
+        font-weight: 600;
+      }
+      .sw {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        vertical-align: -2px;
+        margin-right: 6px;
+        box-shadow: inset 0 0 0 1px oklch(0.5 0 0 / 0.3);
+      }
+      pre {
+        background: var(--muted);
+        color: var(--foreground);
+        padding: 14px;
+        border-radius: 10px;
+        overflow: auto;
+        max-height: 360px;
+        font:
+          12px/1.55 'Cascadia Mono',
+          Consolas,
+          monospace;
+      }
+      .about {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        padding: 18px;
+        border-radius: 12px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        max-width: 420px;
+        margin-top: 10px;
+      }
+      .about svg {
+        width: 64px;
+        height: 64px;
+      }
+      .about b {
+        display: block;
+        font-size: 16px;
+      }
+      h2 .prevtag {
+        font-size: 12px;
+        font-weight: 400;
+        padding: 0 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+      }
+      .prevhead {
+        margin-top: 56px;
+        padding-top: 8px;
+        border-top: 3px double var(--border);
+      }
+      .prevhead h2 {
+        margin-top: 12px;
+      }
+      .note {
+        border-left: 3px solid var(--primary);
+        padding: 4px 0 4px 12px;
+        margin: 10px 0;
+        max-width: 90ch;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scope" data-theme="aitetsu">
+      <div class="bar">
+        <div class="in">
+          <b>主题预览</b>
+          <span class="seg" id="tTheme"
+            ><button data-v="default">標準</button
+            ><button data-v="aitetsu" aria-pressed="true">藍鉄</button
+            ><button data-v="washi">和紙</button><button data-v="matsuba">松葉</button></span
+          >
+          <span class="seg" id="tMode"
+            ><button data-v="light" aria-pressed="true">ライト</button
+            ><button data-v="dark">ダーク</button></span
+          >
+          <span class="muted"
+            >切换后：大图、各尺寸、标题栏与关于页随主题变化；「静态版」不变（exe 用）。</span
+          >
+        </div>
+      </div>
+      <main>
+        <div class="top">
+          <h1>应用标志：牛头系列 + 上一轮方案</h1>
+          <p class="lead">
+            第 3 轮按需求方反馈，围绕「牛马」新出六个简约牛头（J–O），放在最前面；上一轮的 A–I
+            保留在下方。每个方案一个 SVG（viewBox 0 0 32 32，无外部依赖、无文字）；颜色写成
+            <code>style="fill: var(--logo-*, 静态色)"</code
+            >：内联进页面时随主题令牌变化，作为文件单独使用（&lt;img&gt;、生成
+            .ico）时取静态色。印象派两款另附 16px
+            简化版（<code>logo-h-16.svg</code>、<code>logo-i-16.svg</code>）。
+          </p>
+          <div class="note">
+            哪些地方能随主题：标题栏标记、关于页（内联 SVG，直接用 CSS 变量）——能；窗口 /
+            任务栏图标（<code>BrowserWindow.setIcon</code>）——技术上能，但任务栏的底色由 Windows
+            的「系统」深浅模式决定，与应用主题无关，建议仍用静态版（理由见 design-notes.md 第 4
+            节）；exe 文件图标（资源管理器、任务管理器）——不能，打包时写入的静态 ico。
+          </div>
+        </div>
+        <div id="styles"></div>
+
+        <h2>主题令牌 <small>每个主题一组 --logo-*，规则见右列</small></h2>
+        <div id="tokens"></div>
+        <h2>关于页 <small>64px，随主题（示例：L「影牛」）</small></h2>
+        <div class="about">
+          <span id="aboutLogo"></span>
+          <div><b>PremiumCowHorse</b><span class="muted">高級牛馬 — バージョン 0.1.0</span></div>
+        </div>
+        <h2>令牌 CSS <small>与主题块放在一起（globals.css）</small></h2>
+        <pre id="css"></pre>
+      </main>
+    </div>
+    <script>
+      const LOGOS = [
+        {
+          id: 'j',
+          style: 'cow',
+          name: '牛面',
+          kana: 'ぎゅうめん',
+          zh: '正面牛头',
+          tokens: ['base', 'base-2', 'mid', 'ink', 'accent'],
+          meaning:
+            '左右对称的几何牛头：一对弯角、两只平伸的耳朵、宽大的口鼻。右耳挂一枚琥珀色耳标——牛的耳标就是打工人的工牌，自嘲但体面。',
+          stat: '无底板；脸取中等明度蓝，深 / 浅任务栏上 3:1 以上。16px 时眼睛只剩一个像素，靠角 + 耳 + 口鼻轮廓辨认。'
+        },
+        {
+          id: 'k',
+          style: 'cow',
+          name: '一筆牛',
+          kana: 'ひとふでうし',
+          zh: '一笔牛',
+          tokens: ['base', 'accent'],
+          meaning:
+            '一笔从左角画到右角，中间顺势勾出脸与口鼻；耳朵、鼻孔、眼睛是几笔小点画。与 lucide 线性图标同一语言，放在标题栏里最协调。',
+          stat: '线宽 2.6/32（16px 约 1.3px）；静态版取中等明度蓝。'
+        },
+        {
+          id: 'l',
+          style: 'cow',
+          name: '影牛',
+          kana: 'かげうし',
+          zh: '剪影牛',
+          tokens: ['base', 'base-2', 'ink', 'accent'],
+          meaning:
+            '底板上的白色牛头剪影，眼睛和鼻孔是挖空的负形。最像「应用图标」的一款，在一排 Office 图标旁也站得住。',
+          stat: '有底板，深 / 浅任务栏上轮廓都完整；16px 下白色剪影最清楚。'
+        },
+        {
+          id: 'm',
+          style: 'cow',
+          name: '牛馬',
+          kana: 'ぎゅうば',
+          zh: '牛马',
+          tokens: ['base', 'base-2', 'mid', 'ink', 'accent'],
+          meaning:
+            '牛角由一只马蹄铁充当：U 形底部藏在头后，两臂向外上方张开就是一对角，臂上有钉孔、末端有蹄铁的踵——一个图形里同时有牛和马。金色马蹄铁 = 「高级」牛马。',
+          stat: '无底板；马蹄铁用较深的琥珀（静态 #e8a21f），在浅色任务栏上偏弱，轮廓主要靠蓝色牛脸。'
+        },
+        {
+          id: 'n',
+          style: 'cow',
+          name: '文牛',
+          kana: 'ふみうし',
+          zh: '文件夹牛',
+          tokens: ['base', 'base-2', 'mid', 'ink', 'accent'],
+          meaning:
+            '文件夹就是牛的脸：文件夹长出一对角、两只耳朵，下方是口鼻。「把案件资料装进一个文件夹」与「牛马」合为一体，最贴近本应用做的事。',
+          stat: '无底板；文件夹主体中等明度，16px 下文件夹标签与角都可辨。'
+        },
+        {
+          id: 'o',
+          style: 'cow',
+          name: '社員証',
+          kana: 'しゃいんしょう',
+          zh: '工牌',
+          small: 'logo-o-16.svg',
+          tokens: ['base', 'base-2', 'mid', 'ink', 'accent'],
+          meaning:
+            '挂在挂绳夹上的一张工牌，照片栏里是一头牛，头衔那一行是琥珀色（= 「高级」）。打工人每天挂在胸前的东西，幽默感最强。',
+          stat: '大尺寸用完整工牌；16 / 20 / 24px 用简化版（牛头直接画在工牌上）。'
+        },
+        {
+          id: 'a',
+          style: 'formal',
+          name: '束',
+          kana: 'たば',
+          zh: '一束',
+          tokens: ['base', 'base-2', 'soft', 'ink', 'accent'],
+          meaning:
+            '案件卡片的一束：前面的卡是正在处理的案件，后面的是同一工作区里的其他资料，小标签是案件标识。与圆环选择器的卡片同源，是现有标题栏双卡片线稿的延续。',
+          stat: '藍色底板（中等明度）+ 白卡：深色 / 浅色任务栏上轮廓都清楚。'
+        },
+        {
+          id: 'c',
+          style: 'formal',
+          name: '括り',
+          kana: 'くくり',
+          zh: '括起来',
+          tokens: ['deep', 'rim', 'ink-on-deep', 'accent'],
+          meaning:
+            '日文鉤括弧「」把一件事括起来 = 工作区收拢一个案件；四角像取景框的对焦角 = 保持专注。',
+          stat: '墨色底板 + 内描边。深色任务栏上底板本身与背景接近（约 1.1:1），轮廓靠描边与白色笔画。'
+        },
+        {
+          id: 'b',
+          style: 'figurative',
+          name: '蹄鉄',
+          kana: 'ていてつ',
+          zh: '马蹄铁',
+          tokens: ['base', 'base-2', 'soft', 'ink', 'accent'],
+          meaning:
+            '马蹄铁 = 「牛马」的马；U 字形又像磁铁，把散落在共享盘、服务器、本机的目录吸到一起，琥珀色块是被吸住的案件。',
+          stat: '无底板，主体取中等明度，深 / 浅任务栏上都在 3:1 以上。'
+        },
+        {
+          id: 'd',
+          style: 'abstract',
+          name: '環',
+          kana: 'わ',
+          zh: '环',
+          tokens: ['base', 'base-2', 'mid', 'accent'],
+          meaning:
+            '三段弧绕一点旋转 = 圆环选择器的抽象，深浅不同的三段暗示「转到正面的那一张」；中心点是当前案件。',
+          stat: '无底板；三段都取中等明度，任一背景下至少两段清楚。'
+        },
+        {
+          id: 'e',
+          style: 'abstract',
+          name: '重',
+          kana: 'かさね',
+          zh: '叠合',
+          tokens: ['mid', 'base', 'base-2', 'accent'],
+          meaning:
+            '两块色面错位叠放，重叠处更深 = 把分散的资料重ね到一起，交集就是工作区；右下小方块是焦点。',
+          stat: '无底板；交叠处用实色模拟透明，不依赖混合模式，栅格化结果稳定。'
+        },
+        {
+          id: 'f',
+          style: 'line',
+          name: '角',
+          kana: 'つの',
+          zh: '牛角',
+          tokens: ['base', 'accent'],
+          meaning:
+            '一笔画出的牛角像两只手，把下面的案件卡片托起来：「牛马」的牛，也是「扛起案件」。',
+          stat: '线宽 3.5/32（16px 时约 1.75px）；静态版取中等明度蓝。'
+        },
+        {
+          id: 'g',
+          style: 'line',
+          name: '軌',
+          kana: 'き',
+          zh: '轨道',
+          tokens: ['base', 'base-2', 'accent'],
+          meaning:
+            '一条倾斜的轨道，正面压着一张卡片 = 圆环选择器的线描。轨道在卡片处断开，表现前后关系。',
+          stat: '轨道线在 16px 下偏细（约 1.4px），主要靠琥珀色卡片辨认；建议 16px 时线宽加到 3.25/32。'
+        },
+        {
+          id: 'h',
+          style: 'impression',
+          name: '円相',
+          kana: 'えんそう',
+          zh: '禅圆',
+          small: 'logo-h-16.svg',
+          tokens: ['base', 'soft', 'ink', 'accent'],
+          meaning:
+            '一笔画成的禅圆，粗细不匀、右上留口，配一枚印章：圆 = 案件的循环 / 圆环选择器；留口 = 工作没有「完成」、随时接着做；印章 = 日本业务里的押印确认。',
+          stat: '大尺寸用全细节版；16 / 20 / 24px 用简化版（等粗留口圆 + 印章）。'
+        },
+        {
+          id: 'i',
+          style: 'impression',
+          name: '色面',
+          kana: 'しきめん',
+          zh: '色块',
+          small: 'logo-i-16.svg',
+          tokens: ['base', 'base-2', 'mid', 'accent', 'ink'],
+          meaning:
+            '九道短促的笔触拼成一块方形色面：远看是一张卡片 / 一个工作区，近看是一笔一笔的零散资料；中间那一笔是当前焦点。',
+          stat: '大尺寸用九笔版；16 / 20 / 24px 用简化版（2×2 色块）。'
+        }
+      ]
+      const STYLES = [
+        {
+          id: 'cow',
+          name: '牛头系列',
+          desc: '第 3 轮：围绕「牛马」，一眼认出是牛头（角、耳、口鼻），保持简约。',
+          current: true
+        },
+        {
+          id: 'formal',
+          name: '稳重商务',
+          desc: '底板 + 规整几何，像企业软件的图标：在一排 Office 图标旁不突兀。'
+        },
+        { id: 'figurative', name: '具象・趣味', desc: '从昵称「牛马」出发的图形，带一点自嘲。' },
+        {
+          id: 'abstract',
+          name: '抽象',
+          desc: '不画具体物件，只用形与色表达「收拢 / 循环 / 叠合」。'
+        },
+        {
+          id: 'line',
+          name: '简约线条',
+          desc: '等宽线条、无底板，和 lucide 线性图标同一语言，标题栏里最协调。'
+        },
+        {
+          id: 'impression',
+          name: '印象派',
+          desc: '笔触与色块，有手作感；细节多，必须另备 16px 简化版。'
+        }
+      ]
+      const TOKENS = {
+        default: {
+          light: {
+            base: '0.3 0 0',
+            'base-2': '0.2 0 0',
+            mid: '0.55 0 0',
+            soft: '0.8 0 0',
+            ink: '1 0 0',
+            accent: '0.7 0.16 62',
+            deep: '0.22 0 0',
+            rim: '0.45 0 0',
+            'ink-on-deep': '1 0 0'
+          },
+          dark: {
+            base: '0.93 0 0',
+            'base-2': '0.8 0 0',
+            mid: '0.62 0 0',
+            soft: '0.45 0 0',
+            ink: '0.2 0 0',
+            accent: '0.82 0.15 80',
+            deep: '0.3 0 0',
+            rim: '0.55 0 0',
+            'ink-on-deep': '0.97 0 0'
+          }
+        },
+        aitetsu: {
+          light: {
+            base: '0.56 0.15 252',
+            'base-2': '0.48 0.14 258',
+            mid: '0.64 0.12 255',
+            soft: '0.8 0.07 255',
+            ink: '1 0 0',
+            accent: '0.7 0.16 62',
+            deep: '0.27 0.05 262',
+            rim: '0.52 0.11 255',
+            'ink-on-deep': '1 0 0'
+          },
+          dark: {
+            base: '0.78 0.12 212',
+            'base-2': '0.66 0.12 222',
+            mid: '0.6 0.09 230',
+            soft: '0.42 0.06 240',
+            ink: '0.2 0.035 245',
+            accent: '0.84 0.14 82',
+            deep: '0.24 0.04 256',
+            rim: '0.62 0.1 212',
+            'ink-on-deep': '0.95 0.02 212'
+          }
+        },
+        washi: {
+          light: {
+            base: '0.45 0.12 263',
+            'base-2': '0.37 0.11 265',
+            mid: '0.6 0.09 260',
+            soft: '0.84 0.035 85',
+            ink: '0.985 0.006 85',
+            accent: '0.6 0.18 35',
+            deep: '0.3 0.05 262',
+            rim: '0.5 0.1 263',
+            'ink-on-deep': '0.975 0.008 85'
+          },
+          dark: {
+            base: '0.76 0.085 258',
+            'base-2': '0.64 0.09 260',
+            mid: '0.55 0.06 258',
+            soft: '0.4 0.025 70',
+            ink: '0.21 0.01 70',
+            accent: '0.7 0.15 38',
+            deep: '0.26 0.012 70',
+            rim: '0.6 0.07 258',
+            'ink-on-deep': '0.92 0.015 85'
+          }
+        },
+        matsuba: {
+          light: {
+            base: '0.52 0.1 165',
+            'base-2': '0.43 0.08 168',
+            mid: '0.62 0.09 165',
+            soft: '0.84 0.04 160',
+            ink: '0.99 0.005 160',
+            accent: '0.7 0.16 62',
+            deep: '0.28 0.04 170',
+            rim: '0.5 0.08 165',
+            'ink-on-deep': '0.98 0.01 160'
+          },
+          dark: {
+            base: '0.78 0.11 160',
+            'base-2': '0.66 0.1 163',
+            mid: '0.56 0.07 165',
+            soft: '0.42 0.04 170',
+            ink: '0.2 0.03 170',
+            accent: '0.84 0.13 85',
+            deep: '0.24 0.02 175',
+            rim: '0.6 0.09 160',
+            'ink-on-deep': '0.95 0.01 160'
+          }
+        }
+      }
+      const ROLES = {
+        base: '主色：≈ 主题 primary（暗色下取 primary 的亮色版）',
+        'base-2': '主色的深一级（渐变终点、交叠处）',
+        mid: '主色与背景之间（次要笔画 / 色块）',
+        soft: '靠近背景的浅色（后层卡片、飞白）',
+        ink: '主色上的反白（卡片、钉孔、高光）',
+        accent: '焦点色：琥珀；和紙主题改为朱色（印章）',
+        deep: '深色底板（方案 C）',
+        rim: '深色底板的内描边（方案 C）',
+        'ink-on-deep': '深色底板上的笔画（方案 C）'
+      }
+      const TOKEN_CSS =
+        "/* 标志令牌：标题栏标记、关于页的内联 SVG 用；default 写进 :root / .dark，其余与主题块放在一起 */\n:root, [data-theme='default'] {\n  --logo-base: oklch(0.3 0 0);\n  --logo-base-2: oklch(0.2 0 0);\n  --logo-mid: oklch(0.55 0 0);\n  --logo-soft: oklch(0.8 0 0);\n  --logo-ink: oklch(1 0 0);\n  --logo-accent: oklch(0.7 0.16 62);\n  --logo-deep: oklch(0.22 0 0);\n  --logo-rim: oklch(0.45 0 0);\n  --logo-ink-on-deep: oklch(1 0 0);\n}\n.dark, [data-theme='default'].dark {\n  --logo-base: oklch(0.93 0 0);\n  --logo-base-2: oklch(0.8 0 0);\n  --logo-mid: oklch(0.62 0 0);\n  --logo-soft: oklch(0.45 0 0);\n  --logo-ink: oklch(0.2 0 0);\n  --logo-accent: oklch(0.82 0.15 80);\n  --logo-deep: oklch(0.3 0 0);\n  --logo-rim: oklch(0.55 0 0);\n  --logo-ink-on-deep: oklch(0.97 0 0);\n}\n[data-theme='aitetsu'] {\n  --logo-base: oklch(0.56 0.15 252);\n  --logo-base-2: oklch(0.48 0.14 258);\n  --logo-mid: oklch(0.64 0.12 255);\n  --logo-soft: oklch(0.8 0.07 255);\n  --logo-ink: oklch(1 0 0);\n  --logo-accent: oklch(0.7 0.16 62);\n  --logo-deep: oklch(0.27 0.05 262);\n  --logo-rim: oklch(0.52 0.11 255);\n  --logo-ink-on-deep: oklch(1 0 0);\n}\n[data-theme='aitetsu'].dark {\n  --logo-base: oklch(0.78 0.12 212);\n  --logo-base-2: oklch(0.66 0.12 222);\n  --logo-mid: oklch(0.6 0.09 230);\n  --logo-soft: oklch(0.42 0.06 240);\n  --logo-ink: oklch(0.2 0.035 245);\n  --logo-accent: oklch(0.84 0.14 82);\n  --logo-deep: oklch(0.24 0.04 256);\n  --logo-rim: oklch(0.62 0.1 212);\n  --logo-ink-on-deep: oklch(0.95 0.02 212);\n}\n[data-theme='washi'] {\n  --logo-base: oklch(0.45 0.12 263);\n  --logo-base-2: oklch(0.37 0.11 265);\n  --logo-mid: oklch(0.6 0.09 260);\n  --logo-soft: oklch(0.84 0.035 85);\n  --logo-ink: oklch(0.985 0.006 85);\n  --logo-accent: oklch(0.6 0.18 35);\n  --logo-deep: oklch(0.3 0.05 262);\n  --logo-rim: oklch(0.5 0.1 263);\n  --logo-ink-on-deep: oklch(0.975 0.008 85);\n}\n[data-theme='washi'].dark {\n  --logo-base: oklch(0.76 0.085 258);\n  --logo-base-2: oklch(0.64 0.09 260);\n  --logo-mid: oklch(0.55 0.06 258);\n  --logo-soft: oklch(0.4 0.025 70);\n  --logo-ink: oklch(0.21 0.01 70);\n  --logo-accent: oklch(0.7 0.15 38);\n  --logo-deep: oklch(0.26 0.012 70);\n  --logo-rim: oklch(0.6 0.07 258);\n  --logo-ink-on-deep: oklch(0.92 0.015 85);\n}\n[data-theme='matsuba'] {\n  --logo-base: oklch(0.52 0.1 165);\n  --logo-base-2: oklch(0.43 0.08 168);\n  --logo-mid: oklch(0.62 0.09 165);\n  --logo-soft: oklch(0.84 0.04 160);\n  --logo-ink: oklch(0.99 0.005 160);\n  --logo-accent: oklch(0.7 0.16 62);\n  --logo-deep: oklch(0.28 0.04 170);\n  --logo-rim: oklch(0.5 0.08 165);\n  --logo-ink-on-deep: oklch(0.98 0.01 160);\n}\n[data-theme='matsuba'].dark {\n  --logo-base: oklch(0.78 0.11 160);\n  --logo-base-2: oklch(0.66 0.1 163);\n  --logo-mid: oklch(0.56 0.07 165);\n  --logo-soft: oklch(0.42 0.04 170);\n  --logo-ink: oklch(0.2 0.03 170);\n  --logo-accent: oklch(0.84 0.13 85);\n  --logo-deep: oklch(0.24 0.02 175);\n  --logo-rim: oklch(0.6 0.09 160);\n  --logo-ink-on-deep: oklch(0.95 0.01 160);\n}"
+      const SRC = {
+        'logo-a.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 A「束（たば）」〔稳重商务〕：案件卡片的束。底板 + 前后两张卡片 + 标签。\n       颜色写成 style 中的 CSS 变量（logo 系列令牌，带静态色兜底）：内联到页面时随主题令牌变化；\n       作为文件单独使用（<img>、生成 .ico）时取逗号后的静态色 = exe 用的静态版。\n       32 单位网格，主要边缘落在偶数坐标（16px 时对齐像素） -->\n  <title>PremiumCowHorse</title>\n  <defs>\n    <linearGradient id="a-tile" x1="0" y1="0" x2="0" y2="1">\n      <stop offset="0" style="stop-color: var(--logo-base, #3778d7)"/>\n      <stop offset="1" style="stop-color: var(--logo-base-2, #2a5fb7)"/>\n    </linearGradient>\n  </defs>\n  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#a-tile)"/>\n  <rect x="12" y="5" width="14" height="17" rx="2.5" style="fill: var(--logo-soft, #a0c0eb)"/>\n  <rect x="6" y="10" width="14" height="17" rx="2.5" style="fill: var(--logo-ink, #ffffff)"/>\n  <rect x="9" y="14" width="6" height="2.5" rx="1.25" style="fill: var(--logo-accent, #f9b73f)"/>\n  <rect x="9" y="19.5" width="8" height="2" rx="1" style="fill: var(--logo-base, #3065cc)" fill-opacity="0.35"/>\n</svg>\n',
+        'logo-b.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 B「蹄鉄（ていてつ）」〔具象・趣味〕：马蹄铁 = 「牛马」的马；U 字形又像磁铁，把散落各处的目录吸到一起。\n       不用底板，静态版主体取中等明度（约 oklch 0.55），在深色 / 浅色任务栏上对比度都在 3:1 以上。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <defs>\n    <linearGradient id="b-shoe" x1="0" y1="0" x2="0" y2="1">\n      <stop offset="0" style="stop-color: var(--logo-base, #3a81d7)"/>\n      <stop offset="1" style="stop-color: var(--logo-base-2, #2a5fb7)"/>\n    </linearGradient>\n  </defs>\n  <path d="M3 4h7v12a6 6 0 0 0 12 0V4h7v12a13 13 0 0 1-26 0z" fill="url(#b-shoe)"/>\n  <rect x="3" y="4" width="7" height="4" style="fill: var(--logo-soft, #a0c0eb)"/>\n  <rect x="22" y="4" width="7" height="4" style="fill: var(--logo-soft, #a0c0eb)"/>\n  <circle cx="6.5" cy="13" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <circle cx="25.5" cy="13" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <circle cx="16" cy="25.6" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <rect x="12.5" y="2" width="7" height="9" rx="1.5" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-c.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 C「括り（くくり）」〔稳重商务〕：日文鉤括弧「」把一件事括起来 = 工作区收拢一个案件；\n       同时像取景框的对焦角 = 保持专注。深色底板 + 内描边（深色任务栏上靠描边与白色笔画区分轮廓）。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <rect x="1" y="1" width="30" height="30" rx="7" style="fill: var(--logo-deep, #19263f)"/>\n  <rect x="1.75" y="1.75" width="28.5" height="28.5" rx="6.25" fill="none" style="stroke: var(--logo-rim, #3a6aa7)" stroke-width="1.5"/>\n  <path d="M8 18V8h10" fill="none" style="stroke: var(--logo-ink-on-deep, #ffffff)" stroke-width="3.5" stroke-linecap="square"/>\n  <path d="M24 14v10H14" fill="none" style="stroke: var(--logo-ink-on-deep, #ffffff)" stroke-width="3.5" stroke-linecap="square"/>\n  <rect x="13" y="13" width="6" height="6" rx="1.2" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-d.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 D「環（わ）」〔抽象〕：三段弧绕着一个点旋转 = 圆环选择器的抽象；\n       三段颜色深浅不同，暗示「转到正面的那一张」。中心点是当前案件。无底板。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <g fill="none" stroke-width="5" stroke-linecap="round">\n    <!-- 圆心 (16,16) r=11；每段 80°，段间 40° -->\n    <path d="M16 5A11 11 0 0 1 26.83 14.09" style="stroke: var(--logo-base, #3778d7)"/>\n    <path d="M25.53 21.5A11 11 0 0 1 12.24 26.34" style="stroke: var(--logo-base-2, #2a5fb7)"/>\n    <path d="M6.47 21.5A11 11 0 0 1 8.93 7.57" style="stroke: var(--logo-mid, #6d9adc)"/>\n  </g>\n  <circle cx="16" cy="16" r="4" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-e.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 E「重（かさね）」〔抽象〕：两块色面错位叠放，重叠处是更深的一块 = 把分散的资料「重ね」到一起，\n       交集就是工作区。右下的小方块是当前焦点。用实色模拟透明叠色（不依赖混合模式，栅格化结果稳定）。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <rect x="2" y="2" width="19" height="19" rx="4.5" style="fill: var(--logo-mid, #6d9adc)"/>\n  <rect x="11" y="11" width="19" height="19" rx="4.5" style="fill: var(--logo-base, #3778d7)"/>\n  <!-- 交集 [11,21]×[11,21] -->\n  <path d="M11 15.5a4.5 4.5 0 0 1 4.5-4.5H21v5.5a4.5 4.5 0 0 1-4.5 4.5H11z" style="fill: var(--logo-base-2, #1f4c9a)"/>\n  <rect x="22" y="22" width="5" height="5" rx="1.2" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-f.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 F「角（つの）」〔简约线条〕：一笔画出的牛角，像两只手把下面的案件卡片托起来——\n       「牛马」的牛，也是「扛起案件」。等宽线条，圆头；无底板。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <path d="M4 4.5c0 7 4.5 10.5 12 10.5s12-3.5 12-10.5" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="3.5" stroke-linecap="round"/>\n  <rect x="9.75" y="18.75" width="12.5" height="9.5" rx="2.25" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="3.5"/>\n  <path d="M14 23.5h4" fill="none" style="stroke: var(--logo-accent, #e8a21f)" stroke-width="3" stroke-linecap="round"/>\n</svg>\n',
+        'logo-g.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 G「軌（き）」〔简约线条〕：一条倾斜的轨道 + 轨道正面的一张卡片 = 圆环选择器的线描；\n       卡片压在轨道前段（轨道在卡片处断开，表现前后关系）。无底板。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <g transform="rotate(-18 16 16)">\n    <!-- 轨道：椭圆 rx13 ry6，正面（下方）在卡片处断开 -->\n    <path d="M12.2 21.74A13 6 0 0 1 16 10A13 6 0 0 1 19.8 21.74" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="2.75" stroke-linecap="round"/>\n  </g>\n  <rect x="11.5" y="13" width="9" height="12" rx="2" style="fill: var(--logo-accent, #f9b73f)"/>\n  <rect x="11.5" y="13" width="9" height="12" rx="2" fill="none" style="stroke: var(--logo-base-2, #2a5fb7)" stroke-width="1.5"/>\n</svg>\n',
+        'logo-h.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 H「円相（えんそう）」〔印象派・笔触〕：一笔画成的禅圆，粗细不匀、右上留口，配一枚印章。\n       圆 = 圆环选择器 / 案件的一个循环；留口 = 工作没有「完成」，随时可以接着做；印章 = 盖章确认（对日业务的「押印」）。\n       细节多（飞白、墨点），16px 请改用 logo-h-16.svg。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <!-- 主笔：外圆 (16,16.5) r12.5 与偏心内圆 (17.2,15.4) r8.6 之间的区域，左下粗、右上细 -->\n  <path d="M27.04 10.63A12.5 12.5 0 1 1 21.87 5.46L21.24 7.81A8.6 8.6 0 1 0 24.79 11.36Z" style="fill: var(--logo-base, #2f6ccf)"/>\n  <!-- 飞白：笔画中的几道浅色擦痕 -->\n  <g fill="none" stroke-linecap="round" style="stroke: var(--logo-soft, #a0c0eb)" stroke-opacity="0.75">\n    <path d="M7.2 21.6A10.4 10.4 0 0 1 6.4 13.2" stroke-width="0.6" stroke-dasharray="3 1.2 5 1"/>\n    <path d="M10.9 26.4A10.6 10.6 0 0 1 5.9 20.4" stroke-width="0.5" stroke-dasharray="2 1 4 1.5"/>\n    <path d="M8.4 10.2A10.9 10.9 0 0 1 13.4 6.3" stroke-width="0.45" stroke-dasharray="4 1.5"/>\n  </g>\n  <!-- 收笔处的墨点 -->\n  <circle cx="24.4" cy="4.2" r="0.75" style="fill: var(--logo-base, #2f6ccf)"/>\n  <circle cx="26.2" cy="5.6" r="0.45" style="fill: var(--logo-base, #2f6ccf)"/>\n  <!-- 印章 -->\n  <rect x="22.2" y="22.2" width="7.4" height="7.4" rx="1.2" transform="rotate(4 25.9 25.9)" style="fill: var(--logo-accent, #e8a21f)"/>\n  <rect x="23.9" y="23.9" width="4" height="4" rx="0.5" transform="rotate(4 25.9 25.9)" fill="none" style="stroke: var(--logo-ink, #ffffff)" stroke-width="0.9" stroke-opacity="0.85"/>\n</svg>\n',
+        'logo-i.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 I「色面（しきめん）」〔印象派・色块〕：九道短促的笔触拼成一块方形色面——\n       远看是一张卡片 / 一个工作区，近看是一笔一笔的零散资料；中间那一笔是当前焦点。\n       细节多，16px 请改用 logo-i-16.svg。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <g fill="none" stroke-linecap="round" stroke-width="7.6">\n    <path d="M6.84 9.79L11.16 8.21" style="stroke: var(--logo-base-2, #2a5fb7)"/>\n    <path d="M13.73 8.6L18.27 9.4" style="stroke: var(--logo-mid, #6d9adc)"/>\n    <path d="M21.12 10.32L24.88 7.68" style="stroke: var(--logo-base, #3778d7)"/>\n    <path d="M6.78 15.4L11.22 16.6" style="stroke: var(--logo-base, #3778d7)"/>\n    <path d="M20.92 15.03L25.08 16.97" style="stroke: var(--logo-base-2, #2a5fb7)"/>\n    <path d="M6.71 23.2L11.29 22.8" style="stroke: var(--logo-mid, #6d9adc)"/>\n    <path d="M14.01 21.85L17.99 24.15" style="stroke: var(--logo-base-2, #2a5fb7)"/>\n    <path d="M20.87 23.86L25.13 22.14" style="stroke: var(--logo-base, #3778d7)"/>\n    <path d="M13.73 16.4L18.27 15.6" style="stroke: var(--logo-accent, #f9b73f)"/>\n  </g>\n  <!-- 笔触上的高光（颜料的厚度感） -->\n  <g fill="none" stroke-linecap="round" stroke-width="1.1" style="stroke: var(--logo-ink, #ffffff)" stroke-opacity="0.45">\n    <path d="M6.6 7.6L9.4 6.6"/>\n    <path d="M21.4 8.4L23.6 6.9"/>\n    <path d="M6.8 14.6L9.2 15.2"/>\n    <path d="M14.4 21.4L16.6 22.6"/>\n  </g>\n</svg>\n',
+        'logo-j.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 J「牛面（ぎゅうめん）」〔牛头系列・正面几何〕：左右对称的几何牛头，角、耳、口鼻都是简单形。\n       右耳挂一枚琥珀色耳标：牛的耳标 = 打工人的工牌（自嘲，但不失体面）。无底板。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <!-- 角 -->\n  <path d="M11 8.5C8.5 8 6 6.5 4.5 2.5C7.5 4.2 10 5.2 12.5 5.8Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <path d="M21 8.5C23.5 8 26 6.5 27.5 2.5C24.5 4.2 22 5.2 19.5 5.8Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 耳 -->\n  <path d="M8.6 11L2 10.2C2.6 12.8 4.6 14.6 8.8 14.6Z" style="fill: var(--logo-base, #3778d7)"/>\n  <path d="M23.4 11L30 10.2C29.4 12.8 27.4 14.6 23.2 14.6Z" style="fill: var(--logo-base, #3778d7)"/>\n  <!-- 脸 -->\n  <path d="M10.5 6.5H21.5A3.5 3.5 0 0 1 25 10L23.6 19H8.4L7 10A3.5 3.5 0 0 1 10.5 6.5Z" style="fill: var(--logo-base, #3778d7)"/>\n  <!-- 口鼻 -->\n  <rect x="7" y="17" width="18" height="12" rx="6" style="fill: var(--logo-mid, #6d9adc)"/>\n  <ellipse cx="12.2" cy="23" rx="1.5" ry="2" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <ellipse cx="19.8" cy="23" rx="1.5" ry="2" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 眼 -->\n  <circle cx="12" cy="12.5" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <circle cx="20" cy="12.5" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <!-- 耳标 -->\n  <rect x="26" y="12.6" width="3.2" height="3.6" rx="0.7" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-k.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 K「一筆牛（ひとふでうし）」〔牛头系列・单线〕：一笔从左角画到右角，中间顺势勾出脸与口鼻；\n       耳朵、鼻孔、眼睛是另外几笔小点画。等宽线条、无底板，与 lucide 线性图标同一语言。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <g fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">\n    <!-- 一笔：左角 → 脸左侧 → 口鼻 → 脸右侧 → 右角 -->\n    <path d="M3.5 3.5C4.5 7.5 7 9.5 10.5 9.5C9.6 13 9.4 16 9.6 19C9.6 24.8 12.4 28 16 28C19.6 28 22.4 24.8 22.4 19C22.6 16 22.4 13 21.5 9.5C25 9.5 27.5 7.5 28.5 3.5"/>\n    <!-- 耳 -->\n    <path d="M9.8 12.6C7.5 12.2 5 12.8 3.8 14.4C5.6 15.6 8 15.6 9.7 14.8"/>\n    <path d="M22.2 12.6C24.5 12.2 27 12.8 28.2 14.4C26.4 15.6 24 15.6 22.3 14.8"/>\n    <!-- 口鼻的上缘 -->\n    <path d="M11.2 20.4Q16 19 20.8 20.4"/>\n  </g>\n  <g style="fill: var(--logo-base, #3778d7)">\n    <circle cx="13.6" cy="23.6" r="1.3"/>\n    <circle cx="18.4" cy="23.6" r="1.3"/>\n    <circle cx="13.2" cy="14.8" r="1.1"/>\n    <circle cx="18.8" cy="14.8" r="1.1"/>\n  </g>\n  <!-- 耳标 -->\n  <rect x="24.4" y="15.6" width="3" height="3.4" rx="0.7" style="fill: var(--logo-accent, #e8a21f)"/>\n</svg>\n',
+        'logo-l.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 L「影牛（かげうし）」〔牛头系列・剪影 + 负形〕：底板上的白色牛头剪影，眼睛与鼻孔是挖空的负形（露出底板色）。\n       底板保证在深 / 浅任务栏上都有完整轮廓；剪影用的是 J 的几何形，缩放到底板内。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <defs>\n    <linearGradient id="l-tile" x1="0" y1="0" x2="0" y2="1">\n      <stop offset="0" style="stop-color: var(--logo-base, #3778d7)"/>\n      <stop offset="1" style="stop-color: var(--logo-base-2, #2a5fb7)"/>\n    </linearGradient>\n  </defs>\n  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#l-tile)"/>\n  <g transform="translate(16 16.6) scale(0.8) translate(-16 -16)">\n    <g style="fill: var(--logo-ink, #ffffff)">\n      <path d="M11 8.5C8.5 8 6 6.5 4.5 2.5C7.5 4.2 10 5.2 12.5 5.8Z"/>\n      <path d="M21 8.5C23.5 8 26 6.5 27.5 2.5C24.5 4.2 22 5.2 19.5 5.8Z"/>\n      <path d="M8.6 11L2 10.2C2.6 12.8 4.6 14.6 8.8 14.6Z"/>\n      <path d="M23.4 11L30 10.2C29.4 12.8 27.4 14.6 23.2 14.6Z"/>\n      <path d="M10.5 6.5H21.5A3.5 3.5 0 0 1 25 10L23.6 19H8.4L7 10A3.5 3.5 0 0 1 10.5 6.5Z"/>\n      <rect x="7" y="17" width="18" height="12" rx="6"/>\n    </g>\n    <!-- 负形：眼、鼻孔、口鼻上缘 -->\n    <g style="fill: var(--logo-base-2, #2a5fb7)">\n      <circle cx="12" cy="12.5" r="1.6"/>\n      <circle cx="20" cy="12.5" r="1.6"/>\n      <ellipse cx="12.2" cy="23.2" rx="1.7" ry="2.2"/>\n      <ellipse cx="19.8" cy="23.2" rx="1.7" ry="2.2"/>\n    </g>\n    <path d="M9.5 18.2Q16 16.6 22.5 18.2" fill="none" style="stroke: var(--logo-base-2, #2a5fb7)" stroke-width="1.3" stroke-linecap="round"/>\n    <rect x="26" y="12.6" width="3.2" height="3.6" rx="0.7" style="fill: var(--logo-accent, #f9b73f)"/>\n  </g>\n</svg>\n',
+        'logo-m.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\r\n  <!-- 方案 M「牛馬（ぎゅうば）」〔牛头系列・马的暗示〕：牛角由一只马蹄铁充当：U 形底部藏在头后，\r\n       两臂向外上方张开就是一对角，臂上有钉孔、末端有蹄铁的踵。主体仍是牛头；金色马蹄铁 = 「高级」牛马。无底板。\r\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\r\n  <title>PremiumCowHorse</title>\r\n  <!-- 马蹄铁（作角）：U 形的底部藏在头后，两臂向外上方张开成一对角；末端的小方块是蹄铁的「踵」，臂上有钉孔 -->\r\n  <path d="M4 3C4.4 7 6.4 9.6 9.5 11Q16 14.5 22.5 11C25.6 9.6 27.6 7 28 3" fill="none" style="stroke: var(--logo-accent, #e8a21f)" stroke-width="4" stroke-linecap="butt"/>\r\n  <rect x="1.6" y="1" width="4.8" height="2.6" rx="0.6" style="fill: var(--logo-accent, #e8a21f)"/>\r\n  <rect x="25.6" y="1" width="4.8" height="2.6" rx="0.6" style="fill: var(--logo-accent, #e8a21f)"/>\r\n  <circle cx="4.5" cy="6.1" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <circle cx="6.6" cy="9" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <circle cx="27.5" cy="6.1" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <circle cx="25.4" cy="9" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <!-- 耳 -->\r\n  <path d="M9 12L2.5 11.4C3.1 13.9 5 15.6 9.2 15.6Z" style="fill: var(--logo-base, #3778d7)"/>\r\n  <path d="M23 12L29.5 11.4C28.9 13.9 27 15.6 22.8 15.6Z" style="fill: var(--logo-base, #3778d7)"/>\r\n  <!-- 脸 -->\r\n  <path d="M11 7H21A3 3 0 0 1 24 10L22.8 19H9.2L8 10A3 3 0 0 1 11 7Z" style="fill: var(--logo-base, #3778d7)"/>\r\n  <!-- 口鼻 -->\r\n  <rect x="8" y="17" width="16" height="11.5" rx="5.75" style="fill: var(--logo-mid, #6d9adc)"/>\r\n  <ellipse cx="12.6" cy="22.8" rx="1.4" ry="1.8" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <ellipse cx="19.4" cy="22.8" rx="1.4" ry="1.8" style="fill: var(--logo-base-2, #2a5fb7)"/>\r\n  <!-- 眼 -->\r\n  <circle cx="12.6" cy="12.4" r="1.3" style="fill: var(--logo-ink, #ffffff)"/>\r\n  <circle cx="19.4" cy="12.4" r="1.3" style="fill: var(--logo-ink, #ffffff)"/>\r\n</svg>\r\n',
+        'logo-n.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 N「文牛（ふみうし）」〔牛头系列・工作区意象〕：文件夹就是牛的脸——文件夹长出一对角、两只耳朵，\n       下方是口鼻。「把案件资料装进一个文件夹」与「牛马」合为一体。无底板。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <!-- 角（在文件夹后面） -->\n  <path d="M8.5 8.5C6 8 3.8 5.8 3.2 2.2C5.8 4 8.2 4.9 10.8 5.3Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <path d="M23.5 8.5C26 8 28.2 5.8 28.8 2.2C26.2 4 23.8 4.9 21.2 5.3Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 耳 -->\n  <path d="M5.5 11.5L1.5 11C1.8 13.4 3.2 14.8 5.5 15Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <path d="M26.5 11.5L30.5 11C30.2 13.4 28.8 14.8 26.5 15Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 文件夹 = 脸（左上是文件夹的标签） -->\n  <path d="M5 9A2.5 2.5 0 0 1 7.5 6.5H12.6L14.6 9H24.5A2.5 2.5 0 0 1 27 11.5V25A3 3 0 0 1 24 28H8A3 3 0 0 1 5 25Z" style="fill: var(--logo-base, #3778d7)"/>\n  <!-- 口鼻 -->\n  <rect x="8" y="19" width="16" height="6.5" rx="3.25" style="fill: var(--logo-mid, #6d9adc)"/>\n  <circle cx="12.8" cy="22.25" r="1.3" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <circle cx="19.2" cy="22.25" r="1.3" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 眼 -->\n  <circle cx="12" cy="14.6" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <circle cx="20" cy="14.6" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>\n  <!-- 耳标 -->\n  <rect x="28" y="14" width="2.8" height="3.2" rx="0.6" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-o.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">\n  <!-- 方案 O「社員証（しゃいんしょう）」〔牛头系列・自嘲〕：一张挂在挂绳夹上的工牌，照片栏里是一头牛，\n       头衔那一行是琥珀色（= 「高级」）。打工人每天挂在胸前的东西，自嘲但体面。\n       细节多，16px 请改用 logo-o-16.svg。\n       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <!-- 工牌 -->\n  <rect x="5" y="4.5" width="22" height="26" rx="3.5" style="fill: var(--logo-base, #3778d7)"/>\n  <!-- 挂绳夹 -->\n  <rect x="12.5" y="1.5" width="7" height="4.5" rx="1.5" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <rect x="14" y="6.8" width="4" height="1.4" rx="0.7" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 照片栏 -->\n  <rect x="8.5" y="9.5" width="15" height="12.5" rx="2" style="fill: var(--logo-ink, #ffffff)"/>\n  <!-- 照片中的牛头 -->\n  <path d="M13.6 13.6C12.2 13.4 11.2 12.5 10.9 11C12.1 11.9 13.2 12.3 14.4 12.5Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <path d="M18.4 13.6C19.8 13.4 20.8 12.5 21.1 11C19.9 11.9 18.8 12.3 17.6 12.5Z" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <path d="M13.5 14.2L10.6 14C10.9 15.3 11.8 16 13.6 16Z" style="fill: var(--logo-base, #3778d7)"/>\n  <path d="M18.5 14.2L21.4 14C21.1 15.3 20.2 16 18.4 16Z" style="fill: var(--logo-base, #3778d7)"/>\n  <rect x="13" y="12.4" width="6" height="7.2" rx="2" style="fill: var(--logo-base, #3778d7)"/>\n  <rect x="12.6" y="17" width="6.8" height="4.2" rx="2.1" style="fill: var(--logo-mid, #6d9adc)"/>\n  <circle cx="14.7" cy="19.1" r="0.6" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <circle cx="17.3" cy="19.1" r="0.6" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 姓名行与头衔行 -->\n  <rect x="8.5" y="24" width="15" height="2" rx="1" style="fill: var(--logo-ink, #ffffff)" fill-opacity="0.9"/>\n  <rect x="8.5" y="27" width="9" height="1.6" rx="0.8" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-h-16.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">\n  <!-- 方案 H「円相」的 16px 简化版：去掉飞白、墨点与印章内框，只留粗细一致的留口圆 + 印章。\n       用于 16 / 20 / 24px（.ico 的小尺寸位图、标题栏标记）。逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <path d="M12.89 6.22A5.4 5.4 0 1 1 10.28 3.61" fill="none" style="stroke: var(--logo-base, #2f6ccf)" stroke-width="2.6" stroke-linecap="round"/>\n  <rect x="10.5" y="10.5" width="4.5" height="4.5" rx="0.8" style="fill: var(--logo-accent, #e8a21f)"/>\n</svg>\n',
+        'logo-i-16.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">\n  <!-- 方案 I「色面」的 16px 简化版：九笔减为四块略带倾斜的色块（2×2），保留「拼成一块」与中间偏右的焦点色。\n       用于 16 / 20 / 24px。逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <rect x="1" y="1.5" width="6.5" height="6" rx="1.6" transform="rotate(-6 4.25 4.5)" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <rect x="8.5" y="1" width="6.5" height="6.5" rx="1.6" transform="rotate(5 11.75 4.25)" style="fill: var(--logo-mid, #6d9adc)"/>\n  <rect x="1" y="8.5" width="6.5" height="6.5" rx="1.6" transform="rotate(4 4.25 11.75)" style="fill: var(--logo-base, #3778d7)"/>\n  <rect x="8.5" y="8.5" width="6.5" height="6" rx="1.6" transform="rotate(-5 11.75 11.5)" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n',
+        'logo-o-16.svg':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">\n  <!-- 方案 O「社員証」的 16px 简化版：去掉照片栏与姓名行，牛头直接画在工牌上、放大到占满；保留挂绳夹与琥珀色头衔条。\n       用于 16 / 20 / 24px。逗号后为静态色 -->\n  <title>PremiumCowHorse</title>\n  <rect x="1.5" y="2" width="13" height="13.5" rx="2" style="fill: var(--logo-base, #3778d7)"/>\n  <rect x="6" y="0.5" width="4" height="2.5" rx="0.8" style="fill: var(--logo-base-2, #2a5fb7)"/>\n  <!-- 牛头（反白） -->\n  <g style="fill: var(--logo-ink, #ffffff)">\n    <path d="M6 6.3C4.6 6.1 3.7 5.2 3.5 3.9C4.6 4.6 5.6 4.9 6.6 5Z"/>\n    <path d="M10 6.3C11.4 6.1 12.3 5.2 12.5 3.9C11.4 4.6 10.4 4.9 9.4 5Z"/>\n    <rect x="5.5" y="5" width="5" height="6.5" rx="1.8"/>\n  </g>\n  <circle cx="7" cy="9.6" r="0.65" style="fill: var(--logo-base, #3778d7)"/>\n  <circle cx="9" cy="9.6" r="0.65" style="fill: var(--logo-base, #3778d7)"/>\n  <rect x="4.5" y="12.8" width="7" height="1.3" rx="0.65" style="fill: var(--logo-accent, #f9b73f)"/>\n</svg>\n'
+      }
+      let uid = 0
+      /** 内联 SVG：每个实例的 id 加后缀（渐变定义在哪个实例里，就取那个实例所在作用域的变量） */
+      function inline(file, size) {
+        const n = ++uid
+        return SRC[file]
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace(/<title>.*?<\/title>/, '')
+          .replace(/id="([^"]+)"/g, 'id="$1-' + n + '"')
+          .replace(/url\(#([^)]+)\)/g, 'url(#$1-' + n + ')')
+          .replace(
+            /width="\d+" height="\d+"/,
+            'width="' + size + '" height="' + size + '" aria-hidden="true"'
+          )
+      }
+      const smallOf = (l) => l.small || 'logo-' + l.id + '.svg'
+
+      document.getElementById('styles').innerHTML = STYLES.map((s, si) => {
+        const ls = LOGOS.filter((l) => l.style === s.id)
+        const prev = !s.current
+        const sep =
+          prev && STYLES[si - 1] && STYLES[si - 1].current
+            ? '<div class="prevhead"><h2>上一轮的方案（A–I）<small>第 1、2 轮，保留供比较</small></h2></div>'
+            : ''
+        return (
+          sep +
+          '<h2>' +
+          (prev ? '<span class="prevtag">上一轮</span>' : '') +
+          s.name +
+          '<small>' +
+          s.desc +
+          '</small></h2><div class="grid">' +
+          ls
+            .map((l) => {
+              const file = 'logo-' + l.id + '.svg'
+              return (
+                '<article class="card"><div class="hero"><span class="big">' +
+                inline(file, 96) +
+                '</span><div><h3>' +
+                l.id.toUpperCase() +
+                '「' +
+                l.name +
+                '」<small>' +
+                l.kana +
+                ' / ' +
+                l.zh +
+                '</small></h3><span class="tagline">' +
+                s.name +
+                '</span></div></div>' +
+                '<p>' +
+                l.meaning +
+                '</p>' +
+                '<div class="sizes">' +
+                [16, 24, 32, 48]
+                  .map(
+                    (z) =>
+                      '<figure>' +
+                      inline(z <= 24 ? smallOf(l) : file, z) +
+                      '<figcaption>' +
+                      z +
+                      (z <= 24 && l.small ? ' 简化' : '') +
+                      '</figcaption></figure>'
+                  )
+                  .join('') +
+                '</div>' +
+                '<div class="tbx">' +
+                inline(smallOf(l), 16) +
+                'PremiumCowHorse<span class="ws">● A銀行 勘定系 保守</span></div>' +
+                '<p class="rules">使用令牌：' +
+                l.tokens.map((t) => '<code>--logo-' + t + '</code>').join(' ') +
+                '</p>' +
+                '<div class="static"><div class="lbl">静态版（exe / 窗口 / 任务栏）：' +
+                l.stat +
+                '</div><div class="tasks">' +
+                ['d', 'l']
+                  .map(
+                    (k) =>
+                      '<div class="task ' +
+                      k +
+                      '"><img src="' +
+                      smallOf(l) +
+                      '" width="16" height="16" alt=""><img src="' +
+                      file +
+                      '" width="24" height="24" alt=""><img src="' +
+                      file +
+                      '" width="32" height="32" alt=""><canvas width="16" height="16" data-file="' +
+                      smallOf(l) +
+                      '" data-bg="' +
+                      (k === 'd' ? '#202020' : '#f3f3f3') +
+                      '" title="16px 实际像素（放大 2 倍）"></canvas></div>'
+                  )
+                  .join('') +
+                '</div></div></article>'
+              )
+            })
+            .join('') +
+          '</div>'
+        )
+      }).join('')
+
+      function renderTokens() {
+        const scope = document.getElementById('scope')
+        const theme = scope.dataset.theme,
+          mode = scope.classList.contains('dark') ? 'dark' : 'light'
+        const t = TOKENS[theme][mode]
+        document.getElementById('tokens').innerHTML =
+          '<table><tr><th>令牌</th><th>当前主题的值</th><th>规则</th></tr>' +
+          Object.keys(ROLES)
+            .map(
+              (k) =>
+                '<tr><td><code>--logo-' +
+                k +
+                '</code></td><td><span class="sw" style="background:oklch(' +
+                t[k] +
+                ')"></span><code>oklch(' +
+                t[k] +
+                ')</code></td><td>' +
+                ROLES[k] +
+                '</td></tr>'
+            )
+            .join('') +
+          '</table>'
+      }
+      document.getElementById('aboutLogo').innerHTML = inline('logo-l.svg', 64)
+      document.getElementById('css').textContent = TOKEN_CSS
+
+      // 静态版的 16px 实际像素：栅格化到 16×16 Canvas 后放大
+      document.querySelectorAll('canvas[data-file]').forEach((cv) => {
+        const img = new Image()
+        img.onload = () => {
+          const c = cv.getContext('2d')
+          c.fillStyle = cv.dataset.bg
+          c.fillRect(0, 0, 16, 16)
+          c.drawImage(img, 0, 0, 16, 16)
+        }
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(SRC[cv.dataset.file])
+      })
+
+      function seg(id, fn) {
+        document
+          .getElementById(id)
+          .querySelectorAll('button')
+          .forEach((b) =>
+            b.addEventListener('click', () => {
+              document
+                .getElementById(id)
+                .querySelectorAll('button')
+                .forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+              fn(b.dataset.v)
+              renderTokens()
+            })
+          )
+      }
+      seg('tTheme', (v) => (document.getElementById('scope').dataset.theme = v))
+      seg('tMode', (v) => document.getElementById('scope').classList.toggle('dark', v === 'dark'))
+      const qs = new URLSearchParams(location.search)
+      if (qs.get('theme'))
+        document.querySelector('#tTheme [data-v="' + qs.get('theme') + '"]').click()
+      if (qs.get('mode')) document.querySelector('#tMode [data-v="' + qs.get('mode') + '"]').click()
+      renderTokens()
+    </script>
+  </body>
+</html>

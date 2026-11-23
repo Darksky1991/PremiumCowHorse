@@ -1,0 +1,2151 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>配色主题方案</title>
+    <style>
+      [data-theme='default'] {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.145 0 0);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.145 0 0);
+        --primary: oklch(0.205 0 0);
+        --primary-foreground: oklch(0.985 0 0);
+        --secondary: oklch(0.97 0 0);
+        --secondary-foreground: oklch(0.205 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --accent: oklch(0.97 0 0);
+        --accent-foreground: oklch(0.205 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --ring: oklch(0.708 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.985 0 0);
+        --sidebar-foreground: oklch(0.145 0 0);
+        --sidebar-primary: oklch(0.205 0 0);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.97 0 0);
+        --sidebar-accent-foreground: oklch(0.205 0 0);
+        --sidebar-border: oklch(0.922 0 0);
+        --sidebar-ring: oklch(0.708 0 0);
+        --log-error: oklch(0.54 0.2 27);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.13 250);
+        --log-time: oklch(0.52 0 0);
+      }
+      [data-theme='default'].dark {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --card-foreground: oklch(0.985 0 0);
+        --popover: oklch(0.205 0 0);
+        --popover-foreground: oklch(0.985 0 0);
+        --primary: oklch(0.922 0 0);
+        --primary-foreground: oklch(0.205 0 0);
+        --secondary: oklch(0.269 0 0);
+        --secondary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --accent: oklch(0.269 0 0);
+        --accent-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.704 0.191 22.216);
+        --border: oklch(1 0 0 / 10%);
+        --input: oklch(1 0 0 / 15%);
+        --ring: oklch(0.556 0 0);
+        --chart-1: oklch(0.87 0 0);
+        --chart-2: oklch(0.556 0 0);
+        --chart-3: oklch(0.439 0 0);
+        --chart-4: oklch(0.371 0 0);
+        --chart-5: oklch(0.269 0 0);
+        --sidebar: oklch(0.205 0 0);
+        --sidebar-foreground: oklch(0.985 0 0);
+        --sidebar-primary: oklch(0.488 0.243 264.376);
+        --sidebar-primary-foreground: oklch(0.985 0 0);
+        --sidebar-accent: oklch(0.269 0 0);
+        --sidebar-accent-foreground: oklch(0.985 0 0);
+        --sidebar-border: oklch(1 0 0 / 10%);
+        --sidebar-ring: oklch(0.556 0 0);
+        --log-error: oklch(0.72 0.17 25);
+        --log-warn: oklch(0.82 0.13 80);
+        --log-info: oklch(0.76 0.1 240);
+        --log-time: oklch(0.708 0 0);
+      }
+      [data-theme='aitetsu'] {
+        --background: oklch(0.985 0.004 250);
+        --foreground: oklch(0.22 0.025 258);
+        --card: oklch(0.995 0.002 250);
+        --card-foreground: oklch(0.22 0.025 258);
+        --popover: oklch(1 0 0);
+        --popover-foreground: oklch(0.22 0.025 258);
+        --primary: oklch(0.5 0.13 248);
+        --primary-foreground: oklch(0.985 0.005 245);
+        --secondary: oklch(0.95 0.01 250);
+        --secondary-foreground: oklch(0.28 0.03 258);
+        --muted: oklch(0.955 0.008 250);
+        --muted-foreground: oklch(0.5 0.025 255);
+        --accent: oklch(0.93 0.022 245);
+        --accent-foreground: oklch(0.25 0.04 255);
+        --destructive: oklch(0.56 0.21 27);
+        --border: oklch(0.9 0.012 250);
+        --input: oklch(0.88 0.014 250);
+        --ring: oklch(0.6 0.12 242);
+        --chart-1: oklch(0.6 0.13 240);
+        --chart-2: oklch(0.62 0.1 190);
+        --chart-3: oklch(0.52 0.13 280);
+        --chart-4: oklch(0.72 0.14 75);
+        --chart-5: oklch(0.6 0.17 25);
+        --sidebar: oklch(0.965 0.008 250);
+        --sidebar-foreground: oklch(0.22 0.025 258);
+        --sidebar-primary: oklch(0.5 0.13 248);
+        --sidebar-primary-foreground: oklch(0.985 0.005 245);
+        --sidebar-accent: oklch(0.925 0.02 248);
+        --sidebar-accent-foreground: oklch(0.25 0.04 255);
+        --sidebar-border: oklch(0.9 0.012 250);
+        --sidebar-ring: oklch(0.6 0.12 242);
+        --log-error: oklch(0.54 0.19 25);
+        --log-warn: oklch(0.53 0.12 65);
+        --log-info: oklch(0.5 0.11 240);
+        --log-time: oklch(0.5 0.025 255);
+      }
+      [data-theme='aitetsu'].dark {
+        --background: oklch(0.175 0.022 256);
+        --foreground: oklch(0.93 0.012 240);
+        --card: oklch(0.21 0.025 256);
+        --card-foreground: oklch(0.93 0.012 240);
+        --popover: oklch(0.225 0.027 256);
+        --popover-foreground: oklch(0.93 0.012 240);
+        --primary: oklch(0.8 0.12 212);
+        --primary-foreground: oklch(0.2 0.035 245);
+        --secondary: oklch(0.27 0.03 256);
+        --secondary-foreground: oklch(0.93 0.012 240);
+        --muted: oklch(0.25 0.026 256);
+        --muted-foreground: oklch(0.71 0.03 245);
+        --accent: oklch(0.29 0.042 250);
+        --accent-foreground: oklch(0.96 0.01 240);
+        --destructive: oklch(0.69 0.18 22);
+        --border: oklch(0.3 0.03 256);
+        --input: oklch(0.33 0.035 256);
+        --ring: oklch(0.72 0.12 212);
+        --chart-1: oklch(0.78 0.12 212);
+        --chart-2: oklch(0.76 0.12 170);
+        --chart-3: oklch(0.7 0.14 285);
+        --chart-4: oklch(0.82 0.13 82);
+        --chart-5: oklch(0.7 0.17 25);
+        --sidebar: oklch(0.15 0.02 256);
+        --sidebar-foreground: oklch(0.93 0.012 240);
+        --sidebar-primary: oklch(0.8 0.12 212);
+        --sidebar-primary-foreground: oklch(0.2 0.035 245);
+        --sidebar-accent: oklch(0.25 0.036 252);
+        --sidebar-accent-foreground: oklch(0.96 0.01 240);
+        --sidebar-border: oklch(0.26 0.03 256);
+        --sidebar-ring: oklch(0.72 0.12 212);
+        --log-error: oklch(0.72 0.16 22);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.8 0.1 212);
+        --log-time: oklch(0.66 0.03 245);
+      }
+      [data-theme='washi'] {
+        --background: oklch(0.975 0.008 85);
+        --foreground: oklch(0.25 0.022 262);
+        --card: oklch(0.99 0.005 85);
+        --card-foreground: oklch(0.25 0.022 262);
+        --popover: oklch(0.99 0.005 85);
+        --popover-foreground: oklch(0.25 0.022 262);
+        --primary: oklch(0.43 0.12 263);
+        --primary-foreground: oklch(0.975 0.008 85);
+        --secondary: oklch(0.94 0.012 85);
+        --secondary-foreground: oklch(0.3 0.03 262);
+        --muted: oklch(0.945 0.01 85);
+        --muted-foreground: oklch(0.5 0.02 70);
+        --accent: oklch(0.915 0.02 82);
+        --accent-foreground: oklch(0.27 0.03 262);
+        --destructive: oklch(0.53 0.19 32);
+        --border: oklch(0.89 0.015 80);
+        --input: oklch(0.87 0.017 80);
+        --ring: oklch(0.55 0.11 263);
+        --chart-1: oklch(0.5 0.12 263);
+        --chart-2: oklch(0.6 0.16 35);
+        --chart-3: oklch(0.6 0.1 135);
+        --chart-4: oklch(0.74 0.14 80);
+        --chart-5: oklch(0.5 0.1 320);
+        --sidebar: oklch(0.955 0.012 82);
+        --sidebar-foreground: oklch(0.25 0.022 262);
+        --sidebar-primary: oklch(0.43 0.12 263);
+        --sidebar-primary-foreground: oklch(0.975 0.008 85);
+        --sidebar-accent: oklch(0.915 0.022 80);
+        --sidebar-accent-foreground: oklch(0.27 0.03 262);
+        --sidebar-border: oklch(0.885 0.016 80);
+        --sidebar-ring: oklch(0.55 0.11 263);
+        --log-error: oklch(0.52 0.18 32);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.45 0.11 263);
+        --log-time: oklch(0.49 0.02 70);
+      }
+      [data-theme='washi'].dark {
+        --background: oklch(0.205 0.008 70);
+        --foreground: oklch(0.9 0.016 85);
+        --card: oklch(0.235 0.009 70);
+        --card-foreground: oklch(0.9 0.016 85);
+        --popover: oklch(0.245 0.01 70);
+        --popover-foreground: oklch(0.9 0.016 85);
+        --primary: oklch(0.75 0.085 258);
+        --primary-foreground: oklch(0.2 0.02 262);
+        --secondary: oklch(0.29 0.01 70);
+        --secondary-foreground: oklch(0.9 0.016 85);
+        --muted: oklch(0.27 0.009 70);
+        --muted-foreground: oklch(0.71 0.02 80);
+        --accent: oklch(0.31 0.015 75);
+        --accent-foreground: oklch(0.93 0.015 85);
+        --destructive: oklch(0.68 0.16 32);
+        --border: oklch(0.32 0.01 70);
+        --input: oklch(0.35 0.012 70);
+        --ring: oklch(0.66 0.085 258);
+        --chart-1: oklch(0.72 0.09 258);
+        --chart-2: oklch(0.7 0.14 38);
+        --chart-3: oklch(0.74 0.1 135);
+        --chart-4: oklch(0.82 0.12 82);
+        --chart-5: oklch(0.7 0.09 320);
+        --sidebar: oklch(0.18 0.007 70);
+        --sidebar-foreground: oklch(0.9 0.016 85);
+        --sidebar-primary: oklch(0.75 0.085 258);
+        --sidebar-primary-foreground: oklch(0.2 0.02 262);
+        --sidebar-accent: oklch(0.28 0.014 72);
+        --sidebar-accent-foreground: oklch(0.93 0.015 85);
+        --sidebar-border: oklch(0.28 0.009 70);
+        --sidebar-ring: oklch(0.66 0.085 258);
+        --log-error: oklch(0.72 0.15 32);
+        --log-warn: oklch(0.82 0.11 82);
+        --log-info: oklch(0.77 0.08 258);
+        --log-time: oklch(0.66 0.02 80);
+      }
+      [data-theme='matsuba'] {
+        --background: oklch(0.98 0.005 160);
+        --foreground: oklch(0.24 0.02 170);
+        --card: oklch(0.995 0.003 160);
+        --card-foreground: oklch(0.24 0.02 170);
+        --popover: oklch(0.995 0.003 160);
+        --popover-foreground: oklch(0.24 0.02 170);
+        --primary: oklch(0.48 0.1 165);
+        --primary-foreground: oklch(0.98 0.01 160);
+        --secondary: oklch(0.95 0.012 160);
+        --secondary-foreground: oklch(0.28 0.03 170);
+        --muted: oklch(0.955 0.01 160);
+        --muted-foreground: oklch(0.5 0.025 170);
+        --accent: oklch(0.93 0.025 162);
+        --accent-foreground: oklch(0.26 0.04 170);
+        --destructive: oklch(0.55 0.2 27);
+        --border: oklch(0.9 0.014 160);
+        --input: oklch(0.88 0.016 160);
+        --ring: oklch(0.6 0.1 165);
+        --chart-1: oklch(0.55 0.11 165);
+        --chart-2: oklch(0.6 0.1 220);
+        --chart-3: oklch(0.72 0.13 85);
+        --chart-4: oklch(0.6 0.15 40);
+        --chart-5: oklch(0.5 0.1 300);
+        --sidebar: oklch(0.965 0.01 160);
+        --sidebar-foreground: oklch(0.24 0.02 170);
+        --sidebar-primary: oklch(0.48 0.1 165);
+        --sidebar-primary-foreground: oklch(0.98 0.01 160);
+        --sidebar-accent: oklch(0.925 0.025 162);
+        --sidebar-accent-foreground: oklch(0.26 0.04 170);
+        --sidebar-border: oklch(0.895 0.014 160);
+        --sidebar-ring: oklch(0.6 0.1 165);
+        --log-error: oklch(0.54 0.19 27);
+        --log-warn: oklch(0.52 0.11 65);
+        --log-info: oklch(0.48 0.085 220);
+        --log-time: oklch(0.5 0.025 170);
+      }
+      [data-theme='matsuba'].dark {
+        --background: oklch(0.19 0.014 175);
+        --foreground: oklch(0.92 0.012 160);
+        --card: oklch(0.225 0.016 175);
+        --card-foreground: oklch(0.92 0.012 160);
+        --popover: oklch(0.235 0.017 175);
+        --popover-foreground: oklch(0.92 0.012 160);
+        --primary: oklch(0.78 0.11 160);
+        --primary-foreground: oklch(0.2 0.03 170);
+        --secondary: oklch(0.28 0.02 175);
+        --secondary-foreground: oklch(0.92 0.012 160);
+        --muted: oklch(0.26 0.017 175);
+        --muted-foreground: oklch(0.71 0.03 165);
+        --accent: oklch(0.3 0.03 170);
+        --accent-foreground: oklch(0.95 0.01 160);
+        --destructive: oklch(0.69 0.17 25);
+        --border: oklch(0.31 0.02 175);
+        --input: oklch(0.34 0.022 175);
+        --ring: oklch(0.68 0.1 160);
+        --chart-1: oklch(0.76 0.11 160);
+        --chart-2: oklch(0.74 0.09 220);
+        --chart-3: oklch(0.83 0.12 85);
+        --chart-4: oklch(0.73 0.14 42);
+        --chart-5: oklch(0.7 0.1 300);
+        --sidebar: oklch(0.165 0.013 175);
+        --sidebar-foreground: oklch(0.92 0.012 160);
+        --sidebar-primary: oklch(0.78 0.11 160);
+        --sidebar-primary-foreground: oklch(0.2 0.03 170);
+        --sidebar-accent: oklch(0.27 0.03 172);
+        --sidebar-accent-foreground: oklch(0.95 0.01 160);
+        --sidebar-border: oklch(0.27 0.018 175);
+        --sidebar-ring: oklch(0.68 0.1 160);
+        --log-error: oklch(0.72 0.16 25);
+        --log-warn: oklch(0.83 0.12 82);
+        --log-info: oklch(0.78 0.08 220);
+        --log-time: oklch(0.66 0.03 165);
+      }
+      [data-theme] {
+        --ws-slate: oklch(0.55 0.03 255);
+        --ws-red: oklch(0.58 0.19 27);
+        --ws-orange: oklch(0.64 0.16 50);
+        --ws-amber: oklch(0.64 0.135 72);
+        --ws-green: oklch(0.58 0.14 150);
+        --ws-teal: oklch(0.58 0.1 190);
+        --ws-blue: oklch(0.55 0.16 255);
+        --ws-violet: oklch(0.55 0.17 295);
+        --ws-pink: oklch(0.62 0.18 355);
+        --fi-folder: oklch(0.61 0.13 70);
+        --fi-word: oklch(0.5 0.15 258);
+        --fi-excel: oklch(0.52 0.13 150);
+        --fi-powerpoint: oklch(0.58 0.17 40);
+        --fi-pdf: oklch(0.54 0.2 27);
+        --fi-mail: oklch(0.55 0.105 232);
+        --fi-archive: oklch(0.52 0.08 60);
+        --fi-image: oklch(0.56 0.17 350);
+        --fi-media: oklch(0.53 0.17 318);
+        --fi-csv: oklch(0.52 0.08 155);
+        --fi-log: oklch(0.53 0.08 195);
+        --fi-script: oklch(0.5 0.14 300);
+        --fi-code: oklch(0.5 0.11 275);
+        --fi-config: oklch(0.52 0.07 110);
+        --fi-database: oklch(0.52 0.09 215);
+        --fi-cert: oklch(0.56 0.11 92);
+        --fi-markdown: oklch(0.5 0.05 250);
+        --fi-exe: oklch(0.45 0.025 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 30%);
+      }
+      [data-theme].dark {
+        --ws-slate: oklch(0.72 0.03 255);
+        --ws-red: oklch(0.7 0.17 25);
+        --ws-orange: oklch(0.76 0.14 55);
+        --ws-amber: oklch(0.82 0.14 85);
+        --ws-green: oklch(0.76 0.14 152);
+        --ws-teal: oklch(0.77 0.1 190);
+        --ws-blue: oklch(0.72 0.13 252);
+        --ws-violet: oklch(0.73 0.14 295);
+        --ws-pink: oklch(0.75 0.14 355);
+        --fi-folder: oklch(0.83 0.14 85);
+        --fi-word: oklch(0.72 0.13 255);
+        --fi-excel: oklch(0.76 0.15 152);
+        --fi-powerpoint: oklch(0.75 0.15 48);
+        --fi-pdf: oklch(0.7 0.17 24);
+        --fi-mail: oklch(0.77 0.1 228);
+        --fi-archive: oklch(0.76 0.08 68);
+        --fi-image: oklch(0.75 0.14 350);
+        --fi-media: oklch(0.74 0.14 318);
+        --fi-csv: oklch(0.77 0.08 155);
+        --fi-log: oklch(0.77 0.08 195);
+        --fi-script: oklch(0.74 0.12 300);
+        --fi-code: oklch(0.75 0.09 275);
+        --fi-config: oklch(0.79 0.08 110);
+        --fi-database: oklch(0.77 0.09 212);
+        --fi-cert: oklch(0.83 0.12 95);
+        --fi-markdown: oklch(0.78 0.05 250);
+        --fi-exe: oklch(0.82 0.02 255);
+        --fi-neutral: var(--muted-foreground);
+        --fi-danger: var(--destructive);
+        --fi-folder-fill: oklch(0.83 0.14 85 / 18%);
+      }
+      :root {
+        --page-bg: oklch(0.96 0.003 250);
+        --page-fg: oklch(0.22 0.02 258);
+        --page-muted: oklch(0.5 0.02 255);
+        --page-line: oklch(0.88 0.01 250);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page-bg: oklch(0.16 0.01 256);
+          --page-fg: oklch(0.92 0.01 240);
+          --page-muted: oklch(0.7 0.02 245);
+          --page-line: oklch(0.3 0.02 256);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page-bg);
+        color: var(--page-fg);
+        font:
+          14px/1.7 'Segoe UI Variable Text',
+          'Segoe UI',
+          'Yu Gothic UI',
+          'Microsoft YaHei UI',
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1,
+      h2 {
+        font-family: 'BIZ UDPGothic', 'Yu Gothic UI', sans-serif;
+        letter-spacing: 0.02em;
+      }
+      h1 {
+        font-size: 26px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 21px;
+        margin: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      h2 small {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--page-muted);
+      }
+      .lead {
+        color: var(--page-muted);
+        max-width: 76ch;
+        margin: 0 0 8px;
+      }
+      section.theme {
+        border-top: 1px solid var(--page-line);
+        padding: 28px 0 8px;
+        margin-top: 24px;
+      }
+      .concept {
+        color: var(--page-muted);
+        margin: 4px 0 16px;
+        max-width: 80ch;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      @media (max-width: 1000px) {
+        .pair {
+          grid-template-columns: 1fr;
+        }
+      }
+      details {
+        margin-top: 12px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--page-muted);
+        font-size: 13px;
+      }
+      table.ct {
+        border-collapse: collapse;
+        font-size: 12.5px;
+        margin-top: 8px;
+        width: 100%;
+        max-width: 760px;
+      }
+      .ct td,
+      .ct th {
+        padding: 4px 10px;
+        border-bottom: 1px solid var(--page-line);
+        text-align: left;
+      }
+      .ct td.n {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      .ct .bad {
+        color: oklch(0.6 0.2 27);
+        font-weight: 600;
+      }
+      .css {
+        position: relative;
+      }
+      .css pre {
+        max-height: 420px;
+        overflow: auto;
+        background: oklch(0.2 0.02 256);
+        color: oklch(0.9 0.01 240);
+        padding: 16px;
+        border-radius: 10px;
+        font:
+          12px/1.55 'Cascadia Mono',
+          Consolas,
+          monospace;
+      }
+      .css button {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+      }
+
+      /* ---------- 迷你应用外壳（只用 shadcn 变量） ---------- */
+      .shell {
+        background: var(--background);
+        color: var(--foreground);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 12.5px;
+        display: flex;
+        flex-direction: column;
+        height: 400px;
+        position: relative;
+        box-shadow: 0 10px 30px -18px oklch(0 0 0 / 0.5);
+      }
+      .shell .tb {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px;
+        background: var(--sidebar);
+        color: var(--sidebar-foreground);
+        border-bottom: 1px solid var(--sidebar-border);
+      }
+      .shell .tb b {
+        font-weight: 600;
+        margin-right: 6px;
+      }
+      .shell .wsb {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        color: var(--sidebar-foreground);
+      }
+      .shell .wsb i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ws-blue);
+      }
+      .shell .srch {
+        flex: 1;
+        max-width: 220px;
+        margin: 0 auto;
+        height: 22px;
+        border-radius: 6px;
+        border: 1px solid var(--input);
+        background: var(--background);
+        color: var(--muted-foreground);
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        font-size: 11.5px;
+      }
+      .shell .tag {
+        font-size: 11px;
+        color: var(--muted-foreground);
+        margin-left: 8px;
+      }
+      .shell .bd {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .shell .ab {
+        width: 34px;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding-top: 6px;
+        color: var(--muted-foreground);
+      }
+      .shell .ab span {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+      }
+      .shell .ab span.on {
+        background: var(--sidebar-accent);
+        color: var(--sidebar-accent-foreground);
+        box-shadow: inset 2px 0 0 var(--sidebar-primary);
+      }
+      .shell .sb {
+        width: 178px;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+        padding: 6px 4px;
+        color: var(--sidebar-foreground);
+        overflow: hidden;
+      }
+      .shell .sb div {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 21px;
+        padding: 0 6px;
+        border-radius: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .shell .sb div.sel {
+        background: var(--sidebar-accent);
+        color: var(--sidebar-accent-foreground);
+      }
+      .shell .sb div:focus-visible,
+      .shell .sb div.focus {
+        outline: 2px solid var(--sidebar-ring);
+        outline-offset: -2px;
+      }
+      .shell .mn {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .shell .tabs {
+        height: 28px;
+        display: flex;
+        align-items: end;
+        gap: 2px;
+        padding: 0 6px;
+        background: var(--sidebar);
+        border-bottom: 1px solid var(--border);
+      }
+      .shell .tab {
+        height: 23px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 10px;
+        border-radius: 5px 5px 0 0;
+        color: var(--muted-foreground);
+      }
+      .shell .tab.on {
+        background: var(--background);
+        color: var(--foreground);
+        box-shadow: 0 0 0 1px var(--border);
+      }
+      .shell .log {
+        flex: 1;
+        margin: 0;
+        padding: 8px 12px;
+        font:
+          11.5px/1.6 'Cascadia Mono',
+          'BIZ UDGothic',
+          Consolas,
+          monospace;
+        white-space: pre;
+        overflow: hidden;
+      }
+      .shell .log .t {
+        color: var(--log-time);
+      }
+      .shell .log .e {
+        color: var(--log-error);
+        font-weight: 600;
+      }
+      .shell .log .w {
+        color: var(--log-warn);
+        font-weight: 600;
+      }
+      .shell .log .n {
+        color: var(--log-info);
+      }
+      .shell .log .hl {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .shell .ctrls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-top: 1px solid var(--border);
+        background: var(--card);
+        color: var(--card-foreground);
+      }
+      .shell .b {
+        height: 24px;
+        padding: 0 10px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        font-size: 12px;
+        border: 1px solid transparent;
+      }
+      .shell .b.p {
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+      .shell .b.s {
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      .shell .b.o {
+        border-color: var(--border);
+        background: var(--background);
+      }
+      .shell .b.d {
+        background: color-mix(in oklch, var(--destructive) 12%, transparent);
+        color: var(--destructive);
+      }
+      .shell .inp {
+        height: 24px;
+        width: 130px;
+        border-radius: 6px;
+        border: 1px solid var(--input);
+        background: var(--background);
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        color: var(--muted-foreground);
+        font-size: 12px;
+      }
+      .shell .inp.f {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 35%, transparent);
+        color: var(--foreground);
+      }
+      .shell .chip {
+        font-size: 11px;
+        padding: 0 6px;
+        border-radius: 4px;
+        background: var(--muted);
+        color: var(--muted-foreground);
+      }
+      .shell .menu {
+        position: absolute;
+        right: 14px;
+        bottom: 76px;
+        width: 170px;
+        background: var(--popover);
+        color: var(--popover-foreground);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        box-shadow: 0 12px 28px -10px oklch(0 0 0 / 0.45);
+      }
+      .shell .menu div {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 5px;
+      }
+      .shell .menu div.on {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .shell .menu div.dz {
+        color: var(--destructive);
+      }
+      .shell .menu hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+        margin: 3px 0;
+      }
+      .shell .menu .k {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted-foreground);
+      }
+      .shell .charts {
+        display: flex;
+        gap: 3px;
+        margin-left: auto;
+      }
+      .shell .charts i {
+        width: 10px;
+        height: 18px;
+        border-radius: 2px;
+      }
+      .shell svg {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .label {
+        font-size: 12px;
+        color: var(--page-muted);
+        margin: 0 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>配色主题：默认 + 三套新增</h1>
+      <p class="lead">
+        每套主题都是完整的 shadcn 变量集（不只是强调色），明暗各一。迷你外壳只用这些变量绘制：标题栏
+        / 活动栏 / 资源树（选中行与焦点环）/ 标签 / 日志文本 / 按钮 / 输入框 /
+        菜单。日志着色用新增的扩展令牌 <code>--log-*</code>，文件图标用 <code>--fi-*</code>（见
+        file-icons.html）。页底附可直接粘贴进 <code>globals.css</code> 的 CSS。
+      </p>
+      <p class="lead">
+        对比度在页内由 oklch → sRGB 实际计算（WCAG 2.x 公式）。文字目标 4.5:1，图形 / 焦点环目标
+        3:1。默认主题的两处不足（muted-foreground 在 muted 底上 4.34、ring 在白底上 2.59）是 shadcn
+        neutral 原值，本次不改，列为开放问题。
+      </p>
+      <div id="themes"></div>
+
+      <section class="theme">
+        <h2>粘贴用 CSS <small>放在 globals.css 现有强调色块之前</small></h2>
+        <p class="concept">
+          新增主题按 <code>[data-theme='x']</code> 与
+          <code>[data-theme='x'].dark</code> 组织（data-theme 与 .dark 都在 &lt;html&gt;
+          上）；默认主题不设属性。扩展令牌（日志级别、工作区颜色、文件图标颜色）一并给出，并通过
+          <code>@theme inline</code> 映射为 Tailwind 颜色（如
+          <code>text-log-error</code>、<code>text-fi-excel</code>、<code>bg-ws-red</code>）。
+        </p>
+        <div class="css">
+          <button id="copy">复制</button>
+          <pre id="css"></pre>
+        </div>
+      </section>
+    </main>
+    <script>
+      const THEMES = [
+        {
+          id: 'default',
+          names: { ja: '標準', zh: '默认', en: 'Default' },
+          concept: '现有 shadcn neutral（保持不变，作为对照）。',
+          light: {
+            background: 'oklch(1 0 0)',
+            foreground: 'oklch(0.145 0 0)',
+            card: 'oklch(1 0 0)',
+            'card-foreground': 'oklch(0.145 0 0)',
+            popover: 'oklch(1 0 0)',
+            'popover-foreground': 'oklch(0.145 0 0)',
+            primary: 'oklch(0.205 0 0)',
+            'primary-foreground': 'oklch(0.985 0 0)',
+            secondary: 'oklch(0.97 0 0)',
+            'secondary-foreground': 'oklch(0.205 0 0)',
+            muted: 'oklch(0.97 0 0)',
+            'muted-foreground': 'oklch(0.556 0 0)',
+            accent: 'oklch(0.97 0 0)',
+            'accent-foreground': 'oklch(0.205 0 0)',
+            destructive: 'oklch(0.577 0.245 27.325)',
+            border: 'oklch(0.922 0 0)',
+            input: 'oklch(0.922 0 0)',
+            ring: 'oklch(0.708 0 0)',
+            'chart-1': 'oklch(0.87 0 0)',
+            'chart-2': 'oklch(0.556 0 0)',
+            'chart-3': 'oklch(0.439 0 0)',
+            'chart-4': 'oklch(0.371 0 0)',
+            'chart-5': 'oklch(0.269 0 0)',
+            sidebar: 'oklch(0.985 0 0)',
+            'sidebar-foreground': 'oklch(0.145 0 0)',
+            'sidebar-primary': 'oklch(0.205 0 0)',
+            'sidebar-primary-foreground': 'oklch(0.985 0 0)',
+            'sidebar-accent': 'oklch(0.97 0 0)',
+            'sidebar-accent-foreground': 'oklch(0.205 0 0)',
+            'sidebar-border': 'oklch(0.922 0 0)',
+            'sidebar-ring': 'oklch(0.708 0 0)',
+            'log-error': 'oklch(0.54 0.2 27)',
+            'log-warn': 'oklch(0.53 0.12 65)',
+            'log-info': 'oklch(0.5 0.13 250)',
+            'log-time': 'oklch(0.52 0 0)'
+          },
+          dark: {
+            background: 'oklch(0.145 0 0)',
+            foreground: 'oklch(0.985 0 0)',
+            card: 'oklch(0.205 0 0)',
+            'card-foreground': 'oklch(0.985 0 0)',
+            popover: 'oklch(0.205 0 0)',
+            'popover-foreground': 'oklch(0.985 0 0)',
+            primary: 'oklch(0.922 0 0)',
+            'primary-foreground': 'oklch(0.205 0 0)',
+            secondary: 'oklch(0.269 0 0)',
+            'secondary-foreground': 'oklch(0.985 0 0)',
+            muted: 'oklch(0.269 0 0)',
+            'muted-foreground': 'oklch(0.708 0 0)',
+            accent: 'oklch(0.269 0 0)',
+            'accent-foreground': 'oklch(0.985 0 0)',
+            destructive: 'oklch(0.704 0.191 22.216)',
+            border: 'oklch(1 0 0 / 10%)',
+            input: 'oklch(1 0 0 / 15%)',
+            ring: 'oklch(0.556 0 0)',
+            'chart-1': 'oklch(0.87 0 0)',
+            'chart-2': 'oklch(0.556 0 0)',
+            'chart-3': 'oklch(0.439 0 0)',
+            'chart-4': 'oklch(0.371 0 0)',
+            'chart-5': 'oklch(0.269 0 0)',
+            sidebar: 'oklch(0.205 0 0)',
+            'sidebar-foreground': 'oklch(0.985 0 0)',
+            'sidebar-primary': 'oklch(0.488 0.243 264.376)',
+            'sidebar-primary-foreground': 'oklch(0.985 0 0)',
+            'sidebar-accent': 'oklch(0.269 0 0)',
+            'sidebar-accent-foreground': 'oklch(0.985 0 0)',
+            'sidebar-border': 'oklch(1 0 0 / 10%)',
+            'sidebar-ring': 'oklch(0.556 0 0)',
+            'log-error': 'oklch(0.72 0.17 25)',
+            'log-warn': 'oklch(0.82 0.13 80)',
+            'log-info': 'oklch(0.76 0.1 240)',
+            'log-time': 'oklch(0.708 0 0)'
+          }
+        },
+        {
+          id: 'aitetsu',
+          names: { ja: '藍鉄', zh: '蓝铁', en: 'Indigo Steel' },
+          concept:
+            '偏「酷」的一套：深蓝铁色底 + 冷青色强调。暗色是主打（夜间值守、长时间看日志），亮色是同一色相的冷灰白。',
+          light: {
+            background: 'oklch(0.985 0.004 250)',
+            foreground: 'oklch(0.22 0.025 258)',
+            card: 'oklch(0.995 0.002 250)',
+            'card-foreground': 'oklch(0.22 0.025 258)',
+            popover: 'oklch(1 0 0)',
+            'popover-foreground': 'oklch(0.22 0.025 258)',
+            primary: 'oklch(0.5 0.13 248)',
+            'primary-foreground': 'oklch(0.985 0.005 245)',
+            secondary: 'oklch(0.95 0.01 250)',
+            'secondary-foreground': 'oklch(0.28 0.03 258)',
+            muted: 'oklch(0.955 0.008 250)',
+            'muted-foreground': 'oklch(0.5 0.025 255)',
+            accent: 'oklch(0.93 0.022 245)',
+            'accent-foreground': 'oklch(0.25 0.04 255)',
+            destructive: 'oklch(0.56 0.21 27)',
+            border: 'oklch(0.9 0.012 250)',
+            input: 'oklch(0.88 0.014 250)',
+            ring: 'oklch(0.6 0.12 242)',
+            'chart-1': 'oklch(0.6 0.13 240)',
+            'chart-2': 'oklch(0.62 0.1 190)',
+            'chart-3': 'oklch(0.52 0.13 280)',
+            'chart-4': 'oklch(0.72 0.14 75)',
+            'chart-5': 'oklch(0.6 0.17 25)',
+            sidebar: 'oklch(0.965 0.008 250)',
+            'sidebar-foreground': 'oklch(0.22 0.025 258)',
+            'sidebar-primary': 'oklch(0.5 0.13 248)',
+            'sidebar-primary-foreground': 'oklch(0.985 0.005 245)',
+            'sidebar-accent': 'oklch(0.925 0.02 248)',
+            'sidebar-accent-foreground': 'oklch(0.25 0.04 255)',
+            'sidebar-border': 'oklch(0.9 0.012 250)',
+            'sidebar-ring': 'oklch(0.6 0.12 242)',
+            'log-error': 'oklch(0.54 0.19 25)',
+            'log-warn': 'oklch(0.53 0.12 65)',
+            'log-info': 'oklch(0.5 0.11 240)',
+            'log-time': 'oklch(0.5 0.025 255)'
+          },
+          dark: {
+            background: 'oklch(0.175 0.022 256)',
+            foreground: 'oklch(0.93 0.012 240)',
+            card: 'oklch(0.21 0.025 256)',
+            'card-foreground': 'oklch(0.93 0.012 240)',
+            popover: 'oklch(0.225 0.027 256)',
+            'popover-foreground': 'oklch(0.93 0.012 240)',
+            primary: 'oklch(0.8 0.12 212)',
+            'primary-foreground': 'oklch(0.2 0.035 245)',
+            secondary: 'oklch(0.27 0.03 256)',
+            'secondary-foreground': 'oklch(0.93 0.012 240)',
+            muted: 'oklch(0.25 0.026 256)',
+            'muted-foreground': 'oklch(0.71 0.03 245)',
+            accent: 'oklch(0.29 0.042 250)',
+            'accent-foreground': 'oklch(0.96 0.01 240)',
+            destructive: 'oklch(0.69 0.18 22)',
+            border: 'oklch(0.3 0.03 256)',
+            input: 'oklch(0.33 0.035 256)',
+            ring: 'oklch(0.72 0.12 212)',
+            'chart-1': 'oklch(0.78 0.12 212)',
+            'chart-2': 'oklch(0.76 0.12 170)',
+            'chart-3': 'oklch(0.7 0.14 285)',
+            'chart-4': 'oklch(0.82 0.13 82)',
+            'chart-5': 'oklch(0.7 0.17 25)',
+            sidebar: 'oklch(0.15 0.02 256)',
+            'sidebar-foreground': 'oklch(0.93 0.012 240)',
+            'sidebar-primary': 'oklch(0.8 0.12 212)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.035 245)',
+            'sidebar-accent': 'oklch(0.25 0.036 252)',
+            'sidebar-accent-foreground': 'oklch(0.96 0.01 240)',
+            'sidebar-border': 'oklch(0.26 0.03 256)',
+            'sidebar-ring': 'oklch(0.72 0.12 212)',
+            'log-error': 'oklch(0.72 0.16 22)',
+            'log-warn': 'oklch(0.83 0.12 82)',
+            'log-info': 'oklch(0.8 0.1 212)',
+            'log-time': 'oklch(0.66 0.03 245)'
+          }
+        },
+        {
+          id: 'washi',
+          names: { ja: '和紙', zh: '和纸', en: 'Washi' },
+          concept:
+            '护眼的一套：生成色（未漂白）纸色底 + 藍（靛蓝）墨字；暗色是暖墨色，降低蓝光与眩光。强调色是藍而不是赤陶色。',
+          light: {
+            background: 'oklch(0.975 0.008 85)',
+            foreground: 'oklch(0.25 0.022 262)',
+            card: 'oklch(0.99 0.005 85)',
+            'card-foreground': 'oklch(0.25 0.022 262)',
+            popover: 'oklch(0.99 0.005 85)',
+            'popover-foreground': 'oklch(0.25 0.022 262)',
+            primary: 'oklch(0.43 0.12 263)',
+            'primary-foreground': 'oklch(0.975 0.008 85)',
+            secondary: 'oklch(0.94 0.012 85)',
+            'secondary-foreground': 'oklch(0.3 0.03 262)',
+            muted: 'oklch(0.945 0.01 85)',
+            'muted-foreground': 'oklch(0.5 0.02 70)',
+            accent: 'oklch(0.915 0.02 82)',
+            'accent-foreground': 'oklch(0.27 0.03 262)',
+            destructive: 'oklch(0.53 0.19 32)',
+            border: 'oklch(0.89 0.015 80)',
+            input: 'oklch(0.87 0.017 80)',
+            ring: 'oklch(0.55 0.11 263)',
+            'chart-1': 'oklch(0.5 0.12 263)',
+            'chart-2': 'oklch(0.6 0.16 35)',
+            'chart-3': 'oklch(0.6 0.1 135)',
+            'chart-4': 'oklch(0.74 0.14 80)',
+            'chart-5': 'oklch(0.5 0.1 320)',
+            sidebar: 'oklch(0.955 0.012 82)',
+            'sidebar-foreground': 'oklch(0.25 0.022 262)',
+            'sidebar-primary': 'oklch(0.43 0.12 263)',
+            'sidebar-primary-foreground': 'oklch(0.975 0.008 85)',
+            'sidebar-accent': 'oklch(0.915 0.022 80)',
+            'sidebar-accent-foreground': 'oklch(0.27 0.03 262)',
+            'sidebar-border': 'oklch(0.885 0.016 80)',
+            'sidebar-ring': 'oklch(0.55 0.11 263)',
+            'log-error': 'oklch(0.52 0.18 32)',
+            'log-warn': 'oklch(0.52 0.11 65)',
+            'log-info': 'oklch(0.45 0.11 263)',
+            'log-time': 'oklch(0.49 0.02 70)'
+          },
+          dark: {
+            background: 'oklch(0.205 0.008 70)',
+            foreground: 'oklch(0.9 0.016 85)',
+            card: 'oklch(0.235 0.009 70)',
+            'card-foreground': 'oklch(0.9 0.016 85)',
+            popover: 'oklch(0.245 0.01 70)',
+            'popover-foreground': 'oklch(0.9 0.016 85)',
+            primary: 'oklch(0.75 0.085 258)',
+            'primary-foreground': 'oklch(0.2 0.02 262)',
+            secondary: 'oklch(0.29 0.01 70)',
+            'secondary-foreground': 'oklch(0.9 0.016 85)',
+            muted: 'oklch(0.27 0.009 70)',
+            'muted-foreground': 'oklch(0.71 0.02 80)',
+            accent: 'oklch(0.31 0.015 75)',
+            'accent-foreground': 'oklch(0.93 0.015 85)',
+            destructive: 'oklch(0.68 0.16 32)',
+            border: 'oklch(0.32 0.01 70)',
+            input: 'oklch(0.35 0.012 70)',
+            ring: 'oklch(0.66 0.085 258)',
+            'chart-1': 'oklch(0.72 0.09 258)',
+            'chart-2': 'oklch(0.7 0.14 38)',
+            'chart-3': 'oklch(0.74 0.1 135)',
+            'chart-4': 'oklch(0.82 0.12 82)',
+            'chart-5': 'oklch(0.7 0.09 320)',
+            sidebar: 'oklch(0.18 0.007 70)',
+            'sidebar-foreground': 'oklch(0.9 0.016 85)',
+            'sidebar-primary': 'oklch(0.75 0.085 258)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.02 262)',
+            'sidebar-accent': 'oklch(0.28 0.014 72)',
+            'sidebar-accent-foreground': 'oklch(0.93 0.015 85)',
+            'sidebar-border': 'oklch(0.28 0.009 70)',
+            'sidebar-ring': 'oklch(0.66 0.085 258)',
+            'log-error': 'oklch(0.72 0.15 32)',
+            'log-warn': 'oklch(0.82 0.11 82)',
+            'log-info': 'oklch(0.77 0.08 258)',
+            'log-time': 'oklch(0.66 0.02 80)'
+          }
+        },
+        {
+          id: 'matsuba',
+          names: { ja: '松葉', zh: '松针', en: 'Pine' },
+          concept:
+            '沉静的一套：带绿意的灰 + 松叶绿强调，低饱和，长时间看目录与日志不抢眼；暗色是深苔灰。',
+          light: {
+            background: 'oklch(0.98 0.005 160)',
+            foreground: 'oklch(0.24 0.02 170)',
+            card: 'oklch(0.995 0.003 160)',
+            'card-foreground': 'oklch(0.24 0.02 170)',
+            popover: 'oklch(0.995 0.003 160)',
+            'popover-foreground': 'oklch(0.24 0.02 170)',
+            primary: 'oklch(0.48 0.1 165)',
+            'primary-foreground': 'oklch(0.98 0.01 160)',
+            secondary: 'oklch(0.95 0.012 160)',
+            'secondary-foreground': 'oklch(0.28 0.03 170)',
+            muted: 'oklch(0.955 0.01 160)',
+            'muted-foreground': 'oklch(0.5 0.025 170)',
+            accent: 'oklch(0.93 0.025 162)',
+            'accent-foreground': 'oklch(0.26 0.04 170)',
+            destructive: 'oklch(0.55 0.2 27)',
+            border: 'oklch(0.9 0.014 160)',
+            input: 'oklch(0.88 0.016 160)',
+            ring: 'oklch(0.6 0.1 165)',
+            'chart-1': 'oklch(0.55 0.11 165)',
+            'chart-2': 'oklch(0.6 0.1 220)',
+            'chart-3': 'oklch(0.72 0.13 85)',
+            'chart-4': 'oklch(0.6 0.15 40)',
+            'chart-5': 'oklch(0.5 0.1 300)',
+            sidebar: 'oklch(0.965 0.01 160)',
+            'sidebar-foreground': 'oklch(0.24 0.02 170)',
+            'sidebar-primary': 'oklch(0.48 0.1 165)',
+            'sidebar-primary-foreground': 'oklch(0.98 0.01 160)',
+            'sidebar-accent': 'oklch(0.925 0.025 162)',
+            'sidebar-accent-foreground': 'oklch(0.26 0.04 170)',
+            'sidebar-border': 'oklch(0.895 0.014 160)',
+            'sidebar-ring': 'oklch(0.6 0.1 165)',
+            'log-error': 'oklch(0.54 0.19 27)',
+            'log-warn': 'oklch(0.52 0.11 65)',
+            'log-info': 'oklch(0.48 0.085 220)',
+            'log-time': 'oklch(0.5 0.025 170)'
+          },
+          dark: {
+            background: 'oklch(0.19 0.014 175)',
+            foreground: 'oklch(0.92 0.012 160)',
+            card: 'oklch(0.225 0.016 175)',
+            'card-foreground': 'oklch(0.92 0.012 160)',
+            popover: 'oklch(0.235 0.017 175)',
+            'popover-foreground': 'oklch(0.92 0.012 160)',
+            primary: 'oklch(0.78 0.11 160)',
+            'primary-foreground': 'oklch(0.2 0.03 170)',
+            secondary: 'oklch(0.28 0.02 175)',
+            'secondary-foreground': 'oklch(0.92 0.012 160)',
+            muted: 'oklch(0.26 0.017 175)',
+            'muted-foreground': 'oklch(0.71 0.03 165)',
+            accent: 'oklch(0.3 0.03 170)',
+            'accent-foreground': 'oklch(0.95 0.01 160)',
+            destructive: 'oklch(0.69 0.17 25)',
+            border: 'oklch(0.31 0.02 175)',
+            input: 'oklch(0.34 0.022 175)',
+            ring: 'oklch(0.68 0.1 160)',
+            'chart-1': 'oklch(0.76 0.11 160)',
+            'chart-2': 'oklch(0.74 0.09 220)',
+            'chart-3': 'oklch(0.83 0.12 85)',
+            'chart-4': 'oklch(0.73 0.14 42)',
+            'chart-5': 'oklch(0.7 0.1 300)',
+            sidebar: 'oklch(0.165 0.013 175)',
+            'sidebar-foreground': 'oklch(0.92 0.012 160)',
+            'sidebar-primary': 'oklch(0.78 0.11 160)',
+            'sidebar-primary-foreground': 'oklch(0.2 0.03 170)',
+            'sidebar-accent': 'oklch(0.27 0.03 172)',
+            'sidebar-accent-foreground': 'oklch(0.95 0.01 160)',
+            'sidebar-border': 'oklch(0.27 0.018 175)',
+            'sidebar-ring': 'oklch(0.68 0.1 160)',
+            'log-error': 'oklch(0.72 0.16 25)',
+            'log-warn': 'oklch(0.83 0.12 82)',
+            'log-info': 'oklch(0.78 0.08 220)',
+            'log-time': 'oklch(0.66 0.03 165)'
+          }
+        }
+      ]
+      const CONTRAST = [
+        {
+          id: 'default',
+          names: { ja: '標準', zh: '默认', en: 'Default' },
+          rows: [
+            {
+              label: '正文',
+              a: 'foreground',
+              b: 'background',
+              need: 4.5,
+              light: 19.79,
+              dark: 18.96
+            },
+            {
+              label: '次要文字',
+              a: 'muted-foreground',
+              b: 'background',
+              need: 4.5,
+              light: 4.73,
+              dark: 7.63
+            },
+            {
+              label: '次要文字 / muted 底',
+              a: 'muted-foreground',
+              b: 'muted',
+              need: 4.5,
+              light: 4.34,
+              dark: 5.83
+            },
+            {
+              label: '侧栏文字',
+              a: 'sidebar-foreground',
+              b: 'sidebar',
+              need: 4.5,
+              light: 18.96,
+              dark: 17.16
+            },
+            {
+              label: '选中行文字',
+              a: 'sidebar-accent-foreground',
+              b: 'sidebar-accent',
+              need: 4.5,
+              light: 16.42,
+              dark: 14.48
+            },
+            {
+              label: '主按钮文字',
+              a: 'primary-foreground',
+              b: 'primary',
+              need: 4.5,
+              light: 17.16,
+              dark: 14.22
+            },
+            {
+              label: '悬停项文字',
+              a: 'accent-foreground',
+              b: 'accent',
+              need: 4.5,
+              light: 16.42,
+              dark: 14.48
+            },
+            {
+              label: '主色 / 底（图形）',
+              a: 'primary',
+              b: 'background',
+              need: 3,
+              light: 17.91,
+              dark: 15.72
+            },
+            { label: '焦点环', a: 'ring', b: 'background', need: 3, light: 2.59, dark: 4.18 },
+            {
+              label: '危险色（图形）',
+              a: 'destructive',
+              b: 'background',
+              need: 3,
+              light: 4.76,
+              dark: 6.84
+            },
+            {
+              label: 'ERROR 文字',
+              a: 'log-error',
+              b: 'background',
+              need: 4.5,
+              light: 5.61,
+              dark: 7.41
+            },
+            {
+              label: 'WARN 文字',
+              a: 'log-warn',
+              b: 'background',
+              need: 4.5,
+              light: 5.45,
+              dark: 11.21
+            },
+            { label: 'INFO 文字', a: 'log-info', b: 'background', need: 4.5, light: 6, dark: 9.35 },
+            {
+              label: '时间戳文字',
+              a: 'log-time',
+              b: 'background',
+              need: 4.5,
+              light: 5.51,
+              dark: 7.63
+            }
+          ]
+        },
+        {
+          id: 'aitetsu',
+          names: { ja: '藍鉄', zh: '蓝铁', en: 'Indigo Steel' },
+          rows: [
+            {
+              label: '正文',
+              a: 'foreground',
+              b: 'background',
+              need: 4.5,
+              light: 16.59,
+              dark: 15.46
+            },
+            {
+              label: '次要文字',
+              a: 'muted-foreground',
+              b: 'background',
+              need: 4.5,
+              light: 5.74,
+              dark: 7.4
+            },
+            {
+              label: '次要文字 / muted 底',
+              a: 'muted-foreground',
+              b: 'muted',
+              need: 4.5,
+              light: 5.26,
+              dark: 6.24
+            },
+            {
+              label: '侧栏文字',
+              a: 'sidebar-foreground',
+              b: 'sidebar',
+              need: 4.5,
+              light: 15.65,
+              dark: 16.04
+            },
+            {
+              label: '选中行文字',
+              a: 'sidebar-accent-foreground',
+              b: 'sidebar-accent',
+              need: 4.5,
+              light: 12.85,
+              dark: 14.25
+            },
+            {
+              label: '主按钮文字',
+              a: 'primary-foreground',
+              b: 'primary',
+              need: 4.5,
+              light: 5.73,
+              dark: 10.05
+            },
+            {
+              label: '悬停项文字',
+              a: 'accent-foreground',
+              b: 'accent',
+              need: 4.5,
+              light: 13.05,
+              dark: 12.56
+            },
+            {
+              label: '主色 / 底（图形）',
+              a: 'primary',
+              b: 'background',
+              need: 3,
+              light: 5.73,
+              dark: 10.55
+            },
+            { label: '焦点环', a: 'ring', b: 'background', need: 3, light: 3.73, dark: 7.97 },
+            {
+              label: '危险色（图形）',
+              a: 'destructive',
+              b: 'background',
+              need: 3,
+              light: 4.96,
+              dark: 6.29
+            },
+            {
+              label: 'ERROR 文字',
+              a: 'log-error',
+              b: 'background',
+              need: 4.5,
+              light: 5.35,
+              dark: 7.12
+            },
+            {
+              label: 'WARN 文字',
+              a: 'log-warn',
+              b: 'background',
+              need: 4.5,
+              light: 5.22,
+              dark: 11.14
+            },
+            {
+              label: 'INFO 文字',
+              a: 'log-info',
+              b: 'background',
+              need: 4.5,
+              light: 5.67,
+              dark: 10.49
+            },
+            {
+              label: '时间戳文字',
+              a: 'log-time',
+              b: 'background',
+              need: 4.5,
+              light: 5.74,
+              dark: 6.12
+            }
+          ]
+        },
+        {
+          id: 'washi',
+          names: { ja: '和紙', zh: '和纸', en: 'Washi' },
+          rows: [
+            {
+              label: '正文',
+              a: 'foreground',
+              b: 'background',
+              need: 4.5,
+              light: 14.89,
+              dark: 13.3
+            },
+            {
+              label: '次要文字',
+              a: 'muted-foreground',
+              b: 'background',
+              need: 4.5,
+              light: 5.6,
+              dark: 6.96
+            },
+            {
+              label: '次要文字 / muted 底',
+              a: 'muted-foreground',
+              b: 'muted',
+              need: 4.5,
+              light: 5.12,
+              dark: 5.85
+            },
+            {
+              label: '侧栏文字',
+              a: 'sidebar-foreground',
+              b: 'sidebar',
+              need: 4.5,
+              light: 14.04,
+              dark: 13.96
+            },
+            {
+              label: '选中行文字',
+              a: 'sidebar-accent-foreground',
+              b: 'sidebar-accent',
+              need: 4.5,
+              light: 11.71,
+              dark: 11.89
+            },
+            {
+              label: '主按钮文字',
+              a: 'primary-foreground',
+              b: 'primary',
+              need: 4.5,
+              light: 7.68,
+              dark: 8.14
+            },
+            {
+              label: '悬停项文字',
+              a: 'accent-foreground',
+              b: 'accent',
+              need: 4.5,
+              light: 11.71,
+              dark: 10.72
+            },
+            {
+              label: '主色 / 底（图形）',
+              a: 'primary',
+              b: 'background',
+              need: 3,
+              light: 7.68,
+              dark: 8.06
+            },
+            { label: '焦点环', a: 'ring', b: 'background', need: 3, light: 4.56, dark: 5.76 },
+            {
+              label: '危险色（图形）',
+              a: 'destructive',
+              b: 'background',
+              need: 3,
+              light: 5.4,
+              dark: 5.81
+            },
+            {
+              label: 'ERROR 文字',
+              a: 'log-error',
+              b: 'background',
+              need: 4.5,
+              light: 5.6,
+              dark: 6.8
+            },
+            {
+              label: 'WARN 文字',
+              a: 'log-warn',
+              b: 'background',
+              need: 4.5,
+              light: 5.28,
+              dark: 10.19
+            },
+            {
+              label: 'INFO 文字',
+              a: 'log-info',
+              b: 'background',
+              need: 4.5,
+              light: 7.02,
+              dark: 8.65
+            },
+            {
+              label: '时间戳文字',
+              a: 'log-time',
+              b: 'background',
+              need: 4.5,
+              light: 5.84,
+              dark: 5.76
+            }
+          ]
+        },
+        {
+          id: 'matsuba',
+          names: { ja: '松葉', zh: '松针', en: 'Pine' },
+          rows: [
+            {
+              label: '正文',
+              a: 'foreground',
+              b: 'background',
+              need: 4.5,
+              light: 15.45,
+              dark: 14.59
+            },
+            {
+              label: '次要文字',
+              a: 'muted-foreground',
+              b: 'background',
+              need: 4.5,
+              light: 5.6,
+              dark: 7.25
+            },
+            {
+              label: '次要文字 / muted 底',
+              a: 'muted-foreground',
+              b: 'muted',
+              need: 4.5,
+              light: 5.21,
+              dark: 6.08
+            },
+            {
+              label: '侧栏文字',
+              a: 'sidebar-foreground',
+              b: 'sidebar',
+              need: 4.5,
+              light: 14.81,
+              dark: 15.24
+            },
+            {
+              label: '选中行文字',
+              a: 'sidebar-accent-foreground',
+              b: 'sidebar-accent',
+              need: 4.5,
+              light: 12.38,
+              dark: 12.91
+            },
+            {
+              label: '主按钮文字',
+              a: 'primary-foreground',
+              b: 'primary',
+              need: 4.5,
+              light: 5.88,
+              dark: 9.4
+            },
+            {
+              label: '悬停项文字',
+              a: 'accent-foreground',
+              b: 'accent',
+              need: 4.5,
+              light: 12.57,
+              dark: 11.67
+            },
+            {
+              label: '主色 / 底（图形）',
+              a: 'primary',
+              b: 'background',
+              need: 3,
+              light: 5.86,
+              dark: 9.63
+            },
+            { label: '焦点环', a: 'ring', b: 'background', need: 3, light: 3.55, dark: 6.69 },
+            {
+              label: '危险色（图形）',
+              a: 'destructive',
+              b: 'background',
+              need: 3,
+              light: 5.08,
+              dark: 6.15
+            },
+            {
+              label: 'ERROR 文字',
+              a: 'log-error',
+              b: 'background',
+              need: 4.5,
+              light: 5.27,
+              dark: 6.92
+            },
+            {
+              label: 'WARN 文字',
+              a: 'log-warn',
+              b: 'background',
+              need: 4.5,
+              light: 5.36,
+              dark: 10.81
+            },
+            {
+              label: 'INFO 文字',
+              a: 'log-info',
+              b: 'background',
+              need: 4.5,
+              light: 6.01,
+              dark: 9.41
+            },
+            { label: '时间戳文字', a: 'log-time', b: 'background', need: 4.5, light: 5.6, dark: 6 }
+          ]
+        }
+      ]
+      const PASTE =
+        "/* ---------- 配色主题：<html data-theme=\"...\"> 切换整套变量；default 不设属性（沿用上面的 :root / .dark） ---------- */\n/* 注意：[data-theme=x].dark 的优先级（0,2,0）高于 [data-accent=y]（0,1,0）。\n   强调色若要覆盖主题，请把强调色选择器改为 :root[data-accent=y]（0,2,0）并放在主题之后。 */\n\n/* 藍鉄 / 蓝铁 / Indigo Steel */\n[data-theme='aitetsu'] {\n  --background: oklch(0.985 0.004 250);\n  --foreground: oklch(0.22 0.025 258);\n  --card: oklch(0.995 0.002 250);\n  --card-foreground: oklch(0.22 0.025 258);\n  --popover: oklch(1 0 0);\n  --popover-foreground: oklch(0.22 0.025 258);\n  --primary: oklch(0.5 0.13 248);\n  --primary-foreground: oklch(0.985 0.005 245);\n  --secondary: oklch(0.95 0.01 250);\n  --secondary-foreground: oklch(0.28 0.03 258);\n  --muted: oklch(0.955 0.008 250);\n  --muted-foreground: oklch(0.5 0.025 255);\n  --accent: oklch(0.93 0.022 245);\n  --accent-foreground: oklch(0.25 0.04 255);\n  --destructive: oklch(0.56 0.21 27);\n  --border: oklch(0.9 0.012 250);\n  --input: oklch(0.88 0.014 250);\n  --ring: oklch(0.6 0.12 242);\n  --chart-1: oklch(0.6 0.13 240);\n  --chart-2: oklch(0.62 0.1 190);\n  --chart-3: oklch(0.52 0.13 280);\n  --chart-4: oklch(0.72 0.14 75);\n  --chart-5: oklch(0.6 0.17 25);\n  --sidebar: oklch(0.965 0.008 250);\n  --sidebar-foreground: oklch(0.22 0.025 258);\n  --sidebar-primary: oklch(0.5 0.13 248);\n  --sidebar-primary-foreground: oklch(0.985 0.005 245);\n  --sidebar-accent: oklch(0.925 0.02 248);\n  --sidebar-accent-foreground: oklch(0.25 0.04 255);\n  --sidebar-border: oklch(0.9 0.012 250);\n  --sidebar-ring: oklch(0.6 0.12 242);\n  --log-error: oklch(0.54 0.19 25);\n  --log-warn: oklch(0.53 0.12 65);\n  --log-info: oklch(0.5 0.11 240);\n  --log-time: oklch(0.5 0.025 255);\n}\n[data-theme='aitetsu'].dark {\n  --background: oklch(0.175 0.022 256);\n  --foreground: oklch(0.93 0.012 240);\n  --card: oklch(0.21 0.025 256);\n  --card-foreground: oklch(0.93 0.012 240);\n  --popover: oklch(0.225 0.027 256);\n  --popover-foreground: oklch(0.93 0.012 240);\n  --primary: oklch(0.8 0.12 212);\n  --primary-foreground: oklch(0.2 0.035 245);\n  --secondary: oklch(0.27 0.03 256);\n  --secondary-foreground: oklch(0.93 0.012 240);\n  --muted: oklch(0.25 0.026 256);\n  --muted-foreground: oklch(0.71 0.03 245);\n  --accent: oklch(0.29 0.042 250);\n  --accent-foreground: oklch(0.96 0.01 240);\n  --destructive: oklch(0.69 0.18 22);\n  --border: oklch(0.3 0.03 256);\n  --input: oklch(0.33 0.035 256);\n  --ring: oklch(0.72 0.12 212);\n  --chart-1: oklch(0.78 0.12 212);\n  --chart-2: oklch(0.76 0.12 170);\n  --chart-3: oklch(0.7 0.14 285);\n  --chart-4: oklch(0.82 0.13 82);\n  --chart-5: oklch(0.7 0.17 25);\n  --sidebar: oklch(0.15 0.02 256);\n  --sidebar-foreground: oklch(0.93 0.012 240);\n  --sidebar-primary: oklch(0.8 0.12 212);\n  --sidebar-primary-foreground: oklch(0.2 0.035 245);\n  --sidebar-accent: oklch(0.25 0.036 252);\n  --sidebar-accent-foreground: oklch(0.96 0.01 240);\n  --sidebar-border: oklch(0.26 0.03 256);\n  --sidebar-ring: oklch(0.72 0.12 212);\n  --log-error: oklch(0.72 0.16 22);\n  --log-warn: oklch(0.83 0.12 82);\n  --log-info: oklch(0.8 0.1 212);\n  --log-time: oklch(0.66 0.03 245);\n}\n\n/* 和紙 / 和纸 / Washi */\n[data-theme='washi'] {\n  --background: oklch(0.975 0.008 85);\n  --foreground: oklch(0.25 0.022 262);\n  --card: oklch(0.99 0.005 85);\n  --card-foreground: oklch(0.25 0.022 262);\n  --popover: oklch(0.99 0.005 85);\n  --popover-foreground: oklch(0.25 0.022 262);\n  --primary: oklch(0.43 0.12 263);\n  --primary-foreground: oklch(0.975 0.008 85);\n  --secondary: oklch(0.94 0.012 85);\n  --secondary-foreground: oklch(0.3 0.03 262);\n  --muted: oklch(0.945 0.01 85);\n  --muted-foreground: oklch(0.5 0.02 70);\n  --accent: oklch(0.915 0.02 82);\n  --accent-foreground: oklch(0.27 0.03 262);\n  --destructive: oklch(0.53 0.19 32);\n  --border: oklch(0.89 0.015 80);\n  --input: oklch(0.87 0.017 80);\n  --ring: oklch(0.55 0.11 263);\n  --chart-1: oklch(0.5 0.12 263);\n  --chart-2: oklch(0.6 0.16 35);\n  --chart-3: oklch(0.6 0.1 135);\n  --chart-4: oklch(0.74 0.14 80);\n  --chart-5: oklch(0.5 0.1 320);\n  --sidebar: oklch(0.955 0.012 82);\n  --sidebar-foreground: oklch(0.25 0.022 262);\n  --sidebar-primary: oklch(0.43 0.12 263);\n  --sidebar-primary-foreground: oklch(0.975 0.008 85);\n  --sidebar-accent: oklch(0.915 0.022 80);\n  --sidebar-accent-foreground: oklch(0.27 0.03 262);\n  --sidebar-border: oklch(0.885 0.016 80);\n  --sidebar-ring: oklch(0.55 0.11 263);\n  --log-error: oklch(0.52 0.18 32);\n  --log-warn: oklch(0.52 0.11 65);\n  --log-info: oklch(0.45 0.11 263);\n  --log-time: oklch(0.49 0.02 70);\n}\n[data-theme='washi'].dark {\n  --background: oklch(0.205 0.008 70);\n  --foreground: oklch(0.9 0.016 85);\n  --card: oklch(0.235 0.009 70);\n  --card-foreground: oklch(0.9 0.016 85);\n  --popover: oklch(0.245 0.01 70);\n  --popover-foreground: oklch(0.9 0.016 85);\n  --primary: oklch(0.75 0.085 258);\n  --primary-foreground: oklch(0.2 0.02 262);\n  --secondary: oklch(0.29 0.01 70);\n  --secondary-foreground: oklch(0.9 0.016 85);\n  --muted: oklch(0.27 0.009 70);\n  --muted-foreground: oklch(0.71 0.02 80);\n  --accent: oklch(0.31 0.015 75);\n  --accent-foreground: oklch(0.93 0.015 85);\n  --destructive: oklch(0.68 0.16 32);\n  --border: oklch(0.32 0.01 70);\n  --input: oklch(0.35 0.012 70);\n  --ring: oklch(0.66 0.085 258);\n  --chart-1: oklch(0.72 0.09 258);\n  --chart-2: oklch(0.7 0.14 38);\n  --chart-3: oklch(0.74 0.1 135);\n  --chart-4: oklch(0.82 0.12 82);\n  --chart-5: oklch(0.7 0.09 320);\n  --sidebar: oklch(0.18 0.007 70);\n  --sidebar-foreground: oklch(0.9 0.016 85);\n  --sidebar-primary: oklch(0.75 0.085 258);\n  --sidebar-primary-foreground: oklch(0.2 0.02 262);\n  --sidebar-accent: oklch(0.28 0.014 72);\n  --sidebar-accent-foreground: oklch(0.93 0.015 85);\n  --sidebar-border: oklch(0.28 0.009 70);\n  --sidebar-ring: oklch(0.66 0.085 258);\n  --log-error: oklch(0.72 0.15 32);\n  --log-warn: oklch(0.82 0.11 82);\n  --log-info: oklch(0.77 0.08 258);\n  --log-time: oklch(0.66 0.02 80);\n}\n\n/* 松葉 / 松针 / Pine */\n[data-theme='matsuba'] {\n  --background: oklch(0.98 0.005 160);\n  --foreground: oklch(0.24 0.02 170);\n  --card: oklch(0.995 0.003 160);\n  --card-foreground: oklch(0.24 0.02 170);\n  --popover: oklch(0.995 0.003 160);\n  --popover-foreground: oklch(0.24 0.02 170);\n  --primary: oklch(0.48 0.1 165);\n  --primary-foreground: oklch(0.98 0.01 160);\n  --secondary: oklch(0.95 0.012 160);\n  --secondary-foreground: oklch(0.28 0.03 170);\n  --muted: oklch(0.955 0.01 160);\n  --muted-foreground: oklch(0.5 0.025 170);\n  --accent: oklch(0.93 0.025 162);\n  --accent-foreground: oklch(0.26 0.04 170);\n  --destructive: oklch(0.55 0.2 27);\n  --border: oklch(0.9 0.014 160);\n  --input: oklch(0.88 0.016 160);\n  --ring: oklch(0.6 0.1 165);\n  --chart-1: oklch(0.55 0.11 165);\n  --chart-2: oklch(0.6 0.1 220);\n  --chart-3: oklch(0.72 0.13 85);\n  --chart-4: oklch(0.6 0.15 40);\n  --chart-5: oklch(0.5 0.1 300);\n  --sidebar: oklch(0.965 0.01 160);\n  --sidebar-foreground: oklch(0.24 0.02 170);\n  --sidebar-primary: oklch(0.48 0.1 165);\n  --sidebar-primary-foreground: oklch(0.98 0.01 160);\n  --sidebar-accent: oklch(0.925 0.025 162);\n  --sidebar-accent-foreground: oklch(0.26 0.04 170);\n  --sidebar-border: oklch(0.895 0.014 160);\n  --sidebar-ring: oklch(0.6 0.1 165);\n  --log-error: oklch(0.54 0.19 27);\n  --log-warn: oklch(0.52 0.11 65);\n  --log-info: oklch(0.48 0.085 220);\n  --log-time: oklch(0.5 0.025 170);\n}\n[data-theme='matsuba'].dark {\n  --background: oklch(0.19 0.014 175);\n  --foreground: oklch(0.92 0.012 160);\n  --card: oklch(0.225 0.016 175);\n  --card-foreground: oklch(0.92 0.012 160);\n  --popover: oklch(0.235 0.017 175);\n  --popover-foreground: oklch(0.92 0.012 160);\n  --primary: oklch(0.78 0.11 160);\n  --primary-foreground: oklch(0.2 0.03 170);\n  --secondary: oklch(0.28 0.02 175);\n  --secondary-foreground: oklch(0.92 0.012 160);\n  --muted: oklch(0.26 0.017 175);\n  --muted-foreground: oklch(0.71 0.03 165);\n  --accent: oklch(0.3 0.03 170);\n  --accent-foreground: oklch(0.95 0.01 160);\n  --destructive: oklch(0.69 0.17 25);\n  --border: oklch(0.31 0.02 175);\n  --input: oklch(0.34 0.022 175);\n  --ring: oklch(0.68 0.1 160);\n  --chart-1: oklch(0.76 0.11 160);\n  --chart-2: oklch(0.74 0.09 220);\n  --chart-3: oklch(0.83 0.12 85);\n  --chart-4: oklch(0.73 0.14 42);\n  --chart-5: oklch(0.7 0.1 300);\n  --sidebar: oklch(0.165 0.013 175);\n  --sidebar-foreground: oklch(0.92 0.012 160);\n  --sidebar-primary: oklch(0.78 0.11 160);\n  --sidebar-primary-foreground: oklch(0.2 0.03 170);\n  --sidebar-accent: oklch(0.27 0.03 172);\n  --sidebar-accent-foreground: oklch(0.95 0.01 160);\n  --sidebar-border: oklch(0.27 0.018 175);\n  --sidebar-ring: oklch(0.68 0.1 160);\n  --log-error: oklch(0.72 0.16 25);\n  --log-warn: oklch(0.83 0.12 82);\n  --log-info: oklch(0.78 0.08 220);\n  --log-time: oklch(0.66 0.03 165);\n}\n\n/* ---------- 扩展令牌：日志级别（default 主题的值；其他主题在各自块中覆盖） ---------- */\n:root {\n  --log-error: oklch(0.54 0.2 27);\n  --log-warn: oklch(0.53 0.12 65);\n  --log-info: oklch(0.5 0.13 250);\n  --log-time: oklch(0.52 0 0);\n}\n.dark {\n  --log-error: oklch(0.72 0.17 25);\n  --log-warn: oklch(0.82 0.13 80);\n  --log-info: oklch(0.76 0.1 240);\n  --log-time: oklch(0.708 0 0);\n}\n\n/* ---------- 扩展令牌：工作区颜色 --ws-*、文件图标颜色 --fi-*（只分明暗，与主题无关） ---------- */\n:root {\n  --ws-slate: oklch(0.55 0.03 255);\n  --ws-red: oklch(0.58 0.19 27);\n  --ws-orange: oklch(0.64 0.16 50);\n  --ws-amber: oklch(0.64 0.135 72);\n  --ws-green: oklch(0.58 0.14 150);\n  --ws-teal: oklch(0.58 0.1 190);\n  --ws-blue: oklch(0.55 0.16 255);\n  --ws-violet: oklch(0.55 0.17 295);\n  --ws-pink: oklch(0.62 0.18 355);\n  --fi-folder: oklch(0.61 0.13 70);\n  --fi-word: oklch(0.5 0.15 258);\n  --fi-excel: oklch(0.52 0.13 150);\n  --fi-powerpoint: oklch(0.58 0.17 40);\n  --fi-pdf: oklch(0.54 0.2 27);\n  --fi-mail: oklch(0.55 0.105 232);\n  --fi-archive: oklch(0.52 0.08 60);\n  --fi-image: oklch(0.56 0.17 350);\n  --fi-media: oklch(0.53 0.17 318);\n  --fi-csv: oklch(0.52 0.08 155);\n  --fi-log: oklch(0.53 0.08 195);\n  --fi-script: oklch(0.5 0.14 300);\n  --fi-code: oklch(0.5 0.11 275);\n  --fi-config: oklch(0.52 0.07 110);\n  --fi-database: oklch(0.52 0.09 215);\n  --fi-cert: oklch(0.56 0.11 92);\n  --fi-markdown: oklch(0.5 0.05 250);\n  --fi-exe: oklch(0.45 0.025 255);\n  --fi-neutral: var(--muted-foreground);\n  --fi-danger: var(--destructive);\n  --fi-folder-fill: oklch(0.83 0.14 85 / 30%);\n}\n.dark {\n  --ws-slate: oklch(0.72 0.03 255);\n  --ws-red: oklch(0.7 0.17 25);\n  --ws-orange: oklch(0.76 0.14 55);\n  --ws-amber: oklch(0.82 0.14 85);\n  --ws-green: oklch(0.76 0.14 152);\n  --ws-teal: oklch(0.77 0.1 190);\n  --ws-blue: oklch(0.72 0.13 252);\n  --ws-violet: oklch(0.73 0.14 295);\n  --ws-pink: oklch(0.75 0.14 355);\n  --fi-folder: oklch(0.83 0.14 85);\n  --fi-word: oklch(0.72 0.13 255);\n  --fi-excel: oklch(0.76 0.15 152);\n  --fi-powerpoint: oklch(0.75 0.15 48);\n  --fi-pdf: oklch(0.7 0.17 24);\n  --fi-mail: oklch(0.77 0.1 228);\n  --fi-archive: oklch(0.76 0.08 68);\n  --fi-image: oklch(0.75 0.14 350);\n  --fi-media: oklch(0.74 0.14 318);\n  --fi-csv: oklch(0.77 0.08 155);\n  --fi-log: oklch(0.77 0.08 195);\n  --fi-script: oklch(0.74 0.12 300);\n  --fi-code: oklch(0.75 0.09 275);\n  --fi-config: oklch(0.79 0.08 110);\n  --fi-database: oklch(0.77 0.09 212);\n  --fi-cert: oklch(0.83 0.12 95);\n  --fi-markdown: oklch(0.78 0.05 250);\n  --fi-exe: oklch(0.82 0.02 255);\n  --fi-neutral: var(--muted-foreground);\n  --fi-danger: var(--destructive);\n  --fi-folder-fill: oklch(0.83 0.14 85 / 18%);\n}\n\n@theme inline {\n  --color-log-error: var(--log-error);\n  --color-log-warn: var(--log-warn);\n  --color-log-info: var(--log-info);\n  --color-log-time: var(--log-time);\n  --color-ws-slate: var(--ws-slate);\n  --color-ws-red: var(--ws-red);\n  --color-ws-orange: var(--ws-orange);\n  --color-ws-amber: var(--ws-amber);\n  --color-ws-green: var(--ws-green);\n  --color-ws-teal: var(--ws-teal);\n  --color-ws-blue: var(--ws-blue);\n  --color-ws-violet: var(--ws-violet);\n  --color-ws-pink: var(--ws-pink);\n  --color-fi-folder: var(--fi-folder);\n  --color-fi-word: var(--fi-word);\n  --color-fi-excel: var(--fi-excel);\n  --color-fi-powerpoint: var(--fi-powerpoint);\n  --color-fi-pdf: var(--fi-pdf);\n  --color-fi-mail: var(--fi-mail);\n  --color-fi-archive: var(--fi-archive);\n  --color-fi-image: var(--fi-image);\n  --color-fi-media: var(--fi-media);\n  --color-fi-csv: var(--fi-csv);\n  --color-fi-log: var(--fi-log);\n  --color-fi-script: var(--fi-script);\n  --color-fi-code: var(--fi-code);\n  --color-fi-config: var(--fi-config);\n  --color-fi-database: var(--fi-database);\n  --color-fi-cert: var(--fi-cert);\n  --color-fi-markdown: var(--fi-markdown);\n  --color-fi-exe: var(--fi-exe);\n  --color-fi-neutral: var(--fi-neutral);\n  --color-fi-danger: var(--fi-danger);\n  --color-fi-folder-fill: var(--fi-folder-fill);\n}"
+      const ICONS = {
+        folder: [
+          [
+            'path',
+            {
+              d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
+            }
+          ]
+        ],
+        'folder-open': [
+          [
+            'path',
+            {
+              d: 'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2'
+            }
+          ]
+        ],
+        'folder-symlink': [
+          [
+            'path',
+            {
+              d: 'M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'm8 16 3-3-3-3' }]
+        ],
+        'file-symlink': [
+          [
+            'path',
+            {
+              d: 'M4 11V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm10 18 3-3-3-3' }]
+        ],
+        'file-x': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm14.5 12.5-5 5' }],
+          ['path', { d: 'm9.5 12.5 5 5' }]
+        ],
+        file: [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }]
+        ],
+        'file-text': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 9H8' }],
+          ['path', { d: 'M16 13H8' }],
+          ['path', { d: 'M16 17H8' }]
+        ],
+        'file-spreadsheet': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 13h2' }],
+          ['path', { d: 'M14 13h2' }],
+          ['path', { d: 'M8 17h2' }],
+          ['path', { d: 'M14 17h2' }]
+        ],
+        presentation: [
+          ['path', { d: 'M2 3h20' }],
+          ['path', { d: 'M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3' }],
+          ['path', { d: 'm7 21 5-5 5 5' }]
+        ],
+        mail: [
+          ['path', { d: 'm22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7' }],
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }]
+        ],
+        database: [
+          ['ellipse', { cx: '12', cy: '5', rx: '9', ry: '3' }],
+          ['path', { d: 'M3 5V19A9 3 0 0 0 21 19V5' }],
+          ['path', { d: 'M3 12A9 3 0 0 0 21 12' }]
+        ],
+        'file-key': [
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M4 12v6' }],
+          ['path', { d: 'M4 14h2' }],
+          [
+            'path',
+            {
+              d: 'M9.65 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v4'
+            }
+          ],
+          ['circle', { cx: '4', cy: '20', r: '2' }]
+        ],
+        package: [
+          [
+            'path',
+            {
+              d: 'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z'
+            }
+          ],
+          ['path', { d: 'M12 22V12' }],
+          ['polyline', { points: '3.29 7 12 12 20.71 7' }],
+          ['path', { d: 'm7.5 4.27 9 5.15' }]
+        ],
+        'file-archive': [
+          [
+            'path',
+            {
+              d: 'M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M8 12v-1' }],
+          ['path', { d: 'M8 18v-2' }],
+          ['path', { d: 'M8 7V6' }],
+          ['circle', { cx: '8', cy: '20', r: '2' }]
+        ],
+        'file-image': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['circle', { cx: '10', cy: '12', r: '2' }],
+          ['path', { d: 'm20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22' }]
+        ],
+        'file-headphone': [
+          [
+            'path',
+            {
+              d: 'M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0'
+            }
+          ]
+        ],
+        'file-play': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          [
+            'path',
+            {
+              d: 'M15.033 13.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56v-4.704a.645.645 0 0 1 .967-.56z'
+            }
+          ]
+        ],
+        'file-cog': [
+          [
+            'path',
+            { d: 'M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z' }
+          ],
+          ['path', { d: 'M20 8v12a2 2 0 0 1-2 2h-4.182' }],
+          ['path', { d: 'm3.305 19.53.923-.382' }],
+          ['path', { d: 'M4 10.592V4a2 2 0 0 1 2-2h8' }],
+          ['path', { d: 'm4.228 16.852-.924-.383' }],
+          ['path', { d: 'm5.852 15.228-.383-.923' }],
+          ['path', { d: 'm5.852 20.772-.383.924' }],
+          ['path', { d: 'm8.148 15.228.383-.923' }],
+          ['path', { d: 'm8.53 21.696-.382-.924' }],
+          ['path', { d: 'm9.773 16.852.922-.383' }],
+          ['path', { d: 'm9.773 19.148.922.383' }],
+          ['circle', { cx: '7', cy: '18', r: '3' }]
+        ],
+        'file-braces': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1' }],
+          ['path', { d: 'M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1' }]
+        ],
+        'scroll-text': [
+          ['path', { d: 'M15 12h-5' }],
+          ['path', { d: 'M15 8h-5' }],
+          ['path', { d: 'M19 17V5a2 2 0 0 0-2-2H4' }],
+          [
+            'path',
+            {
+              d: 'M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3'
+            }
+          ]
+        ],
+        'file-code': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M10 12.5 8 15l2 2.5' }],
+          ['path', { d: 'm14 12.5 2 2.5-2 2.5' }]
+        ],
+        'file-terminal': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'm8 16 2-2-2-2' }],
+          ['path', { d: 'M12 18h4' }]
+        ],
+        'app-window': [
+          ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }],
+          ['path', { d: 'M10 4v4' }],
+          ['path', { d: 'M2 8h20' }],
+          ['path', { d: 'M6 4v4' }]
+        ],
+        'file-type': [
+          [
+            'path',
+            {
+              d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z'
+            }
+          ],
+          ['path', { d: 'M14 2v5a1 1 0 0 0 1 1h5' }],
+          ['path', { d: 'M11 18h2' }],
+          ['path', { d: 'M12 12v6' }],
+          ['path', { d: 'M9 13v-.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v.5' }]
+        ],
+        sheet: [
+          ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2', ry: '2' }],
+          ['line', { x1: '3', x2: '21', y1: '9', y2: '9' }],
+          ['line', { x1: '3', x2: '21', y1: '15', y2: '15' }],
+          ['line', { x1: '9', x2: '9', y1: '9', y2: '21' }],
+          ['line', { x1: '15', x2: '15', y1: '9', y2: '21' }]
+        ],
+        'book-text': [
+          [
+            'path',
+            {
+              d: 'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20'
+            }
+          ],
+          ['path', { d: 'M8 11h8' }],
+          ['path', { d: 'M8 7h6' }]
+        ],
+        search: [
+          ['path', { d: 'm21 21-4.34-4.34' }],
+          ['circle', { cx: '11', cy: '11', r: '8' }]
+        ],
+        moon: [
+          [
+            'path',
+            {
+              d: 'M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401'
+            }
+          ]
+        ],
+        sun: [
+          ['circle', { cx: '12', cy: '12', r: '4' }],
+          ['path', { d: 'M12 2v2' }],
+          ['path', { d: 'M12 20v2' }],
+          ['path', { d: 'm4.93 4.93 1.41 1.41' }],
+          ['path', { d: 'm17.66 17.66 1.41 1.41' }],
+          ['path', { d: 'M2 12h2' }],
+          ['path', { d: 'M20 12h2' }],
+          ['path', { d: 'm6.34 17.66-1.41 1.41' }],
+          ['path', { d: 'm19.07 4.93-1.41 1.41' }]
+        ],
+        languages: [
+          ['path', { d: 'm5 8 6 6' }],
+          ['path', { d: 'm4 14 6-6 2-3' }],
+          ['path', { d: 'M2 5h12' }],
+          ['path', { d: 'M7 2h1' }],
+          ['path', { d: 'm22 22-5-10-5 10' }],
+          ['path', { d: 'M14 18h6' }]
+        ],
+        'gallery-vertical': [
+          ['path', { d: 'M3 2h18' }],
+          ['rect', { width: '18', height: '12', x: '3', y: '6', rx: '2' }],
+          ['path', { d: 'M3 22h18' }]
+        ],
+        'folder-tree': [
+          [
+            'path',
+            {
+              d: 'M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          [
+            'path',
+            {
+              d: 'M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z'
+            }
+          ],
+          ['path', { d: 'M3 5a2 2 0 0 0 2 2h3' }],
+          ['path', { d: 'M3 3v13a2 2 0 0 0 2 2h3' }]
+        ],
+        server: [
+          ['rect', { width: '20', height: '8', x: '2', y: '2', rx: '2', ry: '2' }],
+          ['rect', { width: '20', height: '8', x: '2', y: '14', rx: '2', ry: '2' }],
+          ['line', { x1: '6', x2: '6.01', y1: '6', y2: '6' }],
+          ['line', { x1: '6', x2: '6.01', y1: '18', y2: '18' }]
+        ],
+        monitor: [
+          ['rect', { width: '20', height: '14', x: '2', y: '3', rx: '2' }],
+          ['line', { x1: '8', x2: '16', y1: '21', y2: '21' }],
+          ['line', { x1: '12', x2: '12', y1: '17', y2: '21' }]
+        ],
+        minus: [['path', { d: 'M5 12h14' }]],
+        square: [['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }]],
+        x: [
+          ['path', { d: 'M18 6 6 18' }],
+          ['path', { d: 'm6 6 12 12' }]
+        ],
+        'chevron-right': [['path', { d: 'm9 18 6-6-6-6' }]],
+        plus: [
+          ['path', { d: 'M5 12h14' }],
+          ['path', { d: 'M12 5v14' }]
+        ],
+        pencil: [
+          [
+            'path',
+            {
+              d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'
+            }
+          ],
+          ['path', { d: 'm15 5 4 4' }]
+        ],
+        trash: [
+          ['path', { d: 'M10 11v6' }],
+          ['path', { d: 'M14 11v6' }],
+          ['path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }],
+          ['path', { d: 'M3 6h18' }],
+          ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }]
+        ],
+        'layout-list': [
+          ['rect', { width: '7', height: '7', x: '3', y: '3', rx: '1' }],
+          ['rect', { width: '7', height: '7', x: '3', y: '14', rx: '1' }],
+          ['path', { d: 'M14 4h7' }],
+          ['path', { d: 'M14 9h7' }],
+          ['path', { d: 'M14 15h7' }],
+          ['path', { d: 'M14 20h7' }]
+        ],
+        'rotate-ccw': [
+          ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+          ['path', { d: 'M3 3v5h5' }]
+        ],
+        check: [['path', { d: 'M20 6 9 17l-5-5' }]],
+        list: [
+          ['path', { d: 'M3 5h.01' }],
+          ['path', { d: 'M3 12h.01' }],
+          ['path', { d: 'M3 19h.01' }],
+          ['path', { d: 'M8 5h13' }],
+          ['path', { d: 'M8 12h13' }],
+          ['path', { d: 'M8 19h13' }]
+        ],
+        'gallery-horizontal-end': [
+          ['path', { d: 'M2 7v10' }],
+          ['path', { d: 'M6 5v14' }],
+          ['rect', { width: '12', height: '18', x: '10', y: '3', rx: '2' }]
+        ],
+        'gallery-horizontal': [
+          ['path', { d: 'M2 3v18' }],
+          ['rect', { width: '12', height: '18', x: '6', y: '3', rx: '2' }],
+          ['path', { d: 'M22 3v18' }]
+        ],
+        copy: [
+          ['rect', { width: '14', height: '14', x: '8', y: '8', rx: '2', ry: '2' }],
+          ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }]
+        ],
+        clock: [
+          ['circle', { cx: '12', cy: '12', r: '10' }],
+          ['path', { d: 'M12 6v6l4 2' }]
+        ]
+      }
+      const esc = (s) =>
+        String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
+      const svg = (n, st = '') =>
+        '<svg viewBox="0 0 24 24" style="' +
+        st +
+        '">' +
+        ICONS[n]
+          .map(
+            ([t, a]) =>
+              '<' +
+              t +
+              ' ' +
+              Object.entries(a)
+                .map(([k, v]) => k + '="' + v + '"')
+                .join(' ') +
+              '/>'
+          )
+          .join('') +
+        '</svg>'
+      const fi = (n, c, fill) =>
+        svg(n, 'color:var(--fi-' + c + ')' + (fill ? ';fill:var(--fi-folder-fill)' : ''))
+
+      function shell(t, mode) {
+        const tree = [
+          [fi('folder-open', 'folder', 1), '本番ログ', 0, ''],
+          [fi('scroll-text', 'log'), 'wms-app.log', 1, 'sel'],
+          [fi('scroll-text', 'log'), 'wms-app.log.1', 1, ''],
+          [fi('file-spreadsheet', 'excel'), '障害管理表.xlsx', 1, 'focus'],
+          [fi('file-text', 'word'), '障害報告書.docx', 1, ''],
+          [fi('file-type', 'pdf'), '仕様書.pdf', 1, ''],
+          [fi('presentation', 'powerpoint'), '切替手順.pptx', 1, ''],
+          [fi('mail', 'mail'), 'Re_ ご連絡.msg', 1, ''],
+          [fi('file-terminal', 'script'), 'collect-logs.ps1', 1, ''],
+          [fi('file-cog', 'config'), 'application.yaml', 1, ''],
+          [fi('file-archive', 'archive'), 'release.zip', 1, ''],
+          [fi('file-key', 'cert'), 'server.pem', 1, '']
+        ]
+        const log = [
+          ['02:14:07.118', 'n', 'INFO ', 'JN_DAILY_010 開始 (pid=48211)'],
+          ['02:14:09.990', 'w', 'WARN ', 'コネクション取得待ち 1500ms 超過'],
+          ['02:14:12.004', 'e', 'ERROR', 'ORA-00060: deadlock detected'],
+          ['02:14:12.006', 'e', 'ERROR', '  at OrderDao.insert(OrderDao.java:212)'],
+          ['02:14:12.310', 'n', 'INFO ', 'リトライ 1/3 ...'],
+          ['02:14:13.877', 'n', 'INFO ', '<span class="hl">SO-20261122-00418</span> 登録完了'],
+          ['02:14:14.020', 'w', 'WARN ', '同一キーの出荷指示が既に存在'],
+          ['02:15:00.000', 'n', 'INFO ', 'JN_DAILY_010 終了 rc=4']
+        ]
+        return (
+          '<div><p class="label">' +
+          (mode === 'dark' ? 'ダーク' : 'ライト') +
+          '</p><div class="shell' +
+          (mode === 'dark' ? ' dark' : '') +
+          '" data-theme="' +
+          t.id +
+          '">' +
+          '<div class="tb"><img src="logo-a.svg" width="14" height="14" alt=""><b>PremiumCowHorse</b><span class="wsb"><i></i>A銀行 勘定系 保守</span><span class="srch">ファイルやコマンドを検索…</span>' +
+          svg('moon') +
+          '</div>' +
+          '<div class="bd"><div class="ab"><span class="on">' +
+          svg('folder-tree') +
+          '</span><span>' +
+          svg('search') +
+          '</span><span>' +
+          svg('server') +
+          '</span></div>' +
+          '<div class="sb">' +
+          tree
+            .map(
+              ([ic, n, lv, c]) =>
+                '<div class="' +
+                c +
+                '" style="padding-left:' +
+                (6 + lv * 12) +
+                'px">' +
+                ic +
+                n +
+                '</div>'
+            )
+            .join('') +
+          '</div>' +
+          '<div class="mn"><div class="tabs"><span class="tab on">' +
+          fi('scroll-text', 'log') +
+          'wms-app.log</span><span class="tab">' +
+          fi('file-spreadsheet', 'excel') +
+          '障害管理表.xlsx</span></div>' +
+          '<pre class="log">' +
+          log
+            .map(
+              ([a, c, l, m]) =>
+                '<span class="t">' + a + '</span> <span class="' + c + '">' + l + '</span> ' + m
+            )
+            .join('\n') +
+          '</pre>' +
+          '<div class="ctrls"><span class="b p">切り替え</span><span class="b s">保存</span><span class="b o">キャンセル</span><span class="b d">削除</span><span class="inp f">deadlock</span><span class="chip">3 件</span>' +
+          '<span class="charts">' +
+          [1, 2, 3, 4, 5].map((i) => '<i style="background:var(--chart-' + i + ')"></i>').join('') +
+          '</span></div></div></div>' +
+          '<div class="menu"><div>' +
+          svg('copy') +
+          'パスをコピー<span class="k">Ctrl+Shift+C</span></div><div class="on">' +
+          svg('folder-open') +
+          'エクスプローラーで開く</div><hr><div class="dz">' +
+          svg('trash') +
+          'ワークスペースから外す</div></div>' +
+          '</div></div>'
+        )
+      }
+
+      document.getElementById('themes').innerHTML = THEMES.map((t) => {
+        const c = CONTRAST.find((x) => x.id === t.id)
+        const rows = c.rows
+          .map(
+            (r) =>
+              '<tr><td>' +
+              r.label +
+              '</td><td><code>' +
+              r.a +
+              '</code> / <code>' +
+              r.b +
+              '</code></td><td class="n">≥ ' +
+              r.need +
+              '</td>' +
+              ['light', 'dark']
+                .map(
+                  (m) =>
+                    '<td class="n' +
+                    (r[m] < r.need ? ' bad' : '') +
+                    '">' +
+                    r[m].toFixed(2) +
+                    '</td>'
+                )
+                .join('') +
+              '</tr>'
+          )
+          .join('')
+        return (
+          '<section class="theme"><h2>' +
+          t.names.ja +
+          '<small>' +
+          t.names.zh +
+          ' / ' +
+          t.names.en +
+          ' · <code>' +
+          t.id +
+          '</code></small></h2>' +
+          '<p class="concept">' +
+          esc(t.concept) +
+          '</p><div class="pair">' +
+          shell(t, 'light') +
+          shell(t, 'dark') +
+          '</div>' +
+          '<details><summary>对比度检查（' +
+          t.names.ja +
+          '）</summary><table class="ct"><tr><th>用途</th><th>前景 / 背景</th><th>目标</th><th>ライト</th><th>ダーク</th></tr>' +
+          rows +
+          '</table></details></section>'
+        )
+      }).join('')
+      document.getElementById('css').textContent = PASTE
+      document.getElementById('copy').addEventListener('click', async (e) => {
+        try {
+          await navigator.clipboard.writeText(PASTE)
+          e.target.textContent = 'コピーしました'
+        } catch {
+          e.target.textContent = '手動で選択してください'
+        }
+      })
+    </script>
+  </body>
+</html>

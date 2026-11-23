@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 G「軌（き）」〔简约线条〕：一条倾斜的轨道 + 轨道正面的一张卡片 = 圆环选择器的线描；
+       卡片压在轨道前段（轨道在卡片处断开，表现前后关系）。无底板。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <g transform="rotate(-18 16 16)">
+    <!-- 轨道：椭圆 rx13 ry6，正面（下方）在卡片处断开 -->
+    <path d="M12.2 21.74A13 6 0 0 1 16 10A13 6 0 0 1 19.8 21.74" fill="none" style="stroke: var(--logo-base, #3778d7)" stroke-width="2.75" stroke-linecap="round"/>
+  </g>
+  <rect x="11.5" y="13" width="9" height="12" rx="2" style="fill: var(--logo-accent, #f9b73f)"/>
+  <rect x="11.5" y="13" width="9" height="12" rx="2" fill="none" style="stroke: var(--logo-base-2, #2a5fb7)" stroke-width="1.5"/>
+</svg>
