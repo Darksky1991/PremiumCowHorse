@@ -1,4 +1,4 @@
-import { useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
 import { FileIcon, FolderIcon, LayersIcon, TerminalIcon, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -14,6 +14,7 @@ import {
 import { useConnectionNames } from '@renderer/data/connections'
 import { useActiveWorkspace, useWorkspaceActions } from '@renderer/data/workspace'
 import { displayPath } from '@renderer/lib/display-path'
+import { beginFocusReturn, type FocusReturn } from '@renderer/lib/focus-return'
 import { formatShortcut } from '@renderer/lib/shortcut'
 import { useNavigationStore } from '@renderer/stores/navigation-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
@@ -30,6 +31,22 @@ export function CommandPalette(): JSX.Element {
   const open = useUiStore((s) => s.paletteOpen)
   const setOpen = useUiStore((s) => s.setPaletteOpen)
   const { t } = useTranslation('palette')
+  // 焦点回到原处：打开时记住（订阅 store，早于 Dialog 抢走焦点），Esc / 点外部 / 再按 Ctrl+K 关闭时还回；
+  // 选择了某一项（打开标签、切换工作区、执行命令…）则由该动作决定焦点去向
+  const chosen = useRef(false)
+  useEffect(() => {
+    let back: FocusReturn | null = null
+    return useUiStore.subscribe((state, prev) => {
+      if (state.paletteOpen === prev.paletteOpen) return
+      if (state.paletteOpen) {
+        chosen.current = false
+        back = beginFocusReturn()
+      } else {
+        if (!chosen.current) back?.restore()
+        back = null
+      }
+    })
+  }, [])
   return (
     <CommandDialog
       open={open}
@@ -38,7 +55,14 @@ export function CommandPalette(): JSX.Element {
       description={t('description')}
       className="sm:max-w-xl"
     >
-      {open ? <PaletteBody close={() => setOpen(false)} /> : null}
+      {open ? (
+        <PaletteBody
+          close={() => {
+            chosen.current = true
+            setOpen(false)
+          }}
+        />
+      ) : null}
     </CommandDialog>
   )
 }

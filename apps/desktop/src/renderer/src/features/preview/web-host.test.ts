@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { IpcChannel, IpcEvents } from '@pch/shared'
 import type { WebEvents } from '@renderer/data/web'
+import { beginFocusReturn, consumeViewRefocus } from '@renderer/lib/focus-return'
 import {
   createWebHost,
   createWebViews,
@@ -538,6 +539,27 @@ describe('createWebHost: screenshot stand-in', () => {
       s.host.setCovered({ overlay: false, toasts: false })
       await flush()
       expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: true }])
+    })
+
+    it('an overlay dismissed with a refocus request gives the focus back to the page; without one it does not', async () => {
+      vi.stubGlobal('HTMLElement', class {})
+      vi.stubGlobal('document', { hasFocus: () => true, activeElement: null, body: {} })
+      for (const requested of [true, false]) {
+        const focusReturn = beginFocusReturn()
+        const s = setup()
+        s.focus.yielded = true
+        s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+        s.host.setCovered({ overlay: true, toasts: false })
+        await flush()
+        // 浮层自己的输入框持有焦点：不能被 blur
+        expect(s.focus.blurs).toBe(0)
+        if (requested) focusReturn.restore() // 浮层被关闭（不是执行了动作）
+        s.host.setCovered({ overlay: false, toasts: false })
+        await flush()
+        expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: requested }])
+        consumeViewRefocus()
+      }
+      vi.unstubAllGlobals()
     })
 
     it('toasts alone: the focus moved into the app meanwhile (e.g. the tree) stays there', async () => {

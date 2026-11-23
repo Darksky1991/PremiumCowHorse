@@ -501,7 +501,7 @@ test.describe('the browser view (html plugin)', () => {
       expect(await focus(app)).toEqual({ app: true, views: [false] })
 
       // 命令面板（Ctrl+K）：焦点在页面中时照常打开（主进程转发），视图冻结为截图态，焦点在应用界面；
-      // Esc 关闭后视图恢复；与其他弹出层相同，焦点留在应用界面（不还给视图）
+      // Esc 关闭后视图恢复，焦点回到页面（lib/focus-return）
       await page.locator('body').click({ position: { x: 5, y: 5 } })
       await focusView(app, view)
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
@@ -515,8 +515,7 @@ test.describe('the browser view (html plugin)', () => {
       await expect(page.getByRole('dialog')).toHaveCount(0)
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
-      expect(await focus(app)).toEqual({ app: true, views: [false] })
-      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
 
       // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
       await pressIn(app, view, 'W', ['control'])

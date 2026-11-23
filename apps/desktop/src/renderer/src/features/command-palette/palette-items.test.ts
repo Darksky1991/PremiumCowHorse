@@ -95,6 +95,14 @@ describe('buildPaletteGroups', () => {
     expect(ids({ ...base, query: '経理' })).toEqual(['workspaces'])
   })
 
+  it('hides the files group while they belong to an older query (typing then Enter must not open a stale hit)', () => {
+    const files = [hit(1)]
+    const stale = buildPaletteGroups({ ...base, query: 'fil', files, filesQuery: 'fi' })
+    expect(stale.map((g) => g.id)).not.toContain('files')
+    const fresh = buildPaletteGroups({ ...base, query: ' fi ', files, filesQuery: 'fi' })
+    expect(fresh.map((g) => g.id)).toContain('files')
+  })
+
   it('files need at least 2 characters and are capped at 20', () => {
     const files = Array.from({ length: 30 }, (_, i) => hit(i))
     expect(ids({ ...base, query: 'f', files })).not.toContain('files')

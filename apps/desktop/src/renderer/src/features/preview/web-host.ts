@@ -8,6 +8,7 @@ import {
 } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import type { WebEvents } from '@renderer/data/web'
+import { consumeViewRefocus, noteViewHeldFocus } from '@renderer/lib/focus-return'
 
 /**
  * 窗口级的浏览器视图登记（每个渲染端一个，preview-container 中创建）：
@@ -314,7 +315,11 @@ export function createWebHost(deps: WebHostDeps): WebHost {
       run(async () => {
         const { image, yielded } = await invoke('web.freeze', { tabId })
         if (current !== target) return
-        if (yielded && frozen && !covered.overlay) {
+        if (yielded && frozen && covered.overlay) {
+          // 浮层：不碰应用中的焦点元素（浮层自己的输入框可能已拿到焦点）；只记下「视图原本持有焦点」，
+          // 浮层是被关闭（而不是执行了动作）时由 lib/focus-return 请求在 unfreeze 时还给视图
+          noteViewHeldFocus()
+        } else if (yielded && frozen) {
           // 只因 toast：隐藏的视图拿不住焦点，主进程已交回应用界面。让应用中残留的焦点元素（例如资源树的行）
           // 失去焦点，页面中正在进行的输入不会落到它上面
           env.blurActive()
@@ -334,7 +339,8 @@ export function createWebHost(deps: WebHostDeps): WebHost {
         clearImage(current.element)
         // 在队列中判断（web.freeze 的结果处理之后）：截图期间用户把焦点移到了应用中则不还
         run(() => {
-          const back = refocus && env.idleFocus()
+          const requested = consumeViewRefocus()
+          const back = requested || (refocus && env.idleFocus())
           refocus = false
           return invoke('web.unfreeze', { tabId, refocus: back })
         })

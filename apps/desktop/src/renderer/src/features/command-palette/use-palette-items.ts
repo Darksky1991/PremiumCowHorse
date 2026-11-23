@@ -32,6 +32,11 @@ export interface PaletteInput {
   activeId: string
   commands: Command[]
   files: SearchHit[]
+  /**
+   * files 是针对哪个查询（已修剪）搜索的；与 query.trim() 不一致（输入后还在防抖 / 搜索往返中）时
+   * 不显示文件组——否则首项是旧查询的命中，立即 Enter 会打开与当前输入无关的文件。省略 = 与 query 一致
+   */
+  filesQuery?: string
   /** 翻译（命令标题与默认工作区名）；纯函数不依赖 i18n 实例 */
   t: (key: string) => string
 }
@@ -55,7 +60,7 @@ function filterSorted<T>(
  * 没有内容的组不出现。文件由主进程按名称筛选（已是搜索结果），这里只截取条数
  */
 export function buildPaletteGroups(input: PaletteInput): PaletteGroup[] {
-  const { query, recent, workspaces, activeId, commands, files, t } = input
+  const { query, recent, workspaces, activeId, commands, files, filesQuery, t } = input
   const groups: PaletteGroup[] = []
 
   const recentItems = filterSorted(recent, query, (r, q) => matchScore(q, r.title, r.uri)).map(
@@ -98,7 +103,8 @@ export function buildPaletteGroups(input: PaletteInput): PaletteGroup[] {
   }))
   if (commandItems.length > 0) groups.push({ id: 'commands', items: commandItems })
 
-  if ([...query.trim()].length >= PALETTE_FILE_MIN_CHARS && files.length > 0) {
+  const filesFresh = filesQuery === undefined || filesQuery === query.trim()
+  if (filesFresh && [...query.trim()].length >= PALETTE_FILE_MIN_CHARS && files.length > 0) {
     groups.push({
       id: 'files',
       items: files.slice(0, PALETTE_FILE_LIMIT).map((hit): PaletteItem => ({
@@ -146,12 +152,9 @@ export function usePaletteItems(
         signal
       ),
     enabled: searchable,
-    staleTime: 0,
-    // 输入变化时保留同一工作区的上一批结果，列表不闪烁
-    placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[1] === activeId ? previous : undefined
+    staleTime: 0
   })
-  // 查询在防抖窗口内已经缩短到不足 2 个字符时不再显示旧结果（buildPaletteGroups 以 query 判断）
+  // 结果只属于 debounced 这个查询（key 含它，不沿用上一次的结果）；buildPaletteGroups 在与当前输入不一致时不显示
   const files = searchable ? (found?.items ?? []) : []
 
   return useMemo(
@@ -163,10 +166,11 @@ export function usePaletteItems(
         activeId: activeId ?? '',
         commands: useCommandStore.getState().commands(),
         files,
+        filesQuery: debounced,
         t
       }),
     // entries 变化 = 命令注册表变化
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [query, recent, workspaces, activeId, entries, files, t]
+    [query, recent, workspaces, activeId, entries, files, debounced, t]
   )
 }
