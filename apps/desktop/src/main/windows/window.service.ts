@@ -41,6 +41,7 @@ export class WindowService {
     const win = createAppWindow({
       url: this.rendererUrl,
       preload: this.paths.preload,
+      icon: this.paths.appIcon,
       title: this.title(),
       language: resolveLanguage(settings['general.language'], app.getLocale()),
       settings
@@ -92,7 +93,8 @@ export class WindowService {
   }
 
   syncChrome(): void {
-    for (const win of this.all()) syncWindowChrome(win)
+    const themeName = this.settings.get('appearance.theme')
+    for (const win of this.all()) syncWindowChrome(win, themeName)
   }
 
   setTitle(title: string): void {

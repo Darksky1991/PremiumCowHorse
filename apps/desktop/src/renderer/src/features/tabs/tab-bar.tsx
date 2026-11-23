@@ -1,10 +1,10 @@
 import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
 import {
-  FileIcon,
-  FolderIcon,
   GalleryVerticalIcon,
+  InfoIcon,
   LayoutGridIcon,
   MonitorIcon,
+  SettingsIcon,
   XIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -12,17 +12,22 @@ import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import type { TabState, TabsState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
+import { FileIcon } from '@pch/ui/file-icon'
 import { useConnectionNames } from '@renderer/data/connections'
 import { displayPath } from '@renderer/lib/display-path'
+import { useRegisterCommands } from '@renderer/stores/command-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
 
-const KIND_ICON: Record<TabState['kind'], LucideIcon> = {
+/** 标签类型 → 固定图标；null = 文件系统条目（directory / file），按名称用 FileIcon 显示 */
+const KIND_ICON: Record<TabState['kind'], LucideIcon | null> = {
   workspace: LayoutGridIcon,
   workspaces: GalleryVerticalIcon,
   desktop: MonitorIcon,
-  directory: FolderIcon,
-  file: FileIcon
+  settings: SettingsIcon,
+  about: InfoIcon,
+  directory: null,
+  file: null
 }
 
 export interface TabBarProps {
@@ -83,6 +88,24 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
     close(id)
   }
 
+  // Ctrl+W：关闭激活标签（应用菜单为空，Ctrl+W 不会关闭窗口）。经 closeTab：焦点在标签栏时关闭后焦点落在新的激活标签。
+  // 对话框打开 / 焦点在输入框时不触发（命令的默认规则）
+  useRegisterCommands(
+    [
+      {
+        id: 'tab.close',
+        titleKey: 'commands:tabClose',
+        group: 'general',
+        shortcut: 'Ctrl+W',
+        when: () => activeId !== null,
+        run: () => {
+          if (activeId !== null) closeTab(activeId)
+        }
+      }
+    ],
+    [activeId, close]
+  )
+
   return (
     <div
       ref={listRef}
@@ -96,8 +119,15 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
         const active = tab.id === activeId
         const Icon = KIND_ICON[tab.kind]
         const domId = tabDomId(baseId, tab.id)
-        // 工作区一览的标题按当前语言显示（标签标题是打开时的快照）
-        const title = tab.kind === 'workspaces' ? t('workspace:listPage') : tab.title
+        // 工作区一览 / 设置页 / 关于页的标题按当前语言显示（标签标题是打开时的快照）
+        const title =
+          tab.kind === 'workspaces'
+            ? t('workspace:listPage')
+            : tab.kind === 'settings'
+              ? t('settings:title')
+              : tab.kind === 'about'
+                ? t('about:title')
+                : tab.title
         return (
           <div
             key={tab.id}
@@ -107,9 +137,13 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             aria-controls={active ? panelDomId(baseId) : undefined}
             aria-labelledby={`${domId}-title`}
             tabIndex={active ? 0 : -1}
-            // 悬停提示为完整路径；工作区总览 / 一览 / 桌面记录（不是文件系统）为标题
+            // 悬停提示为完整路径；工作区总览 / 一览 / 桌面记录 / 设置 / 关于（不是文件系统）为标题
             title={
-              tab.kind === 'workspace' || tab.kind === 'workspaces' || tab.kind === 'desktop'
+              tab.kind === 'workspace' ||
+              tab.kind === 'workspaces' ||
+              tab.kind === 'desktop' ||
+              tab.kind === 'settings' ||
+              tab.kind === 'about'
                 ? title
                 : displayPath(tab.uri, connectionNames)
             }
@@ -130,7 +164,16 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
                 : 'text-muted-foreground hover:bg-sidebar-accent/50'
             )}
           >
-            <Icon aria-hidden className="size-4 shrink-0" />
+            {Icon ? (
+              <Icon aria-hidden className="size-4 shrink-0" />
+            ) : (
+              <FileIcon
+                // 标题可能是别名，类型按 uri 末段（真实文件名）判断
+                name={tab.uri.split(/[\\/]/).pop() || title}
+                kind={tab.kind === 'directory' ? 'directory' : 'file'}
+                className="size-4 shrink-0"
+              />
+            )}
             <span id={`${domId}-title`} className="min-w-0 truncate">
               {title}
             </span>

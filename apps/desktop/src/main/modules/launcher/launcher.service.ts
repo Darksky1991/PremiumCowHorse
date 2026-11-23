@@ -1,4 +1,4 @@
-import { AppError, type LaunchCapabilities, type LaunchMode } from '@pch/shared'
+import { AppError, OFFICE_EXTENSIONS, type LaunchCapabilities, type LaunchMode } from '@pch/shared'
 import type { Logger } from '../../infra/logger'
 import type { VfsService } from '../../vfs/vfs.service'
 import { fileUriToLocalPath } from '../../vfs/local-path'
@@ -30,7 +30,7 @@ export class LauncherService {
 
   constructor(private readonly deps: Deps) {}
 
-  /** 非 file: URI → FS_UNSUPPORTED_SCHEME。检测失败时返回没有方式的结果（不缓存，下次重试） */
+  /** 非 file: URI → FS_UNSUPPORTED_SCHEME。检测失败时返回没有方式且带 detectFailed 的结果（不缓存，下次重试） */
   async capabilities(uri: string): Promise<LaunchCapabilities> {
     return this.capabilitiesOf(extensionOf(fileUriToLocalPath(uri)))
   }
@@ -81,7 +81,8 @@ export class LauncherService {
   }
 
   private capabilitiesOf(ext: string): Promise<LaunchCapabilities> {
-    if (!ext) return Promise.resolve({ ext, appName: null, options: [] })
+    // 只处理 Office 白名单：其他扩展名（含 .bat / .exe 等可执行类）不检测、不启动
+    if (!isOfficeExtension(ext)) return Promise.resolve({ ext, appName: null, options: [] })
     const cached = this.cache.get(ext)
     if (cached) return Promise.resolve(cached)
     let inflight = this.pending.get(ext)
@@ -131,11 +132,17 @@ export class LauncherService {
       return caps
     } catch (e) {
       this.deps.logger.warn(`[launcher] detect failed (${ext})`, e)
-      return { ext, appName: null, options: [] }
+      return { ext, appName: null, options: [], detectFailed: true }
     } finally {
       if (generation === this.generation) this.pending.delete(ext)
     }
   }
+}
+
+const OFFICE_EXTENSION_SET: ReadonlySet<string> = new Set(OFFICE_EXTENSIONS)
+
+function isOfficeExtension(ext: string): boolean {
+  return OFFICE_EXTENSION_SET.has(ext)
 }
 
 /** 不含点的小写扩展名；没有扩展名为空串 */

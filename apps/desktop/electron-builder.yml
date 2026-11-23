@@ -14,6 +14,8 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!release/*'
+  # ssh2 自带 util/pagent.exe（Pageant 辅助程序，本应用不使用）；排除后包内没有可执行文件，也就不会被整体解包（M4-K1）
+  - '!**/node_modules/ssh2/util/**'
 asarUnpack:
   - resources/**
 # https://www.electronjs.org/docs/latest/tutorial/fuses
@@ -27,6 +29,7 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 win:
   executableName: PremiumCowHorse
+  icon: build/icon.ico
   # 只提供免安装的文件夹版（zip，解压即用）。不使用安装程序；也不使用 portable 单文件 exe：
   # 后者每次启动都要把约 300MB 解压到 %TEMP%，实测启动 24–31 秒（文件夹版约 1.3 秒）
   target: zip

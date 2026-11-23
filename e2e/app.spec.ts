@@ -631,7 +631,7 @@ test.describe('workspace data layer over IPC', () => {
       const alert = page.getByRole('alertdialog')
       await expect(alert).toBeVisible()
       await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
-      await data(page, 'entry.remove', { id: entryB.id })
+      await data(page, 'entry.remove', { id: entryB!.id })
       await alert.getByRole('button', { name: removeLabel }).click()
       await expect(alert).toHaveCount(0)
       await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0)
@@ -643,6 +643,8 @@ test.describe('workspace data layer over IPC', () => {
   test('workspace switcher: create, switch, rename, restore default name and delete', async () => {
     const { app, page } = await launch(userData)
     try {
+      // 菜单式（workspace.pickerStyle: menu）：标题栏按钮打开下拉菜单；圆环式见 workspace-picker.spec.ts
+      await data(page, 'settings.set', { 'workspace.pickerStyle': 'menu' })
       const { id: defaultId } = await data(page, 'workspace.active')
       const a = path.join(files, 'a.txt')
       writeFileSync(a, '')
@@ -736,6 +738,7 @@ test.describe('workspace data layer over IPC', () => {
   test('workspace switcher: rename / delete dialogs act on the workspace they were opened for', async () => {
     const { app, page } = await launch(userData)
     try {
+      await data(page, 'settings.set', { 'workspace.pickerStyle': 'menu' })
       const { id: defaultId } = await data(page, 'workspace.active')
       const a = await data(page, 'workspace.create', { name: '案件A' })
       const b = await data(page, 'workspace.create', { name: '案件B' })

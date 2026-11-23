@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 H「円相（えんそう）」〔印象派・笔触〕：一笔画成的禅圆，粗细不匀、右上留口，配一枚印章。
+       圆 = 圆环选择器 / 案件的一个循环；留口 = 工作没有「完成」，随时可以接着做；印章 = 盖章确认（对日业务的「押印」）。
+       细节多（飞白、墨点），16px 请改用 logo-h-16.svg。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <!-- 主笔：外圆 (16,16.5) r12.5 与偏心内圆 (17.2,15.4) r8.6 之间的区域，左下粗、右上细 -->
+  <path d="M27.04 10.63A12.5 12.5 0 1 1 21.87 5.46L21.24 7.81A8.6 8.6 0 1 0 24.79 11.36Z" style="fill: var(--logo-base, #2f6ccf)"/>
+  <!-- 飞白：笔画中的几道浅色擦痕 -->
+  <g fill="none" stroke-linecap="round" style="stroke: var(--logo-soft, #a0c0eb)" stroke-opacity="0.75">
+    <path d="M7.2 21.6A10.4 10.4 0 0 1 6.4 13.2" stroke-width="0.6" stroke-dasharray="3 1.2 5 1"/>
+    <path d="M10.9 26.4A10.6 10.6 0 0 1 5.9 20.4" stroke-width="0.5" stroke-dasharray="2 1 4 1.5"/>
+    <path d="M8.4 10.2A10.9 10.9 0 0 1 13.4 6.3" stroke-width="0.45" stroke-dasharray="4 1.5"/>
+  </g>
+  <!-- 收笔处的墨点 -->
+  <circle cx="24.4" cy="4.2" r="0.75" style="fill: var(--logo-base, #2f6ccf)"/>
+  <circle cx="26.2" cy="5.6" r="0.45" style="fill: var(--logo-base, #2f6ccf)"/>
+  <!-- 印章 -->
+  <rect x="22.2" y="22.2" width="7.4" height="7.4" rx="1.2" transform="rotate(4 25.9 25.9)" style="fill: var(--logo-accent, #e8a21f)"/>
+  <rect x="23.9" y="23.9" width="4" height="4" rx="0.5" transform="rotate(4 25.9 25.9)" fill="none" style="stroke: var(--logo-ink, #ffffff)" stroke-width="0.9" stroke-opacity="0.85"/>
+</svg>

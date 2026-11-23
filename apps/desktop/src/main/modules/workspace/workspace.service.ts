@@ -17,6 +17,7 @@ import {
   type Workspace,
   type WorkspaceCreateInput,
   type WorkspaceEntry,
+  type WorkspaceSummary,
   type WorkspaceUpdateInput
 } from '@pch/shared'
 import type { EventBus } from '../../core/event-bus'
@@ -122,6 +123,43 @@ export class WorkspaceService {
       await this.requireWorkspace(repo, id)
       await repo.update(id, patch)
       return { workspaceId: id, result: await this.requireWorkspace(repo, id) }
+    })
+  }
+
+  /** 摘要：全部工作区（含已归档），没有条目的为 0 / 空 */
+  async summaries(): Promise<WorkspaceSummary[]> {
+    const [workspaces, byWorkspace] = await Promise.all([
+      this.list(),
+      new EntryRepo(this.db).summaries()
+    ])
+    return workspaces.map(({ id }) => {
+      const s = byWorkspace.get(id)
+      return {
+        id,
+        entryCount: s?.count ?? 0,
+        topEntries: (s?.top ?? []).map((e) => ({ kind: e.kind, label: e.label, uri: e.uri }))
+      }
+    })
+  }
+
+  /** 完整顺序：ids 必须恰好是全部未归档工作区的一个排列；一次事务、一次 workspace.changed */
+  async reorder(ids: string[]): Promise<void> {
+    await this.write(async (trx) => {
+      const repo = new WorkspaceRepo(trx)
+      const expected = (await repo.list()).filter((w) => !w.archived).map((w) => w.id)
+      const given = new Set(ids)
+      if (
+        given.size !== ids.length ||
+        ids.length !== expected.length ||
+        !expected.every((id) => given.has(id))
+      ) {
+        throw new AppError({
+          code: 'IPC_BAD_INPUT',
+          detail: 'ids must be all unarchived workspaces'
+        })
+      }
+      await repo.setSortOrders(ids)
+      return { workspaceId: ids[0] as string, result: undefined }
     })
   }
 

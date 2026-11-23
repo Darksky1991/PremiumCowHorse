@@ -28,11 +28,9 @@ import {
 } from '@renderer/data/workspace'
 import { notify } from '@renderer/stores/messages-store'
 import { onTabRefresh, useTabsStore } from '@renderer/stores/tabs-store'
-import {
-  DeleteWorkspaceDialog,
-  NewWorkspaceDialog,
-  RenameWorkspaceDialog
-} from './workspace-dialogs'
+import { useUiStore } from '@renderer/stores/ui-store'
+import { EditWorkspaceDialog, NewWorkspaceDialog } from './workspace-dialogs'
+import { colorVar } from './workspace-color'
 import { gridNeighbor } from './grid-nav'
 import { listTabToLeave } from './workspace-flows'
 
@@ -59,8 +57,9 @@ interface WorkspaceAction {
  * - 本页因切换工作区而卸载后（不论经一览、地址框的 Layers 菜单还是标题栏的切换器切换），本标签若仍是旧工作区的
  *   激活标签且有后退历史就后退一步（listTabToLeave + tabs-store 的 backFrom），以后切回旧工作区时不停在一览页。
  *   放在卸载清理中：那时 React 已提交新工作区的界面，旧标签的后退不会显示出来、不会挂载之前位置的视图。
- * - 新建对话框与每张卡片上的操作按钮 / 右键菜单（重命名、恢复默认名称、删除）复用标题栏切换器的对话框
- *   （workspace-dialogs.tsx）；删除其他工作区时不切换（removeWorkspace）。
+ * - 卡片顶部是工作区颜色带（与选择器卡片相同），名称下显示说明（最多 2 行）。
+ * - 新建对话框与每张卡片上的操作按钮 / 右键菜单（編集（名称 / 说明 / 颜色）、恢复默认名称、删除）复用
+ *   workspace-dialogs.tsx；删除确认框经 ui-store 由标题栏切换器渲染（M2-F2）；删除其他工作区时不切换（removeWorkspace）。
  * 不访问文件系统；刷新（地址栏 / F5）重新取得工作区列表。
  */
 export function WorkspacesPage({ tab }: WorkspacesPageProps): JSX.Element {
@@ -72,9 +71,9 @@ export function WorkspacesPage({ tab }: WorkspacesPageProps): JSX.Element {
   const readDisplayedWorkspace = useReadActiveWorkspaceId()
   const listRef = useRef<HTMLUListElement>(null)
   const [newOpen, setNewOpen] = useState(false)
-  const [renameOpen, setRenameOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  // 重命名 / 删除的目标在打开对话框时锁定（与标题栏切换器相同）：名称取列表中的最新值，
+  const [editOpen, setEditOpen] = useState(false)
+  const setDeleteTarget = useUiStore((s) => s.setDeleteWorkspaceTarget)
+  // 编辑的目标在打开对话框时锁定（与标题栏切换器相同）：取列表中的最新值，
   // 目标被删除后沿用打开时的快照，对话框在关闭动画期间保持挂载
   const [locked, setLocked] = useState<Workspace | null>(null)
   const target = locked ? (workspaces.data?.find((w) => w.id === locked.id) ?? locked) : null
@@ -127,18 +126,17 @@ export function WorkspacesPage({ tab }: WorkspacesPageProps): JSX.Element {
     activate.mutate(w.id, { onError: fail })
   }
 
-  const openFor = (w: Workspace, open: (v: boolean) => void): void => {
-    setLocked(w)
-    open(true)
-  }
   const actionsFor = (w: Workspace): WorkspaceAction[] => {
     const isDefault = w.id === DEFAULT_WORKSPACE_ID
     const actions: WorkspaceAction[] = [
       {
-        key: 'rename',
-        label: t('workspace:renameMenu'),
+        key: 'edit',
+        label: t('workspace:editMenu'),
         Icon: PencilIcon,
-        run: () => openFor(w, setRenameOpen)
+        run: () => {
+          setLocked(w)
+          setEditOpen(true)
+        }
       }
     ]
     // 恢复默认名称只对默认工作区（名称为空时显示本地化的默认名）；默认工作区不可删除（与切换器相同）
@@ -156,7 +154,8 @@ export function WorkspacesPage({ tab }: WorkspacesPageProps): JSX.Element {
         label: t('workspace:deleteMenu'),
         Icon: Trash2Icon,
         destructive: true,
-        run: () => openFor(w, setDeleteOpen)
+        // 确认框由标题栏切换器常驻渲染（删除当前工作区时本页会先卸载，M2-F2）
+        run: () => setDeleteTarget({ id: w.id, name: workspaceDisplayName(w, defaultName) })
       })
     }
     return actions
@@ -265,20 +264,12 @@ export function WorkspacesPage({ tab }: WorkspacesPageProps): JSX.Element {
 
       <NewWorkspaceDialog open={newOpen} onOpenChange={setNewOpen} />
       {target ? (
-        <>
-          <RenameWorkspaceDialog
-            open={renameOpen}
-            onOpenChange={setRenameOpen}
-            target={target}
-            displayName={workspaceDisplayName(target, defaultName)}
-          />
-          <DeleteWorkspaceDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            target={target}
-            displayName={workspaceDisplayName(target, defaultName)}
-          />
-        </>
+        <EditWorkspaceDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          target={target}
+          displayName={workspaceDisplayName(target, defaultName)}
+        />
       ) : null}
     </div>
   )
@@ -305,14 +296,23 @@ function WorkspaceRow({
   onEnter: () => void
 }): JSX.Element {
   const { t } = useTranslation()
+  const color = colorVar(workspace.color)
   return (
     <li
       data-workspace-row={workspace.id}
       className={cn(
-        'relative min-w-0 rounded-lg border bg-card text-card-foreground shadow-xs hover:bg-accent/50 has-[[data-workspace-id]:focus]:bg-accent has-[[data-workspace-id]:focus]:text-accent-foreground',
+        'relative min-w-0 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs hover:bg-accent/50 has-[[data-workspace-id]:focus]:bg-accent has-[[data-workspace-id]:focus]:text-accent-foreground',
         current && 'border-primary/50'
       )}
     >
+      {/* 颜色带：与选择器卡片相同（无颜色时为 border 色） */}
+      <span
+        aria-hidden
+        data-slot="card-band"
+        data-workspace-color={workspace.color ?? 'none'}
+        className="pointer-events-none absolute inset-x-0 top-0 h-[5px] bg-border"
+        style={color === null ? undefined : { background: color }}
+      />
       {/* 单击只获得焦点（选中）；双击 / Enter 切换（Enter 的默认 click 被阻止，避免与单击语义混淆） */}
       <button
         type="button"
@@ -337,6 +337,11 @@ function WorkspaceRow({
               </span>
             ) : null}
           </span>
+          {workspace.description ? (
+            <span className="line-clamp-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {workspace.description}
+            </span>
+          ) : null}
           {lastOpened !== null ? (
             <span className="truncate text-xs text-muted-foreground">
               {t('workspace:lastOpened', { time: lastOpened })}

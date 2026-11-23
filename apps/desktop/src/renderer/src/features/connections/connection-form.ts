@@ -15,6 +15,8 @@ export interface ConnectionForm {
   keyPath: string
   /** 密码（auth = password）或私钥口令（auth = key）；编辑时初始为空 */
   secret: string
+  /** 私钥认证且已保存口令时：勾选 = 删除已保存的口令（口令输入留空时生效） */
+  clearSecret: boolean
   identities: string[]
   sudoMode: 'login' | 'separate'
   sudoSecret: string
@@ -50,6 +52,7 @@ export function initialForm(c?: ConnectionDto): ConnectionForm {
     auth: c?.auth ?? 'password',
     keyPath: c?.keyPath ?? '',
     secret: '',
+    clearSecret: false,
     identities: c?.identities ?? [],
     sudoMode: c?.hasSudoSecret ? 'separate' : 'login',
     sudoSecret: '',
@@ -111,8 +114,10 @@ export function buildSaveInput(
 
   let secret: string | undefined
   if (form.secret !== '') secret = form.secret
-  else if (secretKept(form, original)) secret = undefined
-  else if (form.auth === 'password') errors.secret = 'passwordRequired'
+  else if (secretKept(form, original)) {
+    // 只有私钥认证的口令可以清除：主进程把空串视为「清除」（K5）
+    secret = form.auth === 'key' && form.clearSecret ? '' : undefined
+  } else if (form.auth === 'password') errors.secret = 'passwordRequired'
   else secret = original === undefined ? undefined : ''
 
   const keyPath = form.keyPath.trim()

@@ -57,11 +57,11 @@ function parseRange(header: string | null, size: number): ParsedRange {
 export function createWebProtocolHandler(deps: {
   scopes: ScopeTable
   vfs: WebVfs
-  /** 外壳 HTML（开发模式的脚本地址不同，由组合根生成）；省略时为生产的外壳 */
-  markdownShell?: string
+  /** 外壳 HTML 的生成函数（开发模式的脚本地址不同、配色主题随设置变化，由组合根提供）；省略时为生产的外壳（default 主题） */
+  markdownShell?: () => string
 }): (request: Request) => Promise<Response> {
   const { scopes, vfs } = deps
-  const shell = deps.markdownShell ?? markdownShell()
+  const shellOf = deps.markdownShell ?? ((): string => markdownShell({ theme: 'default' }))
   return async (request) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return fail(405, { Allow: 'GET, HEAD' })
@@ -76,7 +76,7 @@ export function createWebProtocolHandler(deps: {
       const stat = await vfs.stat(target.uri)
       if (stat.kind === 'directory') return fail(404)
       if (view) {
-        return new Response(request.method === 'HEAD' ? null : shell, {
+        return new Response(request.method === 'HEAD' ? null : shellOf(), {
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
             'Content-Security-Policy': MARKDOWN_CSP,

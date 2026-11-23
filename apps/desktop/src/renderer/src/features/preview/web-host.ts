@@ -8,6 +8,9 @@ import {
 } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
 import type { WebEvents } from '@renderer/data/web'
+import { consumeViewRefocus, noteViewHeldFocus } from '@renderer/lib/focus-return'
+import { isExecutableExtension } from './executable'
+import { nameOfUri } from './host'
 
 /**
  * 窗口级的浏览器视图登记（每个渲染端一个，preview-container 中创建）：
@@ -169,6 +172,8 @@ export interface WebHostLinks {
   tabs: { open: (uri: string) => void; navigate: (uri: string) => void }
   /** openExternal 失败（提示用户） */
   onError: (error: unknown) => void
+  /** 可执行类扩展名的文件交给系统应用前的确认（与 PreviewHost.system.openWithSystem 相同的对话框）；返回是否继续 */
+  confirmExecutable: (name: string) => Promise<boolean>
 }
 
 export interface WebHostDeps extends WebHostLinks {
@@ -288,7 +293,12 @@ export function createWebHost(deps: WebHostDeps): WebHost {
   const { tabId, views, invoke } = deps
   const env: WebHostEnv = { ...browserEnv, ...deps.env }
   const run = (task: () => Promise<unknown>): void => views.run(tabId, task)
-  let links: WebHostLinks = { roots: deps.roots, tabs: deps.tabs, onError: deps.onError }
+  let links: WebHostLinks = {
+    roots: deps.roots,
+    tabs: deps.tabs,
+    onError: deps.onError,
+    confirmExecutable: deps.confirmExecutable
+  }
   let location: WebLocation | null = null
 
   let current: Attachment | null = null
@@ -314,7 +324,11 @@ export function createWebHost(deps: WebHostDeps): WebHost {
       run(async () => {
         const { image, yielded } = await invoke('web.freeze', { tabId })
         if (current !== target) return
-        if (yielded && frozen && !covered.overlay) {
+        if (yielded && frozen && covered.overlay) {
+          // 浮层：不碰应用中的焦点元素（浮层自己的输入框可能已拿到焦点）；只记下「视图原本持有焦点」，
+          // 浮层是被关闭（而不是执行了动作）时由 lib/focus-return 请求在 unfreeze 时还给视图
+          noteViewHeldFocus()
+        } else if (yielded && frozen) {
           // 只因 toast：隐藏的视图拿不住焦点，主进程已交回应用界面。让应用中残留的焦点元素（例如资源树的行）
           // 失去焦点，页面中正在进行的输入不会落到它上面
           env.blurActive()
@@ -334,7 +348,8 @@ export function createWebHost(deps: WebHostDeps): WebHost {
         clearImage(current.element)
         // 在队列中判断（web.freeze 的结果处理之后）：截图期间用户把焦点移到了应用中则不还
         run(() => {
-          const back = refocus && env.idleFocus()
+          const requested = consumeViewRefocus()
+          const back = requested || (refocus && env.idleFocus())
           refocus = false
           return invoke('web.unfreeze', { tabId, refocus: back })
         })
@@ -443,6 +458,9 @@ export function createWebHost(deps: WebHostDeps): WebHost {
     reload: () => run(() => invoke('web.reload', { tabId })),
     openExternal: async (uri) => {
       try {
+        // 与 openWithSystem 一致：可执行类扩展名先确认（页面查看器的「用默认应用打开」也能打开 .bat 等）
+        const name = nameOfUri(uri)
+        if (isExecutableExtension(name) && !(await links.confirmExecutable(name))) return
         await invoke('system.openPath', { uri })
       } catch (e) {
         links.onError(e)

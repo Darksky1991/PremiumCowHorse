@@ -9,6 +9,8 @@ export interface MainEvents extends Record<string, unknown> {
   'vfs.changed': { uri: string }
   /** 共享 / 卷断开或恢复（扫描进程） */
   'vfs.reachability': ReachabilityEvent
+  /** 最近使用有变化（recent 模块；null = 清除了全部） */
+  'recent.changed': { workspaceId: string | null }
   /** 连接列表有变化（connection 模块） */
   'connection.changed': Record<string, never>
   /** 连接状态变化（连接池） */

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { IpcChannel, IpcEvents } from '@pch/shared'
 import type { WebEvents } from '@renderer/data/web'
+import { beginFocusReturn, consumeViewRefocus } from '@renderer/lib/focus-return'
 import {
   createWebHost,
   createWebViews,
@@ -177,6 +178,7 @@ function setup(overrides: Partial<WebHostDeps> = {}): Setup {
     },
     stashToasts: vi.fn(),
     onError: vi.fn(),
+    confirmExecutable: vi.fn(async () => true),
     env,
     ...overrides
   }
@@ -506,6 +508,44 @@ describe('createWebHost: events from the view', () => {
   })
 })
 
+describe('createWebHost: openExternal', () => {
+  const opens = (calls: Setup['calls']): unknown[] =>
+    calls.filter(([c]) => c === 'system.openPath').map(([, input]) => input)
+
+  it('opens an ordinary file without asking', async () => {
+    const s = setup()
+    await s.host.api.openExternal(PAGE)
+    expect(s.deps.confirmExecutable).not.toHaveBeenCalled()
+    expect(opens(s.calls)).toEqual([{ uri: PAGE }])
+  })
+
+  it('asks first for an executable-class extension and opens only when confirmed', async () => {
+    const uri = 'file:///C:/x/a.bat'
+    const denied = setup({ confirmExecutable: vi.fn(async () => false) })
+    await denied.host.api.openExternal(uri)
+    expect(denied.deps.confirmExecutable).toHaveBeenCalledWith('a.bat')
+    expect(opens(denied.calls)).toEqual([])
+
+    const allowed = setup({ confirmExecutable: vi.fn(async () => true) })
+    await allowed.host.api.openExternal(uri)
+    expect(opens(allowed.calls)).toEqual([{ uri }])
+  })
+
+  it('uses the confirmation of the latest links after setLinks', async () => {
+    const s = setup()
+    const next = vi.fn(async () => false)
+    s.host.setLinks({
+      roots: s.deps.roots,
+      tabs: s.deps.tabs,
+      onError: s.deps.onError,
+      confirmExecutable: next
+    })
+    await s.host.api.openExternal('file:///C:/x/a.bat')
+    expect(next).toHaveBeenCalledWith('a.bat')
+    expect(opens(s.calls)).toEqual([])
+  })
+})
+
 describe('createWebHost: screenshot stand-in', () => {
   it('freezes while covered (the placeholder shows the image) and unfreezes afterwards', async () => {
     const s = setup()
@@ -538,6 +578,27 @@ describe('createWebHost: screenshot stand-in', () => {
       s.host.setCovered({ overlay: false, toasts: false })
       await flush()
       expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: true }])
+    })
+
+    it('an overlay dismissed with a refocus request gives the focus back to the page; without one it does not', async () => {
+      vi.stubGlobal('HTMLElement', class {})
+      vi.stubGlobal('document', { hasFocus: () => true, activeElement: null, body: {} })
+      for (const requested of [true, false]) {
+        const focusReturn = beginFocusReturn()
+        const s = setup()
+        s.focus.yielded = true
+        s.host.api.attach(fakeElement().element, PAGE, { view: 'page' })
+        s.host.setCovered({ overlay: true, toasts: false })
+        await flush()
+        // 浮层自己的输入框持有焦点：不能被 blur
+        expect(s.focus.blurs).toBe(0)
+        if (requested) focusReturn.restore() // 浮层被关闭（不是执行了动作）
+        s.host.setCovered({ overlay: false, toasts: false })
+        await flush()
+        expect(s.calls.at(-1)).toEqual(['web.unfreeze', { tabId: 'tab-1', refocus: requested }])
+        consumeViewRefocus()
+      }
+      vi.unstubAllGlobals()
     })
 
     it('toasts alone: the focus moved into the app meanwhile (e.g. the tree) stays there', async () => {

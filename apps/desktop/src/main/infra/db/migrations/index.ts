@@ -6,6 +6,7 @@ import * as m0004 from './0004-cache-strategy'
 import * as m0005 from './0005-launch-capabilities'
 import * as m0006 from './0006-desktop-snapshots'
 import * as m0007 from './0007-connections'
+import * as m0008 from './0008-recent-items'
 
 /**
  * 迁移按键名的字典序执行，键名一旦发布不得修改。
@@ -18,5 +19,6 @@ export const migrations: Record<string, Migration> = {
   '0004-cache-strategy': m0004,
   '0005-launch-capabilities': m0005,
   '0006-desktop-snapshots': m0006,
-  '0007-connections': m0007
+  '0007-connections': m0007,
+  '0008-recent-items': m0008
 }

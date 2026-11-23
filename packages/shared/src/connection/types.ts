@@ -9,6 +9,8 @@ export type ConnectionState =
   | 'online'
   | 'offline'
   | 'auth-failed'
+  /** 服务器要求本应用不支持的追加认证（MFA 等）：不锁定，不跨重启（M5 K2） */
+  | 'auth-unsupported'
   | 'host-key-pending'
   | 'host-key-changed'
 

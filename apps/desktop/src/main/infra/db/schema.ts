@@ -101,6 +101,16 @@ export interface ConnectionsTable {
   updated_at: number
 }
 
+/** 最近使用（M5）：每工作区至多 100 条，随工作区级联删除 */
+export interface RecentItemsTable {
+  id: Generated<number>
+  workspace_id: string
+  uri: string
+  kind: 'file' | 'directory'
+  title: string
+  opened_at: number
+}
+
 export interface DB {
   settings: SettingsTable
   workspaces: WorkspacesTable
@@ -110,4 +120,5 @@ export interface DB {
   desktop_snapshots: DesktopSnapshotsTable
   desktop_items: DesktopItemsTable
   connections: ConnectionsTable
+  recent_items: RecentItemsTable
 }

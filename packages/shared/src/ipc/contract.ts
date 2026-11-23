@@ -8,6 +8,7 @@ import {
   IndexSetTargetInput,
   EntryUpdateInput,
   WorkspaceCreateInput,
+  WorkspaceReorderInput,
   WorkspaceUpdateInput
 } from '../workspace/schema'
 import type { DirectoryListing, FileStat } from '../vfs/types'
@@ -22,7 +23,7 @@ import {
 } from '../doc/types'
 import type { SearchResult } from '../search/types'
 import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
-import type { Workspace, WorkspaceEntry } from '../workspace/types'
+import type { Workspace, WorkspaceEntry, WorkspaceSummary } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 import { ConnectionSaveInput, ConnectionTrustHostKeyInput } from '../connection/schema'
@@ -32,6 +33,7 @@ import type {
   ConnectionTestResult,
   HostKeyPrompt
 } from '../connection/types'
+import type { RecentItem } from '../recent/types'
 import { IDENTITY_PATTERN } from '../vfs/sftp-uri'
 import type {
   DesktopCurrent,
@@ -79,6 +81,10 @@ export interface AppInfo {
   node: string
   platform: NodeJS.Platform
   arch: string
+  /** 用户数据目录（只用于显示；打开用 system.openAppFolder） */
+  userDataDir: string
+  /** 日志目录（同上） */
+  logsDir: string
 }
 
 /** 发起调用的那个窗口的状态（自绘窗口按钮据此切换「最大化 / 还原」图标） */
@@ -101,6 +107,10 @@ export const ipcContract = {
   'workspace.update': route<Workspace>()(WorkspaceUpdateInput),
   'workspace.delete': route<void>()(z.strictObject({ id: z.string().min(1) })),
   'workspace.activate': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /** 选择器用的摘要（全部工作区，含已归档） */
+  'workspace.summaries': route<WorkspaceSummary[]>()(z.void()),
+  /** 完整顺序：必须恰好是全部未归档工作区的排列，否则 IPC_BAD_INPUT */
+  'workspace.reorder': route<void>()(WorkspaceReorderInput),
   /** 工作区条目（group / folder / file） */
   'entry.list': route<WorkspaceEntry[]>()(z.strictObject({ workspaceId: z.string().min(1) })),
   'entry.add': route<WorkspaceEntry>()(EntryAddInput),
@@ -197,6 +207,11 @@ export const ipcContract = {
    * 可执行类扩展名由渲染端先确认（设计 devDoc/2026-11-19-12 第 3.3 节）
    */
   'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
+  /**
+   * 在资源管理器中打开应用自己的目录（shell.openPath）：主进程按固定路径执行，不接受渲染端传路径
+   * （关于页的「ログフォルダーを開く」「データフォルダーを開く」）
+   */
+  'system.openAppFolder': route<void>()(z.strictObject({ which: z.enum(['logs', 'userData']) })),
   'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),
   /** 返回所选本地路径；用户取消时为空数组 */
   'system.selectPaths': route<string[]>()(
@@ -322,6 +337,21 @@ export const ipcContract = {
       identity: z.string().regex(IDENTITY_PATTERN).nullable()
     })
   ),
+  /** 最近使用（M5）：按工作区，openedAt 降序 */
+  'recent.list': route<RecentItem[]>()(
+    z.strictObject({ workspaceId: z.string().min(1), limit: z.number().int().min(1).max(100) })
+  ),
+  /** 记录一次明确的打开（同 URI 只更新时间；每工作区只保留最近 100 条） */
+  'recent.record': route<void>()(
+    z.strictObject({
+      workspaceId: z.string().min(1),
+      uri: z.string().min(1).max(4096),
+      kind: z.enum(['file', 'directory']),
+      title: z.string().max(500)
+    })
+  ),
+  /** 清除最近使用：省略 workspaceId = 全部工作区 */
+  'recent.clear': route<void>()(z.strictObject({ workspaceId: z.string().min(1).optional() })),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -383,6 +413,8 @@ export interface IpcEvents {
   'desktop.exitRequested': Record<string, never>
   /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
   'desktop.exitCancelled': Record<string, never>
+  /** 最近使用有变化（记录 / 清除）；workspaceId 为 null = 清除了全部。广播 */
+  'recent.changed': { workspaceId: string | null }
   /** 连接列表有变化（保存 / 删除 / 信任密钥 / 重新连接 / 测试之后）。广播 */
   'connection.changed': Record<string, never>
   /** 连接状态变化（连接池）。广播 */

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 M「牛馬（ぎゅうば）」〔牛头系列・马的暗示〕：牛角由一只马蹄铁充当：U 形底部藏在头后，
+       两臂向外上方张开就是一对角，臂上有钉孔、末端有蹄铁的踵。主体仍是牛头；金色马蹄铁 = 「高级」牛马。无底板。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <!-- 马蹄铁（作角）：U 形的底部藏在头后，两臂向外上方张开成一对角；末端的小方块是蹄铁的「踵」，臂上有钉孔 -->
+  <path d="M4 3C4.4 7 6.4 9.6 9.5 11Q16 14.5 22.5 11C25.6 9.6 27.6 7 28 3" fill="none" style="stroke: var(--logo-accent, #e8a21f)" stroke-width="4" stroke-linecap="butt"/>
+  <rect x="1.6" y="1" width="4.8" height="2.6" rx="0.6" style="fill: var(--logo-accent, #e8a21f)"/>
+  <rect x="25.6" y="1" width="4.8" height="2.6" rx="0.6" style="fill: var(--logo-accent, #e8a21f)"/>
+  <circle cx="4.5" cy="6.1" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <circle cx="6.6" cy="9" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <circle cx="27.5" cy="6.1" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <circle cx="25.4" cy="9" r="0.85" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <!-- 耳 -->
+  <path d="M9 12L2.5 11.4C3.1 13.9 5 15.6 9.2 15.6Z" style="fill: var(--logo-base, #3778d7)"/>
+  <path d="M23 12L29.5 11.4C28.9 13.9 27 15.6 22.8 15.6Z" style="fill: var(--logo-base, #3778d7)"/>
+  <!-- 脸 -->
+  <path d="M11 7H21A3 3 0 0 1 24 10L22.8 19H9.2L8 10A3 3 0 0 1 11 7Z" style="fill: var(--logo-base, #3778d7)"/>
+  <!-- 口鼻 -->
+  <rect x="8" y="17" width="16" height="11.5" rx="5.75" style="fill: var(--logo-mid, #6d9adc)"/>
+  <ellipse cx="12.6" cy="22.8" rx="1.4" ry="1.8" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <ellipse cx="19.4" cy="22.8" rx="1.4" ry="1.8" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <!-- 眼 -->
+  <circle cx="12.6" cy="12.4" r="1.3" style="fill: var(--logo-ink, #ffffff)"/>
+  <circle cx="19.4" cy="12.4" r="1.3" style="fill: var(--logo-ink, #ffffff)"/>
+</svg>

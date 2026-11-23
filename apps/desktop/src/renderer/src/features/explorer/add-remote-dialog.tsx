@@ -166,7 +166,9 @@ function AddRemoteForm({
       </DialogHeader>
       <FieldGroup className="gap-4">
         <Field>
-          <FieldLabel htmlFor={ids.connection}>{t('explorer:remoteConnection')}</FieldLabel>
+          <FieldLabel htmlFor={connection === undefined ? undefined : ids.connection}>
+            {t('explorer:remoteConnection')}
+          </FieldLabel>
           <div className="flex gap-2">
             {connection === undefined ? (
               <p className="min-w-0 flex-1 self-center text-sm text-muted-foreground">

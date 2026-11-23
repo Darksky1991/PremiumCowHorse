@@ -1,3 +1,5 @@
+import type { LaunchCapabilities } from '@pch/plugin-sdk'
+
 const UNITS = ['kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const
 
 /**
@@ -31,4 +33,23 @@ export function formatBytes(
 /** 日期与时刻（含秒），按界面语言格式化 */
 export function formatDateTime(ms: number, language: string): string {
   return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'medium' }).format(ms)
+}
+
+/** 面板标题处的图标种类：按扩展名首字母（x* 表格 / d* 文档 / p* 演示文稿），其余按文档 */
+export function officeIconFor(ext: string): 'word' | 'excel' | 'powerpoint' {
+  const first = ext.toLowerCase().charAt(0)
+  if (first === 'x') return 'excel'
+  if (first === 'p') return 'powerpoint'
+  return 'word'
+}
+
+/**
+ * 检测结果只对检测时的 uri 有效：uri 变化后（同一面板实例换到另一个文件）返回 undefined（= 检测中），
+ * 不显示上一个文件的结果。null 表示检测失败（宿主已提示）
+ */
+export function capsForUri(
+  state: { uri: string; caps: LaunchCapabilities | null } | undefined,
+  uri: string
+): LaunchCapabilities | null | undefined {
+  return state !== undefined && state.uri === uri ? state.caps : undefined
 }

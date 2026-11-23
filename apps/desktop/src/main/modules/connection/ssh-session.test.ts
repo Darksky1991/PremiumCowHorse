@@ -223,7 +223,7 @@ describe('authentication is submitted once', () => {
     expect(err.code).toBe('FS_TIMEOUT')
   })
 
-  it('Minor 1：keyboard-interactive 一轮有多个非回显提示 → CONN_AUTH_FAILED（unsupported prompt），不交出密码', async () => {
+  it('Minor 1：keyboard-interactive 一轮有多个非回显提示 → CONN_AUTH_UNSUPPORTED（unsupported prompt），不交出密码', async () => {
     const s = await server({
       authMethod: 'keyboard-interactive',
       kbdPrompts: [
@@ -232,13 +232,35 @@ describe('authentication is submitted once', () => {
       ]
     })
     const err = await errorOf(connectSsh(cfg(s)))
-    expect(err.code).toBe('CONN_AUTH_FAILED')
+    expect(err.code).toBe('CONN_AUTH_UNSUPPORTED')
     expect(err.detail).toContain('unsupported prompt')
     expect(err.detail ?? '').not.toContain('Pch-pass1')
     expect(s.kbdAnswers).toEqual([])
   })
 
-  it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_FAILED, password not handed over', async () => {
+  it('K2 修正：第 1 轮已交出密码，第 2 轮出现回显 / 多个提示 → CONN_AUTH_FAILED（锁定用），密码只交出 1 次', async () => {
+    for (const followUp of [
+      [{ prompt: 'Verification code: ', echo: true }],
+      [
+        { prompt: 'OTP: ', echo: false },
+        { prompt: 'PIN: ', echo: false }
+      ],
+      [{ prompt: 'OTP: ', echo: false }]
+    ]) {
+      const s = await server({
+        authMethod: 'keyboard-interactive',
+        kbdPrompts: [{ prompt: 'Password: ', echo: false }],
+        kbdFollowUp: followUp
+      })
+      const err = await errorOf(connectSsh(cfg(s)))
+      expect(err.code).toBe('CONN_AUTH_FAILED')
+      expect(err.detail).toContain('unsupported prompt')
+      expect(err.detail).toContain('after password')
+      expect(s.kbdAnswers).toHaveLength(1)
+    }
+  })
+
+  it('keyboard-interactive with an echo:true prompt (OTP etc.) → CONN_AUTH_UNSUPPORTED, password not handed over', async () => {
     const s = await server({
       authMethod: 'keyboard-interactive',
       kbdPrompts: [
@@ -263,7 +285,7 @@ describe('authentication is submitted once', () => {
       spy.mockRestore()
     }
     expect(destroyedRemotePorts).toContain(s.port)
-    expect(err.code).toBe('CONN_AUTH_FAILED')
+    expect(err.code).toBe('CONN_AUTH_UNSUPPORTED')
     expect(err.detail).toContain('unsupported prompt')
     expect(err.detail ?? '').not.toContain('Pch-pass1')
     expect(s.kbdAnswers).toEqual([])

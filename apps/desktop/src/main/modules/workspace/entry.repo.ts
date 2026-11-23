@@ -1,5 +1,10 @@
 import type { Selectable, Updateable } from 'kysely'
-import type { EntryMeta, CacheStrategy, WorkspaceEntry } from '@pch/shared'
+import {
+  WORKSPACE_SUMMARY_TOP,
+  type EntryMeta,
+  type CacheStrategy,
+  type WorkspaceEntry
+} from '@pch/shared'
 import type { Database } from '../../infra/db/client'
 import type { WorkspaceEntriesTable } from '../../infra/db/schema'
 
@@ -66,6 +71,32 @@ export class EntryRepo {
   async deleteMany(ids: string[]): Promise<void> {
     if (ids.length === 0) return
     await this.db.deleteFrom('workspace_entries').where('id', 'in', ids).execute()
+  }
+
+  /**
+   * 各工作区的条目总数与根级前 WORKSPACE_SUMMARY_TOP 个条目（按 sort_order）：两条查询，
+   * 没有条目的工作区不在结果中
+   */
+  async summaries(): Promise<Map<string, { count: number; top: WorkspaceEntry[] }>> {
+    const counts = await this.db
+      .selectFrom('workspace_entries')
+      .select(['workspace_id', (eb) => eb.fn.countAll<number>().as('count')])
+      .groupBy('workspace_id')
+      .execute()
+    const roots = await this.db
+      .selectFrom('workspace_entries')
+      .selectAll()
+      .where('parent_id', 'is', null)
+      .orderBy('workspace_id')
+      .orderBy('sort_order')
+      .execute()
+    const result = new Map<string, { count: number; top: WorkspaceEntry[] }>()
+    for (const c of counts) result.set(c.workspace_id, { count: Number(c.count), top: [] })
+    for (const row of roots) {
+      const top = result.get(row.workspace_id)?.top
+      if (top && top.length < WORKSPACE_SUMMARY_TOP) top.push(toEntry(row))
+    }
+    return result
   }
 
   /** 同级条目中最大的 sort_order；没有同级时为 -1 */

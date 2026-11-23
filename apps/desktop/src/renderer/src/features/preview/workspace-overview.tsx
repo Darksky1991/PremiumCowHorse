@@ -61,8 +61,8 @@ export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element 
       kind: entry.kind === 'folder' ? ('directory' as const) : ('file' as const),
       title: entry.label
     }
-    if (!newTab) navigate(tab.id, target)
-    else if (workspaceId !== undefined) open(workspaceId, target)
+    if (!newTab) navigate(tab.id, target, { source: 'overview' })
+    else if (workspaceId !== undefined) open(workspaceId, target, { source: 'overview' })
   }
 
   let body: JSX.Element
@@ -199,7 +199,7 @@ function EntryItem({
           // 标签可能是别名，类型按真实路径的文件名判断
           name={path.split(/[\\/]/).pop() ?? path}
           kind="file"
-          className="size-5 shrink-0 text-muted-foreground"
+          className="size-5 shrink-0"
         />
       )}
       <span className="flex min-w-0 flex-col">

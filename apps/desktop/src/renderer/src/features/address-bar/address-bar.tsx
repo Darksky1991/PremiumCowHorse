@@ -1,37 +1,19 @@
-import { useEffect, useMemo, useRef, type JSX, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, type JSX, type MouseEvent, type ReactNode } from 'react'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpIcon,
   ChevronRightIcon,
-  GalleryVerticalIcon,
-  LayoutListIcon,
   RefreshCwIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { notify } from '@renderer/stores/messages-store'
-import { AppError, workspaceLocation, workspacesLocation, type TabLocation } from '@pch/shared'
+import { AppError, workspaceLocation, type TabLocation } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@pch/ui/components/dropdown-menu'
 import { useConnectionNames } from '@renderer/data/connections'
 import { useEntries } from '@renderer/data/entries'
-import {
-  useActiveWorkspace,
-  useWorkspaceActions,
-  useWorkspaces,
-  workspaceDisplayName
-} from '@renderer/data/workspace'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
 import { copyablePath, displayPath } from '@renderer/lib/display-path'
 import { call } from '@renderer/lib/ipc'
 import {
@@ -41,7 +23,7 @@ import {
   type PathSegment
 } from '@renderer/lib/logical-path'
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
-import type { NavCommand } from './commands'
+import { copyTarget, type NavCommand } from './commands'
 import { useNavigationShortcuts } from './use-navigation-shortcuts'
 import { ViewerMenu } from './viewer-menu'
 
@@ -60,12 +42,17 @@ type SegmentEvent = 'onClick' | 'onMouseDown' | 'onAuxClick'
  * - 段每次由 logicalPath 用最新的工作区名与条目计算（条目改名后随之更新），不用标签标题的快照。
  * - 单击其他段 = 在当前标签内导航（进入历史）；中键 / Ctrl+单击 = 在新标签打开（设计 2.8）；
  *   没有激活标签时单击也新建标签。段的悬停提示为真实路径（工作区 / 一览段没有真实路径）。
- * - 工作区按钮列出工作区，选中即切换（与标题栏的切换器相同，经 data/workspace）；
- *   菜单底部「管理工作区…」进入工作区一览（总览的上一级）。
+ * - 工作区按钮由 app.tsx 注入（workspacePicker 插槽，来自 features/workspace）：与标题栏按钮打开同一个
+ *   工作区选择器（圆环式 / 菜单式按设置），选择器中可进入工作区一览（总览的上一级）。
  * - 后退 / 前进按标签自己的历史；上一级为逻辑路径的上一段（parentLocation：总览 → 一览）；
  *   刷新经 tabs-store 的 requestRefresh 交给标签内容。快捷键见 use-navigation-shortcuts.ts。
  */
-export function AddressBar(): JSX.Element {
+export interface AddressBarProps {
+  /** 地址框左端的工作区按钮（features/workspace 的 WorkspaceAddressButton） */
+  workspacePicker: ReactNode
+}
+
+export function AddressBar({ workspacePicker }: AddressBarProps): JSX.Element {
   const { t } = useTranslation()
   const { data: workspace } = useActiveWorkspace()
   const { data: entries } = useEntries(workspace?.id)
@@ -82,6 +69,8 @@ export function AddressBar(): JSX.Element {
     ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
     : undefined
   const workspacesTitle = t('workspace:listPage')
+  const settingsTitle = t('settings:title')
+  const aboutTitle = t('about:title')
   const ctx = useMemo<LogicalPathContext | null>(
     () =>
       workspace === undefined || workspaceName === undefined
@@ -89,9 +78,11 @@ export function AddressBar(): JSX.Element {
         : {
             workspace: { id: workspace.id, name: workspaceName },
             workspacesTitle,
+            settingsTitle,
+            aboutTitle,
             entries: entries ?? []
           },
-    [workspace, workspaceName, workspacesTitle, entries]
+    [workspace, workspaceName, workspacesTitle, settingsTitle, aboutTitle, entries]
   )
   const segments = useMemo<PathSegment[]>(() => {
     if (ctx === null) return []
@@ -113,7 +104,7 @@ export function AddressBar(): JSX.Element {
   const goTo = (target: TabLocation, newTab: boolean): void => {
     if (workspace === undefined) return
     if (!newTab && target.uri === active?.uri) return
-    openHere(workspace.id, target, { newTab })
+    openHere(workspace.id, target, { newTab, source: 'address' })
   }
   /**
    * 当前位置（最后一段）的显示路径（悬停提示；远程为 `<连接名>:<路径>`）与复制的内容
@@ -123,19 +114,19 @@ export function AddressBar(): JSX.Element {
   const copyCurrentPath = (): void => {
     const last = segments.at(-1)
     if (currentPath === null || last === undefined) return
-    const path = copyablePath(last.target.uri)
-    call('system.copyText', { text: path ?? last.target.uri })
-      .then(() =>
-        notify('success', t(path !== null ? 'explorer:copiedPath' : 'explorer:copiedUri'))
-      )
+    const { text } = copyTarget(last.target.uri, currentPath)
+    const isPath = copyablePath(last.target.uri) !== null
+    call('system.copyText', { text })
+      .then(() => notify('success', t(isPath ? 'explorer:copiedPath' : 'explorer:copiedUri')))
       .catch((e: unknown) => {
         notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
       })
   }
+  const lastSegment = segments.at(-1)
   const copyTitle =
-    currentPath === null
+    currentPath === null || lastSegment === undefined
       ? undefined
-      : `${currentPath}
+      : `${copyTarget(lastSegment.target.uri, currentPath).title}
 ${t('addressBar:copyHint')}`
   const segmentHandlers = (
     target: TabLocation,
@@ -273,9 +264,7 @@ ${t('addressBar:copyHint')}`
                   data-slot="address-workspace"
                   className="sticky left-0 z-10 flex shrink-0 items-center self-stretch border-r bg-[color-mix(in_oklch,var(--background),var(--foreground)_7%)] px-0.5 dark:bg-[color-mix(in_oklch,var(--background),var(--foreground)_20%)]"
                 >
-                  <WorkspaceMenu
-                    onManage={() => goTo(workspacesLocation(workspacesTitle), false)}
-                  />
+                  {workspacePicker}
                   {button}
                 </li>
               )
@@ -288,9 +277,7 @@ ${t('addressBar:copyHint')}`
             )
           })}
           {segments.length === 0 ? (
-            <li className="flex shrink-0 items-center">
-              <WorkspaceMenu onManage={() => goTo(workspacesLocation(workspacesTitle), false)} />
-            </li>
+            <li className="flex shrink-0 items-center">{workspacePicker}</li>
           ) : null}
         </ol>
       </div>
@@ -302,7 +289,7 @@ ${t('addressBar:copyHint')}`
 
 /**
  * 段的显示路径：本地文件 / 目录为 Windows 路径，远程为 `<连接名>:<路径>`，其他（网页等）为 URI；
- * 工作区 / 一览 / 桌面记录段没有路径
+ * 工作区 / 一览 / 桌面记录 / 设置 / 关于段没有路径
  */
 function pathOf(
   segment: PathSegment | undefined,
@@ -312,61 +299,11 @@ function pathOf(
     segment === undefined ||
     segment.kind === 'workspace' ||
     segment.kind === 'workspaces' ||
-    segment.kind === 'desktop'
+    segment.kind === 'desktop' ||
+    segment.kind === 'settings' ||
+    segment.kind === 'about'
   ) {
     return null
   }
   return displayPath(segment.target.uri, connectionNames)
-}
-
-/**
- * 地址框前置的工作区按钮（lucide GalleryVertical）：列出工作区（当前项选中），选中即切换（与标题栏的切换器相同）；
- * 底部「管理工作区…」进入工作区一览（onManage：有激活标签时在其中导航，没有时新建标签）
- */
-function WorkspaceMenu({ onManage }: { onManage: () => void }): JSX.Element {
-  const { t } = useTranslation()
-  const { data: workspaces } = useWorkspaces()
-  const { data: active } = useActiveWorkspace()
-  const { activate } = useWorkspaceActions()
-  const defaultName = t('common:defaultWorkspace')
-  const fail = (e: unknown): void => {
-    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t('workspace:switcherLabel')}
-            title={t('workspace:switcherLabel')}
-          />
-        }
-      >
-        <GalleryVerticalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{t('workspace:listLabel')}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={active?.id ?? ''}
-            onValueChange={(id) => activate.mutate(id, { onError: fail })}
-            className="max-h-64 overflow-y-auto"
-          >
-            {(workspaces ?? []).map((w) => (
-              <DropdownMenuRadioItem key={w.id} value={w.id} closeOnClick>
-                <span className="truncate">{workspaceDisplayName(w, defaultName)}</span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onManage}>
-          <LayoutListIcon />
-          {t('workspace:manage')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
 }

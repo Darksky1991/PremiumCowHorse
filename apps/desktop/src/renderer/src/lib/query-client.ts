@@ -47,6 +47,10 @@ export function bridgeMainEvents(client: QueryClient): () => void {
         void client.invalidateQueries({ queryKey: queryKeys.desktopSnapshotRoot })
       }
     }),
+    // 最近使用：记录 / 清除之后整体失效（条目少、读本地库）
+    subscribe('recent.changed', () => {
+      void client.invalidateQueries({ queryKey: queryKeys.recentRoot })
+    }),
     // 远程连接：增删改 / 测试之后整体失效（列表与主目录）
     subscribe('connection.changed', () => {
       void client.invalidateQueries({ queryKey: queryKeys.connectionRoot })

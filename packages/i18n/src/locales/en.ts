@@ -14,6 +14,15 @@ export default {
     themeLight: 'Light',
     themeDark: 'Dark',
     followSystem: 'System',
+    themeColors: 'Color theme',
+    themeDefault: 'Default',
+    themeAitetsu: 'Indigo Steel',
+    themeWashi: 'Washi',
+    themeMatsuba: 'Pine',
+    reduceMotion: 'Reduce motion',
+    reduceMotionOn: 'On',
+    reduceMotionOff: 'Off',
+    accentThemeDefault: 'Theme default',
     ready: 'Ready',
     messages: 'Notifications: {{count}}',
     messagesRestore: 'Show unread notifications',
@@ -143,8 +152,72 @@ export default {
     listPage: 'Workspaces',
     current: 'Current',
     lastOpened: 'Last opened {{time}}',
-    renameMenu: 'Rename…',
-    deleteMenu: 'Delete…'
+    editMenu: 'Edit…',
+    deleteMenu: 'Delete…',
+    pickerTitle: 'Choose a workspace',
+    pickerButtonTitle: 'Choose a workspace ({{shortcut}})',
+    filterPlaceholder: 'Filter by name',
+    filterLabel: 'Filter workspaces by name',
+    countAll: '{{count}} total',
+    countFiltered: '{{shown}} / {{total}}',
+    viewLabel: 'View',
+    viewRing: 'Carousel',
+    viewList: 'List',
+    viewRingTitle: 'Carousel view',
+    viewListTitle: 'List view',
+    detail: 'Details',
+    entryCount: 'Items: {{count}}',
+    moreEntries: '+{{count}} more',
+    noDescription: 'No description',
+    lastUsed: 'Last used',
+    neverUsed: 'Never used',
+    justNow: 'Just now',
+    hintSwitch: '/ click to switch',
+    hintCurrent: 'Current workspace',
+    optionLabel: '{{name}}, last used {{time}}',
+    currentSuffix: ' (current)',
+    announce: '{{index}} of {{count}}, {{name}}',
+    position: '{{index}} / {{count}}',
+    manyTip: 'With many workspaces, type to filter or switch to the list view',
+    emptyTitle: 'No workspace matches “{{query}}”',
+    emptyHint: 'Names and descriptions are searched. Press Esc to clear the filter',
+    keyRotate: 'Rotate',
+    keyMove: 'Move',
+    keySwitch: 'Switch',
+    keyDirect: 'Switch directly',
+    keyFilter: 'Type to filter',
+    keyClose: 'Close',
+    keyClear: 'Clear filter',
+    openList: 'Open the workspace list',
+    switched: 'Switched to “{{name}}”',
+    edit: 'Edit',
+    editNote: 'Editing: clicks and Enter do not switch',
+    keyReorder: 'Reorder',
+    keyFields: 'To the fields',
+    newCard: 'New workspace',
+    newCardHint: 'Press Enter to create',
+    newCardLabel: 'Create a new workspace',
+    newWorkspaceName: 'New workspace',
+    fieldName: 'Name',
+    fieldDescription: 'Description',
+    descriptionPlaceholder: 'Project summary, environment, contacts…',
+    fieldColor: 'Color',
+    autoSaved: 'Changes are saved automatically',
+    deleted: 'Deleted “{{name}}”',
+    editTitle: 'Edit workspace',
+    editDescription: 'Change the name, description and color.',
+    colors: {
+      none: 'None',
+      blue: 'Blue',
+      teal: 'Teal',
+      green: 'Green',
+      amber: 'Amber',
+      orange: 'Orange',
+      red: 'Red',
+      pink: 'Pink',
+      violet: 'Violet',
+      slate: 'Slate'
+    }
   },
   desktop: {
     title: 'Desktop snapshots',
@@ -237,6 +310,7 @@ export default {
       connecting: 'Connecting',
       offline: 'Offline',
       authFailed: 'Authentication failed',
+      authUnsupported: 'Extra authentication required (unsupported)',
       sudoAuthFailed: 'sudo authentication failed',
       hostKeyPending: 'Waiting for host key confirmation',
       hostKeyChanged: 'Host key changed'
@@ -266,6 +340,7 @@ export default {
     keyHint: 'OpenSSH / PEM keys and PuTTY PPK v2 (RSA / DSA) are supported.',
     passphrase: 'Passphrase',
     passphraseNone: 'None',
+    clearPassphrase: 'Delete the saved passphrase',
     identities: 'Switch users',
     identitiesHint:
       'Users to switch to with sudo for reading (e.g. app1, root). Press Enter to add.',
@@ -364,6 +439,301 @@ export default {
     alwaysOpenWith: 'Always open .{{ext}} with this',
     copyHint: 'Click to copy the path'
   },
+  about: {
+    title: 'About this app',
+    version: 'Version',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: 'Platform',
+    dataDir: 'Data folder',
+    logsDir: 'Log folder',
+    openLogs: 'Open log folder',
+    openData: 'Open data folder',
+    copyDiagnostics: 'Copy diagnostics',
+    copied: 'Diagnostics copied',
+    openFailed: 'Could not open the folder',
+    copyFailed: 'Could not copy the diagnostics'
+  },
+  settings: {
+    title: 'Settings',
+    saveFailed: 'Could not save the setting: {{reason}}',
+    searchPlaceholder: 'Search settings…',
+    searchLabel: 'Search settings',
+    noResults: 'No matching settings',
+    navLabel: 'Settings categories',
+    sections: {
+      general: 'General',
+      appearance: 'Appearance',
+      workspace: 'Workspace',
+      explorer: 'Explorer',
+      preview: 'Preview',
+      cache: 'Cache and scanning',
+      remote: 'Remote connections',
+      desktop: 'Desktop records',
+      privacy: 'Privacy'
+    },
+    about: 'About this app',
+    reset: 'Restore default',
+    unit: {
+      sec: 's',
+      ms: 'ms',
+      min: 'min',
+      mb: 'MB'
+    },
+    error: {
+      required: 'Enter a value',
+      invalid: 'Enter a valid value',
+      integer: 'Enter a whole number',
+      range: 'Enter a value from {{min}} to {{max}}',
+      min: 'Enter a value of {{min}} or more'
+    },
+    keepaliveNote: 'Applies to new connections',
+    associations: {
+      title: 'File associations',
+      desc: 'The "always open with" choices saved per extension.',
+      empty: 'No file associations',
+      remove: 'Remove the association for {{ext}}'
+    },
+    cache: {
+      usage: 'Cache size',
+      usageLoading: 'Checking…',
+      usageUnavailable: 'Unavailable',
+      clear: 'Clear cache',
+      confirmTitle: 'Clear the cache?',
+      confirmDesc:
+        'Removes the folder listing cache and the index. Files on disk are not changed. They are rebuilt the next time you browse.',
+      confirm: 'Clear',
+      cancel: 'Cancel',
+      cleared: 'Cache cleared',
+      clearFailed: 'Could not clear the cache'
+    },
+    privacy: {
+      recentTitle: 'Recent items',
+      recentDesc: 'Clears the history of recently opened items.',
+      clearRecent: 'Clear recent items',
+      confirmTitle: 'Clear recent items?',
+      confirmDesc: 'This clears the history of every workspace. Files on disk are not changed.',
+      confirm: 'Clear',
+      cancel: 'Cancel',
+      cleared: 'Recent items cleared',
+      clearFailed: 'Could not clear recent items'
+    },
+    options: {
+      language: {
+        system: 'Follow system',
+        ja: '日本語',
+        'zh-CN': '简体中文',
+        en: 'English'
+      },
+      themeMode: {
+        system: 'Follow system',
+        light: 'Light',
+        dark: 'Dark'
+      },
+      theme: {
+        default: 'Standard',
+        aitetsu: 'Aitetsu',
+        washi: 'Washi',
+        matsuba: 'Matsuba'
+      },
+      accent: {
+        neutral: 'Theme default',
+        blue: 'Blue',
+        green: 'Green',
+        violet: 'Violet',
+        orange: 'Orange'
+      },
+      density: {
+        comfortable: 'Comfortable',
+        compact: 'Compact'
+      },
+      reduceMotion: {
+        system: 'Follow system',
+        on: 'On',
+        off: 'Off'
+      },
+      pickerStyle: {
+        carousel: 'Ring',
+        menu: 'Menu'
+      },
+      strategy: {
+        passive: 'Passive',
+        default: 'Default',
+        active: 'Active',
+        all: 'All'
+      }
+    },
+    item: {
+      general_language: {
+        name: 'Language',
+        desc: 'The language used in the interface.'
+      },
+      appearance_theme: {
+        name: 'Color theme',
+        desc: 'The color palette of the whole interface.'
+      },
+      appearance_themeMode: {
+        name: 'Light / dark',
+        desc: 'Switch between light and dark.'
+      },
+      appearance_accent: {
+        name: 'Accent color',
+        desc: 'The highlight color of buttons and selections.'
+      },
+      appearance_density: {
+        name: 'Density',
+        desc: 'How tightly lists and spacing are laid out.'
+      },
+      appearance_reduceMotion: {
+        name: 'Reduce motion',
+        desc: 'Tones down animations. "Follow system" uses the OS setting.'
+      },
+      workspace_pickerStyle: {
+        name: 'Workspace picker style',
+        desc: 'How the picker looks when switching workspaces.'
+      },
+      workspace_pickerDetail: {
+        name: 'Show details by default',
+        desc: 'Show detailed information on workspace picker cards.'
+      },
+      explorer_showHiddenFiles: {
+        name: 'Show hidden files',
+        desc: 'Show files and folders with the hidden attribute.'
+      },
+      explorer_singleClickPreview: {
+        name: 'Open on single click',
+        desc: 'Select an item (or move to it with the arrow keys) to open its preview. When off, double-click or press Enter.'
+      },
+      preview_maxTextSizeMB: {
+        name: 'Text preview size limit',
+        desc: 'Text files larger than this are not opened directly.'
+      },
+      cache_strategy_local: {
+        name: 'Cache strategy (local)',
+        desc: 'Default cache strategy for local folders. Each item can override it.'
+      },
+      cache_strategy_network: {
+        name: 'Cache strategy (network)',
+        desc: 'Default cache strategy for network folders. Each item can override it.'
+      },
+      cache_activeDepth: {
+        name: 'Look-ahead depth for "Active"',
+        desc: 'How many levels above and below the focused location the "Active" strategy reads ahead.'
+      },
+      cache_interval_focus_local: {
+        name: 'Check interval: focused (local)',
+        desc: 'How often the focused location is checked.'
+      },
+      cache_interval_near_local: {
+        name: 'Check interval: nearby (local)',
+        desc: 'How often locations near the focus are checked.'
+      },
+      cache_interval_far_local: {
+        name: 'Check interval: distant (local)',
+        desc: 'How often locations far from the focus are checked.'
+      },
+      cache_interval_focus_network: {
+        name: 'Check interval: focused (network)',
+        desc: 'How often the focused location is checked.'
+      },
+      cache_interval_near_network: {
+        name: 'Check interval: nearby (network)',
+        desc: 'How often locations near the focus are checked.'
+      },
+      cache_interval_far_network: {
+        name: 'Check interval: distant (network)',
+        desc: 'How often locations far from the focus are checked.'
+      },
+      cache_backgroundGapMs_local: {
+        name: 'Background pause (local)',
+        desc: 'Pause after each folder when filling the cache in the background.'
+      },
+      cache_backgroundGapMs_network: {
+        name: 'Background pause (network)',
+        desc: 'Pause after each folder when filling the cache in the background.'
+      },
+      vfs_timeoutSec_local: {
+        name: 'Timeout (local)',
+        desc: 'The longest to wait without a response.'
+      },
+      vfs_timeoutSec_network: {
+        name: 'Timeout (network)',
+        desc: 'The longest to wait without a response.'
+      },
+      remote_keepaliveSec: {
+        name: 'Keepalive interval',
+        desc: 'How often the connection is checked. Three missed replies in a row count as a disconnect.'
+      },
+      remote_idleDisconnectMin: {
+        name: 'Disconnect when idle',
+        desc: 'Disconnect after this long without any request.'
+      },
+      vfs_timeoutSec_remote: {
+        name: 'Timeout (remote)',
+        desc: 'The longest to wait for a remote file operation.'
+      },
+      cache_backgroundGapMs_remote: {
+        name: 'Background pause (remote)',
+        desc: 'Pause after each folder when filling the remote cache in the background.'
+      },
+      cache_remoteIndexIntervalMin: {
+        name: 'Index refresh interval (remote)',
+        desc: 'How often the index of remote folders is rebuilt.'
+      },
+      desktop_askOnExit: {
+        name: 'Ask before saving on exit',
+        desc: 'Ask which desktop items to save when quitting. When off, everything is saved.'
+      }
+    }
+  },
+  commands: {
+    group: {
+      general: 'General',
+      view: 'View',
+      navigation: 'Navigation',
+      workspace: 'Workspace',
+      appearance: 'Appearance'
+    },
+    paletteOpen: 'Open command palette',
+    settingsOpen: 'Open settings',
+    aboutOpen: 'Open about',
+    workspacePick: 'Choose workspace',
+    tabClose: 'Close tab',
+    navBack: 'Back',
+    navForward: 'Forward',
+    navUp: 'Up one level',
+    navRefresh: 'Refresh',
+    viewSearch: 'Open search',
+    viewToggleSidebar: 'Toggle sidebar',
+    workspaceNew: 'New workspace',
+    viewExplorer: 'Open explorer',
+    viewDesktop: 'Open desktop records',
+    viewConnections: 'Open remote connections',
+    themeModeLight: 'Theme: Light',
+    themeModeDark: 'Theme: Dark',
+    themeModeSystem: 'Theme: System',
+    themeColorDefault: 'Color theme: Default',
+    themeColorAitetsu: 'Color theme: Aitetsu',
+    themeColorWashi: 'Color theme: Washi',
+    themeColorMatsuba: 'Color theme: Matsuba',
+    langSystem: 'Language: System',
+    langJa: 'Language: 日本語',
+    langZhCn: 'Language: 简体中文',
+    langEn: 'Language: English',
+    explorerCollapseAll: 'Collapse all',
+    explorerLocate: 'Reveal active item in tree'
+  },
+  palette: {
+    title: 'Command palette',
+    description: 'Search recent items, workspaces, commands and files',
+    placeholder: 'Type a file name or command…',
+    empty: 'No matches',
+    recent: 'Recent',
+    workspaces: 'Workspaces',
+    commands: 'Commands',
+    files: 'Files'
+  },
   tabs: {
     label: 'Open tabs',
     close: 'Close'
@@ -412,6 +782,8 @@ export default {
     CONN_NOT_FOUND: 'Connection not found (it may have been deleted)',
     CONN_AUTH_FAILED:
       'Authentication failed. Check the user name, password or key (no automatic retry)',
+    CONN_AUTH_UNSUPPORTED:
+      'The server asked for additional authentication (e.g. MFA), so the attempt was aborted. No password was sent',
     CONN_KEY_INVALID:
       'Cannot read the private key. Only OpenSSH / PEM and PuTTY PPK v2 (RSA / DSA) keys are supported; also check the passphrase',
     CONN_HOST_KEY_REJECTED: 'The server host key was not trusted, so the connection was canceled',

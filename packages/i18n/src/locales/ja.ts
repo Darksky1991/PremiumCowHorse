@@ -12,6 +12,15 @@ export default {
     themeLight: 'ライト',
     themeDark: 'ダーク',
     followSystem: 'システムに従う',
+    themeColors: 'カラーテーマ',
+    themeDefault: '標準',
+    themeAitetsu: '藍鉄',
+    themeWashi: '和紙',
+    themeMatsuba: '松葉',
+    reduceMotion: '動きを減らす',
+    reduceMotionOn: 'オン',
+    reduceMotionOff: 'オフ',
+    accentThemeDefault: 'テーマの既定',
     ready: '準備完了',
     messages: '通知 {{count}} 件',
     messagesRestore: '未確認の通知を表示',
@@ -142,8 +151,72 @@ export default {
     listPage: 'ワークスペース一覧',
     current: '使用中',
     lastOpened: '最終使用: {{time}}',
-    renameMenu: '名前の変更…',
-    deleteMenu: '削除…'
+    editMenu: '編集…',
+    deleteMenu: '削除…',
+    pickerTitle: 'ワークスペースを選択',
+    pickerButtonTitle: 'ワークスペースを選択（{{shortcut}}）',
+    filterPlaceholder: '名前で絞り込み',
+    filterLabel: 'ワークスペースを名前で絞り込み',
+    countAll: '{{count}} 件',
+    countFiltered: '{{shown}} / {{total}}',
+    viewLabel: '表示',
+    viewRing: 'リング',
+    viewList: 'リスト',
+    viewRingTitle: 'リング表示',
+    viewListTitle: 'リスト表示',
+    detail: '詳細',
+    entryCount: '{{count}} 項目',
+    moreEntries: 'ほか {{count}} 項目',
+    noDescription: '説明なし',
+    lastUsed: '最終使用',
+    neverUsed: '未使用',
+    justNow: 'たった今',
+    hintSwitch: '/ クリックで切り替え',
+    hintCurrent: '使用中のワークスペース',
+    optionLabel: '{{name}}、最終使用 {{time}}',
+    currentSuffix: '（使用中）',
+    announce: '{{index}} / {{count}}、{{name}}',
+    position: '{{index}} / {{count}}',
+    manyTip: '数が多いときは文字を入力して絞り込むか、リスト表示へ',
+    emptyTitle: '「{{query}}」に一致するワークスペースはありません',
+    emptyHint: '名前と説明を検索しています。Esc で絞り込みを解除',
+    keyRotate: '回転',
+    keyMove: '移動',
+    keySwitch: '切り替え',
+    keyDirect: '直接切り替え',
+    keyFilter: '文字入力で絞り込み',
+    keyClose: '閉じる',
+    keyClear: '絞り込み解除',
+    openList: 'ワークスペース一覧を開く',
+    switched: '「{{name}}」に切り替えました',
+    edit: '編集',
+    editNote: '編集中：クリックや Enter では切り替わりません',
+    keyReorder: '並べ替え',
+    keyFields: '入力欄へ',
+    newCard: '新しいワークスペース',
+    newCardHint: 'Enter で作成',
+    newCardLabel: '新しいワークスペースを作成',
+    newWorkspaceName: '新しいワークスペース',
+    fieldName: '名前',
+    fieldDescription: '説明',
+    descriptionPlaceholder: '案件の概要、環境、連絡先など',
+    fieldColor: '色',
+    autoSaved: '変更は自動で保存されます',
+    deleted: '「{{name}}」を削除しました',
+    editTitle: 'ワークスペースを編集',
+    editDescription: '名前、説明、色を変更します。',
+    colors: {
+      none: 'なし',
+      blue: '青',
+      teal: '青緑',
+      green: '緑',
+      amber: '山吹',
+      orange: '橙',
+      red: '赤',
+      pink: '桃',
+      violet: '紫',
+      slate: 'スレート'
+    }
   },
   desktop: {
     title: 'デスクトップ記録',
@@ -236,6 +309,7 @@ export default {
       connecting: '接続中',
       offline: 'オフライン',
       authFailed: '認証失敗',
+      authUnsupported: '追加認証が必要（未対応）',
       sudoAuthFailed: 'sudo 認証失敗',
       hostKeyPending: 'ホストキーの確認待ち',
       hostKeyChanged: 'ホストキー変更'
@@ -265,6 +339,7 @@ export default {
     keyHint: 'OpenSSH / PEM 形式と PuTTY の PPK v2（RSA / DSA）に対応しています。',
     passphrase: 'パスフレーズ',
     passphraseNone: 'なし',
+    clearPassphrase: '保存済みのパスフレーズを削除',
     identities: '切り替えユーザー',
     identitiesHint: 'sudo で切り替えて読み取るユーザー（例: app1、root）。Enter で追加します。',
     identityPlaceholder: 'ユーザー名を入力',
@@ -360,6 +435,302 @@ export default {
     alwaysOpenWith: '.{{ext}} は常にこれで開く',
     copyHint: 'クリックでパスをコピー'
   },
+  about: {
+    title: 'このアプリについて',
+    version: 'バージョン',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: 'プラットフォーム',
+    dataDir: 'データフォルダー',
+    logsDir: 'ログフォルダー',
+    openLogs: 'ログフォルダーを開く',
+    openData: 'データフォルダーを開く',
+    copyDiagnostics: '診断情報をコピー',
+    copied: '診断情報をコピーしました',
+    openFailed: 'フォルダーを開けませんでした',
+    copyFailed: '診断情報をコピーできませんでした'
+  },
+  settings: {
+    title: '設定',
+    saveFailed: '設定を保存できませんでした：{{reason}}',
+    searchPlaceholder: '設定を検索…',
+    searchLabel: '設定を検索',
+    noResults: '一致する設定がありません',
+    navLabel: '設定の分類',
+    sections: {
+      general: '一般',
+      appearance: '外観',
+      workspace: 'ワークスペース',
+      explorer: 'エクスプローラー',
+      preview: 'プレビュー',
+      cache: 'キャッシュとスキャン',
+      remote: 'リモート接続',
+      desktop: 'デスクトップ記録',
+      privacy: 'プライバシー'
+    },
+    about: 'このアプリについて',
+    reset: '既定に戻す',
+    unit: {
+      sec: '秒',
+      ms: 'ミリ秒',
+      min: '分',
+      mb: 'MB'
+    },
+    error: {
+      required: '値を入力してください',
+      invalid: '正しい値を入力してください',
+      integer: '整数を入力してください',
+      range: '{{min}}〜{{max}} の範囲で入力してください',
+      min: '{{min}} 以上で入力してください'
+    },
+    keepaliveNote: '新しい接続から有効',
+    associations: {
+      title: 'ファイルの関連付け',
+      desc: '拡張子ごとの「常にこれで開く」の設定です。',
+      empty: '関連付けはありません',
+      remove: '{{ext}} の関連付けを削除'
+    },
+    cache: {
+      usage: 'キャッシュの使用量',
+      usageLoading: '確認中…',
+      usageUnavailable: '取得できません',
+      clear: 'キャッシュを消去',
+      confirmTitle: 'キャッシュを消去しますか？',
+      confirmDesc:
+        'フォルダー一覧のキャッシュとインデックスを消去します。ディスク上のファイルは変更されません。次回の表示時に作り直されます。',
+      confirm: '消去',
+      cancel: 'キャンセル',
+      cleared: 'キャッシュを消去しました',
+      clearFailed: 'キャッシュを消去できませんでした'
+    },
+    privacy: {
+      recentTitle: '最近使った項目',
+      recentDesc: '最近開いた項目の履歴を消去します。',
+      clearRecent: '最近使用を消去',
+      confirmTitle: '最近使った項目を消去しますか？',
+      confirmDesc:
+        'すべてのワークスペースの履歴を消去します。ディスク上のファイルは変更されません。',
+      confirm: '消去',
+      cancel: 'キャンセル',
+      cleared: '最近使った項目を消去しました',
+      clearFailed: '最近使った項目を消去できませんでした'
+    },
+    options: {
+      language: {
+        system: 'システムに従う',
+        ja: '日本語',
+        'zh-CN': '简体中文',
+        en: 'English'
+      },
+      themeMode: {
+        system: 'システムに従う',
+        light: 'ライト',
+        dark: 'ダーク'
+      },
+      theme: {
+        default: '標準',
+        aitetsu: '藍鉄',
+        washi: '和紙',
+        matsuba: '松葉'
+      },
+      accent: {
+        neutral: 'テーマの既定',
+        blue: 'ブルー',
+        green: 'グリーン',
+        violet: 'バイオレット',
+        orange: 'オレンジ'
+      },
+      density: {
+        comfortable: '標準',
+        compact: 'コンパクト'
+      },
+      reduceMotion: {
+        system: 'システムに従う',
+        on: 'オン',
+        off: 'オフ'
+      },
+      pickerStyle: {
+        carousel: 'リング',
+        menu: 'メニュー'
+      },
+      strategy: {
+        passive: '控えめ',
+        default: '標準',
+        active: '積極',
+        all: 'すべて'
+      }
+    },
+    item: {
+      general_language: {
+        name: '言語',
+        desc: '画面表示に使う言語です。'
+      },
+      appearance_theme: {
+        name: 'カラーテーマ',
+        desc: '画面全体の配色です。'
+      },
+      appearance_themeMode: {
+        name: '明暗',
+        desc: 'ライト / ダークの切り替えです。'
+      },
+      appearance_accent: {
+        name: 'アクセントカラー',
+        desc: 'ボタンや選択状態の強調色です。'
+      },
+      appearance_density: {
+        name: '表示密度',
+        desc: '一覧や余白の詰め具合です。'
+      },
+      appearance_reduceMotion: {
+        name: '動きを減らす',
+        desc: 'アニメーションを控えめにします。「システムに従う」では OS の設定に合わせます。'
+      },
+      workspace_pickerStyle: {
+        name: 'ワークスペース選択の形式',
+        desc: 'ワークスペースを切り替えるときの表示形式です。'
+      },
+      workspace_pickerDetail: {
+        name: '詳細情報を既定で表示',
+        desc: 'ワークスペース選択のカードに詳細情報を表示します。'
+      },
+      explorer_showHiddenFiles: {
+        name: '隠しファイルを表示',
+        desc: '隠し属性のファイルとフォルダーを一覧に表示します。'
+      },
+      explorer_singleClickPreview: {
+        name: 'クリックですぐに開く',
+        desc: '項目を 1 回クリック（または矢印キーで移動）するとプレビューを開きます。オフにするとダブルクリックまたは Enter で開きます。'
+      },
+      preview_maxTextSizeMB: {
+        name: 'テキストプレビューの上限サイズ',
+        desc: 'これより大きいテキストファイルは、そのままでは開きません。'
+      },
+      cache_strategy_local: {
+        name: 'キャッシュ方針（ローカル）',
+        desc: 'ローカルのフォルダーに対する既定のキャッシュ方針です。項目ごとに変更できます。'
+      },
+      cache_strategy_network: {
+        name: 'キャッシュ方針（ネットワーク）',
+        desc: 'ネットワーク上のフォルダーに対する既定のキャッシュ方針です。項目ごとに変更できます。'
+      },
+      cache_activeDepth: {
+        name: '「積極」で先読みする階層数',
+        desc: '「積極」方針で、注目している場所の上下に何階層ぶん先読みするかです。'
+      },
+      cache_interval_focus_local: {
+        name: '確認間隔：注目中（ローカル）',
+        desc: '注目している場所を定期的に確認する間隔です。'
+      },
+      cache_interval_near_local: {
+        name: '確認間隔：近く（ローカル）',
+        desc: '注目している場所の近くを定期的に確認する間隔です。'
+      },
+      cache_interval_far_local: {
+        name: '確認間隔：遠く（ローカル）',
+        desc: '注目している場所から遠い場所を定期的に確認する間隔です。'
+      },
+      cache_interval_focus_network: {
+        name: '確認間隔：注目中（ネットワーク）',
+        desc: '注目している場所を定期的に確認する間隔です。'
+      },
+      cache_interval_near_network: {
+        name: '確認間隔：近く（ネットワーク）',
+        desc: '注目している場所の近くを定期的に確認する間隔です。'
+      },
+      cache_interval_far_network: {
+        name: '確認間隔：遠く（ネットワーク）',
+        desc: '注目している場所から遠い場所を定期的に確認する間隔です。'
+      },
+      cache_backgroundGapMs_local: {
+        name: 'バックグラウンド処理の休止（ローカル）',
+        desc: 'バックグラウンドでキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      cache_backgroundGapMs_network: {
+        name: 'バックグラウンド処理の休止（ネットワーク）',
+        desc: 'バックグラウンドでキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      vfs_timeoutSec_local: {
+        name: 'タイムアウト（ローカル）',
+        desc: '応答がないまま待つ時間の上限です。'
+      },
+      vfs_timeoutSec_network: {
+        name: 'タイムアウト（ネットワーク）',
+        desc: '応答がないまま待つ時間の上限です。'
+      },
+      remote_keepaliveSec: {
+        name: 'キープアライブ間隔',
+        desc: '接続を保つために応答を確認する間隔です。3 回続けて応答がないと切断とみなします。'
+      },
+      remote_idleDisconnectMin: {
+        name: '無操作での自動切断',
+        desc: 'リクエストがないまま、この時間が過ぎると接続を切ります。'
+      },
+      vfs_timeoutSec_remote: {
+        name: 'タイムアウト（リモート）',
+        desc: 'リモートのファイル操作で応答を待つ時間の上限です。'
+      },
+      cache_backgroundGapMs_remote: {
+        name: 'バックグラウンド処理の休止（リモート）',
+        desc: 'リモートでバックグラウンドのキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      cache_remoteIndexIntervalMin: {
+        name: 'インデックス更新間隔（リモート）',
+        desc: 'リモートのフォルダーのインデックスを作り直す間隔です。'
+      },
+      desktop_askOnExit: {
+        name: '終了時に保存を確認',
+        desc: 'アプリを終了するとき、どのデスクトップ項目を保存するか確認します。オフにするとすべて保存します。'
+      }
+    }
+  },
+  commands: {
+    group: {
+      general: '一般',
+      view: '表示',
+      navigation: '移動',
+      workspace: 'ワークスペース',
+      appearance: '外観'
+    },
+    paletteOpen: 'コマンドパレットを開く',
+    settingsOpen: '設定を開く',
+    aboutOpen: 'このアプリについてを開く',
+    workspacePick: 'ワークスペースを選ぶ',
+    tabClose: 'タブを閉じる',
+    navBack: '戻る',
+    navForward: '進む',
+    navUp: '一つ上へ',
+    navRefresh: '更新',
+    viewSearch: '検索を開く',
+    viewToggleSidebar: 'サイドバーの表示を切り替え',
+    workspaceNew: '新しいワークスペースを作成',
+    viewExplorer: 'エクスプローラーを開く',
+    viewDesktop: 'デスクトップ記録を開く',
+    viewConnections: 'リモート接続を開く',
+    themeModeLight: 'テーマ：ライト',
+    themeModeDark: 'テーマ：ダーク',
+    themeModeSystem: 'テーマ：システムに従う',
+    themeColorDefault: 'カラーテーマ：標準',
+    themeColorAitetsu: 'カラーテーマ：藍鉄',
+    themeColorWashi: 'カラーテーマ：和紙',
+    themeColorMatsuba: 'カラーテーマ：松葉',
+    langSystem: '言語：システムに従う',
+    langJa: '言語：日本語',
+    langZhCn: '言語：简体中文',
+    langEn: '言語：English',
+    explorerCollapseAll: 'すべて折りたたむ',
+    explorerLocate: '現在の項目をツリーで表示'
+  },
+  palette: {
+    title: 'コマンドパレット',
+    description: '最近使った項目、ワークスペース、コマンド、ファイルを検索します',
+    placeholder: 'ファイル名やコマンドを入力…',
+    empty: '該当するものがありません',
+    recent: '最近使った項目',
+    workspaces: 'ワークスペース',
+    commands: 'コマンド',
+    files: 'ファイル'
+  },
   tabs: {
     label: '開いているタブ',
     close: '閉じる'
@@ -408,6 +779,8 @@ export default {
     CONN_NOT_FOUND: '接続が見つかりません（削除された可能性があります）',
     CONN_AUTH_FAILED:
       '認証に失敗しました。ユーザー名・パスワード・鍵を確認してください（自動では再試行しません）',
+    CONN_AUTH_UNSUPPORTED:
+      'サーバーが追加の認証（多要素認証など）を求めたため中止しました。パスワードは送信していません',
     CONN_KEY_INVALID:
       '秘密鍵を読み込めません。対応形式は OpenSSH / PEM と PuTTY の PPK v2（RSA / DSA）です。パスフレーズも確認してください',
     CONN_HOST_KEY_REJECTED: 'サーバーのホストキーを信頼しなかったため、接続しませんでした',

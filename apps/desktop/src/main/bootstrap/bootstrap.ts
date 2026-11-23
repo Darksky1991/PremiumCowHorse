@@ -15,7 +15,7 @@ import { createContainer, type Container } from './container'
 import { bindDocumentOwner } from '../vfs/document/document-owner'
 import { bindWebViewOwner } from '../modules/web/web-session'
 import { buildScannerConfig } from '../vfs/scanner-config'
-import { remoteFolderRoots } from '../vfs/remote-access'
+import { remoteFolderRoots, uncRoots } from '../vfs/remote-access'
 import { registerShutdown } from './shutdown'
 
 export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
@@ -83,6 +83,12 @@ function wireEvents(c: Container): void {
   c.bus.on('settings.changed', (patch) => {
     const mode = patch['appearance.themeMode']
     if (mode) nativeTheme.themeSource = mode
+    // 配色主题变化时同步窗口底色（明暗变化由 nativeTheme 的 updated 事件处理）
+    const theme = patch['appearance.theme']
+    if (theme) {
+      c.windows.syncChrome()
+      c.web.setMarkdownTheme(theme)
+    }
 
     const language = patch['general.language']
     if (language) {
@@ -94,6 +100,7 @@ function wireEvents(c: Container): void {
   c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
   c.bus.on('vfs.changed', (e) => c.windows.broadcast('vfs.changed', e))
   c.bus.on('vfs.reachability', (e) => c.windows.broadcast('vfs.reachability', e))
+  c.bus.on('recent.changed', (e) => c.windows.broadcast('recent.changed', e))
   c.bus.on('connection.changed', (e) => c.windows.broadcast('connection.changed', e))
   c.bus.on('connection.status', (e) => c.windows.broadcast('connection.status', e))
 
@@ -157,8 +164,8 @@ function wireScanner(c: Container): void {
       const entries = (await Promise.all(all.map((w) => c.workspaces.listEntries(w.id)))).flat()
       // 更晚发起的下发已在途：丢弃这次（避免旧配置后到、覆盖新配置）
       if (mine !== seq) return
-      // 访问范围：所有工作区的远程 folder 条目（与扫描配置同一批条目）
-      c.remoteAccess.setRoots(remoteFolderRoots(entries))
+      // 访问范围：所有工作区的 sftp folder 条目与 UNC 的 folder / file 条目（与扫描配置同一批条目）
+      c.remoteAccess.setRoots({ remote: remoteFolderRoots(entries), unc: uncRoots(entries) })
       rootsSet = true
       c.scanner.configure(
         buildScannerConfig({
@@ -173,7 +180,7 @@ function wireScanner(c: Container): void {
       c.logger.error('[scanner] cannot build the scanner config', e)
       // 第一次就失败：不让等待中的 sftp 访问检查一直挂起（范围为空 = 全部拒绝，下一次下发时恢复）
       if (!rootsSet && mine === seq) {
-        c.remoteAccess.setRoots([])
+        c.remoteAccess.setRoots({ remote: [], unc: [] })
         rootsSet = true
       }
     } finally {

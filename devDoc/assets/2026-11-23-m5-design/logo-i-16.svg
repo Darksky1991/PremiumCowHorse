@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- 方案 I「色面」的 16px 简化版：九笔减为四块略带倾斜的色块（2×2），保留「拼成一块」与中间偏右的焦点色。
+       用于 16 / 20 / 24px。逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <rect x="1" y="1.5" width="6.5" height="6" rx="1.6" transform="rotate(-6 4.25 4.5)" style="fill: var(--logo-base-2, #2a5fb7)"/>
+  <rect x="8.5" y="1" width="6.5" height="6.5" rx="1.6" transform="rotate(5 11.75 4.25)" style="fill: var(--logo-mid, #6d9adc)"/>
+  <rect x="1" y="8.5" width="6.5" height="6.5" rx="1.6" transform="rotate(4 4.25 11.75)" style="fill: var(--logo-base, #3778d7)"/>
+  <rect x="8.5" y="8.5" width="6.5" height="6" rx="1.6" transform="rotate(-5 11.75 11.5)" style="fill: var(--logo-accent, #f9b73f)"/>
+</svg>

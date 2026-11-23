@@ -20,6 +20,8 @@ import { RemoteAccess, remoteFolderRoots } from '../vfs/remote-access'
 import { ConnectionPool } from '../modules/connection/connection-pool'
 import { ConnectionRepo } from '../modules/connection/connection.repo'
 import { ConnectionService } from '../modules/connection/connection.service'
+import { RecentRepo } from '../modules/recent/recent.repo'
+import { RecentService } from '../modules/recent/recent.service'
 import { createHostKeyGate, type HostKeyGate } from '../modules/connection/host-key-gate'
 import { createOfflineRefresher } from '../modules/connection/offline-refresh'
 import { electronSecretBox } from '../modules/connection/secret-box'
@@ -86,6 +88,8 @@ export interface Container {
   exitGuard: ExitGuard
   /** 远程连接（M4） */
   connections: ConnectionService
+  /** 最近使用（M5） */
+  recent: RecentService
   pool: ConnectionPool
   hostKeys: HostKeyGate
   /** sftp: URI 的访问范围（根由 bootstrap 的 wireScanner 随扫描配置一并更新） */
@@ -226,9 +230,12 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const assetSource: AssetSource = devServer
     ? { kind: 'dev', origin: devServer, fetch: (url) => net.fetch(url) }
     : { kind: 'files', root: paths.webAssets }
-  const viewerShell = devServer
-    ? markdownShell({ script: `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}` })
-    : markdownShell()
+  // 外壳每次请求时生成：data-theme 取当前的配色主题（设置变化后新打开 / 重新加载的页面即用新主题）
+  const viewerScript = devServer
+    ? `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}`
+    : undefined
+  const viewerShell = (): string =>
+    markdownShell({ theme: settings.get('appearance.theme'), script: viewerScript })
   configureWebSession(webSession, {
     handler: createWebProtocolHandler({ scopes: webScopes, vfs, markdownShell: viewerShell }),
     assetHandler: createAssetProtocolHandler(assetSource),
@@ -250,6 +257,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
 
   const { desktop, exitGuard } = createDesktop({ db, vfs, settings, windows, logger })
 
+  const recent = new RecentService(new RecentRepo(db), bus)
+
   return {
     paths,
     logger,
@@ -267,6 +276,7 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     desktop,
     exitGuard,
     connections,
+    recent,
     pool,
     hostKeys,
     remoteAccess

@@ -1,30 +1,51 @@
+import { copyablePath } from '@renderer/lib/display-path'
+
 /** 地址栏的导航命令（快捷键与鼠标侧键共用） */
 export type NavCommand = 'back' | 'forward' | 'up' | 'refresh'
 
-type KeyLike = Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'shiftKey' | 'metaKey'>
-
-/** 按键发生时的环境：焦点在文本输入处（editable）、有模态对话框打开（modal） */
-export interface KeyContext {
-  editable: boolean
-  modal: boolean
-}
-
 /**
- * 全局快捷键 → 命令：`Alt+←` / `Alt+→` 后退 / 前进（与浏览器相同，焦点在输入框时也有效）；
- * `Alt+↑` 上一级（与 Windows 资源管理器相同）与 `F5` 刷新激活标签，焦点在输入框（editable）时除外
+ * 导航命令的注册信息（命令注册表的 id / 文案 / 快捷键）：`Alt+←` / `Alt+→` 后退 / 前进（与浏览器相同，
+ * 焦点在输入框时也有效）；`Alt+↑` 上一级（与 Windows 资源管理器相同）与 `F5` 刷新激活标签，焦点在输入框时除外
  * （输入框 / 下拉选择中 Alt+↑ 有自己的含义；只对应用自己的输入框——网页视图中的按键由主进程转发、派发在
- * window 上，不算输入框，见 main/modules/web/shortcuts.ts）。有模态对话框打开时都不是命令
- * （否则会作用于对话框背后的标签）。其他组合不是命令
+ * window 上，不算输入框，见 main/modules/web/shortcuts.ts）。有模态对话框打开时都不处理
+ * （否则会作用于对话框背后的标签）。分发规则见 lib/shortcut 的 pickCommand
  */
-export function keyCommand(e: KeyLike, { editable, modal }: KeyContext): NavCommand | null {
-  if (modal || e.ctrlKey || e.metaKey || e.shiftKey) return null
-  if (e.altKey) {
-    if (e.key === 'ArrowLeft') return 'back'
-    if (e.key === 'ArrowRight') return 'forward'
-    return e.key === 'ArrowUp' && !editable ? 'up' : null
+export const NAV_COMMANDS: readonly {
+  command: NavCommand
+  id: string
+  titleKey: string
+  shortcut: string
+  allowInEditable: boolean
+}[] = [
+  {
+    command: 'back',
+    id: 'nav.back',
+    titleKey: 'commands:navBack',
+    shortcut: 'Alt+ArrowLeft',
+    allowInEditable: true
+  },
+  {
+    command: 'forward',
+    id: 'nav.forward',
+    titleKey: 'commands:navForward',
+    shortcut: 'Alt+ArrowRight',
+    allowInEditable: true
+  },
+  {
+    command: 'up',
+    id: 'nav.up',
+    titleKey: 'commands:navUp',
+    shortcut: 'Alt+ArrowUp',
+    allowInEditable: false
+  },
+  {
+    command: 'refresh',
+    id: 'nav.refresh',
+    titleKey: 'commands:navRefresh',
+    shortcut: 'F5',
+    allowInEditable: false
   }
-  return e.key === 'F5' && !editable ? 'refresh' : null
-}
+]
 
 /** 鼠标侧键（MouseEvent.button）：3 = 后退、4 = 前进；有模态对话框打开时不是命令 */
 export function mouseCommand(button: number, modal: boolean): NavCommand | null {
@@ -39,21 +60,15 @@ export function isNavButton(button: number): boolean {
 }
 
 /**
- * 打开中的模态对话框（Base UI Dialog / AlertDialog 的弹出层：role 为 dialog / alertdialog，
- * 关闭时卸载或带 hidden）
+ * 单击当前位置复制的内容（text）与悬停提示（title，不含「点击复制」的说明）。
+ * 提示第一行始终是实际复制的内容（K6：远程时显示路径是 `<连接名>:<路径>`，复制的却是服务器路径，
+ * 第一行写 `<连接名>:<路径>` 会让人误以为连接名也被复制）；与显示路径不同时第二行才是显示路径。
+ * 本地与其他（网页：复制 URI）两者相同
  */
-export const OPEN_MODAL_SELECTOR =
-  '[role="dialog"]:not([hidden]), [role="alertdialog"]:not([hidden])'
-
-/** 焦点所在的元素是否为文本输入处（input / textarea / select / contenteditable） */
-export function isEditableTarget(
-  target: Pick<HTMLElement, 'tagName' | 'isContentEditable'> | null
-): boolean {
-  if (target === null) return false
-  return (
-    target.isContentEditable ||
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT'
-  )
+export function copyTarget(uri: string, display: string): { text: string; title: string } {
+  const text = copyablePath(uri) ?? uri
+  return {
+    text,
+    title: display === text ? text : `${text}\n${display}`
+  }
 }

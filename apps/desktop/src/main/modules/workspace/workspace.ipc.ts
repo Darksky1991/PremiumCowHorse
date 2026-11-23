@@ -11,6 +11,8 @@ export function workspaceHandlers(
   | 'workspace.update'
   | 'workspace.delete'
   | 'workspace.activate'
+  | 'workspace.summaries'
+  | 'workspace.reorder'
   | 'entry.list'
   | 'entry.add'
   | 'entry.update'
@@ -27,6 +29,8 @@ export function workspaceHandlers(
     'workspace.update': (input) => workspaces.update(input),
     'workspace.delete': ({ id }) => workspaces.delete(id),
     'workspace.activate': ({ id }) => workspaces.activate(id),
+    'workspace.summaries': () => workspaces.summaries(),
+    'workspace.reorder': ({ ids }) => workspaces.reorder(ids),
     'entry.list': ({ workspaceId }) => workspaces.listEntries(workspaceId),
     'entry.add': (input) => workspaces.addEntry(input),
     'entry.update': (input) => workspaces.updateEntry(input),

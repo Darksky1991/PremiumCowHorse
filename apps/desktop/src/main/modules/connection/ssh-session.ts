@@ -277,7 +277,15 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
         failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
       },
       abort: (detail) => {
-        failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
+        // 目前只有 keyboard-interactive 的「不支持的提示」会走这里（K2）。还没交出密码 → 不锁定的
+        // CONN_AUTH_UNSUPPORTED；第 1 轮已交出密码、第 2 轮才出现不支持的提示（pam_unix + OTP：密码错误时
+        // 服务器仍会继续问）→ 无法排除密码错误，按 CONN_AUTH_FAILED 锁定，同一个密码不会再被提交
+        failure = submitted
+          ? new AppError({
+              code: 'CONN_AUTH_FAILED',
+              detail: `undetermined after password (${detail})`
+            })
+          : new AppError({ code: 'CONN_AUTH_UNSUPPORTED', detail })
         fail(failure)
       },
       submitted: () => {

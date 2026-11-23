@@ -62,11 +62,15 @@ export interface PreviewContainerRootProps extends PreviewContainerProps {
   renderWorkspaces: (tab: TabState) => ReactNode
   /** 桌面记录页（kind 为 desktop，快照页）的内置视图：在 features/desktop 中，由 app/ 组合传入 */
   renderDesktop: (tab: TabState) => ReactNode
+  /** 设置页（kind 为 settings）的内置视图：在 features/settings 中，由 app/ 组合传入 */
+  renderSettings: (tab: TabState) => ReactNode
+  /** 关于页（kind 为 about）的内置视图：在 features/about 中，由 app/ 组合传入 */
+  renderAbout: (tab: TabState) => ReactNode
 }
 
 /**
  * 标签内容（doc 9.3）：工作区总览（kind 为 workspace）显示内置视图 WorkspaceOverview，
- * 工作区一览（kind 为 workspaces）与桌面记录页（kind 为 desktop）显示 app/ 传入的内置视图（renderWorkspaces / renderDesktop）；
+ * 工作区一览（workspaces）、桌面记录页（desktop）、设置页（settings）与关于页（about）显示 app/ 传入的内置视图（renderWorkspaces / renderDesktop / renderSettings / renderAbout）；
  * 其余取得资源描述 → 注册表选择插件（没有插件按扩展名 / MIME 匹配的文件先 vfs.sniff，文本交给 textLike 插件）
  * → 懒加载插件组件。
  * 目录标签不等 stat：用标签的类型与标题构造资源描述交给插件（folder 插件的 fs.list 缓存优先：
@@ -83,10 +87,17 @@ export function PreviewContainer({
   tab,
   plugins,
   renderWorkspaces,
-  renderDesktop
+  renderDesktop,
+  renderSettings,
+  renderAbout
 }: PreviewContainerRootProps): JSX.Element {
   // 工作区总览 / 一览 / 桌面记录页不经插件：该标签若还有浏览器视图（从网页导航过来）则销毁
-  const builtin = tab.kind === 'workspace' || tab.kind === 'workspaces' || tab.kind === 'desktop'
+  const builtin =
+    tab.kind === 'workspace' ||
+    tab.kind === 'workspaces' ||
+    tab.kind === 'desktop' ||
+    tab.kind === 'settings' ||
+    tab.kind === 'about'
   useLayoutEffect(() => {
     if (builtin) getWebViews().release(tab.id)
   }, [builtin, tab.id])
@@ -95,6 +106,9 @@ export function PreviewContainer({
   else if (tab.kind === 'workspaces')
     content = <Fragment key={tab.uri}>{renderWorkspaces(tab)}</Fragment>
   else if (tab.kind === 'desktop') content = <Fragment key={tab.uri}>{renderDesktop(tab)}</Fragment>
+  else if (tab.kind === 'settings')
+    content = <Fragment key={tab.uri}>{renderSettings(tab)}</Fragment>
+  else if (tab.kind === 'about') content = <Fragment key={tab.uri}>{renderAbout(tab)}</Fragment>
   else content = <ResourcePreview key={tab.uri} tab={tab} plugins={plugins} />
   return (
     // 同一标签内导航到另一位置时整体重建（sniff 结果等状态不沿用；viewer 在标签状态中，随位置变化）
@@ -283,6 +297,8 @@ function PluginView({
     ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
     : undefined
   const workspacesTitle = t('workspace:listPage')
+  const settingsTitle = t('settings:title')
+  const aboutTitle = t('about:title')
   const parent = useMemo(
     () =>
       workspace === undefined || workspaceName === undefined
@@ -292,10 +308,22 @@ function PluginView({
             {
               workspace: { id: workspace.id, name: workspaceName },
               workspacesTitle,
+              settingsTitle,
+              aboutTitle,
               entries: entries ?? []
             }
           ),
-    [workspace, workspaceName, workspacesTitle, entries, tab.uri, tab.kind, tab.title]
+    [
+      workspace,
+      workspaceName,
+      workspacesTitle,
+      settingsTitle,
+      aboutTitle,
+      entries,
+      tab.uri,
+      tab.kind,
+      tab.title
+    ]
   )
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const connectionNames = useConnectionNames()
@@ -318,6 +346,8 @@ function PluginView({
         roots: [],
         tabs: { open: () => undefined, navigate: () => undefined },
         onError: (e) => reportError(e, 'web view'),
+        confirmExecutable: (name) =>
+          new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false })),
         onRefresh: (listener) => onTabRefresh(tabId, listener),
         stashToasts: () => useMessagesStore.getState().stashVisible()
       }),
@@ -420,7 +450,9 @@ function PluginView({
     webHost.setLinks({
       roots,
       tabs: host.tabs,
-      onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error')
+      onError: (e) => host.ui.toast(host.i18n.describeError(e), 'error'),
+      confirmExecutable: (name) =>
+        new Promise<boolean>((resolve) => setConfirm({ name, resolve, settled: false }))
     })
   }, [webHost, host, roots])
 

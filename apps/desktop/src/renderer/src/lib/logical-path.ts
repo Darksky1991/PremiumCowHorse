@@ -9,13 +9,13 @@ import {
 
 /**
  * 逻辑路径的一段（设计 devDoc/2026-11-19-15 第 2.1 节）：地址栏与预览区共用。
- * workspaces：工作区一览（只在一览页本身的路径中出现）；desktop：桌面记录页（只有这一段，标签为位置标题）；workspace：工作区（目标为工作区总览）；
+ * workspaces：工作区一览（只在一览页本身的路径中出现）；desktop：桌面记录页 / 设置页 / 关于页（只有这一段，桌面记录页的标签为位置标题，设置 / 关于取 ctx 的本地化名称）；workspace：工作区（目标为工作区总览）；
  * entry：条目（显示别名 = 条目标签）；dir：目录（条目内的相对路径，或条目之外的绝对路径各段）；file：文件名
  */
 export interface PathSegment {
   label: string
   target: TabLocation
-  kind: 'workspaces' | 'desktop' | 'workspace' | 'entry' | 'dir' | 'file'
+  kind: 'workspaces' | 'desktop' | 'settings' | 'about' | 'workspace' | 'entry' | 'dir' | 'file'
 }
 
 export interface LogicalPathContext {
@@ -23,8 +23,22 @@ export interface LogicalPathContext {
   workspace: { id: string; name: string }
   /** 工作区一览的本地化名称（一览页的段与标题、总览的上一级） */
   workspacesTitle: string
+  /** 设置页 / 关于页的本地化名称（地址栏的段按当前语言显示，不用打开时保存的标签标题） */
+  settingsTitle: string
+  aboutTitle: string
   /** 该工作区的条目（分组不出现在路径中，只用 folder / file 条目） */
   entries: readonly WorkspaceEntry[]
+}
+
+/** 不是文件系统、不属于任何条目的内置页（工作区总览 / 一览、桌面记录、设置、关于） */
+function isBuiltinKind(kind: TabLocation['kind']): boolean {
+  return (
+    kind === 'workspace' ||
+    kind === 'workspaces' ||
+    kind === 'desktop' ||
+    kind === 'settings' ||
+    kind === 'about'
+  )
 }
 
 function decode(segment: string): string {
@@ -43,7 +57,7 @@ export function entryOf(
   loc: TabLocation,
   entries: readonly WorkspaceEntry[]
 ): (WorkspaceEntry & { uri: string }) | null {
-  if (loc.kind === 'workspace' || loc.kind === 'workspaces' || loc.kind === 'desktop') return null
+  if (isBuiltinKind(loc.kind)) return null
   let best: (WorkspaceEntry & { uri: string }) | null = null
   for (const e of entries) {
     if (e.uri === null) continue
@@ -112,8 +126,13 @@ export function logicalPath(loc: TabLocation, ctx: LogicalPathContext): PathSegm
       }
     ]
   }
-  // 桌面记录页：只有一段（标签为位置标题，不含工作区段）
-  if (loc.kind === 'desktop') return [{ label: loc.title, kind: 'desktop', target: loc }]
+  // 桌面记录页 / 设置页 / 关于页：只有一段（不含工作区段）。桌面记录页的标签为位置标题；
+  // 设置页 / 关于页取 ctx 中本地化的名称
+  if (loc.kind === 'desktop') return [{ label: loc.title, kind: loc.kind, target: loc }]
+  if (loc.kind === 'settings' || loc.kind === 'about') {
+    const label = loc.kind === 'settings' ? ctx.settingsTitle : ctx.aboutTitle
+    return [{ label, kind: loc.kind, target: loc }]
+  }
   const workspace: PathSegment = {
     label: ctx.workspace.name,
     kind: 'workspace',

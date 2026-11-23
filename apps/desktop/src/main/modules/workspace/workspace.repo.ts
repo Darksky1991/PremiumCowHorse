@@ -1,5 +1,5 @@
 import type { Selectable, Updateable } from 'kysely'
-import type { Workspace } from '@pch/shared'
+import { toWorkspaceColor, type Workspace } from '@pch/shared'
 import type { Database } from '../../infra/db/client'
 import type { WorkspacesTable } from '../../infra/db/schema'
 
@@ -60,6 +60,17 @@ export class WorkspaceRepo {
     await this.db.updateTable('workspaces').set(set).where('id', '=', id).execute()
   }
 
+  /** 按下标写 sort_order（调用方在事务内校验 ids 的完整性） */
+  async setSortOrders(ids: string[]): Promise<void> {
+    for (const [index, id] of ids.entries()) {
+      await this.db
+        .updateTable('workspaces')
+        .set({ sort_order: index, updated_at: Date.now() })
+        .where('id', '=', id)
+        .execute()
+    }
+  }
+
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom('workspaces').where('id', '=', id).execute()
   }
@@ -70,7 +81,7 @@ function toWorkspace(row: Selectable<WorkspacesTable>): Workspace {
     id: row.id,
     name: row.name,
     description: row.description,
-    color: row.color,
+    color: toWorkspaceColor(row.color),
     sortOrder: row.sort_order,
     archived: row.archived === 1,
     lastOpenedAt: row.last_opened_at,

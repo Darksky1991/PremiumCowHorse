@@ -14,6 +14,15 @@ export default {
     themeLight: '浅色',
     themeDark: '深色',
     followSystem: '跟随系统',
+    themeColors: '配色主题',
+    themeDefault: '默认',
+    themeAitetsu: '蓝铁',
+    themeWashi: '和纸',
+    themeMatsuba: '松针',
+    reduceMotion: '减少动效',
+    reduceMotionOn: '开',
+    reduceMotionOff: '关',
+    accentThemeDefault: '主题默认',
     ready: '就绪',
     messages: '通知 {{count}} 条',
     messagesRestore: '显示未确认的通知',
@@ -136,8 +145,72 @@ export default {
     listPage: '工作区一览',
     current: '当前',
     lastOpened: '上次使用：{{time}}',
-    renameMenu: '重命名…',
-    deleteMenu: '删除…'
+    editMenu: '编辑…',
+    deleteMenu: '删除…',
+    pickerTitle: '选择工作区',
+    pickerButtonTitle: '选择工作区（{{shortcut}}）',
+    filterPlaceholder: '按名称筛选',
+    filterLabel: '按名称筛选工作区',
+    countAll: '{{count}} 个',
+    countFiltered: '{{shown}} / {{total}}',
+    viewLabel: '视图',
+    viewRing: '圆环',
+    viewList: '列表',
+    viewRingTitle: '圆环视图',
+    viewListTitle: '列表视图',
+    detail: '详细',
+    entryCount: '{{count}} 项',
+    moreEntries: '另有 {{count}} 项',
+    noDescription: '无说明',
+    lastUsed: '最近使用',
+    neverUsed: '未使用',
+    justNow: '刚刚',
+    hintSwitch: '/ 单击切换',
+    hintCurrent: '当前工作区',
+    optionLabel: '{{name}}，最近使用 {{time}}',
+    currentSuffix: '（当前）',
+    announce: '{{index}} / {{count}}，{{name}}',
+    position: '{{index}} / {{count}}',
+    manyTip: '数量较多时可输入文字筛选，或切换到列表视图',
+    emptyTitle: '没有与「{{query}}」匹配的工作区',
+    emptyHint: '正在搜索名称与说明。按 Esc 取消筛选',
+    keyRotate: '转动',
+    keyMove: '移动',
+    keySwitch: '切换',
+    keyDirect: '直接切换',
+    keyFilter: '输入文字即可筛选',
+    keyClose: '关闭',
+    keyClear: '取消筛选',
+    openList: '打开工作区一览',
+    switched: '已切换到「{{name}}」',
+    edit: '编辑',
+    editNote: '编辑中：单击或 Enter 不会切换',
+    keyReorder: '排序',
+    keyFields: '转到输入框',
+    newCard: '新建工作区',
+    newCardHint: '按 Enter 创建',
+    newCardLabel: '创建新工作区',
+    newWorkspaceName: '新工作区',
+    fieldName: '名称',
+    fieldDescription: '说明',
+    descriptionPlaceholder: '案件概要、环境、联系人等',
+    fieldColor: '颜色',
+    autoSaved: '更改会自动保存',
+    deleted: '已删除「{{name}}」',
+    editTitle: '编辑工作区',
+    editDescription: '更改名称、说明和颜色。',
+    colors: {
+      none: '无',
+      blue: '蓝',
+      teal: '青绿',
+      green: '绿',
+      amber: '琥珀',
+      orange: '橙',
+      red: '红',
+      pink: '粉',
+      violet: '紫',
+      slate: '石板灰'
+    }
   },
   desktop: {
     title: '桌面记录',
@@ -227,6 +300,7 @@ export default {
       connecting: '正在连接',
       offline: '离线',
       authFailed: '认证失败',
+      authUnsupported: '需要追加认证（不支持）',
       sudoAuthFailed: 'sudo 认证失败',
       hostKeyPending: '等待确认主机密钥',
       hostKeyChanged: '主机密钥已变化'
@@ -255,6 +329,7 @@ export default {
     keyHint: '支持 OpenSSH / PEM 格式以及 PuTTY 的 PPK v2（RSA / DSA）。',
     passphrase: '口令',
     passphraseNone: '无',
+    clearPassphrase: '删除已保存的口令',
     identities: '切换身份',
     identitiesHint: '通过 sudo 切换后读取的用户（例：app1、root）。按回车添加。',
     identityPlaceholder: '输入用户名',
@@ -345,6 +420,300 @@ export default {
     alwaysOpenWith: '.{{ext}} 总是用此查看器打开',
     copyHint: '单击复制路径'
   },
+  about: {
+    title: '关于本应用',
+    version: '版本',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: '平台',
+    dataDir: '数据文件夹',
+    logsDir: '日志文件夹',
+    openLogs: '打开日志文件夹',
+    openData: '打开数据文件夹',
+    copyDiagnostics: '复制诊断信息',
+    copied: '已复制诊断信息',
+    openFailed: '无法打开文件夹',
+    copyFailed: '无法复制诊断信息'
+  },
+  settings: {
+    title: '设置',
+    saveFailed: '无法保存设置：{{reason}}',
+    searchPlaceholder: '搜索设置…',
+    searchLabel: '搜索设置',
+    noResults: '没有匹配的设置',
+    navLabel: '设置分类',
+    sections: {
+      general: '常规',
+      appearance: '外观',
+      workspace: '工作区',
+      explorer: '资源管理器',
+      preview: '预览',
+      cache: '缓存与扫描',
+      remote: '远程连接',
+      desktop: '桌面记录',
+      privacy: '隐私'
+    },
+    about: '关于本应用',
+    reset: '恢复默认',
+    unit: {
+      sec: '秒',
+      ms: '毫秒',
+      min: '分钟',
+      mb: 'MB'
+    },
+    error: {
+      required: '请输入数值',
+      invalid: '请输入正确的值',
+      integer: '请输入整数',
+      range: '请输入 {{min}} 到 {{max}} 之间的值',
+      min: '请输入不小于 {{min}} 的值'
+    },
+    keepaliveNote: '对新建立的连接生效',
+    associations: {
+      title: '文件关联',
+      desc: '按扩展名保存的「总是用此方式打开」设置。',
+      empty: '没有文件关联',
+      remove: '删除 {{ext}} 的关联'
+    },
+    cache: {
+      usage: '缓存占用',
+      usageLoading: '正在确认…',
+      usageUnavailable: '无法获取',
+      clear: '清空缓存',
+      confirmTitle: '清空缓存？',
+      confirmDesc: '清除文件夹列表缓存与索引，不会改动磁盘上的文件。下次显示时会重新建立。',
+      confirm: '清空',
+      cancel: '取消',
+      cleared: '已清空缓存',
+      clearFailed: '无法清空缓存'
+    },
+    privacy: {
+      recentTitle: '最近使用',
+      recentDesc: '清除最近打开项目的历史记录。',
+      clearRecent: '清除最近使用',
+      confirmTitle: '要清除最近使用吗？',
+      confirmDesc: '将清除所有工作区的历史记录，磁盘上的文件不会改变。',
+      confirm: '清除',
+      cancel: '取消',
+      cleared: '已清除最近使用',
+      clearFailed: '无法清除最近使用'
+    },
+    options: {
+      language: {
+        system: '跟随系统',
+        ja: '日本語',
+        'zh-CN': '简体中文',
+        en: 'English'
+      },
+      themeMode: {
+        system: '跟随系统',
+        light: '浅色',
+        dark: '深色'
+      },
+      theme: {
+        default: '标准',
+        aitetsu: '藍鉄',
+        washi: '和紙',
+        matsuba: '松葉'
+      },
+      accent: {
+        neutral: '主题默认',
+        blue: '蓝色',
+        green: '绿色',
+        violet: '紫色',
+        orange: '橙色'
+      },
+      density: {
+        comfortable: '标准',
+        compact: '紧凑'
+      },
+      reduceMotion: {
+        system: '跟随系统',
+        on: '开',
+        off: '关'
+      },
+      pickerStyle: {
+        carousel: '环形',
+        menu: '菜单'
+      },
+      strategy: {
+        passive: '消极',
+        default: '默认',
+        active: '积极',
+        all: '全部'
+      }
+    },
+    item: {
+      general_language: {
+        name: '语言',
+        desc: '界面显示使用的语言。'
+      },
+      appearance_theme: {
+        name: '配色主题',
+        desc: '整个界面的配色。'
+      },
+      appearance_themeMode: {
+        name: '明暗',
+        desc: '浅色 / 深色的切换。'
+      },
+      appearance_accent: {
+        name: '强调色',
+        desc: '按钮与选中状态的强调色。'
+      },
+      appearance_density: {
+        name: '显示密度',
+        desc: '列表与留白的紧凑程度。'
+      },
+      appearance_reduceMotion: {
+        name: '减少动效',
+        desc: '让动画更克制。「跟随系统」时遵循操作系统的设置。'
+      },
+      workspace_pickerStyle: {
+        name: '工作区选择器的形式',
+        desc: '切换工作区时的显示形式。'
+      },
+      workspace_pickerDetail: {
+        name: '默认显示详细信息',
+        desc: '在工作区选择器的卡片上显示详细信息。'
+      },
+      explorer_showHiddenFiles: {
+        name: '显示隐藏文件',
+        desc: '在列表中显示带隐藏属性的文件和文件夹。'
+      },
+      explorer_singleClickPreview: {
+        name: '单击即打开',
+        desc: '单击（或用方向键移动到）项目即打开预览。关闭后需双击或按 Enter 打开。'
+      },
+      preview_maxTextSizeMB: {
+        name: '文本预览的大小上限',
+        desc: '超过此大小的文本文件不会直接打开。'
+      },
+      cache_strategy_local: {
+        name: '缓存策略（本地）',
+        desc: '本地文件夹的默认缓存策略，条目可单独设置。'
+      },
+      cache_strategy_network: {
+        name: '缓存策略（网络）',
+        desc: '网络文件夹的默认缓存策略，条目可单独设置。'
+      },
+      cache_activeDepth: {
+        name: '「积极」策略预读的层数',
+        desc: '「积极」策略下，以关注点为中心上下预读的层数。'
+      },
+      cache_interval_focus_local: {
+        name: '确认间隔：关注点（本地）',
+        desc: '定期确认关注点的间隔。'
+      },
+      cache_interval_near_local: {
+        name: '确认间隔：近处（本地）',
+        desc: '定期确认关注点附近的间隔。'
+      },
+      cache_interval_far_local: {
+        name: '确认间隔：远处（本地）',
+        desc: '定期确认远离关注点之处的间隔。'
+      },
+      cache_interval_focus_network: {
+        name: '确认间隔：关注点（网络）',
+        desc: '定期确认关注点的间隔。'
+      },
+      cache_interval_near_network: {
+        name: '确认间隔：近处（网络）',
+        desc: '定期确认关注点附近的间隔。'
+      },
+      cache_interval_far_network: {
+        name: '确认间隔：远处（网络）',
+        desc: '定期确认远离关注点之处的间隔。'
+      },
+      cache_backgroundGapMs_local: {
+        name: '后台处理的间隔（本地）',
+        desc: '后台填充缓存时，每个文件夹完成后的休息时间。'
+      },
+      cache_backgroundGapMs_network: {
+        name: '后台处理的间隔（网络）',
+        desc: '后台填充缓存时，每个文件夹完成后的休息时间。'
+      },
+      vfs_timeoutSec_local: {
+        name: '超时（本地）',
+        desc: '无响应时等待的时间上限。'
+      },
+      vfs_timeoutSec_network: {
+        name: '超时（网络）',
+        desc: '无响应时等待的时间上限。'
+      },
+      remote_keepaliveSec: {
+        name: '保活间隔',
+        desc: '为保持连接而确认响应的间隔。连续 3 次无响应视为断线。'
+      },
+      remote_idleDisconnectMin: {
+        name: '空闲自动断开',
+        desc: '无请求超过此时间后自动断开连接。'
+      },
+      vfs_timeoutSec_remote: {
+        name: '超时（远程）',
+        desc: '远程文件操作等待响应的时间上限。'
+      },
+      cache_backgroundGapMs_remote: {
+        name: '后台处理的间隔（远程）',
+        desc: '远程后台填充缓存时，每个文件夹完成后的休息时间。'
+      },
+      cache_remoteIndexIntervalMin: {
+        name: '索引更新间隔（远程）',
+        desc: '重新建立远程文件夹索引的间隔。'
+      },
+      desktop_askOnExit: {
+        name: '退出时询问保存',
+        desc: '退出应用时询问保存哪些桌面项目。关闭后全部保存。'
+      }
+    }
+  },
+  commands: {
+    group: {
+      general: '常规',
+      view: '视图',
+      navigation: '导航',
+      workspace: '工作区',
+      appearance: '外观'
+    },
+    paletteOpen: '打开命令面板',
+    settingsOpen: '打开设置',
+    aboutOpen: '打开关于',
+    workspacePick: '选择工作区',
+    tabClose: '关闭标签',
+    navBack: '后退',
+    navForward: '前进',
+    navUp: '上一级',
+    navRefresh: '刷新',
+    viewSearch: '打开搜索',
+    viewToggleSidebar: '切换侧栏显示',
+    workspaceNew: '新建工作区',
+    viewExplorer: '打开资源管理器',
+    viewDesktop: '打开桌面记录',
+    viewConnections: '打开远程连接',
+    themeModeLight: '主题：浅色',
+    themeModeDark: '主题：深色',
+    themeModeSystem: '主题：跟随系统',
+    themeColorDefault: '配色主题：默认',
+    themeColorAitetsu: '配色主题：蓝铁',
+    themeColorWashi: '配色主题：和纸',
+    themeColorMatsuba: '配色主题：松针',
+    langSystem: '语言：跟随系统',
+    langJa: '语言：日本語',
+    langZhCn: '语言：简体中文',
+    langEn: '语言：English',
+    explorerCollapseAll: '全部折叠',
+    explorerLocate: '在资源树中定位当前项'
+  },
+  palette: {
+    title: '命令面板',
+    description: '搜索最近使用、工作区、命令与文件',
+    placeholder: '输入文件名或命令…',
+    empty: '没有找到匹配项',
+    recent: '最近使用',
+    workspaces: '工作区',
+    commands: '命令',
+    files: '文件'
+  },
   tabs: {
     label: '已打开的标签',
     close: '关闭'
@@ -390,6 +759,7 @@ export default {
     DESKTOP_SNAPSHOT_NOT_FOUND: '找不到该桌面记录，可能已被删除',
     CONN_NOT_FOUND: '找不到该连接（可能已被删除）',
     CONN_AUTH_FAILED: '认证失败，请检查用户名、密码或密钥（不会自动重试）',
+    CONN_AUTH_UNSUPPORTED: '服务器要求追加认证（如多因素认证），已中止，未发送密码',
     CONN_KEY_INVALID:
       '无法读取私钥：只支持 OpenSSH / PEM 格式与 PuTTY 的 PPK v2（RSA / DSA）私钥，也请确认口令是否正确',
     CONN_HOST_KEY_REJECTED: '未信任服务器的主机密钥，已取消连接',

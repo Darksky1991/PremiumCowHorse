@@ -11,6 +11,7 @@ import type { Logger } from '../../infra/logger'
 import { LocalProvider } from '../../vfs/providers/local.provider'
 import type { FileSystemProvider } from '../../vfs/types'
 import { VfsService } from '../../vfs/vfs.service'
+import { WorkspaceRepo } from './workspace.repo'
 import { WorkspaceService } from './workspace.service'
 
 const noop = (): void => undefined
@@ -101,6 +102,62 @@ describe('WorkspaceService', () => {
       await group('ログ', null, w.id)
       await service.delete(w.id)
       expect(await service.listEntries(w.id)).toEqual([])
+    })
+  })
+
+  describe('summaries and reorder', () => {
+    it('counts all entries and returns the first 4 root entries by sort order', async () => {
+      const w = await service.create({ name: '案件A' })
+      const g = await group('分組', null, w.id)
+      for (const label of ['a', 'b', 'c', 'd', 'e']) await group(label, null, w.id)
+      await group('child1', g.id, w.id)
+      await group('child2', g.id, w.id)
+      const other = await service.create({ name: '空' })
+      const summaries = await service.summaries()
+      const s = summaries.find((x) => x.id === w.id)
+      expect(s?.entryCount).toBe(8)
+      expect(s?.topEntries.map((e) => e.label)).toEqual(['分組', 'a', 'b', 'c'])
+      expect(s?.topEntries[0]).toEqual({ kind: 'group', label: '分組', uri: null })
+      expect(summaries.find((x) => x.id === other.id)).toEqual({
+        id: other.id,
+        entryCount: 0,
+        topEntries: []
+      })
+    })
+
+    it('reorders workspaces with one workspace.changed event', async () => {
+      const a = await service.create({ name: 'A' })
+      const b = await service.create({ name: 'B' })
+      const c = await service.create({ name: 'C' })
+      events.length = 0
+      await service.reorder([c.id, a.id, DEFAULT_WORKSPACE_ID, b.id])
+      expect((await service.list()).map((w) => w.id)).toEqual([
+        c.id,
+        a.id,
+        DEFAULT_WORKSPACE_ID,
+        b.id
+      ])
+      expect(events).toHaveLength(1)
+    })
+
+    it('rejects a reorder with missing, extra, or duplicate ids and leaves the db unchanged', async () => {
+      const a = await service.create({ name: 'A' })
+      const before = (await service.list()).map((w) => w.id)
+      events.length = 0
+      for (const ids of [[a.id], [a.id, DEFAULT_WORKSPACE_ID, 'nope'], [a.id, a.id]]) {
+        await expect(service.reorder(ids)).rejects.toMatchObject({ code: 'IPC_BAD_INPUT' })
+      }
+      expect((await service.list()).map((w) => w.id)).toEqual(before)
+      expect(events).toHaveLength(0)
+    })
+
+    it('only needs the unarchived workspaces in a reorder', async () => {
+      const a = await service.create({ name: 'A' })
+      const b = await service.create({ name: 'B' })
+      await new WorkspaceRepo(db).update(a.id, { archived: true })
+      await service.reorder([b.id, DEFAULT_WORKSPACE_ID])
+      const list = await service.list()
+      expect(list.filter((w) => !w.archived).map((w) => w.id)).toEqual([b.id, DEFAULT_WORKSPACE_ID])
     })
   })
 

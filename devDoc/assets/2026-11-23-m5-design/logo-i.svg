@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 I「色面（しきめん）」〔印象派・色块〕：九道短促的笔触拼成一块方形色面——
+       远看是一张卡片 / 一个工作区，近看是一笔一笔的零散资料；中间那一笔是当前焦点。
+       细节多，16px 请改用 logo-i-16.svg。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <g fill="none" stroke-linecap="round" stroke-width="7.6">
+    <path d="M6.84 9.79L11.16 8.21" style="stroke: var(--logo-base-2, #2a5fb7)"/>
+    <path d="M13.73 8.6L18.27 9.4" style="stroke: var(--logo-mid, #6d9adc)"/>
+    <path d="M21.12 10.32L24.88 7.68" style="stroke: var(--logo-base, #3778d7)"/>
+    <path d="M6.78 15.4L11.22 16.6" style="stroke: var(--logo-base, #3778d7)"/>
+    <path d="M20.92 15.03L25.08 16.97" style="stroke: var(--logo-base-2, #2a5fb7)"/>
+    <path d="M6.71 23.2L11.29 22.8" style="stroke: var(--logo-mid, #6d9adc)"/>
+    <path d="M14.01 21.85L17.99 24.15" style="stroke: var(--logo-base-2, #2a5fb7)"/>
+    <path d="M20.87 23.86L25.13 22.14" style="stroke: var(--logo-base, #3778d7)"/>
+    <path d="M13.73 16.4L18.27 15.6" style="stroke: var(--logo-accent, #f9b73f)"/>
+  </g>
+  <!-- 笔触上的高光（颜料的厚度感） -->
+  <g fill="none" stroke-linecap="round" stroke-width="1.1" style="stroke: var(--logo-ink, #ffffff)" stroke-opacity="0.45">
+    <path d="M6.6 7.6L9.4 6.6"/>
+    <path d="M21.4 8.4L23.6 6.9"/>
+    <path d="M6.8 14.6L9.2 15.2"/>
+    <path d="M14.4 21.4L16.6 22.6"/>
+  </g>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 B「蹄鉄（ていてつ）」〔具象・趣味〕：马蹄铁 = 「牛马」的马；U 字形又像磁铁，把散落各处的目录吸到一起。
+       不用底板，静态版主体取中等明度（约 oklch 0.55），在深色 / 浅色任务栏上对比度都在 3:1 以上。
+       style 中的 CSS 变量（logo 系列令牌）供主题自适应，逗号后为静态色 -->
+  <title>PremiumCowHorse</title>
+  <defs>
+    <linearGradient id="b-shoe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color: var(--logo-base, #3a81d7)"/>
+      <stop offset="1" style="stop-color: var(--logo-base-2, #2a5fb7)"/>
+    </linearGradient>
+  </defs>
+  <path d="M3 4h7v12a6 6 0 0 0 12 0V4h7v12a13 13 0 0 1-26 0z" fill="url(#b-shoe)"/>
+  <rect x="3" y="4" width="7" height="4" style="fill: var(--logo-soft, #a0c0eb)"/>
+  <rect x="22" y="4" width="7" height="4" style="fill: var(--logo-soft, #a0c0eb)"/>
+  <circle cx="6.5" cy="13" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>
+  <circle cx="25.5" cy="13" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>
+  <circle cx="16" cy="25.6" r="1.4" style="fill: var(--logo-ink, #ffffff)"/>
+  <rect x="12.5" y="2" width="7" height="9" rx="1.5" style="fill: var(--logo-accent, #f9b73f)"/>
+</svg>

@@ -232,7 +232,7 @@ describe('createWebProtocolHandler', () => {
       handler = createWebProtocolHandler({
         scopes,
         vfs: new VfsService([new LocalProvider()]),
-        markdownShell: '<!doctype html><p>shell</p>'
+        markdownShell: () => '<!doctype html><p>shell</p>'
       })
     })
 

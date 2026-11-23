@@ -37,6 +37,19 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key('b', { control: true }))?.key).toBe('b')
   })
 
+  it('Ctrl+K、Ctrl+Shift+P、Ctrl+,、Alt+W 命中', () => {
+    expect(matchShortcut(key('k', { control: true }))?.key).toBe('k')
+    expect(matchShortcut(key('P', { control: true, shift: true }))?.key).toBe('p')
+    expect(matchShortcut(key(',', { control: true }))?.key).toBe(',')
+    expect(matchShortcut(key('w', { alt: true }))).toEqual({
+      key: 'w',
+      ctrl: false,
+      shift: false,
+      alt: true
+    })
+    expect(matchShortcut(key('p', { control: true }))).toBeNull()
+  })
+
   it('Ctrl+S、修饰键不符（Ctrl+Shift+W、Shift+F5、无 Alt 的 ←）不命中', () => {
     expect(matchShortcut(key('s', { control: true }))).toBeNull()
     expect(matchShortcut(key('w', { control: true, shift: true }))).toBeNull()
@@ -59,7 +72,11 @@ describe('matchShortcut', () => {
       'ArrowUp',
       'w',
       'f',
-      'b'
+      'b',
+      'k',
+      'p',
+      ',',
+      'w'
     ])
   })
 })

@@ -6,6 +6,7 @@ const data: BootstrapData = {
   platform: 'win32',
   language: 'ja',
   theme: 'dark',
+  themeName: 'aitetsu',
   accent: 'blue',
   density: 'compact'
 }
@@ -14,6 +15,11 @@ describe('bootstrap argument', () => {
   it('round-trips through argv, including non-ASCII content', () => {
     const arg = encodeBootstrapArg({ ...data, windowId: '案件A' })
     expect(decodeBootstrapArg(['electron', '--foo', arg])).toEqual({ ...data, windowId: '案件A' })
+  })
+
+  it('round-trips themeName', () => {
+    const decoded = decodeBootstrapArg([encodeBootstrapArg({ ...data, themeName: 'matsuba' })])
+    expect(decoded?.themeName).toBe('matsuba')
   })
 
   it('returns null when the argument is missing or corrupt', () => {

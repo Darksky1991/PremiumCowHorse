@@ -12,6 +12,7 @@ import { FolderOpenIcon, XIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ConnectionDto } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
+import { Checkbox } from '@pch/ui/components/checkbox'
 import {
   Dialog,
   DialogClose,
@@ -254,6 +255,16 @@ function ConnectionFormBody({
             autoComplete="new-password"
             maxLength={1024}
           />
+          {form.auth === 'key' && keepSecret ? (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={form.clearSecret}
+                disabled={form.secret !== ''}
+                onCheckedChange={(v) => set('clearSecret', v)}
+              />
+              {t('connections:clearPassphrase')}
+            </label>
+          ) : null}
 
           <IdentityTags
             identities={form.identities}

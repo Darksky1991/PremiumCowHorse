@@ -94,5 +94,5 @@
 - 日期：2026-11-23
 - 症状（M4 Task 14b，`pnpm dist`）：日志出现 `no code signing certificate configured, signing is skipped  path=release\0.1.0\win-unpacked\resources\app.asar.unpacked\node_modules\ssh2\util\pagent.exe`；`app.asar.unpacked/node_modules/ssh2/` 下是 ssh2 的全部文件（`lib/`、`install.js`、`util/pagent.exe` 等）。
 - 原因：`ssh2` 1.17.0 的 npm 包含 Pageant 辅助程序 `util/pagent.exe`（及 `pagent.c`、`build_pagent.bat`）；electron-builder 遇到包内的可执行文件时把整个包解包到 asar 之外（smart unpack 的规则；推测，未读源码核实）。本应用不使用 ssh-agent / Pageant。
-- 解决：未处理（打包后连接、sudo 切换、SFTP 列目录均正常）。可在 electron-builder 的 `files` 中排除 `**/node_modules/ssh2/util/**`，记为推迟项（`devDoc/2026-11-22-40-m4.md` 第 6.1 节）。
+- 解决（M5 Task 5，已处理）：`electron-builder.yml` 的 `files` 加 `'!**/node_modules/ssh2/util/**'`，打包后 `app.asar.unpacked` 中不再有 `ssh2`（实测见 `devDoc/2026-11-23-44-m5-ledger.md`）。M4 时未处理（打包后连接、sudo 切换、SFTP 列目录均正常）。
 - 预防：新增依赖后看一眼 `pnpm dist` 日志中的 `signing is skipped` 行与 `app.asar.unpacked` 的内容，分发物中不要混入用不到的可执行文件（公司漏洞管理 / 杀毒扫描会关注）。

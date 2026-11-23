@@ -4,10 +4,14 @@ import type { SearchKindFilter } from '@pch/shared'
 export const queryKeys = {
   appInfo: ['app', 'info'] as const,
   settings: ['settings'] as const,
+  /** 缓存占用（设置页）；清空缓存后失效 */
+  cacheInfo: ['vfs', 'cache-info'] as const,
   windowState: ['window', 'state'] as const,
   /** 'workspace' 前缀用于一次性使工作区相关缓存失效 */
   workspaceRoot: ['workspace'] as const,
   workspaces: ['workspace', 'list'] as const,
+  /** 选择器摘要（'workspace' 前缀，随 workspace.changed 失效） */
+  workspaceSummaries: ['workspace', 'summaries'] as const,
   activeWorkspace: ['workspace', 'active'] as const,
   entries: (workspaceId: string) => ['entry', 'list', workspaceId] as const,
   /** 工作区的「建立索引」目录（URI 列表） */
@@ -29,7 +33,15 @@ export const queryKeys = {
   /** 连接的主目录（登录用户为 realpath('.')；切换身份为 /） */
   connectionHome: (id: string, identity: string | null) =>
     ['connection', 'home', id, identity] as const,
+  /**
+   * 最近使用：'recent' 前缀用于一次性失效；limit 不进 key（调用方取同一个条数，
+   * 不同条数共享缓存时以先到者为准——命令面板固定取 8 条）
+   */
+  recentRoot: ['recent'] as const,
+  recent: (workspaceId: string) => ['recent', workspaceId] as const,
   /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
-    ['search', workspaceId, text, kind] as const
+    ['search', workspaceId, text, kind] as const,
+  /** 命令面板的文件组（固定 kind 与 limit，不与搜索视图共享缓存） */
+  paletteFiles: (workspaceId: string, text: string) => ['palette-files', workspaceId, text] as const
 }

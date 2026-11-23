@@ -106,6 +106,14 @@
 - 解决：`ContextMenu.Trigger` 上自定义的 `onContextMenu` 先于 Base UI 自己的处理器执行，调用 `e.preventBaseUIHandler()` 可阻止该次打开（`features/explorer/explorer-tree.tsx`）；在 Popup（`ContextMenuContent`）与对话框上设置 `finalFocus`（ref）指定关闭后的焦点。
 - 预防：菜单项若带 `ContextMenuShortcut`，快捷键文字会并入菜单项的无障碍名称，见 testing.md。
 
+### Base UI Dialog：没有 Trigger、由快捷键打开（焦点在 body）时，`initialFocus` 的 ref 没有生效
+
+- 日期：2026-11-23
+- 症状：工作区选择器（受控 `open`、无 `Dialog.Trigger`）由 Alt+W 打开时，焦点停在弹出层本身（`div[role=dialog]`），不在 `initialFocus` 指定的筛选框；由按钮点击打开时正常。焦点停在弹出层后，挂在内部 `div` 上的 `onKeyDown` 收不到按键（Esc 两级、方向键全部失效）。
+- 原因（部分核实）：`FloatingFocusManager` 在打开后的 microtask 里解析 `initialFocus`，`enqueueFocus` 的 `shouldFocus` 在「焦点已移入弹出层内的其他元素」时放弃移动；本例中弹出层自身先获得了焦点（`focusin` 记录只有 `DIV#dialog`，没有 `INPUT`），所以放弃。弹出层为何先获得焦点没有追到底（与打开前焦点在 body 有关，点击按钮打开时不发生）。
+- 解决：面板挂载后在下一帧 `requestAnimationFrame(() => input.focus())` 补一次；按键处理挂在 `DialogContent`（弹出层）上而不是内部元素（`features/workspace/picker/workspace-picker.tsx`）。e2e `workspace-picker.spec.ts` 断言 Alt+W 打开后筛选框获得焦点。
+- 预防：受控、无 Trigger 的对话框要分别验证「点击打开」与「快捷键打开」的初始焦点；对话框级的按键处理挂在弹出层上。
+
 ### `react-hooks/incompatible-library`：`useVirtualizer()` 报 "Compilation Skipped: Use of incompatible library"
 
 - 日期：2026-11-18
@@ -290,3 +298,19 @@
 - 原因：`ssh2` 1.17.0 `lib/protocol/keyParser.js` 的 PPK 解析正则只认 `PuTTY-User-Key-File-2: ssh-(rsa|dss)` 与 `Encryption: aes256-cbc|none`；口令参与 Private-MAC 的计算。`parseKey` 以**返回** `Error` 表示失败（不抛出），对 OpenSSH 新格式可能返回数组。
 - 解决：先不带口令解析，提示需要口令（加密）时再带口令；不支持的格式映射为 `CONN_KEY_INVALID`（本机错误，不连接、不锁定），界面提示用 PuTTYgen 转换为 OpenSSH 格式。
 - 预防：加密的 PPK v2（`aes256-cbc`）与真实 PuTTYgen 导出的文件未验证（无样本）；遇到用户的 `.ppk` 问题先确认版本行与 `Encryption:` 行。
+
+### shadcn Button 的 `transition-all` 会过渡继承来的 `visibility`：刚显示的按钮 `focus()` 无效
+
+- 日期：2026-11-23
+- 症状（M5 Task 13）：减少动效时选择器的删除确认不翻转、只用 `invisible`（visibility: hidden）切换可见的一面；翻到背面后 `cancelRef.current.focus()`（effect 中、甚至下一帧 rAF 中）都不生效，焦点落到 body；500 ms 后手动 `focus()` 却成功，`getComputedStyle` 也是 visible。
+- 原因：shadcn `Button` 带 `transition-all`，祖先的 `visibility` 变化经继承也被按钮过渡（默认 150 ms）；过渡起点按钮仍是 hidden，不可获得焦点。
+- 解决：要切换显示的一面用 `hidden`（display: none，不参与 `transition-all`），不用 `invisible`。
+- 预防：用 `visibility` 显隐含 shadcn 按钮 / 输入框的区域、并在显隐后立即移动焦点时，改用 display 或在过渡结束后再移焦点；不要靠 rAF 碰运气。
+
+### Base UI Dialog 的初始焦点晚于挂载；TanStack `mutate(…, callbacks)` 在组件卸载后不触发
+
+- 日期：2026-11-23
+- 症状（M5 整体审查）：(1) 按 `Ctrl+K` / `Alt+W` 后立即输入，前几个字符落在原焦点（BODY）上丢失；(2) 命令面板里选工作区后 `activate.mutate(id, { onSuccess })` 的 toast 从不出现，工作区却切换了。
+- 原因：(1) Base UI 1.9.0 `FloatingFocusManager` 的初始焦点经 `queueMicrotask` + `enqueueFocus`（默认 `requestAnimationFrame`）才 `focus()`，实测约 10–28 ms 内 `activeElement` 仍是 BODY；Portal 内容还晚于父组件的首次提交挂载，父组件的 effect 里拿不到内部元素的 ref。(2) `mutate` 的第二个参数回调挂在 observer 上，选择后面板随即卸载（`open ? <PaletteBody/> : null`），回调不再触发。
+- 解决：(1) 在 Dialog 内容里（输入框之后）用 `useLayoutEffect` 聚焦（命令面板给 `CommandInput` 传 ref；选择器用渲染在内容内的 `FocusOnMount`）。(2) 用 `mutateAsync(...).then(ok, fail)`，或把回调放进不会卸载的组件。
+- 预防：e2e 要验证「打开即输入」时，用 `MutationObserver` 在输入框插入 DOM 的同一次提交里记录 `document.activeElement`（确定性），不要只靠 `keyboard.type`（渲染进程忙于挂载时按键排在聚焦之后，修正前也能通过）；对话框挂载本身（选择器约 20–35 ms）之前的按键无法靠聚焦时机补救。

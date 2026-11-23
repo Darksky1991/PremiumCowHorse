@@ -104,6 +104,22 @@ describe('buildSaveInput', () => {
     expect(r.ok && r.input).toMatchObject({ auth: 'key', keyPath: 'C:\\k\\id', secret: '' })
   })
 
+  it('K5：私钥认证、已保存口令：勾选「删除已保存的口令」且口令留空 → secret 为空串；不勾选 → 省略', () => {
+    const dto: ConnectionDto = { ...DTO, auth: 'key', keyPath: 'C:/k/id', hasSecret: true }
+    const kept = buildSaveInput({ ...initialForm(dto) }, dto)
+    expect(kept.ok && 'secret' in kept.input).toBe(false)
+    const cleared = buildSaveInput({ ...initialForm(dto), clearSecret: true }, dto)
+    expect(cleared.ok && cleared.input.secret).toBe('')
+    // 同时输入了新口令 → 以新口令为准
+    const replaced = buildSaveInput({ ...initialForm(dto), clearSecret: true, secret: 'new' }, dto)
+    expect(replaced.ok && replaced.input.secret).toBe('new')
+  })
+
+  it('K5：密码认证时 clearSecret 无效（密码不能清除）', () => {
+    const r = buildSaveInput({ ...initialForm(DTO), clearSecret: true }, DTO)
+    expect(r.ok && 'secret' in r.input).toBe(false)
+  })
+
   it('编辑：没有保存过密码的密码认证必须输入密码', () => {
     const dto = { ...DTO, hasSecret: false }
     expect(buildSaveInput({ ...initialForm(dto) }, dto)).toMatchObject({

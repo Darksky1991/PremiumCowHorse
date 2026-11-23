@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TabLocation, WorkspaceEntry } from '@pch/shared'
+import { aboutLocation, settingsLocation, type TabLocation, type WorkspaceEntry } from '@pch/shared'
 import { entryOf, logicalPath, parentLocation, type LogicalPathContext } from './logical-path'
 
 /** 案件 = %E6%A1%88%E4%BB%B6、設計書 = %E8%A8%AD%E8%A8%88%E6%9B%B8 */
@@ -32,6 +32,8 @@ const group = entry('group', '分组', null)
 const ctx: LogicalPathContext = {
   workspace: { id: 'w1', name: '保守' },
   workspacesTitle: 'ワークスペース一覧',
+  settingsTitle: '設定',
+  aboutTitle: 'このアプリについて',
   entries: [
     group,
     // 放在分组之下：分组不出现在逻辑路径中
@@ -63,6 +65,18 @@ describe('logicalPath', () => {
     ])
     expect(parentLocation(loc, ctx)).toBeNull()
     expect(entryOf(loc, ctx.entries)).toBeNull()
+  })
+
+  it('设置页 / 关于页：只有一段（标签为 ctx 中本地化的名称，不用标签标题的快照），上一级为 null，不属于任何条目', () => {
+    const cases = [
+      { loc: settingsLocation('旧標題'), label: '設定' },
+      { loc: aboutLocation('旧標題'), label: 'このアプリについて' }
+    ]
+    for (const { loc, label } of cases) {
+      expect(logicalPath(loc, ctx)).toEqual([{ label, kind: loc.kind, target: loc }])
+      expect(parentLocation(loc, ctx)).toBeNull()
+      expect(entryOf(loc, ctx.entries)).toBeNull()
+    }
   })
 
   it('工作区总览：只有工作区一段，目标为总览', () => {

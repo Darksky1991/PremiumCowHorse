@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { EntryAddInput, EntryMoveInput, WorkspaceCreateInput, WorkspaceUpdateInput } from './schema'
+import {
+  EntryAddInput,
+  EntryMoveInput,
+  WorkspaceCreateInput,
+  WorkspaceReorderInput,
+  WorkspaceUpdateInput
+} from './schema'
 
 describe('WorkspaceCreateInput', () => {
   it('rejects a blank name', () => {
@@ -92,5 +98,22 @@ describe('WorkspaceUpdateInput', () => {
 
   it('rejects a name longer than 100 characters', () => {
     expect(WorkspaceUpdateInput.safeParse({ id: 'w', name: 'あ'.repeat(101) }).success).toBe(false)
+  })
+})
+
+describe('workspace colour keys', () => {
+  it('accepts a colour key and null, rejects free-form colours', () => {
+    expect(WorkspaceUpdateInput.safeParse({ id: 'w', color: 'blue' }).success).toBe(true)
+    expect(WorkspaceUpdateInput.safeParse({ id: 'w', color: null }).success).toBe(true)
+    expect(WorkspaceUpdateInput.safeParse({ id: 'w', color: '#ff0000' }).success).toBe(false)
+    expect(WorkspaceCreateInput.safeParse({ name: 'a', color: '#ff0000' }).success).toBe(false)
+  })
+})
+
+describe('WorkspaceReorderInput', () => {
+  it('requires a non-empty list of ids', () => {
+    expect(WorkspaceReorderInput.safeParse({ ids: ['a', 'b'] }).success).toBe(true)
+    expect(WorkspaceReorderInput.safeParse({ ids: [] }).success).toBe(false)
+    expect(WorkspaceReorderInput.safeParse({ ids: [''] }).success).toBe(false)
   })
 })

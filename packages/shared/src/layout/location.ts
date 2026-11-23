@@ -60,3 +60,29 @@ export function desktopIdOfUri(uri: string): number | 'current' | null {
 export function desktopLocation(id: number | 'current', title: string): TabLocation {
   return { uri: desktopUri(id), kind: 'desktop', title }
 }
+
+/** 设置页的内部 URI（M5）：单页、无参数；与工作区一览同样不是文件系统 */
+export const SETTINGS_URI = 'pch-settings:'
+
+/** 是否为设置页的 URI */
+export function isSettingsUri(uri: string): boolean {
+  return uri === SETTINGS_URI
+}
+
+/** 设置页的位置（title 为本地化的「设置」） */
+export function settingsLocation(title: string): TabLocation {
+  return { uri: SETTINGS_URI, kind: 'settings', title }
+}
+
+/** 关于页的内部 URI（M5）：单页、无参数；与工作区一览同样不是文件系统 */
+export const ABOUT_URI = 'pch-about:'
+
+/** 是否为关于页的 URI */
+export function isAboutUri(uri: string): boolean {
+  return uri === ABOUT_URI
+}
+
+/** 关于页的位置（title 为本地化的「关于」） */
+export function aboutLocation(title: string): TabLocation {
+  return { uri: ABOUT_URI, kind: 'about', title }
+}

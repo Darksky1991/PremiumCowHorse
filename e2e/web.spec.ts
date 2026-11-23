@@ -372,6 +372,45 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
+  test('a page script that navigates to an external URL on load does not open the system browser (no user gesture); a click still does', async () => {
+    writeFileSync(
+      path.join(project, 'proto', 'auto.html'),
+      `<!doctype html><title>Auto</title><p id="auto">auto</p>
+<p><a id="go" href="https://clicked.invalid/">go</a></p>
+<script>location.href = 'https://auto.invalid/'</script>
+`
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'proto' }))
+      await tree.getByRole('treeitem', { name: 'auto.html' }).dblclick()
+      await expect(tabs(page)).toHaveText(['auto.html'])
+      const view = await viewPage(app, '/proto/auto.html')
+      // Playwright 的定位器会等待「导航完成」，而被拒绝的脚本导航让它一直等待：改用主进程执行脚本读取
+      await expect
+        .poll(() => evalIn(app, view, 'document.getElementById("auto")?.textContent ?? null'))
+        .toBe('auto')
+      // 脚本的导航已被拒绝（留出时间让它到达主进程）：没有交给系统浏览器，视图仍在原页
+      await page.waitForTimeout(1500)
+      expect(
+        await app.evaluate(() => (globalThis as { __pchExternal?: string[] }).__pchExternal)
+      ).toEqual([])
+      expect((await mainViews(app)).map((v) => v.url)).toEqual([
+        expect.stringMatching(/\/proto\/auto\.html$/)
+      ])
+
+      // 用户点击链接（有鼠标按下）仍然交给系统浏览器
+      await clickIn(app, view, '#go')
+      await expect
+        .poll(() => app.evaluate(() => (globalThis as { __pchExternal?: string[] }).__pchExternal))
+        .toEqual(['https://clicked.invalid/'])
+    } finally {
+      await app.close()
+    }
+  })
+
   test('pages reached by links keep the scope (a file entry and its subdirectory); #fragments are carried; other scopes cannot be read', async () => {
     // Javadoc 式的文件条目：index.html → pkg/Class.html，子页面用 ../ 引用上一级的样式与页面
     const javadoc = path.join(files, 'javadoc')
@@ -472,7 +511,7 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
-  test('popups and toasts swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
+  test('popups and the palette swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(app, page)
@@ -500,23 +539,34 @@ test.describe('the browser view (html plugin)', () => {
       await expect(view.locator('#counter')).toHaveText('1')
       expect(await focus(app)).toEqual({ app: true, views: [false] })
 
-      // toast（Ctrl+K「即将推出」）：截图态；点击预览区 → toast 收进状态栏，视图恢复（点击不转发给页面）
-      // 焦点在页面中时：隐藏的视图拿不住焦点，截图期间焦点在应用界面（应用中没有焦点元素）；
-      // 期间没有在应用中操作 → 结束后焦点回到页面
+      // 命令面板（Ctrl+K）：焦点在页面中时照常打开（主进程转发），视图冻结为截图态，焦点在应用界面；
+      // Esc 关闭后视图恢复，焦点回到页面（lib/focus-return）
       await page.locator('body').click({ position: { x: 5, y: 5 } })
       await focusView(app, view)
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
       await page.keyboard.press('Control+k')
-      const toast = page.locator('[data-sonner-toast]')
-      await expect(toast).toHaveCount(1)
+      const palette = page.getByRole('dialog')
+      await expect(palette).toBeVisible()
+      await expect(palette.getByRole('combobox')).toBeFocused()
       await expect.poll(() => visibility(app)).toEqual([false])
       await expect.poll(() => focus(app)).toEqual({ app: true, views: [false] })
-      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
-      await placeholder(page).click()
-      await expect(toast).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Notifications: 1' })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+
+      // 工作区选择器（Alt+W，圆环式）：同样冻结视图；Esc 关闭后焦点回到页面
+      await page.locator('body').click({ position: { x: 5, y: 5 } })
+      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+      await page.keyboard.press('Alt+w')
+      const picker = page.getByRole('dialog')
+      await expect(picker.getByRole('combobox')).toBeFocused()
+      await expect.poll(() => visibility(app)).toEqual([false])
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect.poll(() => visibility(app)).toEqual([true])
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
 
       // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
@@ -797,6 +847,51 @@ test.describe('the browser view (html plugin)', () => {
         '# 設計メモ'
       )
       await expect.poll(async () => (await mainViews(app)).length).toBe(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('Markdown view follows the app theme: data-theme is applied in place and mermaid is re-rendered', async () => {
+    const docs = path.join(project, 'docs')
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(
+      path.join(docs, 'README.md'),
+      ['# T', '', '```mermaid', 'graph TD', '  A[a] --> B[b]', '```', ''].join('\n')
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'docs' }))
+      await tree.getByRole('treeitem', { name: 'README.md' }).dblclick()
+      const view = await viewPage(app, '/docs/README.md?pch-view=markdown')
+      const html = view.locator('html')
+      await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
+      await expect(html).not.toHaveAttribute('data-theme', /.*/)
+      const svgBefore = await view.locator('#content .mermaid-diagram').innerHTML()
+      const bg = (): Promise<string> =>
+        view.evaluate(() => getComputedStyle(document.body).backgroundColor)
+      const bgDefault = await bg()
+
+      // 已打开的视图就地切换（不重新加载）：属性、底色与 mermaid 的图都变化
+      await data(page, 'settings.set', { 'appearance.theme': 'washi' })
+      await expect(html).toHaveAttribute('data-theme', 'washi')
+      await expect.poll(bg).not.toBe(bgDefault)
+      await expect
+        .poll(() => view.locator('#content .mermaid-diagram').innerHTML())
+        .not.toBe(svgBefore)
+      await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
+
+      // 回到 default：属性移除
+      await data(page, 'settings.set', { 'appearance.theme': 'default' })
+      await expect(html).not.toHaveAttribute('data-theme', /.*/)
+      await expect.poll(bg).toBe(bgDefault)
+
+      // 新打开 / 重新加载的页面：外壳按当前主题生成
+      await data(page, 'settings.set', { 'appearance.theme': 'matsuba' })
+      await view.reload()
+      await expect(view.locator('html')).toHaveAttribute('data-theme', 'matsuba')
     } finally {
       await app.close()
     }

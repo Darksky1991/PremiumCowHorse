@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aboutLocation,
+  isAboutUri,
+  isSettingsUri,
+  settingsLocation,
   desktopIdOfUri,
   desktopLocation,
   desktopUri,
@@ -62,5 +66,26 @@ describe('桌面记录的位置', () => {
       kind: 'desktop',
       title: '标题'
     })
+  })
+})
+
+describe('设置页与关于页的位置', () => {
+  it('设置页：uri 固定为 pch-settings:，kind 为 settings', () => {
+    expect(settingsLocation('設定')).toEqual({
+      uri: 'pch-settings:',
+      kind: 'settings',
+      title: '設定'
+    })
+    expect(isSettingsUri('pch-settings:')).toBe(true)
+    expect(isSettingsUri('pch-about:')).toBe(false)
+  })
+  it('关于页：uri 固定为 pch-about:，kind 为 about', () => {
+    expect(aboutLocation('このアプリについて')).toEqual({
+      uri: 'pch-about:',
+      kind: 'about',
+      title: 'このアプリについて'
+    })
+    expect(isAboutUri('pch-about:')).toBe(true)
+    expect(isAboutUri('pch-settings:')).toBe(false)
   })
 })

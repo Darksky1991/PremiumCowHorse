@@ -4,8 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
+import { LogoMark } from '@pch/ui/logo-mark'
 import { getBootstrap } from '@renderer/lib/ipc'
-import { notifyComingSoon } from '../coming-soon'
+import { useUiStore } from '@renderer/stores/ui-store'
 import { LanguageMenu } from './language-menu'
 import { ThemeMenu } from './theme-menu'
 import { WindowControls } from './window-controls'
@@ -15,7 +16,8 @@ import { WindowControls } from './window-controls'
  * Windows / Linux 在右端绘制自己的窗口按钮；macOS 使用系统红绿灯，左侧留出其位置。
  */
 export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }): JSX.Element {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
+  const setPaletteOpen = useUiStore((s) => s.setPaletteOpen)
   const isMac = getBootstrap()?.platform === 'darwin'
 
   return (
@@ -25,7 +27,7 @@ export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }
         isMac ? 'pr-2 pl-20' : 'pl-2'
       )}
     >
-      <AppMark />
+      <LogoMark className="mx-1 size-4 shrink-0" />
       <span className="mr-2 text-[13px] font-semibold tracking-tight">{t('appName')}</span>
 
       {workspaceSwitcher}
@@ -35,7 +37,7 @@ export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }
           variant="outline"
           size="sm"
           className="app-no-drag w-full max-w-md justify-between bg-background font-normal text-muted-foreground"
-          onClick={() => notifyComingSoon(i18n)}
+          onClick={() => setPaletteOpen(true)}
         >
           <span className="flex min-w-0 items-center gap-2">
             <SearchIcon data-icon="inline-start" />
@@ -52,30 +54,5 @@ export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }
       <LanguageMenu />
       {isMac ? null : <WindowControls />}
     </header>
-  )
-}
-
-/** 应用标识：叠放的两张卡片，寓意「把一个案件的资料收在一处」 */
-function AppMark(): JSX.Element {
-  return (
-    <svg viewBox="0 0 16 16" className="mx-1 size-4 shrink-0 text-primary" aria-hidden>
-      <rect
-        x="1.5"
-        y="4.5"
-        width="10"
-        height="10"
-        rx="2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M4.5 1.5h8a2 2 0 0 1 2 2v8"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
   )
 }

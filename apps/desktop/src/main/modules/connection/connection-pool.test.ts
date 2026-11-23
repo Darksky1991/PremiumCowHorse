@@ -103,7 +103,8 @@ function fakeSftp(): SftpSession & { readdir: ReturnType<typeof vi.fn> } {
     stat: vi.fn(async () => ({ mode: 0o040755, size: 0, mtime: 0 })),
     lstat: vi.fn(async () => ({ mode: 0o040755, size: 0, mtime: 0 })),
     readdir: vi.fn(async () => []),
-    realpath: vi.fn(async () => '/home/pchuser')
+    realpath: vi.fn(async () => '/home/pchuser'),
+    close: vi.fn()
   }
 }
 
@@ -438,8 +439,8 @@ describe('ConnectionPool: 认证锁定', () => {
     expect(h.repo.setAuthState).not.toHaveBeenCalled()
   })
 
-  it('C1：身份打开中途改了 sudo 密码 → 旧的 sudo 失败不写锁定；只改名称 → 仍锁定', async () => {
-    for (const edit of ['sudo', 'name'] as const) {
+  it('C1 / K3：身份打开中途改了 sudo 密码 / host / port → 旧的 sudo 失败不写锁定；只改名称 → 仍锁定', async () => {
+    for (const edit of ['sudo', 'host', 'port', 'name'] as const) {
       const h = setup()
       const gate = deferred<void>()
       h.identityPlan = async () => {
@@ -451,11 +452,13 @@ describe('ConnectionPool: 认证锁定', () => {
       expect(h.openIdentity).toHaveBeenCalledTimes(1)
       const r = h.repo.records.get('c1')!
       if (edit === 'sudo') r.sudoSecret = 'enc:new-sudo'
+      else if (edit === 'host') r.host = 'other.example'
+      else if (edit === 'port') r.port = 2222
       else r.name = 'AP1 改'
       r.updatedAt = 2
       gate.resolve()
       expect((await errorOf(a)).code).toBe('CONN_SUDO_AUTH_FAILED')
-      if (edit === 'sudo') {
+      if (edit !== 'name') {
         expect(h.repo.setAuthState).not.toHaveBeenCalled()
         h.identityPlan = null
         await expect(h.pool.session(ROOT, opts())).resolves.toBeDefined()
@@ -534,6 +537,37 @@ describe('ConnectionPool: 认证锁定', () => {
     expect(h.pool.state('c1')).toBe('idle')
     await errorOf(h.pool.session(LOGIN, opts()))
     expect(h.connect).toHaveBeenCalledTimes(2)
+  })
+
+  it('K2 修正：unsupported 之后后台请求不再拨号（状态 auth-unsupported）；用户操作过了冷却才重试一次；重新连接清除', async () => {
+    vi.useFakeTimers()
+    const h = setup()
+    h.authResult.value = new AppError({
+      code: 'CONN_AUTH_UNSUPPORTED',
+      detail: 'keyboard-interactive: unsupported prompt (echo): Verification code: '
+    })
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    expect(h.pool.state('c1')).toBe('auth-unsupported')
+    // 后台请求：不拨号，同一错误
+    expect((await errorOf(h.pool.session(LOGIN, opts(false)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    // 用户操作：冷却之内也不拨号
+    expect((await errorOf(h.pool.session(LOGIN, opts(true)))).code).toBe('CONN_AUTH_UNSUPPORTED')
+    expect(h.connect).toHaveBeenCalledTimes(1)
+    // 冷却之后：用户操作重试一次（仍失败 → 再次记住）
+    await vi.advanceTimersByTimeAsync(IDENTITY_RETRY_COOLDOWN_MS + 1000)
+    await errorOf(h.pool.session(LOGIN, opts(true)))
+    expect(h.connect).toHaveBeenCalledTimes(2)
+    await errorOf(h.pool.session(LOGIN, opts(false)))
+    expect(h.connect).toHaveBeenCalledTimes(2)
+    expect(h.repo.setAuthState).not.toHaveBeenCalled()
+    // 重新连接（disconnect）清除：后台请求也可以拨号
+    h.pool.disconnect('c1')
+    expect(h.pool.state('c1')).toBe('idle')
+    h.authResult.value = null
+    await expect(h.pool.session(LOGIN, opts(false))).resolves.toBeDefined()
+    expect(h.connect).toHaveBeenCalledTimes(3)
   })
 
   it('私钥文件读取失败 → CONN_KEY_INVALID，不连接、不写锁定', async () => {
@@ -1092,6 +1126,30 @@ describe('ConnectionPool: 断开', () => {
     await expect(h.pool.session(LOGIN, opts())).resolves.toBeDefined()
     expect(h.sessions[0]!.sftp).toHaveBeenCalledTimes(2)
     expect(h.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('K4：超时之后才就绪的 SFTP 通道被关闭（close 恰好调用 1 次），不留在连接上', async () => {
+    vi.useFakeTimers()
+    const h = setup({ settings: { timeoutSec: 5 } })
+    const late = fakeSftp()
+    let resolveLate!: (s: SftpSession) => void
+    h.connect.mockImplementationOnce(async (cfg: SshConnectConfig) => {
+      await cfg.verifyHostKey(h.presentKey.value)
+      const s = fakeSsh()
+      ;(s.sftp as ReturnType<typeof vi.fn>).mockImplementationOnce(
+        () => new Promise<SftpSession>((r) => (resolveLate = r))
+      )
+      h.sessions.push(s)
+      return s
+    })
+    const p = h.pool.session(LOGIN, opts())
+    p.catch(() => undefined)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((await errorOf(p)).code).toBe('FS_TIMEOUT')
+    expect(late.close).not.toHaveBeenCalled()
+    resolveLate(late)
+    await flush()
+    expect(late.close).toHaveBeenCalledTimes(1)
   })
 
   it('Minor 8：连接就绪后、请求继续之前连接被丢弃 → FS_UNAVAILABLE，不在丢弃的连接上打开身份', async () => {

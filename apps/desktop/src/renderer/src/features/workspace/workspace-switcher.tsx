@@ -1,142 +1,110 @@
-import { useState, type JSX } from 'react'
-import { ChevronDownIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
+import { cloneElement, useState, type JSX, type ReactElement, type ReactNode } from 'react'
+import { GalleryVerticalIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { notify } from '@renderer/stores/messages-store'
-import { AppError, DEFAULT_WORKSPACE_ID, type Workspace } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@pch/ui/components/dropdown-menu'
-import {
-  useActiveWorkspace,
-  useWorkspaceActions,
-  useWorkspaces,
-  workspaceDisplayName
-} from '@renderer/data/workspace'
-import { useUiStore } from '@renderer/stores/ui-store'
-import {
-  DeleteWorkspaceDialog,
-  NewWorkspaceDialog,
-  RenameWorkspaceDialog
-} from './workspace-dialogs'
+import { useSetting } from '@renderer/data/settings'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
+import { useUiStore, type PickerAnchor } from '@renderer/stores/ui-store'
+import { ColorDot } from './color-dot'
+import { DeleteWorkspaceDialog, NewWorkspaceDialog } from './workspace-dialogs'
+import { WorkspaceMenu } from './workspace-menu'
+
+/** Alt+W（选择器的快捷键，注册在 use-workspace-commands.ts） */
+const PICK_SHORTCUT = 'Alt+W'
 
 /**
- * 标题栏的工作区切换器：按钮显示当前工作区名称，菜单列出所有工作区（当前项打勾）
- * 并提供新建 / 重命名 / 恢复默认名称 / 删除。新建对话框的开关在 ui-store 中，欢迎页也能打开它。
+ * 标题栏的工作区按钮（设计稿 1.2）：`[颜色圆点] 名称`，不带 ▼。按 `workspace.pickerStyle`
+ * 打开圆环选择器（Dialog，`aria-haspopup="dialog"`）或菜单式（锚定在本按钮下）。
+ * 「新建工作区」对话框也挂在这里：开关在 ui-store 中，欢迎页、命令与菜单都能打开它。
+ * 工作区一览的删除确认框同样挂在这里（ui-store 的 deleteWorkspaceTarget）：一览页可能在删除途中卸载（M2-F2）。
  */
 export function WorkspaceSwitcher(): JSX.Element {
   const { t } = useTranslation()
-  const { data: workspaces } = useWorkspaces()
   const { data: active } = useActiveWorkspace()
-  const { update, activate } = useWorkspaceActions()
   const newOpen = useUiStore((s) => s.newWorkspaceOpen)
   const setNewOpen = useUiStore((s) => s.setNewWorkspaceOpen)
-  const [renameOpen, setRenameOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  // 重命名 / 删除的目标在打开对话框时锁定：对话框打开期间当前工作区可能变化（主进程事件），
-  // 若跟随实时的 active，提交时会作用到另一个工作区。名称取列表中的最新值；目标被删除后沿用
-  // 打开时的快照，对话框在关闭动画期间保持挂载（焦点照常回到切换器）
-  const [locked, setLocked] = useState<Workspace | null>(null)
-  const target = locked ? (workspaces?.find((w) => w.id === locked.id) ?? locked) : null
-  const openFor = (open: (v: boolean) => void): void => {
-    if (!active) return
-    setLocked(active)
-    open(true)
-  }
-
-  const defaultName = t('common:defaultWorkspace')
-  const activeName = active ? workspaceDisplayName(active, defaultName) : ''
-  const isDefault = active?.id === DEFAULT_WORKSPACE_ID
-
-  const fail = (e: unknown): void => {
-    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
-  }
-
+  const deleteTarget = useUiStore((s) => s.deleteWorkspaceTarget)
+  const setDeleteTarget = useUiStore((s) => s.setDeleteWorkspaceTarget)
+  // 关闭动画期间沿用最后的目标（store 中已是 null）
+  const [shownTarget, setShownTarget] = useState(deleteTarget)
+  if (deleteTarget !== null && deleteTarget !== shownTarget) setShownTarget(deleteTarget)
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="app-no-drag max-w-56 font-normal text-muted-foreground"
-              aria-label={t('workspace:switcherLabel')}
-            />
-          }
-        >
-          <span className="truncate">{activeName}</span>
-          <ChevronDownIcon data-icon="inline-end" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>{t('workspace:listLabel')}</DropdownMenuLabel>
-            {/* 工作区多时列表可滚动 */}
-            <DropdownMenuRadioGroup
-              value={active?.id ?? ''}
-              onValueChange={(id) => activate.mutate(id, { onError: fail })}
-              className="max-h-64 overflow-y-auto"
-            >
-              {(workspaces ?? []).map((w) => (
-                <DropdownMenuRadioItem key={w.id} value={w.id} closeOnClick>
-                  <span className="truncate">{workspaceDisplayName(w, defaultName)}</span>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setNewOpen(true)}>
-            <PlusIcon />
-            {t('workspace:newItem')}
-          </DropdownMenuItem>
-          {active ? (
-            <DropdownMenuItem onClick={() => openFor(setRenameOpen)}>
-              <PencilIcon />
-              {t('workspace:renameItem')}
-            </DropdownMenuItem>
-          ) : null}
-          {active && isDefault && active.name !== '' ? (
-            <DropdownMenuItem
-              onClick={() => update.mutate({ id: active.id, name: '' }, { onError: fail })}
-            >
-              <RotateCcwIcon />
-              {t('workspace:restoreName')}
-            </DropdownMenuItem>
-          ) : null}
-          {active && !isDefault ? (
-            <DropdownMenuItem variant="destructive" onClick={() => openFor(setDeleteOpen)}>
-              <Trash2Icon />
-              {t('workspace:deleteItem')}
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
+      <PickerEntry
+        anchor="title"
+        button={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="app-no-drag max-w-60 font-normal text-muted-foreground"
+          />
+        }
+      >
+        {active ? <ColorDot color={active.color} /> : null}
+        <span className="truncate">
+          {active ? workspaceDisplayName(active, t('common:defaultWorkspace')) : ''}
+        </span>
+      </PickerEntry>
       <NewWorkspaceDialog open={newOpen} onOpenChange={setNewOpen} />
-      {target ? (
-        <>
-          <RenameWorkspaceDialog
-            open={renameOpen}
-            onOpenChange={setRenameOpen}
-            target={target}
-            displayName={workspaceDisplayName(target, defaultName)}
-          />
-          <DeleteWorkspaceDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            target={target}
-            displayName={workspaceDisplayName(target, defaultName)}
-          />
-        </>
+      {shownTarget ? (
+        <DeleteWorkspaceDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null)
+          }}
+          target={shownTarget}
+          displayName={shownTarget.name}
+        />
       ) : null}
     </>
+  )
+}
+
+/**
+ * 地址框左端的工作区按钮（lucide GalleryVertical）：与标题栏按钮打开同一个选择器
+ * （圆环式同一位置；菜单式锚定在本按钮下）。由 app.tsx 注入地址栏的 workspacePicker 插槽
+ */
+export function WorkspaceAddressButton(): JSX.Element {
+  return (
+    <PickerEntry anchor="address" button={<Button variant="ghost" size="icon-xs" />}>
+      <GalleryVerticalIcon />
+    </PickerEntry>
+  )
+}
+
+/** 两个入口共用：圆环式 = 切换 ui-store 的 pickerOpen；菜单式 = 本按钮作为菜单的触发器 */
+function PickerEntry({
+  anchor,
+  button,
+  children
+}: {
+  anchor: PickerAnchor
+  button: ReactElement<Record<string, unknown>>
+  children: ReactNode
+}): JSX.Element {
+  const { t } = useTranslation()
+  const style = useSetting('workspace.pickerStyle') ?? 'carousel'
+  const open = useUiStore((s) => s.pickerOpen !== null)
+  const togglePicker = useUiStore((s) => s.togglePicker)
+  const props = {
+    'aria-label': t('workspace:switcherLabel'),
+    title: t('workspace:pickerButtonTitle', { shortcut: PICK_SHORTCUT })
+  }
+  if (style === 'menu') {
+    return (
+      <WorkspaceMenu anchor={anchor} trigger={cloneElement(button, props)}>
+        {children}
+      </WorkspaceMenu>
+    )
+  }
+  return cloneElement(
+    button,
+    {
+      ...props,
+      'aria-haspopup': 'dialog',
+      'aria-expanded': open,
+      onClick: () => togglePicker(anchor)
+    },
+    children
   )
 }

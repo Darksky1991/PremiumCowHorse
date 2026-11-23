@@ -23,6 +23,7 @@ import {
   cancelled,
   ConnIdentities,
   decryptSecret,
+  IDENTITY_RETRY_COOLDOWN_MS,
   IdentityMemory,
   raceSignal,
   testIdentitySteps,
@@ -119,6 +120,8 @@ export class ConnectionPool implements SftpSessionSource {
   private readonly presented = new Map<string, HostKeyInfo>()
   /** 内存中的登录认证锁定（与 auth_state 同时写） */
   private readonly authLocked = new Set<string>()
+  /** 服务器要求不支持的追加认证（MFA 等；K2）：后台请求不再拨号，用户操作过了冷却才重试；不写库、不跨重启 */
+  private readonly unsupported = new Map<string, { error: AppError; at: number }>()
   /** 主机密钥被拒绝 / 确认超时 / 没有窗口（R13）：后台请求不再询问，用户操作才重新询问 */
   private readonly untrusted = new Set<string>()
   /** R12 / C2：connectionId → 进行中的连接尝试（含已被丢弃的与 test() 的拨号） */
@@ -170,6 +173,16 @@ export class ConnectionPool implements SftpSessionSource {
     if (rec.authState === 'auth-failed' || this.authLocked.has(id)) {
       this.setState(id, 'auth-failed')
       throw new AppError({ code: 'CONN_AUTH_FAILED', detail: 'locked' })
+    }
+    const un = this.unsupported.get(id)
+    if (un && !this.conns.has(id)) {
+      // 反复的无密码登录尝试会在 MFA 服务器上留下大量登录日志（甚至触发推送）：与 R10 / R16 同样处理
+      const age = this.deps.now() - un.at
+      if (!opts.userAction || (age >= 0 && age < IDENTITY_RETRY_COOLDOWN_MS)) {
+        this.setState(id, 'auth-unsupported')
+        throw new AppError(un.error.toPayload())
+      }
+      this.unsupported.delete(id)
     }
     if (identity !== null) {
       if (rec.authState === 'sudo-auth-failed' || this.memory.sudoLocked.has(id)) {
@@ -241,6 +254,7 @@ export class ConnectionPool implements SftpSessionSource {
     if (!opts.keepSudoLock) this.memory.sudoLocked.delete(connectionId)
     if (!opts.keepAuthLock) this.authLocked.delete(connectionId)
     this.untrusted.delete(connectionId)
+    this.unsupported.delete(connectionId)
     this.presented.delete(connectionId)
     this.setState(connectionId, 'idle')
   }
@@ -249,6 +263,7 @@ export class ConnectionPool implements SftpSessionSource {
     await this.deps.repo.setAuthState(connectionId, 'ok')
     this.authLocked.delete(connectionId)
     this.untrusted.delete(connectionId)
+    this.unsupported.delete(connectionId)
     this.memory.sudoLocked.delete(connectionId)
     this.memory.clearFailures(connectionId)
     if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
@@ -362,6 +377,7 @@ export class ConnectionPool implements SftpSessionSource {
         // 池中没有连接时，状态反映测试的结果
         if (err.code === 'CONN_AUTH_FAILED' && !isNoMethod(err))
           this.setState(connectionId, 'auth-failed')
+        if (err.code === 'CONN_AUTH_UNSUPPORTED') this.setState(connectionId, 'auth-unsupported')
         if (err.code === 'CONN_HOST_KEY_CHANGED') this.setState(connectionId, 'host-key-changed')
       }
       return { steps }
@@ -372,6 +388,7 @@ export class ConnectionPool implements SftpSessionSource {
       this.presented.delete(connectionId)
       // 登录认证已成功：内存中的登录锁定与 auth-failed 状态立即解除（身份步骤的结果另行处理）
       this.authLocked.delete(connectionId)
+      this.unsupported.delete(connectionId)
       if (this.state(connectionId) === 'auth-failed') this.setState(connectionId, 'idle')
       await this.testSftp(ssh, steps)
       const rec = mine.dialed ?? first
@@ -475,6 +492,7 @@ export class ConnectionPool implements SftpSessionSource {
       }
       conn.ssh = ssh
       this.presented.delete(id)
+      this.unsupported.delete(id)
       ssh.onClose((err) => this.onSshClosed(conn, err))
       this.deps.log.info(`connection ${id}: online`)
       this.setState(id, 'online')
@@ -589,6 +607,11 @@ export class ConnectionPool implements SftpSessionSource {
         if (dialed && !(await this.unchangedSince(dialed))) return this.setState(id, 'idle')
         await this.lockAuth(id)
         return this.setState(id, 'auth-failed')
+      case 'CONN_AUTH_UNSUPPORTED':
+        // 没有交出密码：不锁定；记在内存里让后台请求不再拨号（编辑过记录 → 失败的是旧配置，不记）
+        if (dialed && !(await this.unchangedSince(dialed))) return this.setState(id, 'idle')
+        this.unsupported.set(id, { error: err, at: this.deps.now() })
+        return this.setState(id, 'auth-unsupported')
       case 'CONN_HOST_KEY_CHANGED':
         return this.setState(id, 'host-key-changed')
       case 'FS_UNAVAILABLE':
@@ -741,7 +764,7 @@ export class ConnectionPool implements SftpSessionSource {
 
   /**
    * 打开 SFTP 子系统，以 timeoutSec 为上限（Minor 3：ssh2 的 sftp() 没有超时，服务器不回应时永远挂起）。
-   * 超时 → FS_TIMEOUT；之后才就绪的会话被丢弃（不使用；通道随 SSH 连接关闭）
+   * 超时 → FS_TIMEOUT；之后才就绪的会话被关闭（close，K4）
    */
   private sftpWithin(ssh: SshSession): Promise<SftpSession> {
     return new Promise<SftpSession>((resolve, reject) => {
@@ -753,7 +776,11 @@ export class ConnectionPool implements SftpSessionSource {
       }, this.deps.settings().timeoutSec * 1000)
       ssh.sftp().then(
         (s) => {
-          if (done) return
+          // 已超时：迟到的通道没人使用，关掉（K4），不留在连接上直到 SSH 断开
+          if (done) {
+            s.close?.()
+            return
+          }
           done = true
           this.deps.clearTimer(timer)
           resolve(s)

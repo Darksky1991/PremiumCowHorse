@@ -7,6 +7,7 @@
     var d = document.documentElement
     if (b.theme === 'dark') d.classList.add('dark')
     d.style.colorScheme = b.theme
+    if (b.themeName && b.themeName !== 'default') d.dataset.theme = b.themeName
     d.dataset.accent = b.accent
     d.dataset.density = b.density
     d.lang = b.language

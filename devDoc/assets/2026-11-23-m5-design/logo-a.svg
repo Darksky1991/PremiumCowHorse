@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="256" height="256">
+  <!-- 方案 A「束（たば）」〔稳重商务〕：案件卡片的束。底板 + 前后两张卡片 + 标签。
+       颜色写成 style 中的 CSS 变量（logo 系列令牌，带静态色兜底）：内联到页面时随主题令牌变化；
+       作为文件单独使用（<img>、生成 .ico）时取逗号后的静态色 = exe 用的静态版。
+       32 单位网格，主要边缘落在偶数坐标（16px 时对齐像素） -->
+  <title>PremiumCowHorse</title>
+  <defs>
+    <linearGradient id="a-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color: var(--logo-base, #3778d7)"/>
+      <stop offset="1" style="stop-color: var(--logo-base-2, #2a5fb7)"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#a-tile)"/>
+  <rect x="12" y="5" width="14" height="17" rx="2.5" style="fill: var(--logo-soft, #a0c0eb)"/>
+  <rect x="6" y="10" width="14" height="17" rx="2.5" style="fill: var(--logo-ink, #ffffff)"/>
+  <rect x="9" y="14" width="6" height="2.5" rx="1.25" style="fill: var(--logo-accent, #f9b73f)"/>
+  <rect x="9" y="19.5" width="8" height="2" rx="1" style="fill: var(--logo-base, #3065cc)" fill-opacity="0.35"/>
+</svg>

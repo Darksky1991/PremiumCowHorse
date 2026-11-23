@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // page.evaluate 的回调在渲染进程里运行，会用到 DOM 类型
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": ["./**/*.ts", "../playwright.config.ts"]
+}

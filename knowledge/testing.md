@@ -149,6 +149,7 @@
 - 补充（2026-11-21，M2 反馈第 6–8 项）：同一会话中先后出现两种表现——先报 `The handle is invalid`，几分钟后 `CopyFromScreen` 不再报错、但保存的是**全白图像**（窗口区域没有任何内容）。不报错不等于截到了：截图后必须打开看一眼；全白时同样按上面退回 `page.screenshot`，并在报告中写明没有系统级截图。
 - 再次出现（2026-11-21 / 2026-11-22，M3 Task 11 与 Task 13）：两次都报 `The handle is invalid`，系统级截图退回 Playwright 的 `page.screenshot`。此时 COM（Office 自动化、`Shell.Application`）与 UI Automation 的 `Invoke` 仍可用，资源管理器 / Office 的窗口也能正常创建与关闭（Task 13 的实机端到端在这种状态下完成），只是看不到真实像素。**注意**：`CopyFromScreen` 的异常在 `-Command` 中是非终止错误，PowerShell 继续执行 `$bmp.Save` 并以退出码 0 结束，`execFileSync` 不抛错——`scripts/os-screenshot.mjs` 与同类脚本会照常打印 `saved`，留下一张全空的 PNG（本次 1920x1128 时约 8.5KB）。判断成败要看 stderr 里有没有该异常、再打开图片确认，不能只看退出码。
 - 再次出现（2026-11-23，M4 Task 14a）：后台代理执行的实机验证中 `CopyFromScreen` 报 `The handle is invalid` 并得到全白图；系统级整窗截屏记为未验证，页面截图（`page.screenshot`）正常。
+- 反例（2026-11-23，M5 Task 17）：同样是后台代理，这次 `GetForegroundWindow` 非 0、`CopyFromScreen` 正常截到真实像素（整窗、整屏含任务栏、资源管理器与任务管理器的窗口都能截）——桌面是否可用取决于当时需求方的会话状态（是否锁屏 / 断开远程桌面），不是代理本身的限制。每次先截一张打开看，能用就做系统级验证，不能用再退回页面截图并写「未验证」。另：在代理的 PowerShell 工具中直接执行的脚本里，`New-Object -ComObject Shell.Application` 的结果为 null（之后报 `You cannot call a method on a null-valued expression`，原因未查），改用 `powershell.exe -NoProfile -STA -File <脚本>` 另起进程正常。
 
 ### 驱动打包后的应用：`--remote-debugging-port` + `chromium.connectOverCDP`；性能记录取扫描进程内存与 index.db
 
@@ -267,6 +268,7 @@
 - 原因：`_electron.launch` 的 `colorScheme` 选项默认 `'light'`，Playwright 对上下文中的所有页面（包括后来创建的 `WebContentsView` 页面）模拟 `prefers-color-scheme`（`playwright-core` 类型定义：「Passing `null` resets emulation to system defaults. Defaults to `'light'`」）。
 - 解决：`_electron.launch({ …, colorScheme: null })` 后，视图与宿主页都随 `themeSource` 即时切换（不重新加载，`change` 事件正常）。
 - 预防：凡是断言深浅色、`prefers-color-scheme` 的 e2e，启动时传 `colorScheme: null`；「Playwright 下不成立」的主题类结论先排除模拟再下。
+- 补充（2026-11-23，M5 Task 3 / 12 / 17 的截图）：已用默认参数启动的应用（如 `scripts/os-screenshot.mjs`、一次性截图脚本）可在每个页面上调用 `page.emulateMedia({ colorScheme: null })` 取消模拟，效果相同；**网页视图是后来创建的 `Page`，要对它单独调用**，否则 Markdown 视图在暗色主题下仍按 `prefers-color-scheme: light` 显示为亮色（应用本身没有问题）。截图前先断言 `matchMedia('(prefers-color-scheme: dark)').matches` 与 `nativeTheme` 一致。
 
 ### e2e：取 `WebContentsView` 的页面：按 URL 从 `electronApp.windows()` 中找
 
@@ -281,6 +283,7 @@
 - 症状（M2 Task 6 实机验证）：① 浏览器视图中点链接（主进程 `will-navigate` 里 `preventDefault`）后，`page.click` 卡在 `waiting for scheduled navigations to finish` 直到超时，`noWaitAfter` 也会让下一次操作卡在 `waiting for navigation to finish`。② 工作站锁屏时 PowerShell 的 `SetCursorPos` 返回 False、`GetForegroundWindow` 为 0，`mouse_event` / `keybd_event` 不送达任何窗口（系统级侧键、按键、系统截屏都无法进行）。
 - 解决：① 视图内的点击改为主进程 `webContents.sendInputEvent` 的 `mouseDown` / `mouseUp`（坐标取元素中心，经 `electronApp.evaluate`），按键同样用 `sendInputEvent`（`rawKeyDown` 会触发 `before-input-event`）。② 系统级输入与截屏需在用户未锁屏时进行；无法进行时在报告中写「未验证」。
 - 补充（M2 Task 7 e2e）：被阻止的导航**留在视图中**时（外部链接交给 `shell.openExternal`、其他范围的链接被阻止），之后对该 `Page` 的**任何** `locator` / `evaluate` 都会卡在 `waiting for navigation to finish`，连取元素坐标也不行。这类点击之后改用主进程 `webContents.executeJavaScript(...)` 读取页面（`e2e/web.spec.ts` 的 `evalIn`），视图的 URL 用主进程 `contentView.children[i].webContents.getURL()` 断言。导航被应用接手、视图随之销毁 / 重建的点击（同范围链接）不受影响：新页面是新的 `Page`。
+- 补充（2026-11-23，M5 Task 15，M2-Q24）：**页面脚本发起、被主进程拒绝的导航**（加载时 `location.href = 'https://…'`，因没有用户手势被丢弃）同样让该 `Page` 的定位器挂起到超时——用例里没有任何点击，看起来像「页面没加载完」。断言「没有打开系统浏览器」之类的结果时，页面内容一律用主进程 `evalIn`（`webContents.executeJavaScript`）读取，计数用主进程替换的 `shell.openExternal`。
 - 预防：系统级验证前先用 `GetForegroundWindow` 是否为 0 判断桌面是否可用。
 
 ### e2e：Playwright 的 `page.keyboard` 不触发主进程的 `before-input-event`
@@ -320,3 +323,19 @@
 - 原因：搜索视图的输入经防抖（`search-view.tsx` 的 `useDebounced`）后才成为查询键；「清空 → 立即输入同一关键字」在防抖期内完成，防抖后的值没有变化，查询键不变，挂载中的 `useQuery` 不会重新查询（`data/search.ts`：结果按设计不随 `vfs.changed` 失效，只在关键字变化 / 重新挂载时查询）。另外索引按目录逐个读取（远程每个目录之间休息 `cache.backgroundGapMs.remote`），先找到的文件不代表其余目录已读完。
 - 解决：先经 IPC `search.query` 轮询，等到目标命中且 `incomplete: false`（没有未扫描的目录），再在界面中输入关键字（每个关键字只输入一次）。
 - 预防：依赖后台索引的搜索用例，等待条件放在 IPC 层（`incomplete`），界面只验证展示与定位；不要靠在界面上反复输入同一关键字来等待。
+
+### e2e：模态对话框打开时 `getByRole('banner')` 找不到标题栏，断言顺序会掩盖「对话框提前消失」
+
+- 日期：2026-11-23
+- 症状（M5 Task 13，M2-F2）：一览页删除当前工作区的用例原来是「点删除 → `expect(banner).toHaveText('Default')` → `expect(alertdialog).toHaveCount(0)`」，一直通过；修好「确认框在删除完成前保持可见」后，加上的 `expect(alertdialog).toBeVisible()` 反而在 `banner` 断言之后失败。
+- 原因：Base UI 的模态对话框打开时把其余部分设为 inert / aria-hidden，`getByRole('banner')` 找不到标题栏，`toHaveText` 会一直等到对话框关闭才成立——旧用例的通过恰恰依赖对话框提前消失（缺陷本身）。
+- 解决：对话框打开期间按 DOM 取背后的元素（`page.locator('header [aria-label="Switch workspace"]')`），对话框关闭后再用 `getByRole`；要观察「处理中」的界面，用 `e2e/support.ts` 的 `delayInvoke(app, 'workspace.delete', 1500)` 放慢该 IPC。
+- 预防：在模态对话框打开期间断言背后的界面时，不用 `getByRole`；用例中「对话框何时关闭」要显式断言，不要让别的断言隐式等待它。
+
+### e2e：圆环绕环跳转（Home / End）后 `getByRole('option', { selected: true })` 命中两张卡
+
+- 日期：2026-11-23
+- 症状（M5 Task 13）：选择器按 End 转到最后一张后，`front(page)` 报 strict mode violation，第二个元素是刚才的正面卡片（`aria-selected="true"`、`data-offset="0"`）。
+- 原因：跳转时卡片换了渲染键（`trackCards`），旧元素在 `AnimatePresence` 中播放退场动画，保留最后一次渲染的属性（含 `aria-selected`）；退场中的元素带 motion 设的 `pointer-events: none`。Playwright 的断言遇到 strict mode violation 立即失败、不重试。
+- 解决：`front` 定位器排除退场中的元素：`.and(dialog.locator(':not([style*="pointer-events: none"])'))`。
+- 预防：对带退场动画的列表项按「状态属性」定位时，排除退场中的元素；产品侧（屏幕阅读器在 ~0.2 s 内看到两个选中项）未修，记入台账。

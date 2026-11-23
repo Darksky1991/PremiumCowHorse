@@ -7,20 +7,12 @@ import {
   type RefObject
 } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  CopyIcon,
-  FileIcon,
-  FileSymlinkIcon,
-  FolderIcon,
-  FolderSearchIcon,
-  LinkIcon,
-  ListTreeIcon,
-  type LucideIcon
-} from 'lucide-react'
+import { FileIcon } from '@pch/ui/file-icon'
+import { CopyIcon, FolderSearchIcon, LinkIcon, ListTreeIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { notify } from '@renderer/stores/messages-store'
 import { cn } from 'cn'
-import { AppError, matchRanges, type FileKind, type SearchHit, type SearchTerm } from '@pch/shared'
+import { AppError, matchRanges, type SearchHit, type SearchTerm } from '@pch/shared'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -32,12 +24,6 @@ import { call } from '@renderer/lib/ipc'
 import { useConnectionNames } from '@renderer/data/connections'
 import { copyablePath, displayPath, isLocalUri } from '@renderer/lib/display-path'
 import { locationParts } from './format'
-
-const ICONS: Record<FileKind, LucideIcon> = {
-  file: FileIcon,
-  directory: FolderIcon,
-  symlink: FileSymlinkIcon
-}
 
 /** 默认密度下的行高（两行文字）；实际高度由 measureElement 测量 */
 const ROW_ESTIMATE = 44
@@ -251,7 +237,6 @@ function ResultRow({
   start: number
   onClick: () => void
 }): JSX.Element {
-  const Icon = ICONS[hit.kind]
   const { head, tail } = locationParts(hit, entryLabel)
 
   return (
@@ -274,7 +259,14 @@ function ResultRow({
           : 'hover:bg-sidebar-accent/50'
       )}
     >
-      <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <FileIcon
+        name={hit.name}
+        kind={hit.kind}
+        // 命中项不带链接目标类型：链接按「指向文件」显示，不当作失效链接
+        target={hit.kind === 'symlink' ? 'file' : undefined}
+        monochrome={selected}
+        className="mt-0.5 size-4 shrink-0"
+      />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px]">
           <Highlighted name={hit.name} terms={terms} />

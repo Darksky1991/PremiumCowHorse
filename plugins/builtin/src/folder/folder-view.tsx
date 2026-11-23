@@ -381,7 +381,8 @@ export default function FolderView({
                         name={entry.name}
                         kind={entry.kind}
                         target={entry.target}
-                        className="size-4 shrink-0 text-muted-foreground"
+                        monochrome={selected}
+                        className="size-4 shrink-0"
                       />
                       <span
                         className={`truncate ${entry.hidden ? 'text-muted-foreground' : ''}`}
