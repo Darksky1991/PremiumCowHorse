@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, launch, removeDirs } from './support'
+import { data, delayInvoke, launch, removeDirs } from './support'
 
 /**
  * 工作区选择器（M5 Task 12）：圆环 / 列表与菜单式。
@@ -214,8 +214,9 @@ test.describe('workspace picker', () => {
       await page.keyboard.press('ArrowRight')
       await expect(front(page)).toContainText('バッチ移行')
       // 位移瞬间到位：新的正面卡片没有残留的平移 / 倾斜
-      await page.waitForTimeout(40)
-      expect(await card(page, 0).evaluate((el) => el.style.transform)).toMatch(/^(none|)$/)
+      await expect
+        .poll(() => card(page, 0).evaluate((el) => el.style.transform))
+        .toMatch(/^(none|)$/)
       await page.keyboard.press('Enter')
       await expect(dialog(page)).toHaveCount(0)
       await expect(titleButton(page)).toHaveText('バッチ移行')
@@ -579,6 +580,64 @@ test.describe('workspace picker', () => {
       await page.keyboard.press('Enter')
       await expect(page.getByRole('menu')).toHaveCount(0)
       await expect(titleButton(page)).toHaveText('バッチ監視')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('typing right after Alt+W (without waiting for focus) keeps every character', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      // 确定性的探针：输入框刚插入 DOM（同一次提交）时焦点是否已经在它身上
+      await page.evaluate((selector) => {
+        const w = window as unknown as { __focusAtInsert?: boolean }
+        const observer = new MutationObserver(() => {
+          const el = document.querySelector(selector)
+          if (el === null) return
+          w.__focusAtInsert = document.activeElement === el
+          observer.disconnect()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+      }, '[role="dialog"] [role="combobox"]')
+      await page.keyboard.press('Alt+w')
+      // 对话框的挂载本身需要几十毫秒（此前的按键只能落在原焦点上，无法补救）；挂载后立即输入，不等待焦点
+      await filter(page).waitFor({ state: 'attached' })
+      await page.keyboard.type('xyz')
+      await expect(filter(page)).toHaveValue('xyz')
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { __focusAtInsert?: boolean }).__focusAtInsert
+        )
+      ).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('while a deletion is in progress Esc does not flip the confirmation back', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await data(page, 'workspace.create', { name: '調査用' })
+      await delayInvoke(app, 'workspace.delete', 1500)
+      await openWithAltW(page)
+      await editSwitch(page).click()
+      await filter(page).focus()
+      await page.keyboard.press('End')
+      await settle(page)
+      await page.keyboard.press('ArrowLeft')
+      await settle(page)
+      await front(page).getByRole('button', { name: '削除…' }).click()
+      const back = front(page).getByRole('group', { name: '「調査用」を削除しますか？' })
+      await expect(back).toBeVisible()
+      await back.getByRole('button', { name: '削除', exact: true }).click()
+      await expect(back.getByRole('button', { name: 'キャンセル' })).toBeDisabled()
+      await page.keyboard.press('Escape')
+      await expect(back).toBeVisible()
+      await expect(dialog(page)).toBeVisible()
+      // 删除完成后才恢复：工作区消失
+      await expect.poll(() => listNames(page)).not.toContain('調査用')
     } finally {
       await app.close()
     }

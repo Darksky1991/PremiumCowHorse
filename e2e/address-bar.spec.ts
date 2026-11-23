@@ -410,6 +410,8 @@ test.describe('the application address bar', () => {
         await (via === 'layers' ? button(page, 'Switch workspace') : banner).click()
         await page.getByRole('menuitemradio', { name }).click()
         await expect(banner).toHaveText(name)
+        // 旧菜单卸载后再继续（退场动画中的菜单仍在 DOM 里，会被下一次的定位误取）
+        await expect(page.getByRole('menu')).toHaveCount(0)
       }
       // 总览 → 一览（一览标签有后退历史：总览「Default」）
       await segment(page, 'Default').click()
@@ -485,6 +487,10 @@ test.describe('the application address bar', () => {
       await expect(confirm).toBeVisible()
       // 进度中按钮名含 Spinner 的「Loading」
       await expect(confirm.getByRole('button', { name: /Delete$/ })).toBeDisabled()
+      // 删除进行中：「Cancel」禁用，Esc 不关闭确认框
+      await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+      await page.keyboard.press('Escape')
+      await expect(confirm).toBeVisible()
       expect(
         (await data<Array<{ id: string }>>(page, 'workspace.list')).map((w) => w.id)
       ).toContain(other.id)

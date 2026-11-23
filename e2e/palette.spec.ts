@@ -165,4 +165,47 @@ test.describe('command palette', () => {
       await app.close()
     }
   })
+
+  test('typing right after Ctrl+K (without waiting for focus) keeps every character', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      // 确定性的探针：输入框刚插入 DOM（同一次提交）时焦点是否已经在它身上
+      await page.evaluate((selector) => {
+        const w = window as unknown as { __focusAtInsert?: boolean }
+        const observer = new MutationObserver(() => {
+          const el = document.querySelector(selector)
+          if (el === null) return
+          w.__focusAtInsert = document.activeElement === el
+          observer.disconnect()
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+      }, '[data-slot="command-input"]')
+      await page.keyboard.press('Control+k')
+      await page.keyboard.type('aitetsu')
+      await expect(input(page)).toHaveValue('aitetsu')
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { __focusAtInsert?: boolean }).__focusAtInsert
+        )
+      ).toBe(true)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('switching workspace from the palette shows the switched toast', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await data(page, 'workspace.create', { name: '別件' })
+      await openPalette(page)
+      await input(page).fill('別件')
+      await option(page, /別件/).click()
+      await expect(dialog(page)).toHaveCount(0)
+      await expect(page.getByText('「別件」に切り替えました')).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
 })
