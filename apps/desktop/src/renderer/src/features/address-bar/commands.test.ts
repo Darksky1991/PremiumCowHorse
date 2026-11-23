@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pickCommand, type DispatchKey } from '../../lib/shortcut'
-import { isNavButton, mouseCommand, NAV_COMMANDS } from './commands'
+import { copyTarget, isNavButton, mouseCommand, NAV_COMMANDS } from './commands'
 
 const key = (
   k: string,
@@ -68,5 +68,26 @@ describe('address bar commands', () => {
     expect(isNavButton(3)).toBe(true)
     expect(isNavButton(4)).toBe(true)
     expect(isNavButton(0)).toBe(false)
+  })
+})
+
+describe('copyTarget', () => {
+  it('K6：远程 → 复制服务器路径，提示第一行是复制的内容，第二行是显示路径', () => {
+    const r = copyTarget('sftp://c1/var/log', 'prod:/var/log')
+    expect(r.text).toBe('/var/log')
+    expect(r.title.split('\n')[0]).toBe('/var/log')
+    expect(r.title).toContain('prod:/var/log')
+  })
+
+  it('本地 → 复制 Windows 路径，提示与复制内容一致', () => {
+    const r = copyTarget('file:///C:/Users/a', 'C:\\Users\\a')
+    expect(r.text).toBe('C:\\Users\\a')
+    expect(r.title.split('\n')[0]).toBe(r.text)
+    expect(r.title).toBe(r.text)
+  })
+
+  it('网页 → 复制 URI', () => {
+    const r = copyTarget('https://example.com/a', 'https://example.com/a')
+    expect(r).toEqual({ text: 'https://example.com/a', title: 'https://example.com/a' })
   })
 })

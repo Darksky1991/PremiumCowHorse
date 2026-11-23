@@ -277,7 +277,8 @@ export function connectSsh(cfg: SshConnectConfig): Promise<SshSession> {
         failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
       },
       abort: (detail) => {
-        failure = new AppError({ code: 'CONN_AUTH_FAILED', detail })
+        // 目前只有 keyboard-interactive 的「不支持的提示」会走这里：没有交出密码（K2）
+        failure = new AppError({ code: 'CONN_AUTH_UNSUPPORTED', detail })
         fail(failure)
       },
       submitted: () => {

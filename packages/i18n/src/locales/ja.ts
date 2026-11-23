@@ -338,6 +338,7 @@ export default {
     keyHint: 'OpenSSH / PEM 形式と PuTTY の PPK v2（RSA / DSA）に対応しています。',
     passphrase: 'パスフレーズ',
     passphraseNone: 'なし',
+    clearPassphrase: '保存済みのパスフレーズを削除',
     identities: '切り替えユーザー',
     identitiesHint: 'sudo で切り替えて読み取るユーザー（例: app1、root）。Enter で追加します。',
     identityPlaceholder: 'ユーザー名を入力',
@@ -776,6 +777,8 @@ export default {
     CONN_NOT_FOUND: '接続が見つかりません（削除された可能性があります）',
     CONN_AUTH_FAILED:
       '認証に失敗しました。ユーザー名・パスワード・鍵を確認してください（自動では再試行しません）',
+    CONN_AUTH_UNSUPPORTED:
+      'サーバーが追加の認証（多要素認証など）を求めたため中止しました。パスワードは送信していません',
     CONN_KEY_INVALID:
       '秘密鍵を読み込めません。対応形式は OpenSSH / PEM と PuTTY の PPK v2（RSA / DSA）です。パスフレーズも確認してください',
     CONN_HOST_KEY_REJECTED: 'サーバーのホストキーを信頼しなかったため、接続しませんでした',

@@ -741,7 +741,7 @@ export class ConnectionPool implements SftpSessionSource {
 
   /**
    * 打开 SFTP 子系统，以 timeoutSec 为上限（Minor 3：ssh2 的 sftp() 没有超时，服务器不回应时永远挂起）。
-   * 超时 → FS_TIMEOUT；之后才就绪的会话被丢弃（不使用；通道随 SSH 连接关闭）
+   * 超时 → FS_TIMEOUT；之后才就绪的会话被关闭（close，K4）
    */
   private sftpWithin(ssh: SshSession): Promise<SftpSession> {
     return new Promise<SftpSession>((resolve, reject) => {
@@ -753,7 +753,11 @@ export class ConnectionPool implements SftpSessionSource {
       }, this.deps.settings().timeoutSec * 1000)
       ssh.sftp().then(
         (s) => {
-          if (done) return
+          // 已超时：迟到的通道没人使用，关掉（K4），不留在连接上直到 SSH 断开
+          if (done) {
+            s.close?.()
+            return
+          }
           done = true
           this.deps.clearTimer(timer)
           resolve(s)

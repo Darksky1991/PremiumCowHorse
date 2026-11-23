@@ -1,3 +1,5 @@
+import { copyablePath } from '@renderer/lib/display-path'
+
 /** 地址栏的导航命令（快捷键与鼠标侧键共用） */
 export type NavCommand = 'back' | 'forward' | 'up' | 'refresh'
 
@@ -55,4 +57,18 @@ export function mouseCommand(button: number, modal: boolean): NavCommand | null 
 /** 是否为侧键（其默认动作——Chromium 的历史导航——总要阻止，与是否有对话框无关） */
 export function isNavButton(button: number): boolean {
   return button === 3 || button === 4
+}
+
+/**
+ * 单击当前位置复制的内容（text）与悬停提示（title，不含「点击复制」的说明）。
+ * 提示第一行始终是实际复制的内容（K6：远程时显示路径是 `<连接名>:<路径>`，复制的却是服务器路径，
+ * 第一行写 `<连接名>:<路径>` 会让人误以为连接名也被复制）；与显示路径不同时第二行才是显示路径。
+ * 本地与其他（网页：复制 URI）两者相同
+ */
+export function copyTarget(uri: string, display: string): { text: string; title: string } {
+  const text = copyablePath(uri) ?? uri
+  return {
+    text,
+    title: display === text ? text : `${text}\n${display}`
+  }
 }

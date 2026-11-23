@@ -26,6 +26,8 @@ export interface SftpSession {
   lstat(path: string, signal: AbortSignal): Promise<SftpAttrs>
   readdir(path: string, signal: AbortSignal): Promise<SftpDirEntry[]>
   realpath(path: string, signal: AbortSignal): Promise<string>
+  /** 关闭 SFTP 通道（可选；超时后才就绪的会话由连接池关闭，K4） */
+  close?(): void
 }
 export interface SftpTarget {
   connectionId: string

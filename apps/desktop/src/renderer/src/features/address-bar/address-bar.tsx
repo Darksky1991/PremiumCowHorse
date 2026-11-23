@@ -23,7 +23,7 @@ import {
   type PathSegment
 } from '@renderer/lib/logical-path'
 import { selectActiveTab, useTabsStore } from '@renderer/stores/tabs-store'
-import type { NavCommand } from './commands'
+import { copyTarget, type NavCommand } from './commands'
 import { useNavigationShortcuts } from './use-navigation-shortcuts'
 import { ViewerMenu } from './viewer-menu'
 
@@ -114,19 +114,19 @@ export function AddressBar({ workspacePicker }: AddressBarProps): JSX.Element {
   const copyCurrentPath = (): void => {
     const last = segments.at(-1)
     if (currentPath === null || last === undefined) return
-    const path = copyablePath(last.target.uri)
-    call('system.copyText', { text: path ?? last.target.uri })
-      .then(() =>
-        notify('success', t(path !== null ? 'explorer:copiedPath' : 'explorer:copiedUri'))
-      )
+    const { text } = copyTarget(last.target.uri, currentPath)
+    const isPath = copyablePath(last.target.uri) !== null
+    call('system.copyText', { text })
+      .then(() => notify('success', t(isPath ? 'explorer:copiedPath' : 'explorer:copiedUri')))
       .catch((e: unknown) => {
         notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
       })
   }
+  const lastSegment = segments.at(-1)
   const copyTitle =
-    currentPath === null
+    currentPath === null || lastSegment === undefined
       ? undefined
-      : `${currentPath}
+      : `${copyTarget(lastSegment.target.uri, currentPath).title}
 ${t('addressBar:copyHint')}`
   const segmentHandlers = (
     target: TabLocation,

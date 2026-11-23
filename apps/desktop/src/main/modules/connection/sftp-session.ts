@@ -11,6 +11,8 @@ export interface RawSftp {
   lstat(path: string, cb: Cb<Stats>): void
   readdir(path: string, cb: Cb<Ssh2FileEntry[]>): void
   realpath(path: string, cb: Cb<string>): void
+  /** 关闭通道（ssh2 SFTP.end() → destroy() → channelClose；已关闭时为空操作） */
+  end?(): void
   on(event: 'end' | 'close' | 'error', listener: (...args: unknown[]) => void): unknown
 }
 
@@ -99,6 +101,7 @@ export function wrapSftp(raw: RawSftp): SftpSession {
         signal,
         (cb) => raw.realpath(path, cb),
         (p) => p
-      )
+      ),
+    close: () => raw.end?.()
   }
 }

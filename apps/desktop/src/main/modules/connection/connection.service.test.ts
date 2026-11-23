@@ -335,6 +335,35 @@ describe('ConnectionService', () => {
       })
     })
 
+    it('K3：sudo-auth-failed 时改 host / port → 解除；只改名称 → 保留', async () => {
+      const id = await locked('sudo-auth-failed', { sudoSecret: 'sp' })
+      const byHost = await service.save(
+        input({ id, secret: undefined, sudoSecret: undefined, host: 'other.example' })
+      )
+      expect(byHost.authState).toBe('ok')
+      expect(pool.disconnect).toHaveBeenLastCalledWith(id, {
+        keepAuthLock: false,
+        keepSudoLock: false
+      })
+      await repo.setAuthState(id, 'sudo-auth-failed')
+      const byPort = await service.save(
+        input({ id, secret: undefined, sudoSecret: undefined, host: 'other.example', port: 2222 })
+      )
+      expect(byPort.authState).toBe('ok')
+      await repo.setAuthState(id, 'sudo-auth-failed')
+      const renamed = await service.save(
+        input({
+          id,
+          name: '改名',
+          secret: undefined,
+          sudoSecret: undefined,
+          host: 'other.example',
+          port: 2222
+        })
+      )
+      expect(renamed.authState).toBe('sudo-auth-failed')
+    })
+
     it('sudo-auth-failed：改 sudo 密码（含清除）→ 解除', async () => {
       const id = await locked('sudo-auth-failed', { sudoSecret: 'sp' })
       expect(

@@ -36,6 +36,8 @@ export const ERROR_CODES = [
   'CONN_NOT_FOUND',
   /** 认证失败（密码 / 密钥错误）；失败后不再自动重试 */
   'CONN_AUTH_FAILED',
+  /** 服务器要求追加认证（MFA / 一次性口令等）：本端不支持，已中止，没有发送密码；不锁定 */
+  'CONN_AUTH_UNSUPPORTED',
   /** 私钥无法解析：只支持 OpenSSH / PEM 与 PuTTY PPK v2（RSA / DSA），或口令错误 */
   'CONN_KEY_INVALID',
   /** 用户拒绝信任服务器的主机密钥 */

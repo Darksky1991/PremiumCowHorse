@@ -339,6 +339,7 @@ export default {
     keyHint: 'OpenSSH / PEM keys and PuTTY PPK v2 (RSA / DSA) are supported.',
     passphrase: 'Passphrase',
     passphraseNone: 'None',
+    clearPassphrase: 'Delete the saved passphrase',
     identities: 'Switch users',
     identitiesHint:
       'Users to switch to with sudo for reading (e.g. app1, root). Press Enter to add.',
@@ -779,6 +780,8 @@ export default {
     CONN_NOT_FOUND: 'Connection not found (it may have been deleted)',
     CONN_AUTH_FAILED:
       'Authentication failed. Check the user name, password or key (no automatic retry)',
+    CONN_AUTH_UNSUPPORTED:
+      'The server asked for additional authentication (e.g. MFA), so the attempt was aborted. No password was sent',
     CONN_KEY_INVALID:
       'Cannot read the private key. Only OpenSSH / PEM and PuTTY PPK v2 (RSA / DSA) keys are supported; also check the passphrase',
     CONN_HOST_KEY_REJECTED: 'The server host key was not trusted, so the connection was canceled',

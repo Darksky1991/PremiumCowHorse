@@ -328,6 +328,7 @@ export default {
     keyHint: '支持 OpenSSH / PEM 格式以及 PuTTY 的 PPK v2（RSA / DSA）。',
     passphrase: '口令',
     passphraseNone: '无',
+    clearPassphrase: '删除已保存的口令',
     identities: '切换身份',
     identitiesHint: '通过 sudo 切换后读取的用户（例：app1、root）。按回车添加。',
     identityPlaceholder: '输入用户名',
@@ -756,6 +757,7 @@ export default {
     DESKTOP_SNAPSHOT_NOT_FOUND: '找不到该桌面记录，可能已被删除',
     CONN_NOT_FOUND: '找不到该连接（可能已被删除）',
     CONN_AUTH_FAILED: '认证失败，请检查用户名、密码或密钥（不会自动重试）',
+    CONN_AUTH_UNSUPPORTED: '服务器要求追加认证（如多因素认证），已中止，未发送密码',
     CONN_KEY_INVALID:
       '无法读取私钥：只支持 OpenSSH / PEM 格式与 PuTTY 的 PPK v2（RSA / DSA）私钥，也请确认口令是否正确',
     CONN_HOST_KEY_REJECTED: '未信任服务器的主机密钥，已取消连接',
