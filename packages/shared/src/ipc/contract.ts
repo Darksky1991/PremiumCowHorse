@@ -32,6 +32,7 @@ import type {
   ConnectionTestResult,
   HostKeyPrompt
 } from '../connection/types'
+import type { RecentItem } from '../recent/types'
 import { IDENTITY_PATTERN } from '../vfs/sftp-uri'
 import type {
   DesktopCurrent,
@@ -331,6 +332,21 @@ export const ipcContract = {
       identity: z.string().regex(IDENTITY_PATTERN).nullable()
     })
   ),
+  /** 最近使用（M5）：按工作区，openedAt 降序 */
+  'recent.list': route<RecentItem[]>()(
+    z.strictObject({ workspaceId: z.string().min(1), limit: z.number().int().min(1).max(100) })
+  ),
+  /** 记录一次明确的打开（同 URI 只更新时间；每工作区只保留最近 100 条） */
+  'recent.record': route<void>()(
+    z.strictObject({
+      workspaceId: z.string().min(1),
+      uri: z.string().min(1),
+      kind: z.enum(['file', 'directory']),
+      title: z.string().max(500)
+    })
+  ),
+  /** 清除最近使用：省略 workspaceId = 全部工作区 */
+  'recent.clear': route<void>()(z.strictObject({ workspaceId: z.string().min(1).optional() })),
   /** 自绘标题栏的窗口按钮：作用于发起调用的窗口 */
   'window.minimize': route<void>()(z.void()),
   'window.toggleMaximize': route<void>()(z.void()),
@@ -392,6 +408,8 @@ export interface IpcEvents {
   'desktop.exitRequested': Record<string, never>
   /** 主进程取消了挂起的询问（关机开始等），渲染端关闭退出对话框（只发给主窗口） */
   'desktop.exitCancelled': Record<string, never>
+  /** 最近使用有变化（记录 / 清除）；workspaceId 为 null = 清除了全部。广播 */
+  'recent.changed': { workspaceId: string | null }
   /** 连接列表有变化（保存 / 删除 / 信任密钥 / 重新连接 / 测试之后）。广播 */
   'connection.changed': Record<string, never>
   /** 连接状态变化（连接池）。广播 */

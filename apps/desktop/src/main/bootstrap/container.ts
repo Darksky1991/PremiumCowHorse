@@ -20,6 +20,8 @@ import { RemoteAccess, remoteFolderRoots } from '../vfs/remote-access'
 import { ConnectionPool } from '../modules/connection/connection-pool'
 import { ConnectionRepo } from '../modules/connection/connection.repo'
 import { ConnectionService } from '../modules/connection/connection.service'
+import { RecentRepo } from '../modules/recent/recent.repo'
+import { RecentService } from '../modules/recent/recent.service'
 import { createHostKeyGate, type HostKeyGate } from '../modules/connection/host-key-gate'
 import { createOfflineRefresher } from '../modules/connection/offline-refresh'
 import { electronSecretBox } from '../modules/connection/secret-box'
@@ -86,6 +88,8 @@ export interface Container {
   exitGuard: ExitGuard
   /** 远程连接（M4） */
   connections: ConnectionService
+  /** 最近使用（M5） */
+  recent: RecentService
   pool: ConnectionPool
   hostKeys: HostKeyGate
   /** sftp: URI 的访问范围（根由 bootstrap 的 wireScanner 随扫描配置一并更新） */
@@ -253,6 +257,8 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
 
   const { desktop, exitGuard } = createDesktop({ db, vfs, settings, windows, logger })
 
+  const recent = new RecentService(new RecentRepo(db), bus)
+
   return {
     paths,
     logger,
@@ -270,6 +276,7 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
     desktop,
     exitGuard,
     connections,
+    recent,
     pool,
     hostKeys,
     remoteAccess

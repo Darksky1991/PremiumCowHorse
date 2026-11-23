@@ -31,6 +31,12 @@ export const queryKeys = {
   /** 连接的主目录（登录用户为 realpath('.')；切换身份为 /） */
   connectionHome: (id: string, identity: string | null) =>
     ['connection', 'home', id, identity] as const,
+  /**
+   * 最近使用：'recent' 前缀用于一次性失效；limit 不进 key（调用方取同一个条数，
+   * 不同条数共享缓存时以先到者为准——命令面板固定取 8 条）
+   */
+  recentRoot: ['recent'] as const,
+  recent: (workspaceId: string) => ['recent', workspaceId] as const,
   /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
     ['search', workspaceId, text, kind] as const

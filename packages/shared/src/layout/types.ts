@@ -4,6 +4,14 @@
  */
 
 /**
+ * 打开位置的来源（M5 D1，决定是否记入「最近使用」，见渲染端 lib/recent-policy.ts）：
+ * tree-select 资源树单击 / 键盘移动、tree-open 资源树激活 / 新标签、palette 命令面板、overview 工作区总览、
+ * address 地址栏、plugin 预览插件、history 后退 / 前进
+ */
+export type OpenSource =
+  'tree-select' | 'tree-open' | 'palette' | 'overview' | 'address' | 'plugin' | 'history'
+
+/**
  * 标签显示的位置的种类：工作区总览 / 工作区一览 / 桌面记录 / 设置页 / 关于页（内部 URI，不是文件系统）、目录、文件
  */
 export type LayoutLocationKind =

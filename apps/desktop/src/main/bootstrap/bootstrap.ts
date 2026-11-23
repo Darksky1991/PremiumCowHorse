@@ -100,6 +100,7 @@ function wireEvents(c: Container): void {
   c.bus.on('workspace.changed', (e) => c.windows.broadcast('workspace.changed', e))
   c.bus.on('vfs.changed', (e) => c.windows.broadcast('vfs.changed', e))
   c.bus.on('vfs.reachability', (e) => c.windows.broadcast('vfs.reachability', e))
+  c.bus.on('recent.changed', (e) => c.windows.broadcast('recent.changed', e))
   c.bus.on('connection.changed', (e) => c.windows.broadcast('connection.changed', e))
   c.bus.on('connection.status', (e) => c.windows.broadcast('connection.status', e))
 

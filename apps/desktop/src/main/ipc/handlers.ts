@@ -2,6 +2,7 @@ import type { Container } from '../bootstrap/container'
 import { connectionHandlers } from '../modules/connection/connection.ipc'
 import { desktopHandlers } from '../modules/desktop/desktop.ipc'
 import { launcherHandlers } from '../modules/launcher/launcher.ipc'
+import { recentHandlers } from '../modules/recent/recent.ipc'
 import { settingsHandlers } from '../modules/settings/settings.ipc'
 import { systemHandlers } from '../modules/system/system.ipc'
 import { windowHandlers } from '../modules/window/window.ipc'
@@ -26,6 +27,7 @@ export function createHandlers(c: Container): Handlers {
     ...webHandlers(c.web, ownerWindowOf, c.remoteAccess),
     ...launcherHandlers(c.launcher, c.remoteAccess),
     ...desktopHandlers(c.desktop, c.exitGuard),
-    ...connectionHandlers(c.connections, c.hostKeys)
+    ...connectionHandlers(c.connections, c.hostKeys),
+    ...recentHandlers(c.recent)
   }
 }

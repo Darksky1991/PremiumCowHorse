@@ -445,7 +445,12 @@ export default {
       recentTitle: 'Recent items',
       recentDesc: 'Clears the history of recently opened items.',
       clearRecent: 'Clear recent items',
-      soon: 'Available in a later milestone'
+      confirmTitle: 'Clear recent items?',
+      confirmDesc: 'This clears the history of every workspace. Files on disk are not changed.',
+      confirm: 'Clear',
+      cancel: 'Cancel',
+      cleared: 'Recent items cleared',
+      clearFailed: 'Could not clear recent items'
     },
     options: {
       language: {

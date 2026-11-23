@@ -425,7 +425,12 @@ export default {
       recentTitle: '最近使用',
       recentDesc: '清除最近打开项目的历史记录。',
       clearRecent: '清除最近使用',
-      soon: '将在后续里程碑中提供'
+      confirmTitle: '要清除最近使用吗？',
+      confirmDesc: '将清除所有工作区的历史记录，磁盘上的文件不会改变。',
+      confirm: '清除',
+      cancel: '取消',
+      cleared: '已清除最近使用',
+      clearFailed: '无法清除最近使用'
     },
     options: {
       language: {

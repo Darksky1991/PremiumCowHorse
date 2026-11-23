@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import {
   layoutReducer,
+  shouldRecordRecent,
+  type OpenSource,
   type TabLocation,
   type TabState,
   type TabsAction,
@@ -10,11 +12,20 @@ import {
 /** 标签打开 / 导航的目标：位置（工作区总览、目录、文件） */
 export type TabTarget = TabLocation
 
+/** 「最近使用」的记录信号：seq 每次命中加 1；由 features/command-palette 的 RecentRecorder 订阅（store 不调 IPC） */
+export interface RecentSignal {
+  seq: number
+  workspaceId: string | null
+  location: TabLocation | null
+}
+
 interface TabsStore {
+  /** 明确打开（opts.source 命中 shouldRecordRecent）时更新；后退 / 前进 / 未指定来源不更新 */
+  recentSignal: RecentSignal
   /** 工作区 id → 该工作区的标签集合（只在内存中，不持久化） */
   byWorkspace: Record<string, TabsState>
   /** 在工作区中以新标签打开（同 URI 已打开则只激活） */
-  open: (workspaceId: string, target: TabTarget) => void
+  open: (workspaceId: string, target: TabTarget, opts?: { source?: OpenSource }) => void
   /**
    * 浏览器式的打开（设计 2.8）：在当前（激活）标签内导航，进入其历史；工作区没有激活标签时新建一个。
    * newTab（中键 / Ctrl+单击 / 「在新标签页中打开」）时与 open 相同。
@@ -24,12 +35,12 @@ interface TabsStore {
   openHere: (
     workspaceId: string,
     target: TabTarget,
-    opts?: { newTab?: boolean; viewer?: string | null }
+    opts?: { newTab?: boolean; viewer?: string | null; source?: OpenSource }
   ) => void
   close: (id: string) => void
   activate: (id: string) => void
   /** 在同一标签内导航到另一位置（离开的位置进入该标签的后退栈） */
-  navigate: (id: string, target: TabTarget) => void
+  navigate: (id: string, target: TabTarget, opts?: { source?: OpenSource }) => void
   /** 该标签的历史中后退 / 前进（没有可去的位置时不变） */
   back: (id: string) => void
   forward: (id: string) => void
@@ -70,6 +81,13 @@ export const useTabsStore = create<TabsStore>((set, get) => {
     const next = layoutReducer(prev, action, newId)
     if (next !== prev) set({ byWorkspace: { ...byWorkspace, [workspaceId]: next } })
   }
+  /** 来源命中记录规则时发出记录信号 */
+  const signal = (workspaceId: string, target: TabTarget, source: OpenSource | undefined): void => {
+    if (!shouldRecordRecent(target.kind, source)) return
+    set({
+      recentSignal: { seq: get().recentSignal.seq + 1, workspaceId, location: target }
+    })
+  }
   const dispatchById = (action: TabsAction & { id: string }): void => {
     const entry = Object.entries(get().byWorkspace).find(([, s]) =>
       s.tabs.some((t) => t.id === action.id)
@@ -78,7 +96,11 @@ export const useTabsStore = create<TabsStore>((set, get) => {
   }
   return {
     byWorkspace: {},
-    open: (workspaceId, target) => dispatch(workspaceId, { type: 'tab/open', ...target }),
+    recentSignal: { seq: 0, workspaceId: null, location: null },
+    open: (workspaceId, target, opts) => {
+      dispatch(workspaceId, { type: 'tab/open', ...target })
+      signal(workspaceId, target, opts?.source)
+    },
     openHere: (workspaceId, target, opts) => {
       const { activeId } = get().byWorkspace[workspaceId] ?? EMPTY
       const viewer = opts?.viewer
@@ -96,10 +118,17 @@ export const useTabsStore = create<TabsStore>((set, get) => {
           ...(viewer === undefined ? {} : { viewer })
         })
       }
+      signal(workspaceId, target, opts?.source)
     },
     close: (id) => dispatchById({ type: 'tab/close', id }),
     activate: (id) => dispatchById({ type: 'tab/activate', id }),
-    navigate: (id, target) => dispatchById({ type: 'tab/navigate', id, ...target }),
+    navigate: (id, target, opts) => {
+      dispatchById({ type: 'tab/navigate', id, ...target })
+      const workspaceId = Object.entries(get().byWorkspace).find(([, st]) =>
+        st.tabs.some((t) => t.id === id)
+      )?.[0]
+      if (workspaceId !== undefined) signal(workspaceId, target, opts?.source)
+    },
     back: (id) => dispatchById({ type: 'tab/back', id }),
     forward: (id) => dispatchById({ type: 'tab/forward', id }),
     backFrom: (id, uri) => {

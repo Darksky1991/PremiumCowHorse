@@ -117,7 +117,7 @@ export function AddressBar(): JSX.Element {
   const goTo = (target: TabLocation, newTab: boolean): void => {
     if (workspace === undefined) return
     if (!newTab && target.uri === active?.uri) return
-    openHere(workspace.id, target, { newTab })
+    openHere(workspace.id, target, { newTab, source: 'address' })
   }
   /**
    * 当前位置（最后一段）的显示路径（悬停提示；远程为 `<连接名>:<路径>`）与复制的内容

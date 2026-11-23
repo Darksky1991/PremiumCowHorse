@@ -12,6 +12,7 @@ import {
   AlertDialogTitle
 } from '@pch/ui/components/alert-dialog'
 import { Button } from '@pch/ui/components/button'
+import { clearRecent } from '@renderer/data/recent'
 import { useCacheInfo, useClearCache } from '@renderer/data/settings'
 import { notify } from '@renderer/stores/messages-store'
 
@@ -139,17 +140,36 @@ export function AssociationsBlock({
   )
 }
 
-/** 隐私：「最近使用を消去」只留按钮位置（Task 9 接线） */
+/** 隐私：「最近使用を消去」（确认框；清除全部工作区的最近使用，不涉及磁盘上的文件） */
 export function PrivacyBlock(): JSX.Element {
   const { t } = useTranslation('settings')
+  const [confirming, setConfirming] = useState(false)
   return (
     <BlockRow title={t('privacy.recentTitle')} desc={t('privacy.recentDesc')}>
-      <>
-        <Button variant="outline" size="sm" disabled>
-          {t('privacy.clearRecent')}
-        </Button>
-        <p className="text-xs text-muted-foreground">{t('privacy.soon')}</p>
-      </>
+      <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+        {t('privacy.clearRecent')}
+      </Button>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('privacy.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('privacy.confirmDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('privacy.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                clearRecent().then(
+                  () => notify('success', t('privacy.cleared')),
+                  () => notify('error', t('privacy.clearFailed'))
+                )
+              }
+            >
+              {t('privacy.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </BlockRow>
   )
 }

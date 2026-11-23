@@ -163,16 +163,22 @@ describe('createPreviewHost: launcher', () => {
   })
 })
 
+const PLUGIN = { source: 'plugin' }
+
 describe('createPreviewHost: tabs', () => {
   it('navigate replaces the current tab with the stat of the target', async () => {
     const { host, deps } = setup()
     host.tabs.navigate(DIR)
     await flush()
-    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
-      uri: DIR,
-      kind: 'directory',
-      title: '設計書'
-    })
+    expect(deps.tabs.navigate).toHaveBeenCalledWith(
+      'tab-1',
+      {
+        uri: DIR,
+        kind: 'directory',
+        title: '設計書'
+      },
+      PLUGIN
+    )
   })
 
   it('navigate with a kind hint from the plugin skips the stat', async () => {
@@ -180,19 +186,27 @@ describe('createPreviewHost: tabs', () => {
     host.tabs.navigate(DIR, 'directory')
     await flush()
     expect(calls.filter(([c]) => c === 'vfs.stat')).toEqual([])
-    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
-      uri: DIR,
-      kind: 'directory',
-      title: '設計書'
-    })
+    expect(deps.tabs.navigate).toHaveBeenCalledWith(
+      'tab-1',
+      {
+        uri: DIR,
+        kind: 'directory',
+        title: '設計書'
+      },
+      PLUGIN
+    )
     // 驱动器根：标题为盘符
     host.tabs.navigate('file:///C:/', 'directory')
     await flush()
-    expect(deps.tabs.navigate).toHaveBeenLastCalledWith('tab-1', {
-      uri: 'file:///C:/',
-      kind: 'directory',
-      title: 'C:'
-    })
+    expect(deps.tabs.navigate).toHaveBeenLastCalledWith(
+      'tab-1',
+      {
+        uri: 'file:///C:/',
+        kind: 'directory',
+        title: 'C:'
+      },
+      PLUGIN
+    )
   })
 
   it('open adds a new tab in the workspace (there are no preview tabs)', async () => {
@@ -200,12 +214,20 @@ describe('createPreviewHost: tabs', () => {
     host.tabs.open(TXT)
     host.tabs.open(DIR)
     await flush()
-    expect(deps.tabs.open).toHaveBeenCalledWith('ws', { uri: TXT, kind: 'file', title: 'memo.txt' })
-    expect(deps.tabs.open).toHaveBeenCalledWith('ws', {
-      uri: DIR,
-      kind: 'directory',
-      title: '設計書'
-    })
+    expect(deps.tabs.open).toHaveBeenCalledWith(
+      'ws',
+      { uri: TXT, kind: 'file', title: 'memo.txt' },
+      PLUGIN
+    )
+    expect(deps.tabs.open).toHaveBeenCalledWith(
+      'ws',
+      {
+        uri: DIR,
+        kind: 'directory',
+        title: '設計書'
+      },
+      PLUGIN
+    )
   })
 
   it('navigate with a file kind opens the file in the current tab without a stat', async () => {
@@ -213,11 +235,15 @@ describe('createPreviewHost: tabs', () => {
     host.tabs.navigate(TXT, 'file')
     await flush()
     expect(calls.filter(([c]) => c === 'vfs.stat')).toEqual([])
-    expect(deps.tabs.navigate).toHaveBeenCalledWith('tab-1', {
-      uri: TXT,
-      kind: 'file',
-      title: 'memo.txt'
-    })
+    expect(deps.tabs.navigate).toHaveBeenCalledWith(
+      'tab-1',
+      {
+        uri: TXT,
+        kind: 'file',
+        title: 'memo.txt'
+      },
+      PLUGIN
+    )
   })
 
   it('up navigates the tab to the parent location given by the container (no stat)', () => {

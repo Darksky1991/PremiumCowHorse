@@ -183,6 +183,7 @@ export function ExplorerTree({
     if (request === null) return
     openHere(workspaceId, request.target, {
       newTab: request.newTab,
+      source: gesture === 'select' ? 'tree-select' : 'tree-open',
       ...(request.viewer === undefined ? {} : { viewer: request.viewer })
     })
   }

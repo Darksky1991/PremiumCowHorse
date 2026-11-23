@@ -61,8 +61,8 @@ export function WorkspaceOverview({ tab }: WorkspaceOverviewProps): JSX.Element 
       kind: entry.kind === 'folder' ? ('directory' as const) : ('file' as const),
       title: entry.label
     }
-    if (!newTab) navigate(tab.id, target)
-    else if (workspaceId !== undefined) open(workspaceId, target)
+    if (!newTab) navigate(tab.id, target, { source: 'overview' })
+    else if (workspaceId !== undefined) open(workspaceId, target, { source: 'overview' })
   }
 
   let body: JSX.Element

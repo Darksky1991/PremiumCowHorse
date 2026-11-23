@@ -441,7 +441,13 @@ export default {
       recentTitle: '最近使った項目',
       recentDesc: '最近開いた項目の履歴を消去します。',
       clearRecent: '最近使用を消去',
-      soon: '今後のマイルストーンで利用できます'
+      confirmTitle: '最近使った項目を消去しますか？',
+      confirmDesc:
+        'すべてのワークスペースの履歴を消去します。ディスク上のファイルは変更されません。',
+      confirm: '消去',
+      cancel: 'キャンセル',
+      cleared: '最近使った項目を消去しました',
+      clearFailed: '最近使った項目を消去できませんでした'
     },
     options: {
       language: {

@@ -14,6 +14,7 @@ import {
   sftpNameOf,
   type DirectoryListing,
   type ErrorCode,
+  type OpenSource,
   type TabLocation
 } from '@pch/shared'
 import type { Invoke } from '@renderer/data/vfs'
@@ -50,8 +51,8 @@ export interface PreviewHostDeps {
     selected: () => string | null
   }
   tabs: {
-    open: (workspaceId: string, target: TabTarget) => void
-    navigate: (id: string, target: TabTarget) => void
+    open: (workspaceId: string, target: TabTarget, opts?: { source?: OpenSource }) => void
+    navigate: (id: string, target: TabTarget, opts?: { source?: OpenSource }) => void
   }
   /** 可执行类文件的确认框；用户确认时为 true */
   confirmExecutable: (name: string) => Promise<boolean>
@@ -139,12 +140,12 @@ export function createPreviewHost(deps: PreviewHostDeps): PreviewHost {
         const workspaceId = deps.workspaceId
         if (workspaceId === undefined) return
         target(uri)
-          .then((t) => deps.tabs.open(workspaceId, t))
+          .then((t) => deps.tabs.open(workspaceId, t, { source: 'plugin' }))
           .catch(reportError)
       },
       navigate: (uri, kind) => {
         target(uri, kind)
-          .then((t) => deps.tabs.navigate(tabId, t))
+          .then((t) => deps.tabs.navigate(tabId, t, { source: 'plugin' }))
           .catch(reportError)
       },
       up: () => {

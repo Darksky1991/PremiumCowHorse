@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { builtinPlugins } from '@pch/plugin-builtin'
 import { AddressBar } from '@renderer/features/address-bar'
+import { RecentRecorder } from '@renderer/features/command-palette'
 import { ConnectionsView, HostKeyPrompts } from '@renderer/features/connections'
 import { DesktopPrompts, DesktopView, SnapshotPage } from '@renderer/features/desktop'
 import { AboutPage } from '@renderer/features/about'
@@ -49,6 +50,7 @@ export function App(): JSX.Element {
           />
         }
       />
+      <RecentRecorder />
       <DesktopPrompts />
       <HostKeyPrompts />
     </>

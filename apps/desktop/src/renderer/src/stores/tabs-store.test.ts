@@ -12,7 +12,13 @@ import {
 const file = (uri: string): TabTarget => ({ uri, kind: 'file', title: uri })
 
 describe('tabs-store', () => {
-  beforeEach(() => useTabsStore.setState({ byWorkspace: {}, refreshSeq: {} }))
+  beforeEach(() =>
+    useTabsStore.setState({
+      byWorkspace: {},
+      refreshSeq: {},
+      recentSignal: { seq: 0, workspaceId: null, location: null }
+    })
+  )
 
   it('按工作区区分标签集合：一个工作区的操作不影响另一个', () => {
     const { open } = useTabsStore.getState()
@@ -188,5 +194,44 @@ describe('tabs-store', () => {
     expect(selectTabs('w1')(useTabsStore.getState()).tabs[0]!.viewer).toBe('pch.preview.text')
     useTabsStore.getState().setViewer(id, null)
     expect(selectTabs('w1')(useTabsStore.getState()).tabs[0]!.viewer).toBeUndefined()
+  })
+  describe('recentSignal（D1）', () => {
+    const seq = (): number => useTabsStore.getState().recentSignal.seq
+
+    it('openHere 的 source 为 tree-open 时 seq 加 1 并带上位置，tree-select / 未指定不变', () => {
+      const { openHere } = useTabsStore.getState()
+      openHere('w1', file('a'), { source: 'tree-select' })
+      openHere('w1', file('b'))
+      expect(seq()).toBe(0)
+      openHere('w1', file('c'), { source: 'tree-open' })
+      expect(seq()).toBe(1)
+      expect(useTabsStore.getState().recentSignal).toMatchObject({
+        workspaceId: 'w1',
+        location: { uri: 'c', kind: 'file' }
+      })
+    })
+
+    it('open / navigate 同样按来源发出信号；插件打开目录不发', () => {
+      const { open, navigate } = useTabsStore.getState()
+      open('w1', file('a'), { source: 'overview' })
+      expect(seq()).toBe(1)
+      const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
+      navigate(id, file('b'), { source: 'plugin' })
+      expect(seq()).toBe(2)
+      navigate(id, { uri: 'd', kind: 'directory', title: 'd' }, { source: 'plugin' })
+      navigate(id, file('e'), { source: 'address' })
+      expect(seq()).toBe(2)
+    })
+
+    it('back / forward 不发信号', () => {
+      const { openHere, back, forward } = useTabsStore.getState()
+      openHere('w1', file('a'), { source: 'tree-open' })
+      openHere('w1', file('b'), { source: 'tree-open' })
+      const id = selectTabs('w1')(useTabsStore.getState()).tabs[0]!.id
+      expect(seq()).toBe(2)
+      back(id)
+      forward(id)
+      expect(seq()).toBe(2)
+    })
   })
 })
