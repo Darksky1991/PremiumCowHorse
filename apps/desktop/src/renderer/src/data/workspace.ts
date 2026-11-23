@@ -6,7 +6,12 @@ import {
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
-import type { Workspace, WorkspaceCreateInput, WorkspaceUpdateInput } from '@pch/shared'
+import type {
+  Workspace,
+  WorkspaceCreateInput,
+  WorkspaceSummary,
+  WorkspaceUpdateInput
+} from '@pch/shared'
 import { call } from '@renderer/lib/ipc'
 import { queryKeys } from '@renderer/lib/query-keys'
 
@@ -14,6 +19,14 @@ export function useWorkspaces(): UseQueryResult<Workspace[]> {
   return useQuery({
     queryKey: queryKeys.workspaces,
     queryFn: () => call('workspace.list', undefined)
+  })
+}
+
+/** 选择器摘要：全部工作区的条目数与根级前 4 项；随 workspace.changed 失效 */
+export function useWorkspaceSummaries(): UseQueryResult<WorkspaceSummary[]> {
+  return useQuery({
+    queryKey: queryKeys.workspaceSummaries,
+    queryFn: () => call('workspace.summaries', undefined)
   })
 }
 
@@ -38,6 +51,8 @@ export interface WorkspaceActions {
   update: UseMutationResult<Workspace, Error, WorkspaceUpdateInput>
   remove: UseMutationResult<void, Error, string>
   activate: UseMutationResult<void, Error, string>
+  /** 参数为全部未归档工作区 id 的完整新顺序 */
+  reorder: UseMutationResult<void, Error, string[]>
 }
 
 /** 写操作成功后主进程会广播 workspace.changed，缓存由 query-client 的桥接失效 */
@@ -54,7 +69,10 @@ export function useWorkspaceActions(): WorkspaceActions {
   const activate = useMutation({
     mutationFn: (id: string) => call('workspace.activate', { id })
   })
-  return { create, update, remove, activate }
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) => call('workspace.reorder', { ids })
+  })
+  return { create, update, remove, activate, reorder }
 }
 
 /** 工作区显示名：name 为空（默认工作区恢复默认名称）时用本地化的默认名 */

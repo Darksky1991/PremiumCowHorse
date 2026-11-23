@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CACHE_STRATEGIES } from '../scanner/types'
+import { WORKSPACE_COLORS } from './colors'
 
 const id = z.string().min(1)
 const name = z.string().trim().min(1).max(100)
@@ -9,7 +10,7 @@ const parentId = id.nullable()
 export const WorkspaceCreateInput = z.strictObject({
   name,
   description: z.string().max(500).optional(),
-  color: z.string().max(32).optional()
+  color: z.enum(WORKSPACE_COLORS).optional()
 })
 export type WorkspaceCreateInput = z.infer<typeof WorkspaceCreateInput>
 
@@ -18,9 +19,13 @@ export const WorkspaceUpdateInput = z.strictObject({
   // 允许空字符串：仅默认工作区可用来恢复本地化的默认名称（由服务层校验）
   name: z.string().trim().max(100).optional(),
   description: z.string().max(500).nullable().optional(),
-  color: z.string().max(32).nullable().optional()
+  color: z.enum(WORKSPACE_COLORS).nullable().optional()
 })
 export type WorkspaceUpdateInput = z.infer<typeof WorkspaceUpdateInput>
+
+/** 完整顺序：必须恰好是全部未归档工作区 id 的一个排列（由服务层校验） */
+export const WorkspaceReorderInput = z.strictObject({ ids: z.array(id).min(1) })
+export type WorkspaceReorderInput = z.infer<typeof WorkspaceReorderInput>
 
 /**
  * folder / file 条目以本地路径（path，由主进程转为 file URI）或 URI（uri，由 VFS 校验）添加，

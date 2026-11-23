@@ -10,6 +10,8 @@ export const queryKeys = {
   /** 'workspace' 前缀用于一次性使工作区相关缓存失效 */
   workspaceRoot: ['workspace'] as const,
   workspaces: ['workspace', 'list'] as const,
+  /** 选择器摘要（'workspace' 前缀，随 workspace.changed 失效） */
+  workspaceSummaries: ['workspace', 'summaries'] as const,
   activeWorkspace: ['workspace', 'active'] as const,
   entries: (workspaceId: string) => ['entry', 'list', workspaceId] as const,
   /** 工作区的「建立索引」目录（URI 列表） */

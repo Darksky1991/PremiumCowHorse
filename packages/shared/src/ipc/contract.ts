@@ -8,6 +8,7 @@ import {
   IndexSetTargetInput,
   EntryUpdateInput,
   WorkspaceCreateInput,
+  WorkspaceReorderInput,
   WorkspaceUpdateInput
 } from '../workspace/schema'
 import type { DirectoryListing, FileStat } from '../vfs/types'
@@ -22,7 +23,7 @@ import {
 } from '../doc/types'
 import type { SearchResult } from '../search/types'
 import type { OfflineShare, ReachabilityEvent } from '../scanner/types'
-import type { Workspace, WorkspaceEntry } from '../workspace/types'
+import type { Workspace, WorkspaceEntry, WorkspaceSummary } from '../workspace/types'
 import { LAUNCH_MODES, type LaunchCapabilities } from '../launcher/types'
 import type { WebNotice, WebShortcut, WebViewState } from '../web/types'
 import { ConnectionSaveInput, ConnectionTrustHostKeyInput } from '../connection/schema'
@@ -106,6 +107,10 @@ export const ipcContract = {
   'workspace.update': route<Workspace>()(WorkspaceUpdateInput),
   'workspace.delete': route<void>()(z.strictObject({ id: z.string().min(1) })),
   'workspace.activate': route<void>()(z.strictObject({ id: z.string().min(1) })),
+  /** 选择器用的摘要（全部工作区，含已归档） */
+  'workspace.summaries': route<WorkspaceSummary[]>()(z.void()),
+  /** 完整顺序：必须恰好是全部未归档工作区的排列，否则 IPC_BAD_INPUT */
+  'workspace.reorder': route<void>()(WorkspaceReorderInput),
   /** 工作区条目（group / folder / file） */
   'entry.list': route<WorkspaceEntry[]>()(z.strictObject({ workspaceId: z.string().min(1) })),
   'entry.add': route<WorkspaceEntry>()(EntryAddInput),

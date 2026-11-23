@@ -83,6 +83,14 @@ describe('workspace repositories (migration 0002)', () => {
     })
   })
 
+  it('reads an invalid legacy colour value as null', async () => {
+    await workspaces.insert(workspace('w1'))
+    await db.updateTable('workspaces').set({ color: '#ff0000' }).where('id', '=', 'w1').execute()
+    expect((await workspaces.get('w1'))?.color).toBeNull()
+    await workspaces.update('w1', { color: 'teal' })
+    expect((await workspaces.get('w1'))?.color).toBe('teal')
+  })
+
   it('cascades entry deletion when a workspace is deleted (foreign keys on)', async () => {
     await workspaces.insert(workspace('w1'))
     await entries.insert(entry('e1', { workspaceId: 'w1' }))
