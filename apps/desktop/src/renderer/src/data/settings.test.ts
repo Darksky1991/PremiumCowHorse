@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Settings } from '@pch/shared'
 import { queryKeys } from '@renderer/lib/query-keys'
 import { settingsMutationHandlers } from './settings'
@@ -58,11 +58,61 @@ describe('settingsMutationHandlers', () => {
     expect(cache()['appearance.theme']).toBe('aitetsu')
   })
 
-  it('compares object values (associations) by content', () => {
+  it('compares object values by content: a broadcast with an equal new object is still rolled back', () => {
     const p1 = { 'preview.associations': { txt: 'a' } } as never
     const c1 = h.onMutate(p1)
+    client.setQueryData(queryKeys.settings, {
+      ...cache(),
+      'preview.associations': { txt: 'a' }
+    })
     h.onError(err, p1, c1)
     expect(cache()['preview.associations']).toEqual({})
+  })
+
+  describe('refetch after a failure (server is the final truth)', () => {
+    let inFlight: number
+    let invalidate: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      inFlight = 0
+      h = settingsMutationHandlers(client, () => inFlight)
+      // 模拟重新拉取：主进程仍是初始值
+      invalidate = vi.spyOn(client, 'invalidateQueries').mockImplementation(async () => {
+        client.setQueryData(queryKeys.settings, base)
+      })
+    })
+
+    it('two writes of the same key fail in turn → ends at the server value', () => {
+      const p1 = { 'appearance.theme': 'washi' } as never
+      const p2 = { 'appearance.theme': 'matsuba' } as never
+      const c1 = h.onMutate(p1)
+      const c2 = h.onMutate(p2)
+      inFlight = 1 // 第 1 次失败时第 2 次仍在途
+      h.onError(err, p1, c1)
+      expect(invalidate).not.toHaveBeenCalled()
+      inFlight = 0
+      h.onError(err, p2, c2)
+      expect(invalidate).toHaveBeenCalledTimes(1)
+      expect(cache()['appearance.theme']).toBe('default')
+    })
+
+    it('same-value ABA: the first of two identical writes fails while the second is in flight', () => {
+      const p = { 'appearance.theme': 'washi' } as never
+      const c1 = h.onMutate(p)
+      h.onMutate(p)
+      inFlight = 1
+      h.onError(err, p, c1)
+      expect(invalidate).not.toHaveBeenCalled()
+      inFlight = 0
+      // 第 2 次若失败：重新拉取回到服务器值
+      h.onError(err, p, h.onMutate(p))
+      expect(cache()['appearance.theme']).toBe('default')
+    })
+
+    it('a single failure refetches too', () => {
+      const p = { 'appearance.theme': 'washi' } as never
+      h.onError(err, p, h.onMutate(p))
+      expect(invalidate).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('does nothing while the cache is not loaded', () => {

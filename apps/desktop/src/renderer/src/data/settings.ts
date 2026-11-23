@@ -36,7 +36,11 @@ const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSO
  * - onError 只还原本次 patch 涉及的键，且仅当缓存中该键仍等于本次的乐观值时才还原：
  *   之后又有写入（乐观值已被覆盖）或 settings.changed 广播到达的键保持现状，其他键不动。
  */
-export function settingsMutationHandlers(client: QueryClient): {
+export function settingsMutationHandlers(
+  client: QueryClient,
+  /** 除本次之外仍在途的设置写入数（有在途写入时失败不重新拉取，避免短暂显示旧值） */
+  othersInFlight: () => number = () => 0
+): {
   onMutate: (patch: SettingsPatch) => SettingsMutationContext
   onError: (
     error: Error,
@@ -66,9 +70,14 @@ export function settingsMutationHandlers(client: QueryClient): {
         }
         return next as Settings
       })
+      // 按键还原只是即时反馈（连续写入同一键时「写入前的值」可能是另一次未确认的乐观值）：
+      // 最终以主进程为准，没有其他在途写入时重新拉取
+      if (othersInFlight() === 0) void client.invalidateQueries({ queryKey: queryKeys.settings })
     }
   }
 }
+
+const SETTINGS_MUTATION_KEY = ['settings.set'] as const
 
 /** 写入设置：主进程保存后会广播 settings.changed，缓存由 query-client 的桥接更新 */
 export function useUpdateSettings(): UseMutationResult<
@@ -79,8 +88,13 @@ export function useUpdateSettings(): UseMutationResult<
 > {
   const client = useQueryClient()
   return useMutation({
+    mutationKey: SETTINGS_MUTATION_KEY,
     mutationFn: (patch: SettingsPatch) => call('settings.set', patch),
-    ...settingsMutationHandlers(client)
+    // onError 执行时本次写入仍计入 isMutating，减 1 得到「其他」在途写入
+    ...settingsMutationHandlers(
+      client,
+      () => client.isMutating({ mutationKey: SETTINGS_MUTATION_KEY }) - 1
+    )
   })
 }
 
