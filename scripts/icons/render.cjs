@@ -34,11 +34,17 @@ async function renderOne(svgUrl, size) {
   )
   await new Promise((r) => setTimeout(r, 150))
   const image = await win.webContents.capturePage()
-  const resized =
-    image.getSize().width === size
+  // Windows 的离屏窗口有最小高度，capturePage 可能比 size 高（内容在左上）：裁剪而不是拉伸；
+  // 比 size 小则无法正确处理，直接报错
+  const got = image.getSize()
+  if (got.width < size || got.height < size) {
+    throw new Error(`capturePage 尺寸 ${got.width}x${got.height} 小于 ${size}`)
+  }
+  const out =
+    got.width === size && got.height === size
       ? image
-      : image.resize({ width: size, height: size, quality: 'best' })
-  fs.writeFileSync(path.join(outDir, `${size}.png`), resized.toPNG())
+      : image.crop({ x: 0, y: 0, width: size, height: size })
+  fs.writeFileSync(path.join(outDir, `${size}.png`), out.toPNG())
   win.destroy()
 }
 

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { encodeIco } from './icons/ico.mjs'
+import { encodeIco, pngSize } from './icons/ico.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const desktop = join(root, 'apps/desktop')
@@ -26,6 +26,20 @@ try {
   )
   if (r.status !== 0) throw new Error(`render.cjs 失败，退出码 ${r.status}`)
   const pngs = SIZES.map((size) => ({ size, data: readFileSync(join(tmp, `${size}.png`)) }))
+  // ICO 目录项写的是 size×size，内嵌 PNG 必须与之完全一致
+  for (const { size, data } of pngs) {
+    const { width, height } = pngSize(data)
+    if (width !== size || height !== size) {
+      throw new Error(`${size}.png 的实际尺寸为 ${width}x${height}，应为 ${size}x${size}`)
+    }
+  }
+  // 留存各尺寸 PNG 供目视检查（可选）
+  if (process.env.PCH_ICON_SIZES_DIR) {
+    mkdirSync(process.env.PCH_ICON_SIZES_DIR, { recursive: true })
+    for (const { size, data } of pngs) {
+      writeFileSync(join(process.env.PCH_ICON_SIZES_DIR, `${size}.png`), data)
+    }
+  }
   mkdirSync(join(desktop, 'build'), { recursive: true })
   mkdirSync(join(desktop, 'resources'), { recursive: true })
   writeFileSync(join(desktop, 'build/icon.ico'), encodeIco(pngs))

@@ -27,3 +27,20 @@ export function encodeIco(images) {
   })
   return Buffer.concat([header, ...images.map((i) => i.data)])
 }
+
+/**
+ * 读取 PNG 的 IHDR 宽高（签名 8 字节 + 长度 4 + 'IHDR' 4，之后是大端宽、高）。
+ * @param {Buffer} buf
+ * @returns {{ width: number; height: number }}
+ */
+export function pngSize(buf) {
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  if (
+    buf.length < 24 ||
+    !buf.subarray(0, 8).equals(sig) ||
+    buf.toString('latin1', 12, 16) !== 'IHDR'
+  ) {
+    throw new Error('不是有效的 PNG')
+  }
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
