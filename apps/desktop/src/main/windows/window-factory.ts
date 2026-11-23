@@ -24,6 +24,8 @@ const BACKGROUND: Record<ThemeName, { light: string; dark: string }> = {
 export interface CreateWindowOptions {
   url: string
   preload: string
+  /** 窗口 / 任务栏图标（paths.appIcon） */
+  icon: string
   title: string
   language: Language
   settings: Settings
@@ -57,6 +59,7 @@ export function createAppWindow(opts: CreateWindowOptions): BrowserWindow {
     minWidth: 720,
     minHeight: 480,
     show: false,
+    icon: opts.icon,
     backgroundColor: BACKGROUND[opts.settings['appearance.theme']][theme],
     // 隐藏系统标题栏：Windows / Linux 不显示原生窗口按钮（由渲染端自绘），保留可调整大小的边框；
     // macOS 保留系统惯例的红绿灯

@@ -41,6 +41,7 @@ export class WindowService {
     const win = createAppWindow({
       url: this.rendererUrl,
       preload: this.paths.preload,
+      icon: this.paths.appIcon,
       title: this.title(),
       language: resolveLanguage(settings['general.language'], app.getLocale()),
       settings

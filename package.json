@@ -15,6 +15,7 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "eslint --cache .",
     "format": "prettier --write .",
+    "icons": "node scripts/build-icons.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },

@@ -161,6 +161,14 @@ export default defineConfig(
     ]
   },
   tseslint.configs.recommended,
+  {
+    // 构建脚本是纯 JS（node / electron 直接运行，无类型标注；electron 的入口只能是 CommonJS）
+    files: ['scripts/**/*.{mjs,cjs}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-require-imports': 'off'
+    }
+  },
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
   {

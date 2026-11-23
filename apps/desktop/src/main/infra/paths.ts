@@ -12,6 +12,8 @@ export interface AppPaths {
   /** Markdown 查看脚本的构建产物（vite.markdown.config.ts；pch-asset 协议的根，位于 asar 内） */
   webAssets: string
   preload: string
+  /** 窗口 / 任务栏图标（apps/desktop/resources/icon.png，由 pnpm icons 生成；打包后随 asar 解包） */
+  appIcon: string
 }
 
 /**
@@ -35,6 +37,11 @@ export function createPaths(): AppPaths {
     logs: path.join(userData, 'logs'),
     renderer: path.join(outMain, '../renderer'),
     webAssets: path.join(outMain, '../web-assets/markdown'),
-    preload: path.join(outMain, '../preload/index.js')
+    preload: path.join(outMain, '../preload/index.js'),
+    // 开发：out/main → apps/desktop/resources；打包：resources/** 在 asarUnpack 中，位于 app.asar.unpacked
+    // （BrowserWindow 的 icon 由原生代码读取，不能经过 asar 内的虚拟路径）
+    appIcon: app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'icon.png')
+      : path.join(outMain, '../../resources/icon.png')
   }
 }

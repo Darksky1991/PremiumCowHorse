@@ -6,6 +6,7 @@
   "exports": {
     "./globals.css": "./src/styles/globals.css",
     "./file-icon": "./src/file-icon.tsx",
+    "./logo-mark": "./src/logo-mark.tsx",
     "./lib/*": "./src/lib/*.ts",
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts"
