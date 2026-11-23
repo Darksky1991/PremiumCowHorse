@@ -375,7 +375,6 @@ export default {
   },
   about: {
     title: 'About this app',
-    settingsTitle: 'Settings',
     version: 'Version',
     electron: 'Electron',
     chromium: 'Chromium',
@@ -387,7 +386,234 @@ export default {
     openData: 'Open data folder',
     copyDiagnostics: 'Copy diagnostics',
     copied: 'Diagnostics copied',
-    openFailed: 'Could not open the folder'
+    openFailed: 'Could not open the folder',
+    copyFailed: 'Could not copy the diagnostics'
+  },
+  settings: {
+    title: 'Settings',
+    searchPlaceholder: 'Search settings…',
+    searchLabel: 'Search settings',
+    noResults: 'No matching settings',
+    navLabel: 'Settings categories',
+    sections: {
+      general: 'General',
+      appearance: 'Appearance',
+      workspace: 'Workspace',
+      explorer: 'Explorer',
+      preview: 'Preview',
+      cache: 'Cache and scanning',
+      remote: 'Remote connections',
+      desktop: 'Desktop records',
+      privacy: 'Privacy'
+    },
+    about: 'About this app',
+    reset: 'Restore default',
+    unit: {
+      sec: 's',
+      ms: 'ms',
+      min: 'min',
+      mb: 'MB'
+    },
+    error: {
+      required: 'Enter a value',
+      invalid: 'Enter a valid value',
+      integer: 'Enter a whole number',
+      range: 'Enter a value from {{min}} to {{max}}',
+      min: 'Enter a value of {{min}} or more'
+    },
+    keepaliveNote: 'Applies to new connections',
+    associations: {
+      title: 'File associations',
+      desc: 'The "always open with" choices saved per extension.',
+      empty: 'No file associations',
+      remove: 'Remove the association for {{ext}}'
+    },
+    cache: {
+      usage: 'Cache size',
+      usageLoading: 'Checking…',
+      usageUnavailable: 'Unavailable',
+      clear: 'Clear cache',
+      confirmTitle: 'Clear the cache?',
+      confirmDesc:
+        'Removes the folder listing cache and the index. Files on disk are not changed. They are rebuilt the next time you browse.',
+      confirm: 'Clear',
+      cancel: 'Cancel',
+      cleared: 'Cache cleared',
+      clearFailed: 'Could not clear the cache'
+    },
+    privacy: {
+      recentTitle: 'Recent items',
+      recentDesc: 'Clears the history of recently opened items.',
+      clearRecent: 'Clear recent items',
+      soon: 'Available in a later milestone'
+    },
+    options: {
+      language: {
+        system: 'Follow system',
+        ja: '日本語',
+        'zh-CN': '简体中文',
+        en: 'English'
+      },
+      themeMode: {
+        system: 'Follow system',
+        light: 'Light',
+        dark: 'Dark'
+      },
+      theme: {
+        default: 'Standard',
+        aitetsu: 'Aitetsu',
+        washi: 'Washi',
+        matsuba: 'Matsuba'
+      },
+      accent: {
+        neutral: 'Theme default',
+        blue: 'Blue',
+        green: 'Green',
+        violet: 'Violet',
+        orange: 'Orange'
+      },
+      density: {
+        comfortable: 'Comfortable',
+        compact: 'Compact'
+      },
+      reduceMotion: {
+        system: 'Follow system',
+        on: 'On',
+        off: 'Off'
+      },
+      pickerStyle: {
+        carousel: 'Ring',
+        menu: 'Menu'
+      },
+      strategy: {
+        passive: 'Passive',
+        default: 'Default',
+        active: 'Active',
+        all: 'All'
+      }
+    },
+    item: {
+      general_language: {
+        name: 'Language',
+        desc: 'The language used in the interface.'
+      },
+      appearance_theme: {
+        name: 'Color theme',
+        desc: 'The color palette of the whole interface.'
+      },
+      appearance_themeMode: {
+        name: 'Light / dark',
+        desc: 'Switch between light and dark.'
+      },
+      appearance_accent: {
+        name: 'Accent color',
+        desc: 'The highlight color of buttons and selections.'
+      },
+      appearance_density: {
+        name: 'Density',
+        desc: 'How tightly lists and spacing are laid out.'
+      },
+      appearance_reduceMotion: {
+        name: 'Reduce motion',
+        desc: 'Tones down animations. "Follow system" uses the OS setting.'
+      },
+      workspace_pickerStyle: {
+        name: 'Workspace picker style',
+        desc: 'How the picker looks when switching workspaces.'
+      },
+      workspace_pickerDetail: {
+        name: 'Show details by default',
+        desc: 'Show detailed information on workspace picker cards.'
+      },
+      explorer_showHiddenFiles: {
+        name: 'Show hidden files',
+        desc: 'Show files and folders with the hidden attribute.'
+      },
+      explorer_singleClickPreview: {
+        name: 'Open on single click',
+        desc: 'Select an item (or move to it with the arrow keys) to open its preview. When off, double-click or press Enter.'
+      },
+      preview_maxTextSizeMB: {
+        name: 'Text preview size limit',
+        desc: 'Text files larger than this are not opened directly.'
+      },
+      cache_strategy_local: {
+        name: 'Cache strategy (local)',
+        desc: 'Default cache strategy for local folders. Each item can override it.'
+      },
+      cache_strategy_network: {
+        name: 'Cache strategy (network)',
+        desc: 'Default cache strategy for network folders. Each item can override it.'
+      },
+      cache_activeDepth: {
+        name: 'Look-ahead depth for "Active"',
+        desc: 'How many levels above and below the focused location the "Active" strategy reads ahead.'
+      },
+      cache_interval_focus_local: {
+        name: 'Check interval: focused (local)',
+        desc: 'How often the focused location is checked.'
+      },
+      cache_interval_near_local: {
+        name: 'Check interval: nearby (local)',
+        desc: 'How often locations near the focus are checked.'
+      },
+      cache_interval_far_local: {
+        name: 'Check interval: distant (local)',
+        desc: 'How often locations far from the focus are checked.'
+      },
+      cache_interval_focus_network: {
+        name: 'Check interval: focused (network)',
+        desc: 'How often the focused location is checked.'
+      },
+      cache_interval_near_network: {
+        name: 'Check interval: nearby (network)',
+        desc: 'How often locations near the focus are checked.'
+      },
+      cache_interval_far_network: {
+        name: 'Check interval: distant (network)',
+        desc: 'How often locations far from the focus are checked.'
+      },
+      cache_backgroundGapMs_local: {
+        name: 'Background pause (local)',
+        desc: 'Pause after each folder when filling the cache in the background.'
+      },
+      cache_backgroundGapMs_network: {
+        name: 'Background pause (network)',
+        desc: 'Pause after each folder when filling the cache in the background.'
+      },
+      vfs_timeoutSec_local: {
+        name: 'Timeout (local)',
+        desc: 'The longest to wait without a response.'
+      },
+      vfs_timeoutSec_network: {
+        name: 'Timeout (network)',
+        desc: 'The longest to wait without a response.'
+      },
+      remote_keepaliveSec: {
+        name: 'Keepalive interval',
+        desc: 'How often the connection is checked. Three missed replies in a row count as a disconnect.'
+      },
+      remote_idleDisconnectMin: {
+        name: 'Disconnect when idle',
+        desc: 'Disconnect after this long without any request.'
+      },
+      vfs_timeoutSec_remote: {
+        name: 'Timeout (remote)',
+        desc: 'The longest to wait for a remote file operation.'
+      },
+      cache_backgroundGapMs_remote: {
+        name: 'Background pause (remote)',
+        desc: 'Pause after each folder when filling the remote cache in the background.'
+      },
+      cache_remoteIndexIntervalMin: {
+        name: 'Index refresh interval (remote)',
+        desc: 'How often the index of remote folders is rebuilt.'
+      },
+      desktop_askOnExit: {
+        name: 'Ask before saving on exit',
+        desc: 'Ask which desktop items to save when quitting. When off, everything is saved.'
+      }
+    }
   },
   tabs: {
     label: 'Open tabs',

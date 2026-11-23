@@ -4,6 +4,8 @@ import type { SearchKindFilter } from '@pch/shared'
 export const queryKeys = {
   appInfo: ['app', 'info'] as const,
   settings: ['settings'] as const,
+  /** 缓存占用（设置页）；清空缓存后失效 */
+  cacheInfo: ['vfs', 'cache-info'] as const,
   windowState: ['window', 'state'] as const,
   /** 'workspace' 前缀用于一次性使工作区相关缓存失效 */
   workspaceRoot: ['workspace'] as const,

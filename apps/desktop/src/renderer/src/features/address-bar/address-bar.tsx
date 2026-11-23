@@ -82,6 +82,8 @@ export function AddressBar(): JSX.Element {
     ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
     : undefined
   const workspacesTitle = t('workspace:listPage')
+  const settingsTitle = t('settings:title')
+  const aboutTitle = t('about:title')
   const ctx = useMemo<LogicalPathContext | null>(
     () =>
       workspace === undefined || workspaceName === undefined
@@ -89,9 +91,11 @@ export function AddressBar(): JSX.Element {
         : {
             workspace: { id: workspace.id, name: workspaceName },
             workspacesTitle,
+            settingsTitle,
+            aboutTitle,
             entries: entries ?? []
           },
-    [workspace, workspaceName, workspacesTitle, entries]
+    [workspace, workspaceName, workspacesTitle, settingsTitle, aboutTitle, entries]
   )
   const segments = useMemo<PathSegment[]>(() => {
     if (ctx === null) return []

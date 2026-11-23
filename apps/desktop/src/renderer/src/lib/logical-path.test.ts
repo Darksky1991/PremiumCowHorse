@@ -32,6 +32,8 @@ const group = entry('group', '分组', null)
 const ctx: LogicalPathContext = {
   workspace: { id: 'w1', name: '保守' },
   workspacesTitle: 'ワークスペース一覧',
+  settingsTitle: '設定',
+  aboutTitle: 'このアプリについて',
   entries: [
     group,
     // 放在分组之下：分组不出现在逻辑路径中
@@ -65,9 +67,13 @@ describe('logicalPath', () => {
     expect(entryOf(loc, ctx.entries)).toBeNull()
   })
 
-  it('设置页 / 关于页：只有一段（标签为位置标题），上一级为 null，不属于任何条目', () => {
-    for (const loc of [settingsLocation('設定'), aboutLocation('このアプリについて')]) {
-      expect(logicalPath(loc, ctx)).toEqual([{ label: loc.title, kind: loc.kind, target: loc }])
+  it('设置页 / 关于页：只有一段（标签为 ctx 中本地化的名称，不用标签标题的快照），上一级为 null，不属于任何条目', () => {
+    const cases = [
+      { loc: settingsLocation('旧標題'), label: '設定' },
+      { loc: aboutLocation('旧標題'), label: 'このアプリについて' }
+    ]
+    for (const { loc, label } of cases) {
+      expect(logicalPath(loc, ctx)).toEqual([{ label, kind: loc.kind, target: loc }])
       expect(parentLocation(loc, ctx)).toBeNull()
       expect(entryOf(loc, ctx.entries)).toBeNull()
     }

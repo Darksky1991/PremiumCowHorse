@@ -297,6 +297,8 @@ function PluginView({
     ? workspaceDisplayName(workspace, t('common:defaultWorkspace'))
     : undefined
   const workspacesTitle = t('workspace:listPage')
+  const settingsTitle = t('settings:title')
+  const aboutTitle = t('about:title')
   const parent = useMemo(
     () =>
       workspace === undefined || workspaceName === undefined
@@ -306,10 +308,22 @@ function PluginView({
             {
               workspace: { id: workspace.id, name: workspaceName },
               workspacesTitle,
+              settingsTitle,
+              aboutTitle,
               entries: entries ?? []
             }
           ),
-    [workspace, workspaceName, workspacesTitle, entries, tab.uri, tab.kind, tab.title]
+    [
+      workspace,
+      workspaceName,
+      workspacesTitle,
+      settingsTitle,
+      aboutTitle,
+      entries,
+      tab.uri,
+      tab.kind,
+      tab.title
+    ]
   )
   const offlineShares = useReachabilityStore((s) => s.offlineShares)
   const connectionNames = useConnectionNames()

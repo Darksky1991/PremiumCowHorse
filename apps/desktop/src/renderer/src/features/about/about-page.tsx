@@ -49,7 +49,7 @@ export function AboutPage(_props: AboutPageProps): JSX.Element {
     if (!info) return
     call('system.copyText', { text: diagnosticsText(info) })
       .then(() => notify('success', t('copied')))
-      .catch(() => notify('error', t('openFailed')))
+      .catch(() => notify('error', t('copyFailed')))
   }
 
   const rows: Array<[string, string]> = info

@@ -371,7 +371,6 @@ export default {
   },
   about: {
     title: 'このアプリについて',
-    settingsTitle: '設定',
     version: 'バージョン',
     electron: 'Electron',
     chromium: 'Chromium',
@@ -383,7 +382,234 @@ export default {
     openData: 'データフォルダーを開く',
     copyDiagnostics: '診断情報をコピー',
     copied: '診断情報をコピーしました',
-    openFailed: 'フォルダーを開けませんでした'
+    openFailed: 'フォルダーを開けませんでした',
+    copyFailed: '診断情報をコピーできませんでした'
+  },
+  settings: {
+    title: '設定',
+    searchPlaceholder: '設定を検索…',
+    searchLabel: '設定を検索',
+    noResults: '一致する設定がありません',
+    navLabel: '設定の分類',
+    sections: {
+      general: '一般',
+      appearance: '外観',
+      workspace: 'ワークスペース',
+      explorer: 'エクスプローラー',
+      preview: 'プレビュー',
+      cache: 'キャッシュとスキャン',
+      remote: 'リモート接続',
+      desktop: 'デスクトップ記録',
+      privacy: 'プライバシー'
+    },
+    about: 'このアプリについて',
+    reset: '既定に戻す',
+    unit: {
+      sec: '秒',
+      ms: 'ミリ秒',
+      min: '分',
+      mb: 'MB'
+    },
+    error: {
+      required: '値を入力してください',
+      invalid: '正しい値を入力してください',
+      integer: '整数を入力してください',
+      range: '{{min}}〜{{max}} の範囲で入力してください',
+      min: '{{min}} 以上で入力してください'
+    },
+    keepaliveNote: '新しい接続から有効',
+    associations: {
+      title: 'ファイルの関連付け',
+      desc: '拡張子ごとの「常にこれで開く」の設定です。',
+      empty: '関連付けはありません',
+      remove: '{{ext}} の関連付けを削除'
+    },
+    cache: {
+      usage: 'キャッシュの使用量',
+      usageLoading: '確認中…',
+      usageUnavailable: '取得できません',
+      clear: 'キャッシュを消去',
+      confirmTitle: 'キャッシュを消去しますか？',
+      confirmDesc:
+        'フォルダー一覧のキャッシュとインデックスを消去します。ディスク上のファイルは変更されません。次回の表示時に作り直されます。',
+      confirm: '消去',
+      cancel: 'キャンセル',
+      cleared: 'キャッシュを消去しました',
+      clearFailed: 'キャッシュを消去できませんでした'
+    },
+    privacy: {
+      recentTitle: '最近使った項目',
+      recentDesc: '最近開いた項目の履歴を消去します。',
+      clearRecent: '最近使用を消去',
+      soon: '今後のマイルストーンで利用できます'
+    },
+    options: {
+      language: {
+        system: 'システムに従う',
+        ja: '日本語',
+        'zh-CN': '简体中文',
+        en: 'English'
+      },
+      themeMode: {
+        system: 'システムに従う',
+        light: 'ライト',
+        dark: 'ダーク'
+      },
+      theme: {
+        default: '標準',
+        aitetsu: '藍鉄',
+        washi: '和紙',
+        matsuba: '松葉'
+      },
+      accent: {
+        neutral: 'テーマの既定',
+        blue: 'ブルー',
+        green: 'グリーン',
+        violet: 'バイオレット',
+        orange: 'オレンジ'
+      },
+      density: {
+        comfortable: '標準',
+        compact: 'コンパクト'
+      },
+      reduceMotion: {
+        system: 'システムに従う',
+        on: 'オン',
+        off: 'オフ'
+      },
+      pickerStyle: {
+        carousel: 'リング',
+        menu: 'メニュー'
+      },
+      strategy: {
+        passive: '控えめ',
+        default: '標準',
+        active: '積極',
+        all: 'すべて'
+      }
+    },
+    item: {
+      general_language: {
+        name: '言語',
+        desc: '画面表示に使う言語です。'
+      },
+      appearance_theme: {
+        name: 'カラーテーマ',
+        desc: '画面全体の配色です。'
+      },
+      appearance_themeMode: {
+        name: '明暗',
+        desc: 'ライト / ダークの切り替えです。'
+      },
+      appearance_accent: {
+        name: 'アクセントカラー',
+        desc: 'ボタンや選択状態の強調色です。'
+      },
+      appearance_density: {
+        name: '表示密度',
+        desc: '一覧や余白の詰め具合です。'
+      },
+      appearance_reduceMotion: {
+        name: '動きを減らす',
+        desc: 'アニメーションを控えめにします。「システムに従う」では OS の設定に合わせます。'
+      },
+      workspace_pickerStyle: {
+        name: 'ワークスペース選択の形式',
+        desc: 'ワークスペースを切り替えるときの表示形式です。'
+      },
+      workspace_pickerDetail: {
+        name: '詳細情報を既定で表示',
+        desc: 'ワークスペース選択のカードに詳細情報を表示します。'
+      },
+      explorer_showHiddenFiles: {
+        name: '隠しファイルを表示',
+        desc: '隠し属性のファイルとフォルダーを一覧に表示します。'
+      },
+      explorer_singleClickPreview: {
+        name: 'クリックですぐに開く',
+        desc: '項目を 1 回クリック（または矢印キーで移動）するとプレビューを開きます。オフにするとダブルクリックまたは Enter で開きます。'
+      },
+      preview_maxTextSizeMB: {
+        name: 'テキストプレビューの上限サイズ',
+        desc: 'これより大きいテキストファイルは、そのままでは開きません。'
+      },
+      cache_strategy_local: {
+        name: 'キャッシュ方針（ローカル）',
+        desc: 'ローカルのフォルダーに対する既定のキャッシュ方針です。項目ごとに変更できます。'
+      },
+      cache_strategy_network: {
+        name: 'キャッシュ方針（ネットワーク）',
+        desc: 'ネットワーク上のフォルダーに対する既定のキャッシュ方針です。項目ごとに変更できます。'
+      },
+      cache_activeDepth: {
+        name: '「積極」で先読みする階層数',
+        desc: '「積極」方針で、注目している場所の上下に何階層ぶん先読みするかです。'
+      },
+      cache_interval_focus_local: {
+        name: '確認間隔：注目中（ローカル）',
+        desc: '注目している場所を定期的に確認する間隔です。'
+      },
+      cache_interval_near_local: {
+        name: '確認間隔：近く（ローカル）',
+        desc: '注目している場所の近くを定期的に確認する間隔です。'
+      },
+      cache_interval_far_local: {
+        name: '確認間隔：遠く（ローカル）',
+        desc: '注目している場所から遠い場所を定期的に確認する間隔です。'
+      },
+      cache_interval_focus_network: {
+        name: '確認間隔：注目中（ネットワーク）',
+        desc: '注目している場所を定期的に確認する間隔です。'
+      },
+      cache_interval_near_network: {
+        name: '確認間隔：近く（ネットワーク）',
+        desc: '注目している場所の近くを定期的に確認する間隔です。'
+      },
+      cache_interval_far_network: {
+        name: '確認間隔：遠く（ネットワーク）',
+        desc: '注目している場所から遠い場所を定期的に確認する間隔です。'
+      },
+      cache_backgroundGapMs_local: {
+        name: 'バックグラウンド処理の休止（ローカル）',
+        desc: 'バックグラウンドでキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      cache_backgroundGapMs_network: {
+        name: 'バックグラウンド処理の休止（ネットワーク）',
+        desc: 'バックグラウンドでキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      vfs_timeoutSec_local: {
+        name: 'タイムアウト（ローカル）',
+        desc: '応答がないまま待つ時間の上限です。'
+      },
+      vfs_timeoutSec_network: {
+        name: 'タイムアウト（ネットワーク）',
+        desc: '応答がないまま待つ時間の上限です。'
+      },
+      remote_keepaliveSec: {
+        name: 'キープアライブ間隔',
+        desc: '接続を保つために応答を確認する間隔です。3 回続けて応答がないと切断とみなします。'
+      },
+      remote_idleDisconnectMin: {
+        name: '無操作での自動切断',
+        desc: 'リクエストがないまま、この時間が過ぎると接続を切ります。'
+      },
+      vfs_timeoutSec_remote: {
+        name: 'タイムアウト（リモート）',
+        desc: 'リモートのファイル操作で応答を待つ時間の上限です。'
+      },
+      cache_backgroundGapMs_remote: {
+        name: 'バックグラウンド処理の休止（リモート）',
+        desc: 'リモートでバックグラウンドのキャッシュを作るとき、1 フォルダーごとに置く休止時間です。'
+      },
+      cache_remoteIndexIntervalMin: {
+        name: 'インデックス更新間隔（リモート）',
+        desc: 'リモートのフォルダーのインデックスを作り直す間隔です。'
+      },
+      desktop_askOnExit: {
+        name: '終了時に保存を確認',
+        desc: 'アプリを終了するとき、どのデスクトップ項目を保存するか確認します。オフにするとすべて保存します。'
+      }
+    }
   },
   tabs: {
     label: '開いているタブ',

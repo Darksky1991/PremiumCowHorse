@@ -9,7 +9,7 @@ import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
 import { SettingsPage } from '@renderer/features/settings'
 import { Shell } from '@renderer/features/shell'
-import { OpenBuiltinEvent, TabsArea } from '@renderer/features/tabs'
+import { TabsArea } from '@renderer/features/tabs'
 import { WorkspaceSwitcher, WorkspacesPage } from '@renderer/features/workspace'
 
 /** 预览插件注册表的内容：内置插件（plugins/builtin），e2e 时追加测试插件 */
@@ -48,7 +48,6 @@ export function App(): JSX.Element {
           />
         }
       />
-      <OpenBuiltinEvent />
       <DesktopPrompts />
       <HostKeyPrompts />
     </>

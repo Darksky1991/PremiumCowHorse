@@ -105,7 +105,7 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
           tab.kind === 'workspaces'
             ? t('workspace:listPage')
             : tab.kind === 'settings'
-              ? t('about:settingsTitle')
+              ? t('settings:title')
               : tab.kind === 'about'
                 ? t('about:title')
                 : tab.title

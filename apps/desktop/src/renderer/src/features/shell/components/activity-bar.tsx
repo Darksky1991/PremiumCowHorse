@@ -8,11 +8,13 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { settingsLocation } from '@pch/shared'
 import { cn } from 'cn'
 import { Button } from '@pch/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@pch/ui/components/tooltip'
+import { useActiveWorkspace } from '@renderer/data/workspace'
+import { useTabsStore } from '@renderer/stores/tabs-store'
 import { useUiStore, type SidebarView } from '@renderer/stores/ui-store'
-import { notifyComingSoon } from '../coming-soon'
 
 const VIEWS: { view: SidebarView; icon: LucideIcon; labelKey: string }[] = [
   { view: 'explorer', icon: FolderTreeIcon, labelKey: 'explorer' },
@@ -23,8 +25,11 @@ const VIEWS: { view: SidebarView; icon: LucideIcon; labelKey: string }[] = [
 
 /** 活动栏：切换侧栏内容；再次点击当前项折叠侧栏 */
 export function ActivityBar(): JSX.Element {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { sidebarView, sidebarCollapsed, activateView } = useUiStore()
+  const { data: workspace } = useActiveWorkspace()
+  const openTab = useTabsStore((s) => s.open)
+  const settingsTitle = t('settings:title')
 
   return (
     <nav
@@ -44,7 +49,9 @@ export function ActivityBar(): JSX.Element {
       <ActivityItem
         icon={SettingsIcon}
         label={t('settings')}
-        onClick={() => notifyComingSoon(i18n)}
+        onClick={() => {
+          if (workspace) openTab(workspace.id, settingsLocation(settingsTitle))
+        }}
       />
     </nav>
   )

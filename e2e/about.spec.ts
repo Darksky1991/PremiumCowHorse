@@ -29,17 +29,16 @@ test.describe('about page', () => {
           }
         })
       })
-      // 事件监听在激活工作区取得后才注册：重复派发直到标签出现
-      await expect(async () => {
-        await page.evaluate(() =>
-          window.dispatchEvent(new CustomEvent('pch:open-builtin', { detail: 'about' }))
-        )
-        await expect(page.getByRole('tab', { name: 'このアプリについて' })).toBeVisible({
-          timeout: 500
-        })
-      }).toPass()
+      // 活动栏齿轮 → 设置页 → 左侧导航最后一项「このアプリについて」
+      await page.getByRole('button', { name: '設定', exact: true }).click()
+      await page
+        .getByRole('navigation', { name: '設定の分類' })
+        .getByRole('button', { name: 'このアプリについて' })
+        .click()
+      await expect(page.getByRole('tab', { name: 'このアプリについて' })).toBeVisible()
       const tab = page.getByRole('tab', { name: 'このアプリについて' })
       await expect(tab).toBeVisible()
+      await tab.click()
       const panel = page.getByRole('tabpanel')
       await expect(panel.getByText('v0.1.0').first()).toBeVisible()
       await expect(panel.getByText(userData, { exact: false }).first()).toBeVisible()
