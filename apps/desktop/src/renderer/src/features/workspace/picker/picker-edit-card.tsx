@@ -145,6 +145,8 @@ export function PickerEditCard({
     if (e.key !== 'Escape' || isImeKey(e.nativeEvent)) return
     e.preventDefault()
     e.stopPropagation()
+    // 删除进行中不翻回
+    if (deleting) return
     if (flipped) dispatch(act.cancelDelete())
     else onLeave()
   }

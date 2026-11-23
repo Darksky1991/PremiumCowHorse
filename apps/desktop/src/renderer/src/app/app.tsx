@@ -8,7 +8,7 @@ import { AboutPage } from '@renderer/features/about'
 import { ExplorerView, useExplorerCommands } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
-import { SettingsPage, useSettingsCommands } from '@renderer/features/settings'
+import { SettingsPage, SettingsWriteNotice, useSettingsCommands } from '@renderer/features/settings'
 import { Shell } from '@renderer/features/shell'
 import { TabsArea } from '@renderer/features/tabs'
 import {
@@ -59,6 +59,7 @@ export function App(): JSX.Element {
         }
       />
       <RecentRecorder />
+      <SettingsWriteNotice />
       <CommandPalette />
       <WorkspacePicker />
       <DesktopPrompts />

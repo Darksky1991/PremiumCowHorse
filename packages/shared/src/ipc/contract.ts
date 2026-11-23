@@ -345,7 +345,7 @@ export const ipcContract = {
   'recent.record': route<void>()(
     z.strictObject({
       workspaceId: z.string().min(1),
-      uri: z.string().min(1),
+      uri: z.string().min(1).max(4096),
       kind: z.enum(['file', 'directory']),
       title: z.string().max(500)
     })

@@ -2,3 +2,4 @@
 export { SettingsPage } from './settings-page'
 export { useOpenSettings } from './use-open-builtin'
 export { useSettingsCommands } from './use-settings-commands'
+export { SettingsWriteNotice } from './settings-write-notice'

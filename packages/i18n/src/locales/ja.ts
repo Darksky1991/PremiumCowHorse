@@ -453,6 +453,7 @@ export default {
   },
   settings: {
     title: '設定',
+    saveFailed: '設定を保存できませんでした：{{reason}}',
     searchPlaceholder: '設定を検索…',
     searchLabel: '設定を検索',
     noResults: '一致する設定がありません',

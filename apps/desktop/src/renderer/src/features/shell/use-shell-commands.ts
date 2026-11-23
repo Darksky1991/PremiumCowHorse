@@ -37,6 +37,7 @@ export function useShellCommands(): void {
         shortcut: 'Ctrl+K',
         allowInEditable: true,
         allowWithModal: true,
+        ignoreRepeat: true,
         run: () => useUiStore.getState().togglePalette()
       },
       {
@@ -46,6 +47,7 @@ export function useShellCommands(): void {
         shortcut: 'Ctrl+Shift+P',
         allowInEditable: true,
         allowWithModal: true,
+        ignoreRepeat: true,
         hidden: true,
         run: () => useUiStore.getState().togglePalette()
       },

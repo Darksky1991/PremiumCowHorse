@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTabsStore } from '@renderer/stores/tabs-store'
-import { RECENT_TITLE_MAX, startRecentRecording } from './recent-recording'
+import { RECENT_TITLE_MAX, RECENT_URI_MAX, startRecentRecording } from './recent-recording'
 
 describe('startRecentRecording', () => {
   const record = vi.fn(() => Promise.resolve())
@@ -48,6 +48,14 @@ describe('startRecentRecording', () => {
     fire({ uri: 'file:///long', kind: 'file', title: 'x'.repeat(RECENT_TITLE_MAX + 50) })
     const call = record.mock.calls[0] as unknown as [string, { title: string }]
     expect(call[1].title).toHaveLength(RECENT_TITLE_MAX)
+  })
+
+  it('skips (silently) a uri over the contract limit and keeps one at the limit', () => {
+    fire({ uri: 'file:///' + 'a'.repeat(RECENT_URI_MAX), kind: 'file', title: 'long' })
+    expect(record).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    fire({ uri: 'x'.repeat(RECENT_URI_MAX), kind: 'file', title: 'edge' })
+    expect(record).toHaveBeenCalledTimes(1)
   })
 
   it('reports a failed record instead of throwing', async () => {

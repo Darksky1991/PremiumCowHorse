@@ -10,7 +10,7 @@ import {
 const ev = (
   key: string,
   mods: Partial<Record<'ctrl' | 'shift' | 'alt' | 'meta', boolean>> = {},
-  extra: { defaultPrevented?: boolean; isComposing?: boolean } = {}
+  extra: { defaultPrevented?: boolean; isComposing?: boolean; repeat?: boolean } = {}
 ): DispatchKey => ({
   key,
   ctrlKey: mods.ctrl ?? false,
@@ -56,7 +56,8 @@ describe('pickCommand', () => {
     { id: 'palette.open', shortcut: 'Ctrl+K', allowInEditable: true },
     { id: 'nav.back', shortcut: 'Alt+ArrowLeft', allowInEditable: true },
     { id: 'hidden', shortcut: 'Ctrl+H', when: () => false },
-    { id: 'modal.ok', shortcut: 'Ctrl+M', allowWithModal: true }
+    { id: 'modal.ok', shortcut: 'Ctrl+M', allowWithModal: true },
+    { id: 'toggle', shortcut: 'Alt+W', allowInEditable: true, ignoreRepeat: true }
   ]
   const idle = { modal: false, editable: false }
   const modal = { modal: true, editable: false }
@@ -84,5 +85,12 @@ describe('pickCommand', () => {
     expect(id(ev('k', { ctrl: true }, { isComposing: true }), typing)).toBeUndefined()
     expect(id(ev('w', { ctrl: true }, { defaultPrevented: true }))).toBeUndefined()
     expect(id(ev('h', { ctrl: true }))).toBeUndefined()
+  })
+
+  it('ignores auto-repeat only for commands marked ignoreRepeat', () => {
+    expect(id(ev('w', { alt: true }))).toBe('toggle')
+    expect(id(ev('w', { alt: true }, { repeat: true }))).toBeUndefined()
+    // 未标记的命令照常响应重复按键
+    expect(id(ev('ArrowLeft', { alt: true }, { repeat: true }))).toBe('nav.back')
   })
 })

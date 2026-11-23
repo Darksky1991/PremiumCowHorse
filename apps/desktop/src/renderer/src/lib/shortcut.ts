@@ -66,14 +66,20 @@ export interface Pickable {
   shortcut?: string
   allowInEditable?: boolean
   allowWithModal?: boolean
+  /** 按住不放产生的重复按键（repeat）不触发（开关类命令） */
+  ignoreRepeat?: boolean
   when?: () => boolean
 }
 
-export type DispatchKey = KeyEventLike & { defaultPrevented?: boolean; isComposing?: boolean }
+export type DispatchKey = KeyEventLike & {
+  defaultPrevented?: boolean
+  isComposing?: boolean
+  repeat?: boolean
+}
 
 /**
  * 按键 → 命令（快捷键分发的纯函数）：已被处理（defaultPrevented）或输入法组字中 → 无；
- * 有模态且命令未 allowWithModal → 跳过；目标可编辑且命令未 allowInEditable → 跳过；`when()` 为 false → 跳过；
+ * 有模态且命令未 allowWithModal → 跳过；重复按键（repeat）且命令 ignoreRepeat → 跳过；目标可编辑且命令未 allowInEditable → 跳过；`when()` 为 false → 跳过；
  * 取第一个命中的
  */
 export function pickCommand<C extends Pickable>(
@@ -86,6 +92,7 @@ export function pickCommand<C extends Pickable>(
     if (c.shortcut === undefined || !matchesShortcut(e, c.shortcut)) continue
     if (ctx.modal && c.allowWithModal !== true) continue
     if (ctx.editable && c.allowInEditable !== true) continue
+    if (e.repeat === true && c.ignoreRepeat === true) continue
     if (c.when?.() === false) continue
     return c
   }

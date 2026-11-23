@@ -377,14 +377,18 @@ export function DeleteWorkspaceDialog({
   }
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    // 删除进行中不可关闭（Esc / 取消）：删除无法撤销，确认框要保持到完成
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => (pending && !next ? undefined : onOpenChange(next))}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('workspace:deleteTitle', { name: displayName })}</AlertDialogTitle>
           <AlertDialogDescription>{t('workspace:deleteDescription')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('workspace:cancel')}</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{t('workspace:cancel')}</AlertDialogCancel>
           <AlertDialogAction disabled={pending} onClick={() => void confirm()}>
             {pending ? <Spinner data-icon="inline-start" /> : null}
             {t('workspace:delete')}

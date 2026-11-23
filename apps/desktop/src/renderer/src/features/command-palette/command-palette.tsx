@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
 import { FileIcon, FolderIcon, LayersIcon, TerminalIcon, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -11,11 +11,17 @@ import {
   CommandShortcut,
   Command
 } from '@pch/ui/components/command'
+import { AppError } from '@pch/shared'
 import { useConnectionNames } from '@renderer/data/connections'
-import { useActiveWorkspace, useWorkspaceActions } from '@renderer/data/workspace'
+import {
+  useActiveWorkspace,
+  useWorkspaceActions,
+  workspaceDisplayName
+} from '@renderer/data/workspace'
 import { displayPath } from '@renderer/lib/display-path'
 import { beginFocusReturn, type FocusReturn } from '@renderer/lib/focus-return'
 import { formatShortcut } from '@renderer/lib/shortcut'
+import { notify } from '@renderer/stores/messages-store'
 import { useNavigationStore } from '@renderer/stores/navigation-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { useUiStore } from '@renderer/stores/ui-store'
@@ -42,7 +48,8 @@ export function CommandPalette(): JSX.Element {
         chosen.current = false
         back = beginFocusReturn()
       } else {
-        if (!chosen.current) back?.restore()
+        if (chosen.current) back?.discard()
+        else back?.restore()
         back = null
       }
     })
@@ -68,8 +75,14 @@ export function CommandPalette(): JSX.Element {
 }
 
 function PaletteBody({ close }: { close: () => void }): JSX.Element {
-  const { t } = useTranslation(['palette', 'commands', 'common'])
+  const { t } = useTranslation(['palette', 'commands', 'common', 'workspace', 'errors'])
   const [query, setQuery] = useState('')
+  // 初始焦点：Base UI 的 FloatingFocusManager 经 queueMicrotask + requestAnimationFrame 才 focus()，
+  // 期间的按键会落在原焦点上而丢字；挂载（layout 阶段）时立即聚焦输入框
+  const inputRef = useRef<HTMLInputElement>(null)
+  useLayoutEffect(() => {
+    inputRef.current?.focus()
+  }, [])
   const { data: active } = useActiveWorkspace()
   const activeId = active?.id
   const { activate } = useWorkspaceActions()
@@ -107,9 +120,15 @@ function PaletteBody({ close }: { close: () => void }): JSX.Element {
         useUiStore.getState().showView('explorer')
         return
       }
-      case 'workspace':
-        activate.mutate(item.workspace.id)
+      case 'workspace': {
+        const name = workspaceDisplayName(item.workspace, t('common:defaultWorkspace'))
+        // mutateAsync：选择后面板随即卸载，mutate 的回调在组件卸载后不再触发
+        activate.mutateAsync(item.workspace.id).then(
+          () => notify('success', t('workspace:switched', { name })),
+          (e: unknown) => notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
+        )
         return
+      }
       case 'command':
         item.command.run()
         return
@@ -131,6 +150,7 @@ function PaletteBody({ close }: { close: () => void }): JSX.Element {
       onKeyDown={onKeyDown}
     >
       <CommandInput
+        ref={inputRef}
         value={query}
         onValueChange={setQuery}
         placeholder={t('palette:placeholder')}

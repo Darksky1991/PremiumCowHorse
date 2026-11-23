@@ -77,7 +77,8 @@ export function WorkspacePicker(): JSX.Element {
         acted.current = false
         back = styleRef.current === 'carousel' ? beginFocusReturn() : null
       } else {
-        if (!acted.current) back?.restore()
+        if (acted.current) back?.discard()
+        else back?.restore()
         back = null
       }
     })
@@ -246,6 +247,8 @@ function PickerBody({
       return
     }
     // Esc 第一级清空筛选（删除确认中先翻回）：输入框随之清空（不再经 onQuery 重复派发）
+    // 删除进行中 Esc 不翻回（删除无法撤销，界面应保持「处理中」）
+    if (action.type === 'escape' && state.confirmDelete !== null && edit.deleting !== null) return
     if (action.type === 'escape' && state.confirmDelete === null) filter.clear(false)
     const effect = dispatch(action)
     if (effect === undefined) return
@@ -266,8 +269,10 @@ function PickerBody({
       return
     }
     // Alt+W：再按一次关闭（模态打开时快捷键分发不处理它，见 use-workspace-commands.ts）
+    // 按住不放（repeat）时忽略：否则会在开 / 关之间来回抖动
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyW' && !isImeKey(e.nativeEvent)) {
       e.preventDefault()
+      if (e.repeat) return
       cancelPress()
       close(false)
       return
@@ -315,13 +320,6 @@ function PickerBody({
           })
   const filtering = state.query !== ''
 
-  // 初始焦点在筛选框：Base UI 的 initialFocus 在键盘打开（Alt+W，打开前焦点在 body）时会先落到弹出层本身
-  // 而放弃移入（已验证），这里在下一帧补一次
-  useEffect(() => {
-    const id = requestAnimationFrame(() => filterRef.current?.focus())
-    return () => cancelAnimationFrame(id)
-  }, [filterRef])
-
   return (
     <DialogContent
       showCloseButton={false}
@@ -348,6 +346,7 @@ function PickerBody({
         editing={state.mode === 'edit'}
         onEditing={() => run(act.toggleEdit())}
       />
+      <FocusOnMount target={filterRef} />
 
       {view === 'ring' ? (
         <RingView
@@ -404,4 +403,16 @@ function PickerBody({
       </div>
     </DialogContent>
   )
+}
+
+/**
+ * 挂载（layout 阶段）时立即聚焦目标：Base UI 的 initialFocus 经 queueMicrotask + requestAnimationFrame 才生效
+ * （键盘打开、打开前焦点在 body 时还会先落到弹出层本身而放弃移入，已验证），其间的按键会丢。
+ * 必须渲染在 DialogContent 内、目标元素之后（Portal 的内容晚于 PickerBody 的首次提交挂载，父组件的 effect 看不到它）
+ */
+function FocusOnMount({ target }: { target: RefObject<HTMLElement | null> }): null {
+  useLayoutEffect(() => {
+    target.current?.focus()
+  }, [target])
+  return null
 }

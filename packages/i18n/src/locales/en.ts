@@ -457,6 +457,7 @@ export default {
   },
   settings: {
     title: 'Settings',
+    saveFailed: 'Could not save the setting: {{reason}}',
     searchPlaceholder: 'Search settings…',
     searchLabel: 'Search settings',
     noResults: 'No matching settings',

@@ -17,6 +17,8 @@ export interface Command {
   allowInEditable?: boolean
   /** 有模态对话框打开时也触发（默认不触发） */
   allowWithModal?: boolean
+  /** 按住不放的重复按键不触发（开关类命令：否则在开 / 关之间来回抖动） */
+  ignoreRepeat?: boolean
   /** 不在命令面板中列出（同一命令的第二个快捷键等） */
   hidden?: boolean
   /** 返回 false 时命令不可用（快捷键不触发） */

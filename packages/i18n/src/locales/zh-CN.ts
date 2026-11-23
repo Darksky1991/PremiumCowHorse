@@ -438,6 +438,7 @@ export default {
   },
   settings: {
     title: '设置',
+    saveFailed: '无法保存设置：{{reason}}',
     searchPlaceholder: '搜索设置…',
     searchLabel: '搜索设置',
     noResults: '没有匹配的设置',

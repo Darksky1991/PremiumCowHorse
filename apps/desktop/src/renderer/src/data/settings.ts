@@ -32,7 +32,7 @@ const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSO
 
 /**
  * 乐观合并与按键回滚（导出供单测）：
- * - onMutate 把 patch 合并进缓存，记下这些键写入前的值；缓存尚未加载时不做任何事。
+ * - onMutate 先取消进行中的拉取，再把 patch 合并进缓存，记下这些键写入前的值；缓存尚未加载时不做任何事。
  * - onError 只还原本次 patch 涉及的键，且仅当缓存中该键仍等于本次的乐观值时才还原：
  *   之后又有写入（乐观值已被覆盖）或 settings.changed 广播到达的键保持现状，其他键不动。
  */
@@ -41,7 +41,7 @@ export function settingsMutationHandlers(
   /** 除本次之外仍在途的设置写入数（有在途写入时失败不重新拉取，避免短暂显示旧值） */
   othersInFlight: () => number = () => 0
 ): {
-  onMutate: (patch: SettingsPatch) => SettingsMutationContext
+  onMutate: (patch: SettingsPatch) => Promise<SettingsMutationContext>
   onError: (
     error: Error,
     patch: SettingsPatch,
@@ -49,7 +49,9 @@ export function settingsMutationHandlers(
   ) => void
 } {
   return {
-    onMutate: (patch) => {
+    onMutate: async (patch) => {
+      // 取消进行中的拉取（TanStack 的推荐做法）：否则它的返回值会盖掉下面的乐观值
+      await client.cancelQueries({ queryKey: queryKeys.settings })
       const cached = client.getQueryData<Settings>(queryKeys.settings)
       if (!cached) return { previous: {}, optimistic: {} }
       const previous: Record<string, unknown> = {}
@@ -77,7 +79,8 @@ export function settingsMutationHandlers(
   }
 }
 
-const SETTINGS_MUTATION_KEY = ['settings.set'] as const
+/** 设置写入的 mutationKey（features 据此监听写入失败，见 features/settings 的 SettingsWriteNotice） */
+export const SETTINGS_MUTATION_KEY = ['settings.set'] as const
 
 /** 写入设置：主进程保存后会广播 settings.changed，缓存由 query-client 的桥接更新 */
 export function useUpdateSettings(): UseMutationResult<

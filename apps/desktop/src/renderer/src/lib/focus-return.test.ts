@@ -28,7 +28,7 @@ describe('focus return', () => {
     expect(consumeViewRefocus()).toBe(false)
   })
 
-  it('a new overlay forgets the previous state', () => {
+  it('a view-held note made while no overlay is open is ignored', () => {
     stubDocument(null)
     noteViewHeldFocus()
     beginFocusReturn().restore()
@@ -51,5 +51,37 @@ describe('focus return', () => {
     vi.stubGlobal('document', { hasFocus: () => true, activeElement: el, body: {} })
     beginFocusReturn().restore()
     expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('stacked overlays: closing both in turn finally requests the refocus of the view', () => {
+    const focus = vi.fn()
+    const Base = class {}
+    vi.stubGlobal('HTMLElement', Base)
+    const inPicker = Object.assign(new Base(), { isConnected: true, focus })
+    const doc = { hasFocus: () => true, activeElement: null as unknown, body: {} }
+    vi.stubGlobal('document', doc)
+    // 选择器打开（最初焦点在网页视图，主进程交回应用界面）
+    const picker = beginFocusReturn()
+    noteViewHeldFocus()
+    // 命令面板叠在选择器上：此时焦点在选择器内的元素
+    doc.activeElement = inPicker
+    const palette = beginFocusReturn()
+    palette.restore()
+    expect(focus).toHaveBeenCalledTimes(1) // 第二层还回选择器内的元素
+    expect(consumeViewRefocus()).toBe(false) // 视图还不能拿回焦点
+    picker.restore()
+    expect(consumeViewRefocus()).toBe(true) // 最后一层关闭才登记还给视图
+  })
+
+  it('discard pops a layer without refocusing or requesting anything', () => {
+    stubDocument(null)
+    const layer = beginFocusReturn()
+    noteViewHeldFocus()
+    layer.discard()
+    expect(consumeViewRefocus()).toBe(false)
+    // 栈已空：之后的 note 不属于任何一层
+    noteViewHeldFocus()
+    beginFocusReturn().restore()
+    expect(consumeViewRefocus()).toBe(false)
   })
 })

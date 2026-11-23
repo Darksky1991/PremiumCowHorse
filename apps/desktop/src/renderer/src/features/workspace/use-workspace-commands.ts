@@ -15,6 +15,7 @@ export function useWorkspaceCommands(): void {
         group: 'workspace',
         shortcut: 'Alt+W',
         allowInEditable: true,
+        ignoreRepeat: true,
         run: () => useUiStore.getState().togglePicker('title')
       }
     ],
