@@ -1,5 +1,15 @@
 import { AppError, DEFAULT_WORKSPACE_ID, WORKSPACES_URI, type TabsState } from '@pch/shared'
 
+/** 与 workspace.create / update 的校验一致：名称 trim 后最长 100 个字符，说明最长 500 个字符 */
+export const MAX_NAME_LENGTH = 100
+export const MAX_DESCRIPTION_LENGTH = 500
+
+/** 说明的保存值：trim 后为空即 null */
+export function descriptionValue(text: string): string | null {
+  const v = text.trim()
+  return v === '' ? null : v
+}
+
 /** 新建流程的依赖（可注入，便于单元测试步骤编排） */
 export interface CreateAndActivateDeps {
   create: (name: string) => Promise<{ id: string }>
@@ -32,6 +42,18 @@ export async function createAndActivate(
     deps.onActivateError(e)
   }
   return true
+}
+
+/**
+ * 新建时的默认名称（选择器编辑模式的「+」卡片）：base 未被占用就用 base，
+ * 否则取「base 2」「base 3」…中最小的空号
+ */
+export function nextWorkspaceName(names: readonly string[], base: string): string {
+  const taken = new Set(names)
+  if (!taken.has(base)) return base
+  let k = 2
+  while (taken.has(`${base} ${k}`)) k += 1
+  return `${base} ${k}`
 }
 
 export interface RemoveWorkspaceDeps {

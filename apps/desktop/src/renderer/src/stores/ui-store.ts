@@ -16,6 +16,12 @@ interface UiState {
   /** 「新建工作区」对话框的开关：标题栏切换器与欢迎页都能打开它（feature 之间不互相 import） */
   newWorkspaceOpen: boolean
   setNewWorkspaceOpen: (open: boolean) => void
+  /**
+   * 工作区一览中「削除…」的目标（name 为打开时的显示名）：确认框由常驻的标题栏切换器渲染，
+   * 删除当前工作区时先切到默认工作区、一览页随之卸载，确认框仍保持到删除完成（M2-F2）
+   */
+  deleteWorkspaceTarget: { id: string; name: string } | null
+  setDeleteWorkspaceTarget: (target: { id: string; name: string } | null) => void
   /** 命令面板的开关：Ctrl+K / 标题栏搜索按钮 */
   paletteOpen: boolean
   setPaletteOpen: (open: boolean) => void
@@ -49,6 +55,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   newWorkspaceOpen: false,
   setNewWorkspaceOpen: (open) => set({ newWorkspaceOpen: open }),
+  deleteWorkspaceTarget: null,
+  setDeleteWorkspaceTarget: (target) => set({ deleteWorkspaceTarget: target }),
   paletteOpen: false,
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   togglePalette: () => set({ paletteOpen: !get().paletteOpen }),

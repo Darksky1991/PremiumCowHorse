@@ -30,8 +30,11 @@ import { useOpenWorkspaceList } from '../use-open-workspace-list'
 import { lastUsedText } from '../workspace-time'
 import { ListView } from './list-view'
 import { PickerFooter, PickerHeader } from './picker-chrome'
+import { PICKER_FORM_ATTR, PickerEditCard } from './picker-edit-card'
 import { RingView } from './ring-view'
+import { usePickerEdit } from './use-picker-edit'
 import {
+  NEW_CARD_ID,
   act,
   cardDomId,
   keyToAction,
@@ -226,6 +229,15 @@ function PickerBody({
   const filter = useFilterInput((query) => {
     dispatch(act.setQuery(query, performance.now()))
   })
+  // 编辑模式的写操作（即时保存、新建、排序、删除）
+  const edit = usePickerEdit({
+    state,
+    dispatch,
+    items,
+    activeId: active.id,
+    showRing: () => setView('ring'),
+    focusFilter: () => filterRef.current?.focus()
+  })
 
   const run = (action: PickerAction): void => {
     // 按压反馈期间：Esc 取消切换，其余按键 / 点击不处理
@@ -233,12 +245,13 @@ function PickerBody({
       if (action.type === 'escape') cancelPress()
       return
     }
-    // Esc 第一级清空筛选：输入框随之清空（不再经 onQuery 重复派发）
-    if (action.type === 'escape') filter.clear(false)
+    // Esc 第一级清空筛选（删除确认中先翻回）：输入框随之清空（不再经 onQuery 重复派发）
+    if (action.type === 'escape' && state.confirmDelete === null) filter.clear(false)
     const effect = dispatch(action)
     if (effect === undefined) return
     if (effect.kind === 'close') close(false)
-    else choose(effect.id)
+    else if (effect.kind === 'select') choose(effect.id)
+    else edit.handle(effect)
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
@@ -259,7 +272,13 @@ function PickerBody({
       close(false)
       return
     }
-    const action = keyToAction(e.nativeEvent, performance.now(), { view, query: state.query })
+    // 编辑卡片（表单 / 删除确认）中的按键由它自己处理
+    if (!inFilter && target.closest(`[${PICKER_FORM_ATTR}]`)) return
+    const action = keyToAction(e.nativeEvent, performance.now(), {
+      view,
+      query: state.query,
+      mode: state.mode
+    })
     if (action !== null) {
       e.preventDefault()
       run(action)
@@ -285,13 +304,15 @@ function PickerBody({
     frontId === undefined ? undefined : view === 'ring' ? cardDomId(frontId) : rowDomId(frontId)
   const frontRow = frontId === undefined ? undefined : rows.get(frontId)
   const announcement =
-    frontRow === undefined
-      ? ''
-      : t('workspace:announce', {
-          index: state.front + 1,
-          count: state.order.length,
-          name: `${frontRow.name}${frontId === active.id ? t('workspace:currentSuffix') : ''}`
-        })
+    frontId === NEW_CARD_ID
+      ? t('workspace:newCardLabel')
+      : frontRow === undefined
+        ? ''
+        : t('workspace:announce', {
+            index: state.front + 1,
+            count: state.order.length,
+            name: `${frontRow.name}${frontId === active.id ? t('workspace:currentSuffix') : ''}`
+          })
   const filtering = state.query !== ''
 
   // 初始焦点在筛选框：Base UI 的 initialFocus 在键盘打开（Alt+W，打开前焦点在 body）时会先落到弹出层本身
@@ -324,6 +345,8 @@ function PickerBody({
         onView={setViewAndRemember}
         detail={detail}
         onDetail={setDetailAndRemember}
+        editing={state.mode === 'edit'}
+        onEditing={() => run(act.toggleEdit())}
       />
 
       {view === 'ring' ? (
@@ -337,6 +360,23 @@ function PickerBody({
           reduced={reduced}
           now={now}
           dispatch={run}
+          deletingId={edit.deleting}
+          renderFront={
+            state.mode === 'edit'
+              ? (row) => (
+                  <PickerEditCard
+                    workspace={row.workspace}
+                    name={row.name}
+                    flipped={state.confirmDelete === row.workspace.id}
+                    detail={detail}
+                    reduced={reduced}
+                    edit={edit}
+                    dispatch={run}
+                    onLeave={() => filterRef.current?.focus()}
+                  />
+                )
+              : undefined
+          }
         />
       ) : (
         <ListView
@@ -353,6 +393,7 @@ function PickerBody({
       <PickerFooter
         view={view}
         filtering={filtering}
+        editing={state.mode === 'edit'}
         onOpenList={() => {
           close(true)
           openList()

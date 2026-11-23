@@ -1,4 +1,5 @@
 import { useEffect, useRef, type JSX } from 'react'
+import { PlusIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { Kbd } from '@pch/ui/components/kbd'
@@ -6,6 +7,7 @@ import { colorVar } from '../workspace-color'
 import { lastUsedText } from '../workspace-time'
 import { Highlighted } from './picker-card'
 import {
+  NEW_CARD_ID,
   act,
   rowDomId,
   type PickerAction,
@@ -26,6 +28,7 @@ export interface ListViewProps {
 /**
  * 列表视图（设计稿 1.1 / 1.7）：与圆环并列的另一个视图，一行一项、可滚动；单击行即切换
  * （列表不转动，不存在「滑到光标下」的问题）。↑/↓ 移动选中行，选中行随之滚入可见范围。
+ * 编辑模式：单击只选中（不切换），末尾多一行「+」；表单只在圆环中（Enter 换到圆环并聚焦名称框）。
  */
 export function ListView({
   listId,
@@ -68,9 +71,37 @@ export function ListView({
       className="max-h-[392px] min-h-[200px] overflow-y-auto p-1.5"
     >
       {state.order.map((id, i) => {
+        const selected = i === state.front
+        const rowClass = cn(
+          'grid cursor-default grid-cols-[4px_22px_minmax(0,1fr)_auto_auto] items-center gap-2.5 rounded-lg py-[7px] pr-2.5',
+          selected
+            ? 'bg-accent text-accent-foreground'
+            : 'hover:bg-[color-mix(in_oklch,var(--accent)_60%,transparent)]'
+        )
+        const pick = (): void => dispatch(act.clickRow(i, performance.now()))
+        // 编辑模式末尾的「+」行：单击 / Enter 新建（换到圆环，新卡片在正面）
+        if (id === NEW_CARD_ID) {
+          return (
+            <li
+              key={id}
+              id={rowDomId(id)}
+              role="option"
+              aria-selected={selected}
+              aria-label={t('newCardLabel')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={pick}
+              className={cn(rowClass, 'text-muted-foreground')}
+            >
+              <span />
+              <PlusIcon aria-hidden className="size-4" />
+              <span className="truncate">{t('newCard')}</span>
+              <span />
+              <span />
+            </li>
+          )
+        }
         const row = rows.get(id)
         if (row === undefined) return null
-        const selected = i === state.front
         const color = colorVar(row.workspace.color)
         const time = lastUsedText(row.workspace.lastOpenedAt, now, i18n.language, t)
         return (
@@ -82,13 +113,8 @@ export function ListView({
             aria-label={row.label}
             data-workspace-row={id}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => dispatch(act.clickRow(i, performance.now()))}
-            className={cn(
-              'grid cursor-default grid-cols-[4px_22px_minmax(0,1fr)_auto_auto] items-center gap-2.5 rounded-lg py-[7px] pr-2.5',
-              selected
-                ? 'bg-accent text-accent-foreground'
-                : 'hover:bg-[color-mix(in_oklch,var(--accent)_60%,transparent)]'
-            )}
+            onClick={pick}
+            className={rowClass}
           >
             <span
               aria-hidden
@@ -96,7 +122,9 @@ export function ListView({
               style={color === null ? undefined : { background: color }}
             />
             <span>
-              {state.query === '' && row.number !== null ? <Kbd>{row.number}</Kbd> : null}
+              {state.query === '' && state.mode === 'browse' && row.number !== null ? (
+                <Kbd>{row.number}</Kbd>
+              ) : null}
             </span>
             <span className="min-w-0">
               <span className="block truncate font-medium">

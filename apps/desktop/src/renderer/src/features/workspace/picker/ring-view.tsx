@@ -1,10 +1,20 @@
-import { useLayoutEffect, useRef, useState, type JSX, type WheelEvent } from 'react'
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent,
+  type ReactNode,
+  type WheelEvent
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import { AnimatePresence, duration, ease, motion, spring } from '@pch/ui/lib/motion'
 import { CARD_SIZE, ringSlots, slotPose, trackCards, type CardTrack } from './ring-layout'
 import { PickerCard } from './picker-card'
+import { PICKER_FORM_ATTR, PickerNewCard } from './picker-edit-card'
 import {
+  NEW_CARD_ID,
   act,
   cardDomId,
   wheelStep,
@@ -28,7 +38,15 @@ export interface RingViewProps {
   reduced: boolean
   now: number
   dispatch: (action: PickerAction) => void
+  /** 编辑模式的正面卡片（表单 + 删除确认）；返回 null 时用普通卡面 */
+  renderFront?: (row: PickerRow) => ReactNode
+  /** 正在删除的工作区：离开圆环时收缩淡出 */
+  deletingId?: string | null
 }
+
+/** 表单区域内的鼠标操作交给表单本身（聚焦输入框、点按钮），圆环不处理 */
+const inForm = (e: MouseEvent): boolean =>
+  (e.target as HTMLElement).closest(`[${PICKER_FORM_ATTR}]`) !== null
 
 /**
  * 3D 圆环（设计稿 1.5 / 1.7，原型 layout()）：只渲染正面 ±2 共 5 张；转动由 motion 的 spring.ring 完成，
@@ -47,10 +65,14 @@ export function RingView({
   pressing,
   reduced,
   now,
-  dispatch
+  dispatch,
+  renderFront,
+  deletingId = null
 }: RingViewProps): JSX.Element {
   const { t } = useTranslation('workspace')
-  const size = detail ? CARD_SIZE.detail : CARD_SIZE.compact
+  const editing = state.mode === 'edit'
+  // 编辑模式用详细尺寸（表单放得下），卡面内容仍按「詳細」开关
+  const size = detail || editing ? CARD_SIZE.detail : CARD_SIZE.compact
   const n = state.order.length
   const shown = ringSlots(n, state.front).map((s) => ({
     id: state.order[s.index]!,
@@ -120,16 +142,21 @@ export function RingView({
         <AnimatePresence>
           {shown.map(({ id, offset }) => {
             const row = rows.get(id)
-            if (row === undefined) return null
+            const isNew = id === NEW_CARD_ID
+            if (row === undefined && !isNew) return null
             const pose = slotPose(offset, size.width)
             const start = reveal
               ? slotPose(offset, size.width, { reveal: true })
               : { ...slotPose(offset === 0 ? 0 : Math.sign(offset) * 3, size.width), opacity: 0 }
             const leave = {
               ...slotPose(offset === 0 ? 0 : Math.sign(offset) * 3, size.width),
-              opacity: 0
+              opacity: 0,
+              // 删除的卡片在原位收缩消失（设计稿 1.4）
+              scale: id === deletingId ? 0.9 : 1
             }
             const current = id === currentId
+            const front = offset === 0
+            const custom = front && row !== undefined ? renderFront?.(row) : undefined
             return (
               <motion.div
                 key={keyOf(id)}
@@ -137,7 +164,7 @@ export function RingView({
                 role="option"
                 aria-selected={offset === 0}
                 aria-hidden={false}
-                aria-label={row.label}
+                aria-label={row === undefined ? t('newCardLabel') : row.label}
                 data-workspace-card={id}
                 data-offset={offset}
                 className="pointer-events-auto absolute top-[46%] left-1/2 cursor-default [transform-style:preserve-3d]"
@@ -162,6 +189,7 @@ export function RingView({
                   z: leave.z,
                   rotateY: leave.rotateY,
                   opacity: 0,
+                  scale: leave.scale,
                   pointerEvents: 'none'
                 }}
                 transition={{
@@ -173,9 +201,12 @@ export function RingView({
                   marginLeft: resize,
                   marginTop: resize
                 }}
-                // 不从筛选框夺走焦点：键盘操作始终在筛选框
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
+                // 不从筛选框夺走焦点：键盘操作始终在筛选框（编辑表单除外）
+                onMouseDown={(e) => {
+                  if (!inForm(e)) e.preventDefault()
+                }}
+                onClick={(e) => {
+                  if (inForm(e)) return
                   // 退场中的卡片不响应（它已不在当前槽位中）
                   const s = latest.current
                   const i = s.order.indexOf(id)
@@ -184,17 +215,23 @@ export function RingView({
                   }
                 }}
               >
-                <PickerCard
-                  workspace={row.workspace}
-                  name={row.name}
-                  summary={row.summary}
-                  number={state.query === '' ? row.number : null}
-                  current={current}
-                  front={offset === 0}
-                  detail={detail}
-                  query={state.query}
-                  now={now}
-                />
+                {row === undefined ? (
+                  <PickerNewCard front={front} />
+                ) : custom !== undefined && custom !== null ? (
+                  custom
+                ) : (
+                  <PickerCard
+                    workspace={row.workspace}
+                    name={row.name}
+                    summary={row.summary}
+                    number={state.query === '' && !editing ? row.number : null}
+                    current={current}
+                    front={front}
+                    detail={detail}
+                    query={state.query}
+                    now={now}
+                  />
+                )}
                 {/* 侧面卡片稍暗，正面明确 */}
                 <motion.div
                   aria-hidden
@@ -243,7 +280,7 @@ function Indicator({
             type="button"
             tabIndex={-1}
             aria-hidden
-            title={rows.get(id)?.name}
+            title={id === NEW_CARD_ID ? t('newCard') : rows.get(id)?.name}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => dispatch(act.focusIndex(i, performance.now()))}
             className={cn(

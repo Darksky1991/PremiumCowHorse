@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { data, launchFast, removeDirs } from './support'
+import { data, delayInvoke, launchFast, removeDirs } from './support'
 
 test.describe('the application address bar', () => {
   let userData: string
@@ -473,15 +473,23 @@ test.describe('the application address bar', () => {
         panel(page).locator('[data-workspace-id]').filter({ hasText: name })
       await expect(item('別件')).toHaveAttribute('aria-current', 'true')
 
-      // 当前工作区的右键菜单「Delete…」：先切到默认工作区，再删除
+      // 当前工作区的右键菜单「Delete…」：先切到默认工作区，再删除。
+      // 删除放慢 1.5 秒：切到默认工作区后一览页卸载，确认框仍保持到删除完成（M2-F2）
+      await delayInvoke(app, 'workspace.delete', 1500)
       await item('別件').click({ button: 'right' })
       await page.getByRole('menuitem', { name: 'Delete…' }).click()
-      await page
-        .getByRole('alertdialog')
-        .getByRole('button', { name: 'Delete', exact: true })
-        .click()
+      const confirm = page.getByRole('alertdialog')
+      await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
+      // 确认框打开期间标题栏在无障碍树外，按 DOM 取标题栏按钮
+      await expect(page.locator('header [aria-label="Switch workspace"]')).toHaveText('Default')
+      await expect(confirm).toBeVisible()
+      // 进度中按钮名含 Spinner 的「Loading」
+      await expect(confirm.getByRole('button', { name: /Delete$/ })).toBeDisabled()
+      expect(
+        (await data<Array<{ id: string }>>(page, 'workspace.list')).map((w) => w.id)
+      ).toContain(other.id)
+      await expect(confirm).toHaveCount(0)
       await expect(banner).toHaveText('Default')
-      await expect(page.getByRole('alertdialog')).toHaveCount(0)
       await expect
         .poll(async () =>
           (await data<Array<{ id: string }>>(page, 'workspace.list')).map((w) => w.id)
@@ -525,7 +533,7 @@ test.describe('the application address bar', () => {
         panel(page).locator('[data-workspace-row]').filter({ hasText: name })
       await expect(item('第三').locator('svg')).toHaveCount(0)
       await expect(card('第三').getByRole('button', { name: 'Delete…' })).toBeVisible()
-      await expect(card('Default').getByRole('button', { name: 'Rename…' })).toBeVisible()
+      await expect(card('Default').getByRole('button', { name: 'Edit…' })).toBeVisible()
       await expect(card('Default').getByRole('button', { name: 'Delete…' })).toHaveCount(0)
 
       // 各行等高：窗口变窄、新建卡片与工作区卡片不在同一行时高度一致
@@ -543,14 +551,25 @@ test.describe('the application address bar', () => {
       await expect.poll(async () => new Set(await tops()).size).toBeGreaterThan(1)
       expect(new Set(await heights()).size).toBe(1)
 
-      // 重命名（卡片上的按钮）
-      await card('第三').getByRole('button', { name: 'Rename…' }).click()
-      await expect(dialog.getByRole('textbox')).toHaveValue('第三')
-      await dialog.getByRole('textbox').fill('第四')
+      // 编辑（卡片上的按钮）：名称、说明、颜色；卡片显示说明与颜色带
+      await card('第三').getByRole('button', { name: 'Edit…' }).click()
+      await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveValue('第三')
+      await dialog.getByRole('textbox', { name: 'Name' }).fill('第四')
+      await dialog.getByRole('textbox', { name: 'Description' }).fill('検証環境の調査')
+      await dialog.getByRole('radio', { name: 'Green' }).click()
       await dialog.getByRole('button', { name: 'Save' }).click()
       await expect(dialog).toHaveCount(0)
       await expect(item('第四')).toBeVisible()
       await expect(item('第三')).toHaveCount(0)
+      await expect(card('第四')).toContainText('検証環境の調査')
+      await expect(card('第四').locator('[data-slot="card-band"]')).toHaveAttribute(
+        'data-workspace-color',
+        'green'
+      )
+      await expect(card('Default').locator('[data-slot="card-band"]')).toHaveAttribute(
+        'data-workspace-color',
+        'none'
+      )
 
       // 删除（右键菜单）：删除的不是当前工作区，不切换
       await item('第四').click({ button: 'right' })
@@ -564,7 +583,7 @@ test.describe('the application address bar', () => {
       await expect(tabs(page)).toHaveText(['Workspaces'])
       // 默认工作区没有「删除」
       await item('Default').click({ button: 'right' })
-      await expect(page.getByRole('menuitem', { name: 'Rename…' })).toBeVisible()
+      await expect(page.getByRole('menuitem', { name: 'Edit…' })).toBeVisible()
       await expect(page.getByRole('menuitem', { name: 'Delete…' })).toHaveCount(0)
     } finally {
       await app.close()

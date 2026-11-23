@@ -166,6 +166,34 @@ export async function hangStat(app: ElectronApplication): Promise<HungStat> {
 }
 
 /**
+ * 让主进程的某个 IPC 通道延迟 ms 毫秒后再处理（模拟慢的写操作，观察「处理中」的界面）。
+ * 与 hangStat 相同的做法：替换 pch:invoke 的处理，其余通道照常交给原处理函数。不新增产品代码
+ */
+export async function delayInvoke(
+  app: ElectronApplication,
+  channel: string,
+  ms: number
+): Promise<void> {
+  await app.evaluate(
+    ({ ipcMain }, [target, delay]) => {
+      type Handler = (event: unknown, envelope: unknown) => unknown
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+        ._invokeHandlers
+      const original = handlers.get('pch:invoke')
+      if (!original) throw new Error('pch:invoke handler not found')
+      ipcMain.removeHandler('pch:invoke')
+      ipcMain.handle('pch:invoke', async (event, envelope: unknown) => {
+        if ((envelope as { channel?: unknown } | null)?.channel === target) {
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
+        return original(event, envelope)
+      })
+    },
+    [channel, ms] as const
+  )
+}
+
+/**
  * 单击资源树一行的展开箭头：只展开 / 折叠，不选中、不打开标签（M1-3b 起单击行在当前标签打开、
  * 目录单击不展开）。用于只需要展开、不关心打开的用例
  */

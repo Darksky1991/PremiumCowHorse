@@ -1,4 +1,4 @@
-import type { ChangeEvent, CompositionEvent, JSX, RefObject } from 'react'
+import type { ChangeEvent, CompositionEvent, CSSProperties, JSX, RefObject } from 'react'
 import { GalleryHorizontalIcon, LayoutListIcon, ListIcon, SearchIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
@@ -32,9 +32,18 @@ export interface PickerHeaderProps {
   onView: (view: PickerView) => void
   detail: boolean
   onDetail: (detail: boolean) => void
+  /** 编辑模式（不记忆） */
+  editing: boolean
+  onEditing: () => void
 }
 
-/** 选择器头部：筛选框（combobox）+ 计数、「リング / リスト」切换、「詳細」开关 */
+/**
+ * 编辑开关的琥珀色（设计稿 1.5 第 4 条：「现在是另一种模式」）：shadcn Switch 选中时用 --primary，
+ * 只在这个开关的范围内把令牌换成 --ws-amber，不改组件本身
+ */
+const AMBER = { '--primary': 'var(--ws-amber)' } as CSSProperties
+
+/** 选择器头部：筛选框（combobox）+ 计数、「リング / リスト」切换、「詳細」开关、「編集」开关 */
 export function PickerHeader({
   filterRef,
   listId,
@@ -48,7 +57,9 @@ export function PickerHeader({
   view,
   onView,
   detail,
-  onDetail
+  onDetail,
+  editing,
+  onEditing
 }: PickerHeaderProps): JSX.Element {
   const { t } = useTranslation('workspace')
   return (
@@ -113,31 +124,62 @@ export function PickerHeader({
           {t('detail')}
         </Label>
       </div>
+      <div className="flex items-center gap-[7px]" style={AMBER}>
+        <Switch id={`${listId}-edit`} size="sm" checked={editing} onCheckedChange={onEditing} />
+        <Label htmlFor={`${listId}-edit`} className="font-normal whitespace-nowrap">
+          {t('edit')}
+        </Label>
+      </div>
     </div>
   )
 }
 
-/** 选择器页脚：按键提示与「ワークスペース一覧を開く」 */
+/**
+ * 选择器页脚：按键提示与「ワークスペース一覧を開く」。编辑模式常驻「編集中：クリックや Enter では切り替わりません」
+ * （设计稿 1.1），提示换成移动 / 排序（筛选中无效）/ Tab
+ */
 export function PickerFooter({
   view,
   filtering,
+  editing,
   onOpenList
 }: {
   view: PickerView
   filtering: boolean
+  editing: boolean
   onOpenList: () => void
 }): JSX.Element {
   const { t } = useTranslation('workspace')
   return (
     <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t px-3.5 py-2 text-xs text-muted-foreground">
-      {view === 'ring' ? (
-        <KeyHint keys={['←', '→']} label={t('keyRotate')} />
+      {editing ? (
+        <>
+          <span className="inline-flex items-center gap-1.5 text-foreground">
+            <span aria-hidden className="size-2 rounded-[2px] bg-[var(--ws-amber)]" />
+            {t('editNote')}
+          </span>
+          {view === 'ring' ? (
+            <KeyHint keys={['←', '→']} label={t('keyMove')} />
+          ) : (
+            <KeyHint keys={['↑', '↓']} label={t('keyMove')} />
+          )}
+          {view === 'ring' && !filtering ? (
+            <KeyHint keys={['Alt', '←→']} label={t('keyReorder')} />
+          ) : null}
+          <KeyHint keys={['Tab']} label={t('keyFields')} />
+        </>
       ) : (
-        <KeyHint keys={['↑', '↓']} label={t('keyMove')} />
+        <>
+          {view === 'ring' ? (
+            <KeyHint keys={['←', '→']} label={t('keyRotate')} />
+          ) : (
+            <KeyHint keys={['↑', '↓']} label={t('keyMove')} />
+          )}
+          <KeyHint keys={['Enter']} label={t('keySwitch')} />
+          <KeyHint keys={['Alt', '1–9']} label={t('keyDirect')} />
+          {view === 'ring' ? <span>{t('keyFilter')}</span> : null}
+        </>
       )}
-      <KeyHint keys={['Enter']} label={t('keySwitch')} />
-      <KeyHint keys={['Alt', '1–9']} label={t('keyDirect')} />
-      {view === 'ring' ? <span>{t('keyFilter')}</span> : null}
       <KeyHint keys={['Esc']} label={filtering ? t('keyClear') : t('keyClose')} />
       <Button variant="ghost" size="xs" className="ml-auto" onClick={onOpenList}>
         <LayoutListIcon />

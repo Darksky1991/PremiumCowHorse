@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_WORKSPACE_ID } from '@pch/shared'
 import {
   FRONT_GUARD_MS,
+  NEW_CARD_ID,
   act,
   initPickerState,
   keyToAction,
@@ -53,9 +55,11 @@ describe('pickerReducer', () => {
   })
 
   it('does not switch from the front card in edit mode', () => {
-    const editing: PickerState = { ...opened(), mode: 'edit' }
+    const editing = pickerReducer(opened(), act.toggleEdit()).state
+    // 正面卡片是表单：点击不产生副作用；Enter 只把焦点移到名称框
     expect(pickerReducer(editing, act.clickCard(0, 99_999)).effect).toBeUndefined()
-    expect(pickerReducer(editing, act.enter()).effect).toBeUndefined()
+    expect(pickerReducer(editing, act.enter()).effect).toEqual({ kind: 'focusName', id: 'a' })
+    expect(pickerReducer(editing, act.clickRow(1, 99_999)).effect).toBeUndefined()
   })
 
   it('filters by name and description, keeps the order and turns the best match to the front', () => {
@@ -199,6 +203,116 @@ describe('pickerReducer', () => {
   })
 })
 
+describe('pickerReducer: edit mode', () => {
+  const editing = (): PickerState => pickerReducer(opened(), act.toggleEdit()).state
+
+  it('toggling edit adds the "+" card at the end (not while filtering), keeps the front and clears a confirm', () => {
+    const s = editing()
+    expect(s.mode).toBe('edit')
+    expect(s.order).toEqual(['a', 'b', 'c', 'd', 'e', NEW_CARD_ID])
+    expect(s.order[s.front]).toBe('a')
+    const filtered = pickerReducer(s, act.setQuery('バッチ', 2000)).state
+    expect(filtered.order).not.toContain(NEW_CARD_ID)
+    const cleared = pickerReducer(filtered, act.escape(2100)).state
+    expect(cleared.order.at(-1)).toBe(NEW_CARD_ID)
+    // 关闭编辑：「+」卡片消失，正面在「+」上时落到最后一张
+    const onNew = pickerReducer(s, act.focusIndex(5, 3000)).state
+    const back = pickerReducer(onNew, act.toggleEdit()).state
+    expect(back.mode).toBe('browse')
+    expect(back.order).toEqual(['a', 'b', 'c', 'd', 'e'])
+    expect(back.order[back.front]).toBe('e')
+    const asked = pickerReducer(pickerReducer(s, act.focusIndex(1, 3000)).state, act.askDelete('b'))
+    expect(pickerReducer(asked.state, act.toggleEdit()).state.confirmDelete).toBeNull()
+  })
+
+  it('moveFront(1) swaps the front card with its right neighbour and returns the new order', () => {
+    const atB = pickerReducer(editing(), act.focusIndex(1, 2000)).state
+    const { state, effect } = pickerReducer(atB, act.moveFront(1))
+    expect(effect).toEqual({ kind: 'reorder', ids: ['a', 'c', 'b', 'd', 'e'] })
+    expect(state.order).toEqual(['a', 'c', 'b', 'd', 'e', NEW_CARD_ID])
+    expect(state.items.map((w) => w.id)).toEqual(['a', 'c', 'b', 'd', 'e'])
+    // 正面仍是同一张（跟着移动），保护期不重新计
+    expect(state.order[state.front]).toBe('b')
+    expect(state.frontSince).toBe(2000)
+    const left = pickerReducer(state, act.moveFront(-1))
+    expect(left.effect).toEqual({ kind: 'reorder', ids: ['a', 'b', 'c', 'd', 'e'] })
+  })
+
+  it('moveFront does nothing while filtering, at the ends, on the "+" card or outside edit mode', () => {
+    const filtered = pickerReducer(editing(), act.setQuery('バッチ', 2000)).state
+    const r = pickerReducer(filtered, act.moveFront(1))
+    expect(r.effect).toBeUndefined()
+    expect(r.state.order).toEqual(filtered.order)
+    expect(pickerReducer(editing(), act.moveFront(-1)).effect).toBeUndefined()
+    const atE = pickerReducer(editing(), act.focusIndex(4, 2000)).state
+    expect(pickerReducer(atE, act.moveFront(1)).effect).toBeUndefined()
+    const onNew = pickerReducer(editing(), act.focusIndex(5, 2000)).state
+    expect(pickerReducer(onNew, act.moveFront(-1)).effect).toBeUndefined()
+    expect(pickerReducer(opened(), act.moveFront(1)).effect).toBeUndefined()
+  })
+
+  it('Enter or a click on the "+" card creates (the click after the guard period)', () => {
+    const onNew = pickerReducer(editing(), act.focusIndex(5, 2000)).state
+    expect(pickerReducer(onNew, act.enter()).effect).toEqual({ kind: 'create' })
+    expect(pickerReducer(onNew, act.clickCard(5, 2100)).effect).toBeUndefined()
+    expect(pickerReducer(onNew, act.clickCard(5, 2300)).effect).toEqual({ kind: 'create' })
+    const row = pickerReducer(editing(), act.clickRow(5, 2000))
+    expect(row.state.order[row.state.front]).toBe(NEW_CARD_ID)
+    expect(row.effect).toEqual({ kind: 'create' })
+  })
+
+  it('askDelete flips the front card; Esc cancels the confirm without closing', () => {
+    const atB = pickerReducer(editing(), act.focusIndex(1, 2000)).state
+    const asked = pickerReducer(atB, act.askDelete('b')).state
+    expect(asked.confirmDelete).toBe('b')
+    // 确认中 Enter（焦点不在按钮上时）不做任何事
+    expect(pickerReducer(asked, act.enter()).effect).toBeUndefined()
+    const escaped = pickerReducer(asked, act.escape(2500))
+    expect(escaped.effect).toBeUndefined()
+    expect(escaped.state.confirmDelete).toBeNull()
+    expect(escaped.state.order[escaped.state.front]).toBe('b')
+    expect(pickerReducer(asked, act.cancelDelete()).state.confirmDelete).toBeNull()
+    // 转走即取消确认
+    expect(pickerReducer(asked, act.rotate(1, 3000)).state.confirmDelete).toBeNull()
+    // 只能确认正面那张、只在编辑模式中
+    expect(pickerReducer(atB, act.askDelete('c')).state.confirmDelete).toBeNull()
+    const browse = pickerReducer(opened(), act.focusIndex(1, 2000)).state
+    expect(pickerReducer(browse, act.askDelete('b')).state.confirmDelete).toBeNull()
+  })
+
+  it('the default workspace cannot be asked for deletion', () => {
+    const withDefault: PickerItem[] = [
+      { id: DEFAULT_WORKSPACE_ID, name: 'デフォルト', description: null },
+      ...items
+    ]
+    const s = pickerReducer(
+      initPickerState(withDefault, DEFAULT_WORKSPACE_ID, 1000),
+      act.toggleEdit()
+    ).state
+    expect(s.order[s.front]).toBe(DEFAULT_WORKSPACE_ID)
+    expect(pickerReducer(s, act.askDelete(DEFAULT_WORKSPACE_ID)).state.confirmDelete).toBeNull()
+    expect(pickerReducer(s, act.askDelete(NEW_CARD_ID)).state.confirmDelete).toBeNull()
+  })
+
+  it('keeps the confirm when the list changes but the card stays; drops it when the card is gone', () => {
+    const atB = pickerReducer(editing(), act.focusIndex(1, 2000)).state
+    const asked = pickerReducer(atB, act.askDelete('b')).state
+    const renamed = items.map((w) => (w.id === 'a' ? { ...w, name: '改名' } : w))
+    const kept = pickerReducer(asked, act.sync(renamed, 3000)).state
+    expect(kept.confirmDelete).toBe('b')
+    expect(kept.order.at(-1)).toBe(NEW_CARD_ID)
+    const gone = pickerReducer(
+      asked,
+      act.sync(
+        items.filter((w) => w.id !== 'b'),
+        3000
+      )
+    ).state
+    expect(gone.confirmDelete).toBeNull()
+    expect(gone.order).toEqual(['a', 'c', 'd', 'e', NEW_CARD_ID])
+  })
+})
+
 describe('keyToAction', () => {
   const key = (k: string, extra: Partial<PickerKey> = {}): PickerKey => ({
     key: k,
@@ -244,6 +358,18 @@ describe('keyToAction', () => {
   it('ignores Alt+arrows (reordering is for the edit mode) and other modifiers', () => {
     expect(keyToAction(key('ArrowRight', { altKey: true }), 7)).toBeNull()
     expect(keyToAction(key('Enter', { ctrlKey: true }), 7)).toBeNull()
+  })
+
+  it('Alt+←/→ reorders in edit mode on the ring, not while filtering', () => {
+    const edit = { view: 'ring' as const, query: '', mode: 'edit' as const }
+    expect(keyToAction(key('ArrowRight', { altKey: true }), 7, edit)).toEqual(act.moveFront(1))
+    expect(keyToAction(key('ArrowLeft', { altKey: true }), 7, edit)).toEqual(act.moveFront(-1))
+    expect(keyToAction(key('ArrowRight', { altKey: true }), 7, { ...edit, query: 'a' })).toBeNull()
+    expect(
+      keyToAction(key('ArrowRight', { altKey: true }), 7, { ...edit, view: 'list' })
+    ).toBeNull()
+    // 编辑模式中单按 ←→ 仍转动
+    expect(keyToAction(key('ArrowRight'), 7, edit)).toEqual(act.rotate(1, 7))
   })
 
   it('returns null for every key during IME composition', () => {

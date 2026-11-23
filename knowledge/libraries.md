@@ -298,3 +298,11 @@
 - 原因：`ssh2` 1.17.0 `lib/protocol/keyParser.js` 的 PPK 解析正则只认 `PuTTY-User-Key-File-2: ssh-(rsa|dss)` 与 `Encryption: aes256-cbc|none`；口令参与 Private-MAC 的计算。`parseKey` 以**返回** `Error` 表示失败（不抛出），对 OpenSSH 新格式可能返回数组。
 - 解决：先不带口令解析，提示需要口令（加密）时再带口令；不支持的格式映射为 `CONN_KEY_INVALID`（本机错误，不连接、不锁定），界面提示用 PuTTYgen 转换为 OpenSSH 格式。
 - 预防：加密的 PPK v2（`aes256-cbc`）与真实 PuTTYgen 导出的文件未验证（无样本）；遇到用户的 `.ppk` 问题先确认版本行与 `Encryption:` 行。
+
+### shadcn Button 的 `transition-all` 会过渡继承来的 `visibility`：刚显示的按钮 `focus()` 无效
+
+- 日期：2026-11-23
+- 症状（M5 Task 13）：减少动效时选择器的删除确认不翻转、只用 `invisible`（visibility: hidden）切换可见的一面；翻到背面后 `cancelRef.current.focus()`（effect 中、甚至下一帧 rAF 中）都不生效，焦点落到 body；500 ms 后手动 `focus()` 却成功，`getComputedStyle` 也是 visible。
+- 原因：shadcn `Button` 带 `transition-all`，祖先的 `visibility` 变化经继承也被按钮过渡（默认 150 ms）；过渡起点按钮仍是 hidden，不可获得焦点。
+- 解决：要切换显示的一面用 `hidden`（display: none，不参与 `transition-all`），不用 `invisible`。
+- 预防：用 `visibility` 显隐含 shadcn 按钮 / 输入框的区域、并在显隐后立即移动焦点时，改用 display 或在过渡结束后再移焦点；不要靠 rAF 碰运气。

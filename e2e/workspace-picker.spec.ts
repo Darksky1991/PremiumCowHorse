@@ -40,7 +40,11 @@ test.describe('workspace picker', () => {
       .getByRole('button', { name: 'ワークスペースの切り替え', exact: true })
   const dialog = (page: Page): Locator => page.getByRole('dialog')
   const filter = (page: Page): Locator => dialog(page).getByRole('combobox')
-  const front = (page: Page): Locator => dialog(page).getByRole('option', { selected: true })
+  /** 正面卡片：退场动画中的旧卡片（绕环跳转时换了键，保留旧的 aria-selected）带 pointer-events: none，排除 */
+  const front = (page: Page): Locator =>
+    dialog(page)
+      .getByRole('option', { selected: true })
+      .and(dialog(page).locator(':not([style*="pointer-events: none"])'))
   const card = (page: Page, offset: number): Locator =>
     dialog(page).locator(`[data-workspace-card][data-offset="${offset}"]`)
 
@@ -215,6 +219,18 @@ test.describe('workspace picker', () => {
       await page.keyboard.press('Enter')
       await expect(dialog(page)).toHaveCount(0)
       await expect(titleButton(page)).toHaveText('バッチ移行')
+
+      // 删除确认不翻转，只换可见的一面
+      await openWithAltW(page)
+      await dialog(page).getByRole('switch', { name: '編集', exact: true }).click()
+      await front(page).getByRole('button', { name: '削除…' }).click()
+      const back = front(page).getByRole('group', { name: '「バッチ移行」を削除しますか？' })
+      await expect(back.getByRole('button', { name: 'キャンセル' })).toBeFocused()
+      await expect(back).toBeVisible()
+      await expect(front(page).getByRole('textbox', { name: '名前' })).toBeHidden()
+      expect(
+        await back.evaluate((el) => (el.parentElement as HTMLElement).style.transform)
+      ).toMatch(/^(none|)$/)
     } finally {
       await app.close()
     }
@@ -255,7 +271,7 @@ test.describe('workspace picker', () => {
         'aria-orientation',
         'horizontal'
       )
-      await dialog(page).getByRole('switch').click()
+      await dialog(page).getByRole('switch', { name: '詳細' }).click()
       await expect(front(page)).toContainText('説明なし')
       await expect(front(page)).toContainText('最終使用')
       await expect
@@ -268,6 +284,170 @@ test.describe('workspace picker', () => {
       await dialog(page).getByRole('button', { name: 'ワークスペース一覧を開く' }).click()
       await expect(dialog(page)).toHaveCount(0)
       await expect(page.getByRole('tab', { name: 'ワークスペース一覧' })).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+
+  const editSwitch = (page: Page): Locator =>
+    dialog(page).getByRole('switch', { name: '編集', exact: true })
+  const nameField = (page: Page): Locator => front(page).getByRole('textbox', { name: '名前' })
+  /** 模态打开时标题栏在无障碍树外（getByRole 找不到），按 DOM 取标题栏的工作区按钮 */
+  const titleButtonBehind = (page: Page): Locator =>
+    page.locator('header [aria-label="ワークスペースの切り替え"]')
+  const listNames = async (page: Page): Promise<string[]> =>
+    (await data<Array<{ name: string }>>(page, 'workspace.list')).map((w) => w.name)
+
+  test('edit mode: the front card is a form saved at once (title bar follows); clicks and Enter do not switch', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      const ids = await setup(page)
+      await openWithAltW(page)
+      await editSwitch(page).click()
+      await expect(editSwitch(page)).toHaveAttribute('aria-checked', 'true')
+      await expect(
+        dialog(page).getByText('編集中：クリックや Enter では切り替わりません')
+      ).toBeVisible()
+      // 编辑中不显示编号；正面是表单
+      await expect(nameField(page)).toHaveValue('物流WMS')
+
+      // 名称框 Enter：保存，焦点回到筛选框；标题栏随之更新
+      await nameField(page).fill('物流WMS 本番')
+      await page.keyboard.press('Enter')
+      await expect(filter(page)).toBeFocused()
+      await expect(titleButtonBehind(page)).toHaveText('物流WMS 本番')
+      // 颜色：点击即保存，标题栏的圆点随之变化
+      const dot = titleButtonBehind(page).locator('[data-workspace-color]')
+      await expect(dot).toHaveAttribute('data-workspace-color', 'none')
+      await front(page).getByRole('radio', { name: '青', exact: true }).click()
+      await expect(dot).toHaveAttribute('data-workspace-color', 'blue')
+      await expect(front(page).getByRole('radio', { name: '青', exact: true })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      // 说明：失焦即保存
+      await front(page).getByRole('textbox', { name: '説明' }).fill('出荷系の障害対応')
+      await nameField(page).focus()
+      await expect
+        .poll(
+          async () =>
+            (
+              await data<Array<{ id: string; description: string | null }>>(page, 'workspace.list')
+            ).find((w) => w.id === ids['物流WMS'])?.description
+        )
+        .toBe('出荷系の障害対応')
+
+      // 输入框中的 ←→ / 数字 / Enter 不转动、不切换；Esc 只撤销该字段，焦点回到筛选框（面板仍开）
+      await nameField(page).fill('一時的な名前2')
+      await page.keyboard.press('ArrowLeft')
+      await page.keyboard.press('2')
+      await expect(nameField(page)).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(filter(page)).toBeFocused()
+      await expect(dialog(page)).toBeVisible()
+      await expect(nameField(page)).toHaveValue('物流WMS 本番')
+      // 非默认工作区名称清空后失焦：还原
+      await nameField(page).fill('')
+      await filter(page).focus()
+      await expect(nameField(page)).toHaveValue('物流WMS 本番')
+
+      // Enter（筛选框中）不切换，只把焦点移到名称框
+      await page.keyboard.press('ArrowRight')
+      await expect(front(page)).toHaveAttribute('aria-label', /バッチ移行/)
+      await page.keyboard.press('Enter')
+      await expect(nameField(page)).toBeFocused()
+      await expect(nameField(page)).toHaveValue('バッチ移行')
+      // 点击正面卡片（表单）也不切换
+      await page.waitForTimeout(300)
+      await front(page).getByText('変更は自動で保存されます').click()
+      await expect(dialog(page)).toBeVisible()
+      // 直选不生效
+      await filter(page).focus()
+      await page.keyboard.press('Alt+3')
+      await expect(dialog(page)).toBeVisible()
+      expect((await data(page, 'workspace.active')).name).toBe('物流WMS 本番')
+      // 正面换走时未保存的输入也保存
+      await nameField(page).fill('バッチ移行 2026')
+      await card(page, 1).click()
+      await expect.poll(() => listNames(page)).toContain('バッチ移行 2026')
+
+      // 编辑开关不记忆：关闭后再打开为浏览模式
+      await page.keyboard.press('Escape')
+      await expect(dialog(page)).toHaveCount(0)
+      await openWithAltW(page)
+      await expect(editSwitch(page)).toHaveAttribute('aria-checked', 'false')
+      await expect(front(page).getByRole('textbox')).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('edit mode: the "+" card creates, the flipped card confirms deletion, Alt+→ reorders and the order is kept', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await openWithAltW(page)
+      await editSwitch(page).click()
+      await filter(page).focus()
+
+      // End：转到最后的「+」卡片；Enter 新建，不切换，新卡片在正面、名称全选
+      await page.keyboard.press('End')
+      await expect(front(page)).toHaveAttribute('aria-label', '新しいワークスペースを作成')
+      await page.keyboard.press('Enter')
+      await expect(nameField(page)).toBeFocused()
+      await expect(nameField(page)).toHaveValue('新しいワークスペース')
+      await page.keyboard.type('調査用')
+      await page.keyboard.press('Enter')
+      await expect.poll(() => listNames(page)).toContain('調査用')
+      expect((await data(page, 'workspace.active')).name).toBe('物流WMS')
+
+      // 删除：卡片翻到背面，默认焦点在「キャンセル」；Esc 翻回（面板不关）
+      await front(page).getByRole('button', { name: '削除…' }).click()
+      const back = front(page).getByRole('group', { name: '「調査用」を削除しますか？' })
+      await expect(back).toBeVisible()
+      await expect(back.getByRole('button', { name: 'キャンセル' })).toBeFocused()
+      await page.keyboard.press('Escape')
+      await expect(dialog(page)).toBeVisible()
+      await expect(front(page).getByRole('button', { name: '削除…' })).toBeFocused()
+      await front(page).getByRole('button', { name: '削除…' }).click()
+      await back.getByRole('button', { name: '削除', exact: true }).click()
+      await expect(page.getByText('「調査用」を削除しました')).toBeVisible()
+      await expect.poll(() => listNames(page)).not.toContain('調査用')
+      await expect(dialog(page)).toBeVisible()
+      await expect(filter(page)).toBeFocused()
+
+      // 默认工作区没有「削除…」
+      await page.keyboard.press('Home')
+      await expect(nameField(page)).toHaveAttribute('placeholder', 'デフォルト')
+      await expect(front(page).getByRole('button', { name: '削除…' })).toHaveCount(0)
+
+      // Alt+→：把「物流WMS」与右边的「バッチ移行」交换；筛选中无效
+      await page.keyboard.press('ArrowRight')
+      await expect(nameField(page)).toHaveValue('物流WMS')
+      await page.keyboard.press('Alt+ArrowRight')
+      await expect(nameField(page)).toHaveValue('物流WMS')
+      await expect
+        .poll(() => listNames(page))
+        .toEqual(['', 'バッチ移行', '物流WMS', '経理', '共通'])
+      await filter(page).fill('経理')
+      await page.keyboard.press('Alt+ArrowRight')
+      await page.waitForTimeout(300)
+      expect(await listNames(page)).toEqual(['', 'バッチ移行', '物流WMS', '経理', '共通'])
+
+      // 重开：顺序保持（位置圆点的顺序与编号）
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+      await expect(dialog(page)).toHaveCount(0)
+      await openWithAltW(page)
+      const dots = dialog(page).locator('[data-slot="picker-indicator"] button')
+      expect(await dots.evaluateAll((els) => els.map((el) => el.getAttribute('title')))).toEqual([
+        'デフォルト',
+        'バッチ移行',
+        '物流WMS',
+        '経理',
+        '共通'
+      ])
+      await expect(front(page)).toHaveAttribute('aria-label', /^3\. 物流WMS/)
     } finally {
       await app.close()
     }

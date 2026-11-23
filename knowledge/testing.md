@@ -320,3 +320,19 @@
 - 原因：搜索视图的输入经防抖（`search-view.tsx` 的 `useDebounced`）后才成为查询键；「清空 → 立即输入同一关键字」在防抖期内完成，防抖后的值没有变化，查询键不变，挂载中的 `useQuery` 不会重新查询（`data/search.ts`：结果按设计不随 `vfs.changed` 失效，只在关键字变化 / 重新挂载时查询）。另外索引按目录逐个读取（远程每个目录之间休息 `cache.backgroundGapMs.remote`），先找到的文件不代表其余目录已读完。
 - 解决：先经 IPC `search.query` 轮询，等到目标命中且 `incomplete: false`（没有未扫描的目录），再在界面中输入关键字（每个关键字只输入一次）。
 - 预防：依赖后台索引的搜索用例，等待条件放在 IPC 层（`incomplete`），界面只验证展示与定位；不要靠在界面上反复输入同一关键字来等待。
+
+### e2e：模态对话框打开时 `getByRole('banner')` 找不到标题栏，断言顺序会掩盖「对话框提前消失」
+
+- 日期：2026-11-23
+- 症状（M5 Task 13，M2-F2）：一览页删除当前工作区的用例原来是「点删除 → `expect(banner).toHaveText('Default')` → `expect(alertdialog).toHaveCount(0)`」，一直通过；修好「确认框在删除完成前保持可见」后，加上的 `expect(alertdialog).toBeVisible()` 反而在 `banner` 断言之后失败。
+- 原因：Base UI 的模态对话框打开时把其余部分设为 inert / aria-hidden，`getByRole('banner')` 找不到标题栏，`toHaveText` 会一直等到对话框关闭才成立——旧用例的通过恰恰依赖对话框提前消失（缺陷本身）。
+- 解决：对话框打开期间按 DOM 取背后的元素（`page.locator('header [aria-label="Switch workspace"]')`），对话框关闭后再用 `getByRole`；要观察「处理中」的界面，用 `e2e/support.ts` 的 `delayInvoke(app, 'workspace.delete', 1500)` 放慢该 IPC。
+- 预防：在模态对话框打开期间断言背后的界面时，不用 `getByRole`；用例中「对话框何时关闭」要显式断言，不要让别的断言隐式等待它。
+
+### e2e：圆环绕环跳转（Home / End）后 `getByRole('option', { selected: true })` 命中两张卡
+
+- 日期：2026-11-23
+- 症状（M5 Task 13）：选择器按 End 转到最后一张后，`front(page)` 报 strict mode violation，第二个元素是刚才的正面卡片（`aria-selected="true"`、`data-offset="0"`）。
+- 原因：跳转时卡片换了渲染键（`trackCards`），旧元素在 `AnimatePresence` 中播放退场动画，保留最后一次渲染的属性（含 `aria-selected`）；退场中的元素带 motion 设的 `pointer-events: none`。Playwright 的断言遇到 strict mode violation 立即失败、不重试。
+- 解决：`front` 定位器排除退场中的元素：`.and(dialog.locator(':not([style*="pointer-events: none"])'))`。
+- 预防：对带退场动画的列表项按「状态属性」定位时，排除退场中的元素；产品侧（屏幕阅读器在 ~0.2 s 内看到两个选中项）未修，记入台账。

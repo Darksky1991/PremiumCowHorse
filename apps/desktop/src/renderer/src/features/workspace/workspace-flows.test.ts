@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AppError, DEFAULT_WORKSPACE_ID, type TabState, type TabsState } from '@pch/shared'
-import { createAndActivate, listTabToLeave, removeWorkspace } from './workspace-flows'
+import {
+  createAndActivate,
+  listTabToLeave,
+  nextWorkspaceName,
+  removeWorkspace
+} from './workspace-flows'
 
 describe('createAndActivate', () => {
   it('创建成功后切换，并关闭对话框', async () => {
@@ -206,5 +211,24 @@ describe('listTabToLeave', () => {
     expect(listTabToLeave(byWorkspace, 't2', 'w2')).toBe(false)
     expect(listTabToLeave(byWorkspace, 't3', 'w1')).toBe(false)
     expect(listTabToLeave(byWorkspace, 'gone', 'w2')).toBe(false)
+  })
+})
+
+describe('nextWorkspaceName', () => {
+  it('uses the base name, then the smallest free number from 2', () => {
+    expect(nextWorkspaceName([], '新しいワークスペース')).toBe('新しいワークスペース')
+    expect(nextWorkspaceName(['案件'], '新しいワークスペース')).toBe('新しいワークスペース')
+    expect(nextWorkspaceName(['新しいワークスペース'], '新しいワークスペース')).toBe(
+      '新しいワークスペース 2'
+    )
+    expect(
+      nextWorkspaceName(
+        ['新しいワークスペース', '新しいワークスペース 3', '新しいワークスペース 2'],
+        '新しいワークスペース'
+      )
+    ).toBe('新しいワークスペース 4')
+    expect(
+      nextWorkspaceName(['新しいワークスペース', '新しいワークスペース 3'], '新しいワークスペース')
+    ).toBe('新しいワークスペース 2')
   })
 })

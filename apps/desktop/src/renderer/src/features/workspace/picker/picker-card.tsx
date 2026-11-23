@@ -1,8 +1,8 @@
-import type { CSSProperties, JSX, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, JSX, ReactNode, Ref } from 'react'
 import { LayersIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
-import type { Workspace, WorkspaceSummary } from '@pch/shared'
+import type { Workspace, WorkspaceColor, WorkspaceSummary } from '@pch/shared'
 import { FileIcon } from '@pch/ui/file-icon'
 import { Kbd } from '@pch/ui/components/kbd'
 import { normalizeForMatch } from '@renderer/lib/text-match'
@@ -27,6 +27,54 @@ export function Highlighted({ name, query }: { name: string; query: string }): R
       </mark>
       {name.slice(at + q.length)}
     </>
+  )
+}
+
+/**
+ * 卡面的外壳（圆环中的卡片、编辑表单与删除确认共用）：圆角边框、顶部颜色带（无颜色时为 border 色）、
+ * 正面的高亮边框与投影。className 只用于布局（背面的 3D 翻转等）
+ */
+export function CardFace({
+  front,
+  color,
+  band = true,
+  className,
+  children,
+  ref,
+  ...rest
+}: {
+  front: boolean
+  color: WorkspaceColor | null
+  /** 顶部颜色带（删除确认的背面没有） */
+  band?: boolean
+  className?: string
+  children: ReactNode
+  ref?: Ref<HTMLDivElement>
+} & Omit<HTMLAttributes<HTMLDivElement>, 'color'>): JSX.Element {
+  const value = colorVar(color)
+  return (
+    <div
+      {...rest}
+      ref={ref}
+      className={cn(
+        'absolute inset-0 flex flex-col overflow-hidden rounded-xl border bg-card text-card-foreground',
+        front
+          ? 'border-[color-mix(in_oklch,var(--primary)_70%,var(--border))] shadow-[0_0_0_1px_color-mix(in_oklch,var(--primary)_70%,transparent),0_18px_36px_-14px_oklch(0_0_0/0.4)]'
+          : 'hover:border-[color-mix(in_oklch,var(--foreground)_30%,var(--border))]',
+        className
+      )}
+    >
+      {band ? (
+        <div
+          aria-hidden
+          data-slot="card-band"
+          data-workspace-color={color ?? 'none'}
+          className="h-[5px] flex-none bg-border"
+          style={value === null ? undefined : ({ background: value } satisfies CSSProperties)}
+        />
+      ) : null}
+      {children}
+    </div>
   )
 }
 
@@ -62,24 +110,11 @@ export function PickerCard({
 }: PickerCardProps): JSX.Element {
   const { t, i18n } = useTranslation('workspace')
   const language = i18n.language
-  const color = colorVar(workspace.color)
   const count = summary?.entryCount ?? 0
   const top = summary?.topEntries ?? []
   const rest = count - top.length
   return (
-    <div
-      className={cn(
-        'absolute inset-0 flex flex-col overflow-hidden rounded-xl border bg-card text-card-foreground',
-        front
-          ? 'border-[color-mix(in_oklch,var(--primary)_70%,var(--border))] shadow-[0_0_0_1px_color-mix(in_oklch,var(--primary)_70%,transparent),0_18px_36px_-14px_oklch(0_0_0/0.4)]'
-          : 'hover:border-[color-mix(in_oklch,var(--foreground)_30%,var(--border))]'
-      )}
-    >
-      <div
-        aria-hidden
-        className="h-[5px] flex-none bg-border"
-        style={color === null ? undefined : ({ background: color } satisfies CSSProperties)}
-      />
+    <CardFace front={front} color={workspace.color}>
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 px-3.5 py-3">
         <div className="flex min-h-[18px] items-center gap-1.5">
           {number === null ? null : <Kbd>{number}</Kbd>}
@@ -164,6 +199,6 @@ export function PickerCard({
           )}
         </div>
       </div>
-    </div>
+    </CardFace>
   )
 }
