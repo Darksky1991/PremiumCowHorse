@@ -9,21 +9,9 @@ import {
   type KeyboardEvent,
   type RefObject
 } from 'react'
-import { GalleryHorizontalIcon, LayoutListIcon, ListIcon, SearchIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { cn } from 'cn'
 import { AppError, type Workspace, type WorkspaceSummary } from '@pch/shared'
-import { Button } from '@pch/ui/components/button'
 import { Dialog, DialogContent, DialogTitle } from '@pch/ui/components/dialog'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText
-} from '@pch/ui/components/input-group'
-import { Kbd } from '@pch/ui/components/kbd'
-import { Label } from '@pch/ui/components/label'
-import { Switch } from '@pch/ui/components/switch'
 import { useReducedMotionConfig } from '@pch/ui/lib/motion'
 import { useSetting, useUpdateSettings } from '@renderer/data/settings'
 import {
@@ -37,11 +25,14 @@ import { beginFocusReturn, type FocusReturn } from '@renderer/lib/focus-return'
 import { isImeKey } from '@renderer/lib/key-context'
 import { notify } from '@renderer/stores/messages-store'
 import { useUiStore } from '@renderer/stores/ui-store'
+import { useFilterInput } from '../use-filter-input'
 import { useOpenWorkspaceList } from '../use-open-workspace-list'
 import { lastUsedText } from '../workspace-time'
 import { ListView } from './list-view'
+import { PickerFooter, PickerHeader } from './picker-chrome'
 import { RingView } from './ring-view'
 import {
+  act,
   cardDomId,
   keyToAction,
   rowDomId,
@@ -152,8 +143,9 @@ function PickerBody({
   const savedDetail = useSetting('workspace.pickerDetail')
   const [view, setView] = useState(savedView ?? 'ring')
   const [detail, setDetail] = useState(savedDetail ?? false)
-  const [text, setText] = useState('')
   const [pressing, setPressing] = useState<string | null>(null)
+  // 按压反馈的定时器：Esc 取消切换、卸载时清理
+  const pressTimer = useRef<number | null>(null)
   const [now] = useState(() => Date.now())
   const listId = useId()
 
@@ -193,7 +185,10 @@ function PickerBody({
     notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
   }
 
-  /** 切换：选当前工作区 = 只关闭；否则正面卡片按压反馈后关闭面板并切换，成功后 toast */
+  /**
+   * 切换：选当前工作区 = 只关闭；否则正面卡片按压反馈 140ms 后关闭面板并切换，成功后 toast。
+   * 按压期间按 Esc 取消切换（面板保持打开）；期间面板因其他原因关闭（点外部、Alt+W）或卸载则不切换
+   */
   const choose = (id: string): void => {
     if (pressing !== null) return
     if (id === active.id) {
@@ -202,8 +197,10 @@ function PickerBody({
     }
     const name = rows.get(id)?.name ?? ''
     setPressing(id)
-    window.setTimeout(
+    pressTimer.current = window.setTimeout(
       () => {
+        pressTimer.current = null
+        if (useUiStore.getState().pickerOpen === null) return
         close(true)
         activate.mutate(id, {
           onSuccess: () => notify('success', t('workspace:switched', { name })),
@@ -213,10 +210,31 @@ function PickerBody({
       reduced ? 0 : PRESS_MS
     )
   }
+  const cancelPress = (): void => {
+    if (pressTimer.current !== null) window.clearTimeout(pressTimer.current)
+    pressTimer.current = null
+    setPressing(null)
+  }
+  useEffect(() => {
+    const timer = pressTimer
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current)
+    }
+  }, [])
+
+  // 筛选框：组字中只更新文字，确定后才筛选（use-filter-input）；筛选不产生副作用，直接派发
+  const filter = useFilterInput((query) => {
+    dispatch(act.setQuery(query, performance.now()))
+  })
 
   const run = (action: PickerAction): void => {
-    // Esc 第一级清空筛选：输入框随之清空
-    if (action.type === 'escape') setText('')
+    // 按压反馈期间：Esc 取消切换，其余按键 / 点击不处理
+    if (pressing !== null) {
+      if (action.type === 'escape') cancelPress()
+      return
+    }
+    // Esc 第一级清空筛选：输入框随之清空（不再经 onQuery 重复派发）
+    if (action.type === 'escape') filter.clear(false)
     const effect = dispatch(action)
     if (effect === undefined) return
     if (effect.kind === 'close') close(false)
@@ -237,6 +255,7 @@ function PickerBody({
     // Alt+W：再按一次关闭（模态打开时快捷键分发不处理它，见 use-workspace-commands.ts）
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyW' && !isImeKey(e.nativeEvent)) {
       e.preventDefault()
+      cancelPress()
       close(false)
       return
     }
@@ -252,8 +271,6 @@ function PickerBody({
     }
   }
 
-  const applyQuery = (value: string): void =>
-    run({ type: 'setQuery', query: value, now: performance.now() })
   const setViewAndRemember = (next: 'ring' | 'list'): void => {
     setView(next)
     updateSettings.mutate({ 'workspace.pickerView': next })
@@ -293,82 +310,21 @@ function PickerBody({
       className="top-11 w-[min(880px,calc(100%-2rem))] max-w-none translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-none"
     >
       <DialogTitle className="sr-only">{title}</DialogTitle>
-      <div className="flex items-center gap-2.5 border-b px-3.5 pt-3 pb-2.5">
-        <InputGroup className="min-w-0 flex-1">
-          <InputGroupAddon>
-            <SearchIcon />
-          </InputGroupAddon>
-          <InputGroupInput
-            ref={filterRef}
-            role="combobox"
-            aria-expanded
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={activeDescendant}
-            aria-label={t('workspace:filterLabel')}
-            placeholder={t('workspace:filterPlaceholder')}
-            autoComplete="off"
-            spellCheck={false}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value)
-              // 输入法组字中先不筛选，确定（compositionend）后再筛（日语输入中途不跳动）
-              if (!(e.nativeEvent as InputEvent).isComposing) applyQuery(e.target.value)
-            }}
-            onCompositionEnd={(e) => applyQuery(e.currentTarget.value)}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupText className="tabular-nums">
-              {filtering
-                ? t('workspace:countFiltered', {
-                    shown: state.order.length,
-                    total: state.items.length
-                  })
-                : t('workspace:countAll', { count: state.items.length })}
-            </InputGroupText>
-          </InputGroupAddon>
-        </InputGroup>
-        <div
-          role="group"
-          aria-label={t('workspace:viewLabel')}
-          className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5"
-        >
-          {(
-            [
-              ['ring', GalleryHorizontalIcon, 'viewRing', 'viewRingTitle'],
-              ['list', ListIcon, 'viewList', 'viewListTitle']
-            ] as const
-          ).map(([value, Icon, label, title]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={view === value}
-              title={t(`workspace:${title}`)}
-              onClick={() => setViewAndRemember(value)}
-              className={cn(
-                'inline-flex h-[26px] items-center gap-[5px] rounded-md px-[9px] text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-4',
-                view === value
-                  ? 'bg-background text-foreground shadow-[0_1px_2px_oklch(0_0_0/0.12)]'
-                  : 'text-muted-foreground'
-              )}
-            >
-              <Icon aria-hidden />
-              {t(`workspace:${label}`)}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-[7px]">
-          <Switch
-            id={`${listId}-detail`}
-            size="sm"
-            checked={detail}
-            onCheckedChange={setDetailAndRemember}
-          />
-          <Label htmlFor={`${listId}-detail`} className="font-normal whitespace-nowrap">
-            {t('workspace:detail')}
-          </Label>
-        </div>
-      </div>
+      <PickerHeader
+        filterRef={filterRef}
+        listId={listId}
+        activeDescendant={activeDescendant}
+        text={filter.text}
+        onChange={filter.onChange}
+        onCompositionEnd={filter.onCompositionEnd}
+        filtering={filtering}
+        shown={state.order.length}
+        total={state.items.length}
+        view={view}
+        onView={setViewAndRemember}
+        detail={detail}
+        onDetail={setDetailAndRemember}
+      />
 
       {view === 'ring' ? (
         <RingView
@@ -394,46 +350,17 @@ function PickerBody({
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t px-3.5 py-2 text-xs text-muted-foreground">
-        {view === 'ring' ? (
-          <KeyHint keys={['←', '→']} label={t('workspace:keyRotate')} />
-        ) : (
-          <KeyHint keys={['↑', '↓']} label={t('workspace:keyMove')} />
-        )}
-        <KeyHint keys={['Enter']} label={t('workspace:keySwitch')} />
-        <KeyHint keys={['Alt', '1–9']} label={t('workspace:keyDirect')} />
-        {view === 'ring' ? <span>{t('workspace:keyFilter')}</span> : null}
-        <KeyHint
-          keys={['Esc']}
-          label={filtering ? t('workspace:keyClear') : t('workspace:keyClose')}
-        />
-        <Button
-          variant="ghost"
-          size="xs"
-          className="ml-auto"
-          onClick={() => {
-            close(true)
-            openList()
-          }}
-        >
-          <LayoutListIcon />
-          {t('workspace:openList')}
-        </Button>
-      </div>
+      <PickerFooter
+        view={view}
+        filtering={filtering}
+        onOpenList={() => {
+          close(true)
+          openList()
+        }}
+      />
       <div aria-live="polite" className="sr-only">
         {announcement}
       </div>
     </DialogContent>
-  )
-}
-
-function KeyHint({ keys, label }: { keys: readonly string[]; label: string }): JSX.Element {
-  return (
-    <span className="inline-flex items-center gap-[5px]">
-      {keys.map((k) => (
-        <Kbd key={k}>{k}</Kbd>
-      ))}
-      {label}
-    </span>
   )
 }

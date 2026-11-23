@@ -149,6 +149,58 @@ test.describe('workspace picker', () => {
     }
   })
 
+  test('a fast double click on a side card turns only that card to the front', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await openWithAltW(page)
+      await page.waitForTimeout(400)
+      const target = card(page, 1)
+      await expect(target).toContainText('バッチ移行')
+      const box = (await target.boundingBox())!
+      const x = box.x + box.width / 2
+      const y = box.y + box.height / 2
+      // 同一坐标点两次（间隔约 150ms）：第二次时原 +2 卡正滑入光标下，不能再转一格
+      await page.mouse.click(x, y)
+      await page.waitForTimeout(150)
+      await page.mouse.click(x, y)
+      await page.waitForTimeout(400)
+      await expect(front(page)).toContainText('バッチ移行')
+      expect((await data(page, 'workspace.active')).name).toBe('物流WMS')
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('Esc during the press feedback cancels the switch; Esc after "no results" restores the front card', async () => {
+    const { app, page } = await launch(userData)
+    try {
+      await setup(page)
+      await openWithAltW(page)
+      await page.keyboard.press('ArrowRight')
+      await expect(front(page)).toContainText('バッチ移行')
+      // Enter 后 140ms 的按压反馈期间按 Esc：取消切换，面板仍开
+      await page.keyboard.press('Enter')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(400)
+      expect((await data(page, 'workspace.active')).name).toBe('物流WMS')
+      await expect(dialog(page)).toBeVisible()
+      await expect(front(page)).toContainText('バッチ移行')
+
+      // 无结果 → Esc：正面回到筛选前的那张（不是第 1 张）
+      await filter(page).fill('xyz')
+      await expect(dialog(page).getByRole('option')).toHaveCount(0)
+      await page.keyboard.press('Escape')
+      await expect(filter(page)).toHaveValue('')
+      await expect(front(page)).toContainText('バッチ移行')
+      await page.keyboard.press('Escape')
+      await expect(dialog(page)).toHaveCount(0)
+      expect((await data(page, 'workspace.active')).name).toBe('物流WMS')
+    } finally {
+      await app.close()
+    }
+  })
+
   test('with reduced motion the ring moves at once (only opacity fades) and still switches', async () => {
     const { app, page } = await launch(userData)
     try {
@@ -279,12 +331,37 @@ test.describe('workspace picker', () => {
         'workspace.pickerStyle': 'menu'
       })
       await expect(page.locator('html')).toHaveAttribute('lang', 'ja')
-      for (let i = 1; i <= 8; i++) await data(page, 'workspace.create', { name: `案件${i}` })
+      const ids: string[] = []
+      for (let i = 1; i <= 8; i++) {
+        ids.push((await data(page, 'workspace.create', { name: `案件${i}` })).id)
+      }
       await data(page, 'workspace.create', { name: 'バッチ監視' })
-      await titleButton(page).click()
+      await data(page, 'workspace.activate', { id: ids[2]! })
+      await expect(titleButton(page)).toHaveText('案件3')
       const box = page
         .getByRole('menu')
         .getByRole('textbox', { name: 'ワークスペースを名前で絞り込み' })
+      // 筛选框为空（或只有空白）时 Enter 不切换，只关闭（与圆环的「选当前 = 只关闭」一致）
+      for (const typed of ['', '  ']) {
+        await titleButton(page).click()
+        await expect(box).toBeFocused()
+        if (typed !== '') await page.keyboard.type(typed)
+        await page.keyboard.press('Enter')
+        await expect(page.getByRole('menu')).toHaveCount(0)
+        await expect(titleButton(page)).toHaveText('案件3')
+      }
+      // 有筛选词时 Esc 两级：先清空，再按关闭
+      await titleButton(page).click()
+      await expect(box).toBeFocused()
+      await page.keyboard.type('案件')
+      await expect(page.getByRole('menuitemradio')).toHaveCount(8)
+      await page.keyboard.press('Escape')
+      await expect(box).toHaveValue('')
+      await expect(page.getByRole('menuitemradio')).toHaveCount(10)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('menu')).toHaveCount(0)
+
+      await titleButton(page).click()
       await expect(box).toBeFocused()
       // 字符键进筛选框（不被菜单的首字母跳转拿走）
       await page.keyboard.type('ばっち')

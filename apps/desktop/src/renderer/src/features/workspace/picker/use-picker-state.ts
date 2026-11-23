@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Workspace, WorkspaceSummary } from '@pch/shared'
 import { isImeKey } from '@renderer/lib/key-context'
-import { matchScore } from '@renderer/lib/text-match'
+import { filterWorkspaces } from '../workspace-filter'
 
 /**
  * 工作区选择器的状态（设计稿 1.4–1.8）。`pickerReducer` 是纯函数：返回新状态与要执行的副作用
@@ -38,8 +38,13 @@ export interface PickerState {
   /** 正面卡片 / 选中行在 order 中的下标 */
   front: number
   query: string
-  /** 正面卡片换成现在这张的时刻（performance.now()）：正面保护期从这里算 */
+  /** 正面卡片换成现在这张的时刻（performance.now()）：保护期从这里算 */
   frontSince: number
+  /**
+   * 最后一张正面卡片的 id（筛选无结果时 order 为空，仍记得之前看着的那张）：
+   * 清空筛选 / 列表变化后据此恢复正面
+   */
+  lastFrontId: string | null
   /** 编辑模式（Task 13）：点击 / Enter 不切换 */
   mode: 'browse' | 'edit'
   /** 正在确认删除的工作区（Task 13：卡片翻到背面） */
@@ -56,7 +61,7 @@ export type PickerAction =
   | { type: 'clickRow'; index: number; now: number }
   | { type: 'enter' }
   | { type: 'directPick'; n: number }
-  | { type: 'escape' }
+  | { type: 'escape'; now: number }
   | { type: 'sync'; items: readonly PickerItem[]; now: number }
 
 export type PickerEffect = { kind: 'select'; id: string } | { kind: 'close' }
@@ -66,7 +71,10 @@ export interface PickerResult {
   effect?: PickerEffect
 }
 
-/** 卡片刚到正面的这段时间内点击无效（防止「卡片滑到光标下」被连带点中，设计稿 1.5 第 2 条） */
+/**
+ * 正面卡片换过之后的保护期（设计稿 1.5 第 2 条）：这段时间内对圆环的任何点击都无效——
+ * 正面卡片不切换，侧面卡片也不再转动（双击侧面卡片时，第二次点击会落在滑入光标下的相邻卡片上）
+ */
 export const FRONT_GUARD_MS = 250
 
 /** 动作构造器 */
@@ -80,14 +88,15 @@ export const act = {
   /** 转到 / 选中第 i 项（位置圆点、列表悬停以外的直接定位） */
   focusIndex: (index: number, now: number): PickerAction => ({ type: 'focusIndex', index, now }),
   setQuery: (query: string, now: number): PickerAction => ({ type: 'setQuery', query, now }),
-  /** 点击圆环中的卡片：侧面 → 转到正面；正面且过了保护期 → 切换 */
+  /** 点击圆环中的卡片：保护期内无效；侧面 → 转到正面；正面 → 切换 */
   clickCard: (index: number, now: number): PickerAction => ({ type: 'clickCard', index, now }),
   /** 点击列表行：直接切换（列表不转动，没有「滑到光标下」的问题） */
   clickRow: (index: number, now: number): PickerAction => ({ type: 'clickRow', index, now }),
   enter: (): PickerAction => ({ type: 'enter' }),
   /** Alt+n：按 sortOrder 的第 n 个（1 起），与筛选无关 */
   directPick: (n: number): PickerAction => ({ type: 'directPick', n }),
-  escape: (): PickerAction => ({ type: 'escape' }),
+  /** 有筛选词：清空；否则关闭 */
+  escape: (now: number): PickerAction => ({ type: 'escape', now }),
   /** 工作区列表在打开期间变化（主进程事件）：保持正面那张 */
   sync: (items: readonly PickerItem[], now: number): PickerAction => ({ type: 'sync', items, now })
 } as const
@@ -99,46 +108,61 @@ export function initPickerState(
   now: number
 ): PickerState {
   const order = items.map((w) => w.id)
+  const front = Math.max(0, order.indexOf(currentId ?? ''))
   return {
     items,
     order,
-    front: Math.max(0, order.indexOf(currentId ?? '')),
+    front,
     query: '',
     frontSince: now,
+    lastFrontId: order[front] ?? null,
     mode: 'browse',
     confirmDelete: null
   }
 }
 
-/** 筛选：保持原顺序，返回顺序与最佳匹配（名称前缀 > 名称包含 > 说明包含；同分取靠前者）的下标 */
-function filterItems(
-  items: readonly PickerItem[],
-  query: string
-): { order: string[]; best: number } {
-  if (query.trim() === '') return { order: items.map((w) => w.id), best: -1 }
-  const order: string[] = []
-  let best = -1
-  let bestScore = -1
-  for (const w of items) {
-    const score = matchScore(query, w.name, w.description)
-    if (score === null) continue
-    if (score > bestScore) {
-      bestScore = score
-      best = order.length
-    }
-    order.push(w.id)
-  }
-  return { order, best }
-}
-
 const mod = (a: number, n: number): number => ((a % n) + n) % n
 
-/** 把正面换成 index；换了别的卡片才重置保护期 */
-function moveTo(state: PickerState, index: number, now: number): PickerState {
-  if (state.order.length === 0) return state
-  const front = Math.min(Math.max(0, index), state.order.length - 1)
-  if (front === state.front) return state
-  return { ...state, front, frontSince: now }
+/**
+ * 换上新的顺序 / 正面（所有改变正面的动作共用）：下标夹在范围内；正面的 id 变了就重置保护期，
+ * 并记住最后一张正面卡片（order 为空时保留原值）
+ */
+function place(
+  state: PickerState,
+  next: Partial<Pick<PickerState, 'items' | 'order' | 'query'>> & { front: number },
+  now: number
+): PickerState {
+  const order = next.order ?? state.order
+  const front = order.length === 0 ? 0 : Math.min(Math.max(0, next.front), order.length - 1)
+  const id = order[front]
+  const changed = id !== state.order[state.front]
+  return {
+    ...state,
+    ...next,
+    order,
+    front,
+    frontSince: changed ? now : state.frontSince,
+    lastFrontId: id ?? state.lastFrontId
+  }
+}
+
+/**
+ * 重新筛选（setQuery / escape / sync 共用）：preferBest 且有最佳匹配时转到最佳匹配，
+ * 否则保持之前看着的那张（当前正面；筛选无结果时为 lastFrontId），它已不在结果中则夹到范围内
+ */
+function refilter(
+  state: PickerState,
+  items: readonly PickerItem[],
+  query: string,
+  now: number,
+  preferBest: boolean
+): PickerState {
+  const { matches, best } = filterWorkspaces(items, query)
+  const order = matches.map((w) => w.id)
+  const seen = state.order[state.front] ?? state.lastFrontId
+  const keep = seen === null ? -1 : order.indexOf(seen)
+  const front = preferBest && best >= 0 ? best : keep >= 0 ? keep : state.front
+  return place(state, { items, order, query, front }, now)
 }
 
 const select = (state: PickerState, index: number): PickerResult => {
@@ -151,31 +175,26 @@ export function pickerReducer(state: PickerState, action: PickerAction): PickerR
   switch (action.type) {
     case 'rotate':
       if (n < 2) return { state }
-      return { state: moveTo(state, mod(state.front + action.delta, n), action.now) }
+      return { state: place(state, { front: mod(state.front + action.delta, n) }, action.now) }
     case 'step':
-      return { state: moveTo(state, state.front + action.delta, action.now) }
+      return { state: place(state, { front: state.front + action.delta }, action.now) }
     case 'jump':
-      return { state: moveTo(state, action.to === 'first' ? 0 : n - 1, action.now) }
+      return { state: place(state, { front: action.to === 'first' ? 0 : n - 1 }, action.now) }
     case 'focusIndex':
-      return { state: moveTo(state, action.index, action.now) }
-    case 'setQuery': {
-      const frontId = state.order[state.front]
-      const { order, best } = filterItems(state.items, action.query)
-      const keep = frontId === undefined ? -1 : order.indexOf(frontId)
-      const front = best >= 0 ? best : Math.max(0, keep)
-      return { state: { ...state, query: action.query, order, front, frontSince: action.now } }
-    }
+      return { state: place(state, { front: action.index }, action.now) }
+    case 'setQuery':
+      return { state: refilter(state, state.items, action.query, action.now, true) }
     case 'clickCard': {
       if (action.index < 0 || action.index >= n) return { state }
-      if (action.index !== state.front) return { state: moveTo(state, action.index, action.now) }
-      if (state.mode !== 'browse' || action.now - state.frontSince < FRONT_GUARD_MS) {
-        return { state }
+      if (action.now - state.frontSince < FRONT_GUARD_MS) return { state }
+      if (action.index !== state.front) {
+        return { state: place(state, { front: action.index }, action.now) }
       }
-      return select(state, state.front)
+      return state.mode === 'browse' ? select(state, state.front) : { state }
     }
     case 'clickRow': {
       if (action.index < 0 || action.index >= n) return { state }
-      const next = moveTo(state, action.index, action.now)
+      const next = place(state, { front: action.index }, action.now)
       return state.mode === 'browse' ? select(next, next.front) : { state: next }
     }
     case 'enter':
@@ -188,29 +207,11 @@ export function pickerReducer(state: PickerState, action: PickerAction): PickerR
       const next = index >= 0 ? { ...state, front: index } : state
       return { state: next, effect: { kind: 'select', id: target.id } }
     }
-    case 'escape': {
+    case 'escape':
       if (state.query === '') return { state, effect: { kind: 'close' } }
-      const frontId = state.order[state.front]
-      const order = state.items.map((w) => w.id)
-      const keep = frontId === undefined ? -1 : order.indexOf(frontId)
-      return { state: { ...state, query: '', order, front: Math.max(0, keep) } }
-    }
-    case 'sync': {
-      const frontId = state.order[state.front]
-      const { order } = filterItems(action.items, state.query)
-      const keep = frontId === undefined ? -1 : order.indexOf(frontId)
-      const front = keep >= 0 ? keep : Math.min(state.front, Math.max(0, order.length - 1))
-      const changed = order[front] !== frontId
-      return {
-        state: {
-          ...state,
-          items: action.items,
-          order,
-          front,
-          frontSince: changed ? action.now : state.frontSince
-        }
-      }
-    }
+      return { state: refilter(state, state.items, '', action.now, false) }
+    case 'sync':
+      return { state: refilter(state, action.items, state.query, action.now, false) }
   }
 }
 
@@ -242,7 +243,7 @@ export function keyToAction(
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code)?.[1] ?? /^[1-9]$/.exec(e.key)?.[0]
     return digit === undefined ? null : act.directPick(Number(digit))
   }
-  if (e.key === 'Escape' && !e.altKey && !e.ctrlKey && !e.metaKey) return act.escape()
+  if (e.key === 'Escape' && !e.altKey && !e.ctrlKey && !e.metaKey) return act.escape(now)
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return null
   switch (e.key) {
     case 'ArrowLeft':

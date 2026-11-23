@@ -104,13 +104,63 @@ describe('pickerReducer', () => {
 
   it('escape clears the query first, then closes', () => {
     const filtered = pickerReducer(opened(), act.setQuery('バッチ', 2000)).state
-    const cleared = pickerReducer(filtered, act.escape())
+    const cleared = pickerReducer(filtered, act.escape(2100))
     expect(cleared.effect).toBeUndefined()
     expect(cleared.state.query).toBe('')
     expect(cleared.state.order).toEqual(['a', 'b', 'c', 'd', 'e'])
     // 清空后正面仍是刚才看着的那张（位置感）
     expect(cleared.state.order[cleared.state.front]).toBe('c')
-    expect(pickerReducer(cleared.state, act.escape()).effect).toEqual({ kind: 'close' })
+    expect(pickerReducer(cleared.state, act.escape(2200)).effect).toEqual({ kind: 'close' })
+  })
+
+  it('ignores any click on the ring within the guard period, side cards included (double click)', () => {
+    // 第一次点击把 +1 卡转到正面；150ms 后第二次点击落在滑入光标下的原 +2 卡（现 +1）上：不再转动
+    const first = pickerReducer(opened(), act.clickCard(1, 5000)).state
+    expect(first.order[first.front]).toBe('b')
+    const second = pickerReducer(first, act.clickCard(2, 5150))
+    expect(second.state.order[second.state.front]).toBe('b')
+    expect(second.effect).toBeUndefined()
+    // 打开后的保护期内也一样
+    expect(pickerReducer(opened(), act.clickCard(1, 1100)).state.front).toBe(0)
+    // 过了保护期照常转动
+    expect(pickerReducer(first, act.clickCard(2, 5260)).state.front).toBe(2)
+  })
+
+  it('Esc from "no results" restores the card that was in front before filtering and restarts the guard', () => {
+    const atC = pickerReducer(opened(), act.focusIndex(2, 2000)).state
+    const none = pickerReducer(atC, act.setQuery('xyz', 3000)).state
+    expect(none.order).toEqual([])
+    expect(none.frontSince).toBe(3000)
+    const cleared = pickerReducer(none, act.escape(4000)).state
+    expect(cleared.order[cleared.front]).toBe('c')
+    expect(cleared.frontSince).toBe(4000)
+    expect(cleared.lastFrontId).toBe('c')
+  })
+
+  it('deleting the query from "no results" (Backspace) also restores the previous front card', () => {
+    const atC = pickerReducer(opened(), act.focusIndex(2, 2000)).state
+    const none = pickerReducer(atC, act.setQuery('x', 3000)).state
+    const back = pickerReducer(none, act.setQuery('', 3500)).state
+    expect(back.order[back.front]).toBe('c')
+    expect(back.frontSince).toBe(3500)
+  })
+
+  it('restarts the guard only when the front card actually changes', () => {
+    // 再输入一个字，最佳匹配仍是同一张：保护期不重新计
+    const s1 = pickerReducer(opened(), act.setQuery('バ', 2000)).state
+    const s2 = pickerReducer(s1, act.setQuery('バッ', 2100)).state
+    expect(s2.order[s2.front]).toBe(s1.order[s1.front])
+    expect(s2.frontSince).toBe(2000)
+    // 列表变化后正面换了（正面那张被删除）：重新计
+    const atC = pickerReducer(opened(), act.focusIndex(2, 2000)).state
+    const synced = pickerReducer(
+      atC,
+      act.sync(
+        items.filter((w) => w.id !== 'c'),
+        9000
+      )
+    ).state
+    expect(synced.frontSince).toBe(9000)
   })
 
   it('direct pick (Alt+n) follows sortOrder and works while filtering', () => {
@@ -166,7 +216,7 @@ describe('keyToAction', () => {
     expect(keyToAction(key('ArrowRight'), 7)).toEqual(act.rotate(1, 7))
     expect(keyToAction(key('ArrowLeft'), 7)).toEqual(act.rotate(-1, 7))
     expect(keyToAction(key('Enter'), 7)).toEqual(act.enter())
-    expect(keyToAction(key('Escape'), 7)).toEqual(act.escape())
+    expect(keyToAction(key('Escape'), 7)).toEqual(act.escape(7))
     expect(keyToAction(key('ArrowDown'), 7)).toBeNull()
   })
 

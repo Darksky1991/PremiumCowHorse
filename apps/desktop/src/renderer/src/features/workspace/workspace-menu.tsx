@@ -35,13 +35,14 @@ import {
   workspaceDisplayName
 } from '@renderer/data/workspace'
 import { isImeKey } from '@renderer/lib/key-context'
-import { matchScore } from '@renderer/lib/text-match'
 import { notify } from '@renderer/stores/messages-store'
 import { useUiStore, type PickerAnchor } from '@renderer/stores/ui-store'
 import { ColorDot } from './color-dot'
 import { keyToAction } from './picker/use-picker-state'
+import { useFilterInput } from './use-filter-input'
 import { useOpenWorkspaceList } from './use-open-workspace-list'
 import { DeleteWorkspaceDialog, RenameWorkspaceDialog } from './workspace-dialogs'
+import { filterWorkspaces } from './workspace-filter'
 import { lastUsedText } from './workspace-time'
 
 /** 工作区超过这个数时菜单顶部显示筛选框（设计 5.C「约 8 个」） */
@@ -72,7 +73,8 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
   const setPickerOpen = useUiStore((s) => s.setPickerOpen)
   const setNewOpen = useUiStore((s) => s.setNewWorkspaceOpen)
   const openList = useOpenWorkspaceList()
-  const [query, setQuery] = useState('')
+  // 筛选框：组字中只更新文字，确定后才筛选（与圆环相同，use-filter-input）
+  const filter = useFilterInput()
   const [now, setNow] = useState(() => Date.now())
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -84,12 +86,20 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
   const defaultName = t('common:defaultWorkspace')
   const all = useMemo(() => (workspaces ?? []).filter((w) => !w.archived), [workspaces])
   const filterable = all.length > FILTER_THRESHOLD
-  const shown = useMemo(() => {
-    if (!filterable || query.trim() === '') return all
-    return all.filter(
-      (w) => matchScore(query, workspaceDisplayName(w, defaultName), w.description) !== null
-    )
-  }, [all, filterable, query, defaultName])
+  const filtered = useMemo(
+    () =>
+      filterWorkspaces(
+        all.map((w) => ({
+          id: w.id,
+          name: workspaceDisplayName(w, defaultName),
+          description: w.description,
+          workspace: w
+        })),
+        filterable ? filter.query : ''
+      ),
+    [all, filterable, filter.query, defaultName]
+  )
+  const shown = filtered.matches.map((m) => m.workspace)
   const isDefault = active?.id === DEFAULT_WORKSPACE_ID
 
   const fail = (e: unknown): void => {
@@ -120,7 +130,10 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
     e.preventDefault()
     switchTo(w)
   }
-  /** 筛选框：Enter = 切到最佳匹配；字符键不交给菜单（首字母跳转），↑↓ / Esc / Tab 照常 */
+  /**
+   * 筛选框：Enter = 切到最佳匹配；筛选词为空（或只有空白）时 Enter 只关闭、不切换（与圆环的「选当前 = 只关闭」一致）。
+   * 字符键不交给菜单（首字母跳转），↑↓ / Esc / Tab 照常
+   */
   const onFilterKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (isImeKey(e.nativeEvent)) {
       e.stopPropagation()
@@ -128,8 +141,9 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
     }
     if (e.key === 'Enter') {
       e.preventDefault()
-      const best = bestMatch(shown, query, defaultName)
-      if (best !== undefined) switchTo(best)
+      const best = filtered.matches[filtered.best]?.workspace
+      if (best === undefined) close()
+      else switchTo(best)
       return
     }
     if (!['ArrowDown', 'ArrowUp', 'Escape', 'Tab'].includes(e.key) && !e.altKey) e.stopPropagation()
@@ -139,12 +153,18 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
     <>
       <DropdownMenu
         open={open}
-        onOpenChange={(next) => {
-          if (next) {
-            setQuery('')
-            setNow(Date.now())
+        onOpenChange={(next, details) => {
+          // Esc 两级：有筛选词时先清空（菜单保持打开），再按关闭
+          if (!next && details.reason === 'escape-key' && filter.text !== '') {
+            filter.clear()
+            return
           }
           setPickerOpen(next ? { anchor } : null)
+        }}
+        // 打开（含经 Alt+W 由 store 打开）后刷新相对时间的基准；关闭后清空筛选，下次打开从空开始
+        onOpenChangeComplete={(isOpen) => {
+          if (isOpen) setNow(Date.now())
+          else filter.clear()
         }}
       >
         <DropdownMenuTrigger render={trigger}>{children}</DropdownMenuTrigger>
@@ -155,8 +175,9 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
               <input
                 // 打开时焦点在筛选框（菜单项仍可用 ↓ 进入）
                 autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={filter.text}
+                onChange={filter.onChange}
+                onCompositionEnd={filter.onCompositionEnd}
                 onKeyDown={onFilterKeyDown}
                 aria-label={t('workspace:filterLabel')}
                 placeholder={t('workspace:filterPlaceholder')}
@@ -244,22 +265,4 @@ export function WorkspaceMenu({ anchor, trigger, children }: WorkspaceMenuProps)
       ) : null}
     </>
   )
-}
-
-/** 筛选结果中得分最高的一项（同分取靠前者） */
-function bestMatch(
-  shown: readonly Workspace[],
-  query: string,
-  defaultName: string
-): Workspace | undefined {
-  let best: Workspace | undefined
-  let bestScore = -1
-  for (const w of shown) {
-    const score = matchScore(query, workspaceDisplayName(w, defaultName), w.description) ?? -1
-    if (score > bestScore) {
-      best = w
-      bestScore = score
-    }
-  }
-  return best
 }
