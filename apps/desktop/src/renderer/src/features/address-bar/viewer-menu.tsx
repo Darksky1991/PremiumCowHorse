@@ -41,6 +41,8 @@ export function ViewerMenu({ tabId }: { tabId: string | null }): JSX.Element {
     if (ext === null || current === undefined) return
     // 读缓存中的最新值而不是渲染时快照：连续两次勾选（第一次的保存回写前）不会互相覆盖
     const latest = queryClient.getQueryData<Settings>(queryKeys.settings)?.['preview.associations']
+    // 缓存未加载时不写：否则会以空对象清掉其他扩展名的关联
+    if (latest === undefined) return
     const next = { ...latest }
     if (checked) next[ext] = current.id
     else delete next[ext]

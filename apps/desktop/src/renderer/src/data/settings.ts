@@ -2,6 +2,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult
 } from '@tanstack/react-query'
@@ -21,25 +22,65 @@ export function useSetting<K extends SettingKey>(key: K): Settings[K] | undefine
   return useSettings().data?.[key]
 }
 
+/** onMutate 的上下文：本次 patch 涉及的键在写入前的值，与写入的乐观值 */
+export interface SettingsMutationContext {
+  previous: SettingsPatch
+  optimistic: SettingsPatch
+}
+
+const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * 乐观合并与按键回滚（导出供单测）：
+ * - onMutate 把 patch 合并进缓存，记下这些键写入前的值；缓存尚未加载时不做任何事。
+ * - onError 只还原本次 patch 涉及的键，且仅当缓存中该键仍等于本次的乐观值时才还原：
+ *   之后又有写入（乐观值已被覆盖）或 settings.changed 广播到达的键保持现状，其他键不动。
+ */
+export function settingsMutationHandlers(client: QueryClient): {
+  onMutate: (patch: SettingsPatch) => SettingsMutationContext
+  onError: (
+    error: Error,
+    patch: SettingsPatch,
+    context: SettingsMutationContext | undefined
+  ) => void
+} {
+  return {
+    onMutate: (patch) => {
+      const cached = client.getQueryData<Settings>(queryKeys.settings)
+      if (!cached) return { previous: {}, optimistic: {} }
+      const previous: Record<string, unknown> = {}
+      for (const key of Object.keys(patch)) previous[key] = (cached as Record<string, unknown>)[key]
+      client.setQueryData<Settings>(queryKeys.settings, { ...cached, ...patch })
+      return { previous: previous as SettingsPatch, optimistic: { ...patch } }
+    },
+    onError: (_error, _patch, context) => {
+      if (!context) return
+      client.setQueryData<Settings>(queryKeys.settings, (current) => {
+        if (!current) return current
+        const next: Record<string, unknown> = { ...current }
+        for (const key of Object.keys(context.optimistic)) {
+          const value = (current as Record<string, unknown>)[key]
+          if (sameValue(value, (context.optimistic as Record<string, unknown>)[key])) {
+            next[key] = (context.previous as Record<string, unknown>)[key]
+          }
+        }
+        return next as Settings
+      })
+    }
+  }
+}
+
 /** 写入设置：主进程保存后会广播 settings.changed，缓存由 query-client 的桥接更新 */
 export function useUpdateSettings(): UseMutationResult<
   void,
   Error,
   SettingsPatch,
-  { previous: Settings | undefined }
+  SettingsMutationContext
 > {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (patch: SettingsPatch) => call('settings.set', patch),
-    // 乐观合并：连续写入时后一次读到的缓存已含前一次的结果；失败则回滚到写入前的快照
-    onMutate: (patch) => {
-      const previous = client.getQueryData<Settings>(queryKeys.settings)
-      if (previous) client.setQueryData<Settings>(queryKeys.settings, { ...previous, ...patch })
-      return { previous }
-    },
-    onError: (_error, _patch, context) => {
-      if (context?.previous) client.setQueryData<Settings>(queryKeys.settings, context.previous)
-    }
+    ...settingsMutationHandlers(client)
   })
 }
 
