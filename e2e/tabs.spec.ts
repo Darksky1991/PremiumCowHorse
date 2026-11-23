@@ -267,6 +267,69 @@ test.describe('tabs opened from the explorer tree', () => {
     }
   })
 
+  test('Ctrl+W does not close the tab while a dialog is open', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await expect(tabs(page)).toHaveText(['案件'])
+      // 重命名对话框（模态）打开：Ctrl+W 不作用于背后的标签
+      await tree.getByRole('treeitem', { name: '案件' }).click({ button: 'right' })
+      await page.getByRole('menuitem', { name: /^(名前の変更|重命名|Rename) ?(F2)?$/ }).click()
+      const input = page.getByRole('dialog').getByRole('textbox')
+      await expect(input).toBeFocused()
+      await page.keyboard.press('Control+w')
+      // 模态打开时背景被标记为 aria-hidden：用 CSS 选择器而不是 role 查询
+      await expect(page.locator('[role="tablist"] [role="tab"]')).toHaveText(['案件'])
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      // 对话框关闭后恢复
+      await tab(page, '案件').click()
+      await page.keyboard.press('Control+w')
+      await expect(page.getByRole('tablist')).toHaveCount(0)
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('Ctrl+W does not close the tab while a text field has focus', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).click()
+      await expect(tabs(page)).toHaveText(['案件'])
+      // 侧栏的搜索框（Ctrl+Shift+F 聚焦）
+      await page.keyboard.press('Control+Shift+f')
+      const input = page.getByRole('searchbox')
+      await expect(input).toBeFocused()
+      await page.keyboard.press('Control+w')
+      // 搜索视图自己也有 tablist（类型筛选）：按名称取标签栏
+      await expect(page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab')).toHaveText([
+        '案件'
+      ])
+      await expect(input).toBeFocused()
+    } finally {
+      await app.close()
+    }
+  })
+
+  test('closing with Ctrl+W while the tab bar has focus moves focus to the new active tab', async () => {
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(page)
+      await tree.getByRole('treeitem', { name: '案件' }).dblclick()
+      await tree.getByRole('treeitem', { name: 'README.md' }).click({ button: 'middle' })
+      await expect(tabs(page)).toHaveText(['案件', 'README.md'])
+      await tab(page, 'README.md').focus()
+      await expect(tab(page, 'README.md')).toBeFocused()
+      await page.keyboard.press('Control+w')
+      await expect(tabs(page)).toHaveText(['案件'])
+      await expect(tab(page, '案件')).toBeFocused()
+    } finally {
+      await app.close()
+    }
+  })
+
   test('with explorer.singleClickPreview off a single click and the arrow keys only select; Enter and a file double click open with the default viewer', async () => {
     const { app, page } = await launchFast(userData)
     try {

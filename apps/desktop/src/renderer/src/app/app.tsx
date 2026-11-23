@@ -7,7 +7,7 @@ import { AboutPage } from '@renderer/features/about'
 import { ExplorerView } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
-import { SettingsPage } from '@renderer/features/settings'
+import { SettingsPage, useSettingsCommands } from '@renderer/features/settings'
 import { Shell } from '@renderer/features/shell'
 import { TabsArea } from '@renderer/features/tabs'
 import { WorkspaceSwitcher, WorkspacesPage } from '@renderer/features/workspace'
@@ -22,6 +22,7 @@ const plugins = previewPlugins(builtinPlugins)
  * 其中工作区一览的视图来自 features/workspace，桌面记录页来自 features/desktop）在这里组合进外壳。
  */
 export function App(): JSX.Element {
+  useSettingsCommands()
   return (
     <>
       <Shell

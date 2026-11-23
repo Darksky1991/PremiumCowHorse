@@ -1,4 +1,4 @@
-import { useEffect, useId, type JSX, type ReactNode } from 'react'
+import { useId, type JSX, type ReactNode } from 'react'
 import type { TabState } from '@pch/shared'
 import { useVfsTabsInterest } from '@renderer/data/vfs'
 import { useActiveWorkspace } from '@renderer/data/workspace'
@@ -21,23 +21,10 @@ export function TabsArea({ renderContent }: TabsAreaProps): JSX.Element {
   const baseId = useId()
   const { data: workspace } = useActiveWorkspace()
   const state = useTabsStore(selectTabs(workspace?.id))
-  const close = useTabsStore((s) => s.close)
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? null
   // 激活标签显示的目录按关注点处理（每次完整读取，设计 3.4）；没有标签时标签区卸载、清空
   const activeDirectory = useTabsStore(selectActiveDirectory(workspace?.id))
   useVfsTabsInterest(activeDirectory === null ? NO_URIS : [activeDirectory])
-
-  // Ctrl+W：关闭激活标签（应用菜单为空，Ctrl+W 不会关闭窗口）
-  useEffect(() => {
-    if (active === null) return
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.key.toLowerCase() !== 'w') return
-      e.preventDefault()
-      close(active.id)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, close])
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">

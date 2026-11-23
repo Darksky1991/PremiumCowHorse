@@ -615,6 +615,26 @@ export default {
       }
     }
   },
+  commands: {
+    group: {
+      general: 'General',
+      view: 'View',
+      navigation: 'Navigation',
+      workspace: 'Workspace',
+      appearance: 'Appearance'
+    },
+    paletteOpen: 'Open command palette',
+    settingsOpen: 'Open settings',
+    aboutOpen: 'Open about',
+    workspacePick: 'Choose workspace',
+    tabClose: 'Close tab',
+    navBack: 'Back',
+    navForward: 'Forward',
+    navUp: 'Up one level',
+    navRefresh: 'Refresh',
+    viewSearch: 'Open search',
+    viewToggleSidebar: 'Toggle sidebar'
+  },
   tabs: {
     label: 'Open tabs',
     close: 'Close'

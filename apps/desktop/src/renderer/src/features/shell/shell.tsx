@@ -11,7 +11,8 @@ import { StatusBar } from './components/status-bar'
 import { TitleBar } from './components/title-bar'
 import { Welcome } from './components/welcome'
 import { useReachabilityEvents } from './use-reachability-events'
-import { useShellShortcuts } from './use-shell-shortcuts'
+import { useCommandShortcuts } from './use-command-shortcuts'
+import { useShellCommands } from './use-shell-commands'
 
 export interface ShellProps {
   /** 各侧栏视图的内容，由 app/ 组合（feature 之间不互相 import） */
@@ -35,7 +36,8 @@ export function Shell({
   addressBar,
   tabsArea
 }: ShellProps): JSX.Element {
-  useShellShortcuts()
+  useCommandShortcuts()
+  useShellCommands()
   useReachabilityEvents()
   const sidebarRef = usePanelRef()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)

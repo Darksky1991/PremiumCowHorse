@@ -15,6 +15,7 @@ import { Button } from '@pch/ui/components/button'
 import { FileIcon } from '@pch/ui/file-icon'
 import { useConnectionNames } from '@renderer/data/connections'
 import { displayPath } from '@renderer/lib/display-path'
+import { useRegisterCommands } from '@renderer/stores/command-store'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
 
@@ -86,6 +87,24 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
     refocus.current = listRef.current?.contains(document.activeElement) ?? false
     close(id)
   }
+
+  // Ctrl+W：关闭激活标签（应用菜单为空，Ctrl+W 不会关闭窗口）。经 closeTab：焦点在标签栏时关闭后焦点落在新的激活标签。
+  // 对话框打开 / 焦点在输入框时不触发（命令的默认规则）
+  useRegisterCommands(
+    [
+      {
+        id: 'tab.close',
+        titleKey: 'commands:tabClose',
+        group: 'general',
+        shortcut: 'Ctrl+W',
+        when: () => activeId !== null,
+        run: () => {
+          if (activeId !== null) closeTab(activeId)
+        }
+      }
+    ],
+    [activeId, close]
+  )
 
   return (
     <div

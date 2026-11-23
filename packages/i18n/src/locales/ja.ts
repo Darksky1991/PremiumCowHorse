@@ -611,6 +611,26 @@ export default {
       }
     }
   },
+  commands: {
+    group: {
+      general: '一般',
+      view: '表示',
+      navigation: '移動',
+      workspace: 'ワークスペース',
+      appearance: '外観'
+    },
+    paletteOpen: 'コマンドパレットを開く',
+    settingsOpen: '設定を開く',
+    aboutOpen: 'このアプリについてを開く',
+    workspacePick: 'ワークスペースを選ぶ',
+    tabClose: 'タブを閉じる',
+    navBack: '戻る',
+    navForward: '進む',
+    navUp: '一つ上へ',
+    navRefresh: '更新',
+    viewSearch: '検索を開く',
+    viewToggleSidebar: 'サイドバーの表示を切り替え'
+  },
   tabs: {
     label: '開いているタブ',
     close: '閉じる'

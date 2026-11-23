@@ -595,6 +595,26 @@ export default {
       }
     }
   },
+  commands: {
+    group: {
+      general: '常规',
+      view: '视图',
+      navigation: '导航',
+      workspace: '工作区',
+      appearance: '外观'
+    },
+    paletteOpen: '打开命令面板',
+    settingsOpen: '打开设置',
+    aboutOpen: '打开关于',
+    workspacePick: '选择工作区',
+    tabClose: '关闭标签',
+    navBack: '后退',
+    navForward: '前进',
+    navUp: '上一级',
+    navRefresh: '刷新',
+    viewSearch: '打开搜索',
+    viewToggleSidebar: '切换侧栏显示'
+  },
   tabs: {
     label: '已打开的标签',
     close: '关闭'
