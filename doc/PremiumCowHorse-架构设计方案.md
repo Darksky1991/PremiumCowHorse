@@ -1,6 +1,8 @@
 # PremiumCowHorse 架构设计方案
 
-> 版本：v1.27　｜　日期：2026-11-23　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> 版本：v1.28　｜　日期：2026-11-23　｜　位置：`doc/`（项目的最新事实依据，实现变化时同步更新，见第 20 节）
+> v1.28 变更（M5 完善与发布完成，待合并；设计 `devDoc/2026-11-23-42-m5-design.md`（设计稿 `devDoc/assets/2026-11-23-m5-design/`），计划 `devDoc/2026-11-23-43-m5-plan.md`，台账 `devDoc/2026-11-23-44-m5-ledger.md`，实现记录（控制者决定 D1–D15 / 裁定 R1–R6、推迟项、未验证项、待需求方确认 / 决定）`devDoc/2026-11-23-45-m5.md`）：**主题**——三套完整配色 `aitetsu`（藍鉄）/ `washi`（和紙）/ `matsuba`（松葉）加 `default`，`<html data-theme>`，强调色 `:root[data-accent]` 覆盖主题（`neutral` = 「テーマの既定」），扩展令牌 `--log-*` / `--ws-*` / `--fi-*` / `--logo-*`，`BootstrapData.themeName` 与窗口底色按主题 × 明暗，Markdown 外壳与 mermaid 跟随主题（14.3、15 节）；**动效**——`motion` 14.14.0 只作为 `packages/ui` 的依赖，渲染端经 `@pch/ui/lib/motion` 引入（令牌 + re-export），根部 `MotionConfig` 接 `appearance.reduceMotion`；**文件图标**按类别着色（27 类，A 级饱和 / B 级降饱和，颜色只分明暗）；**Logo「環」**与应用图标（`pnpm icons` 生成 `build/icon.ico` 与 `resources/icon.png`，`win.icon`、`BrowserWindow.icon`，标题栏与关于页为随主题的内联版，16.4 节）；**内置页面**设置页 `pch-settings:` 与关于页 `pch-about:`（取代 14.1 原写的 `internal://settings` 内部插件；`app.getInfo` 增加 `userDataDir` / `logsDir`，新通道 `system.openAppFolder`）；**命令注册表**（`stores/command-store.ts`，唯一的 keydown 分发 `features/shell/use-command-shortcuts.ts`，M1-K14：有模态 / 焦点在输入框时 `Ctrl+W` 不关标签）；**命令面板**（`Ctrl+K` / `Ctrl+Shift+P`，shadcn `command` + `cmdk` 1.1.1：最近使用 / 工作区 / 命令 / 文件四组）；**最近使用**（迁移 0008 `recent_items`，每工作区 100 条，只记明确的打开动作，IPC `recent.*`）；**工作区选择器**（圆环 / 列表，`Alt+W`、`Alt+1–9`、编辑模式；设置 `workspace.pickerStyle` / `pickerDetail` / `pickerView`；工作区 `color` 存颜色键；IPC `workspace.summaries` / `workspace.reorder`）；新设置键 `appearance.theme` / `appearance.reduceMotion` / `workspace.picker*`（14.1 节）；**beta 前修正**——M4 K1–K6（打包排除 `ssh2/util/**`；`CONN_AUTH_UNSUPPORTED` 与连接状态 `auth-unsupported`；改主机 / 端口解除 sudo 锁；超时后到达的 SFTP 通道关闭；清除私钥口令；地址栏复制提示），M2 F2 / Q19 / Q20 / Q24（外部链接要求最近 5 秒内有用户输入）/ Q25 / K2 / K3 / K5（launcher 只接受 Office 扩展名、`openExternal` 先确认可执行类扩展名）/ K6（`web.attach` 拒绝点段），M1-K17（UNC 访问范围，`entry.add` 例外为残余风险，15 节）/ K19（e2e 纳入 typecheck）/ K23（`shadcn` 移到 devDependencies，`pnpm audit --prod` 无已知漏洞）。涉及 5.3、6.3、6.6、7.6、12.2、13、14.1、14.3、15、16.4、17、18 节
+>
 > v1.27 变更（M4 远程目录（SFTP 只读）完成；设计 `devDoc/2026-11-22-37-m4-sftp-design.md`，计划 `devDoc/2026-11-22-38-m4-sftp-plan.md`，台账 `devDoc/2026-11-22-39-m4-ledger.md`，总结（控制者裁定 D1–D10 / R1–R25、推迟项、未验证项）`devDoc/2026-11-22-40-m4.md`）：**M4 改为「SFTP 只读」**——需求方 2026-11-22 放弃 SMB（未挂载 SMB 的 SmbProvider 不再做），FTP / FTPS、Office 远程编辑会话（10.5 节）、远程文件下载缓存（7.4 节）移到路线图「后续」。新增 7.6 节「远程目录（SFTP，M4）」：URI `sftp://[<身份>@]<connectionId>/<路径>`、第三种位置 `remote`（并发与可达性单位 = 一条 SSH 连接 `sftp://<connectionId>`）、主进程 `modules/connection`（连接池、保活、空闲断开、主机密钥确认、认证锁定 `auth_state` 跨重启、`sudo su - <身份>` 后在命令通道上走 `sftp-server -R`、进程表轮询判定 sudo 成功）、`vfs/providers/sftp.provider.ts`（只读：`stat` / `list`）、访问范围检查 `vfs/remote-access.ts`（K17 的 sftp 部分）、扫描进程的远程方针（只在展开 / 选中 / 标签 / F5 与「建立索引」时读取，扫描进程 ↔ 主进程消息 `remoteOp` / `remoteCancel` / `remoteResult`）、锁定的解除语义、超时语义、断线显示、残余风险与限制；迁移 0007（`connections`，取代 13 节的草案）；`index.db` 的 `entries` 加列 `owner`，`CACHE_VERSION` 5 → 6（**升级后首次启动重建整个 `index.db`，本地目录的缓存也全部重建**）；IPC `connection.*`（list / save / delete / test / reconnect / trustHostKey（带用户看到的密钥）/ answerHostKey / pendingHostKeyPrompts / home）与事件 `connection.changed` / `status` / `hostKeyPrompt` / `hostKeyPromptClosed`；错误码 `CONN_*` 11 个（含 `CONN_KEY_INVALID`）；设置 `remote.keepaliveSec` / `remote.idleDisconnectMin` / `vfs.timeoutSec.remote` / `cache.backgroundGapMs.remote` / `cache.remoteIndexIntervalMin`（`remote.cacheSizeMB` 暂无用途）；新依赖 `ssh2` 1.17.0（精确版本，不放行安装脚本）。涉及 2.3、3.2、5.2、6.3、6.6、7.1、7.2、7.4、7.6、8.3、10.5、13、14.1、18、19 节
 >
 > v1.26 变更（M3 完成并合并到 `main`，标签 `m3`）：路线图 M3 标为合并完成；合并前的进度、待需求方确认的决定（D1–D4、R 系列）、手动验证清单（V1–V11）与已知问题（K1–K15）见 `devDoc/2026-11-22-36-m3-summary.md`。涉及 18 节
@@ -112,7 +114,7 @@ v1.2 变更说明：Drizzle 稳定版（0.45）尚无 `node:sqlite` 驱动（仅
 | 未挂载 SMB（需凭据） | `smb://{connectionId}/share/doc` | SmbProvider（**放弃**：需求方 2026-11-22） |
 | FTP / FTPS | `ftp://{connectionId}/var/log/app.log` | FtpProvider（路线图「后续」） |
 | SFTP | `sftp://{connectionId}/home/ope/batch`；切换身份 `sftp://app1@{connectionId}/opt/app1/log` | SftpProvider（M4 已实现，只读，7.6 节） |
-| 应用内部页面 | `internal://settings` | （非 VFS，由内部插件处理） |
+| 应用内置页面 | `pch-workspaces:`、`pch-desktop:<id>`、`pch-settings:`、`pch-about:` 等 | （非 VFS，由 `PreviewContainer` 渲染应用内置视图；M5 起取代原写的 `internal://settings` 内部插件，14.1 节） |
 
 URI 的 authority 部分使用 **connectionId** 而不是主机名：凭据不会出现在 URI 和条目数据中；服务器地址变更时只需改连接配置，所有引用自动生效。
 
@@ -318,7 +320,7 @@ apps/desktop/src/
 │   │   │   ├── ftp.provider.ts       # 路线图「后续」
 │   │   │   └── sftp.provider.ts      # M4 已实现：只读 stat / list（7.6 节）
 │   │   ├── sftp-errors.ts            # M4：SFTP 状态码 / ssh2 错误 → AppError
-│   │   ├── remote-access.ts          # M4：sftp: URI 必须在某个工作区的远程 folder 条目之下（K17 的 sftp 部分）
+│   │   ├── remote-access.ts          # 访问范围（M1-K17）：sftp: 须在远程 folder 条目之下（M4）；UNC 须在 folder 条目或 file 条目所在目录之下（M5）
 │   │   ├── remote-op.ts              # M4：扫描进程的 remoteOp 经 SftpProvider 执行（含访问范围检查）
 │   │   ├── remote-cache.ts           # 远程文件本地缓存（LRU；路线图「后续」，7.4 节）
 │   │   └── pcfs-protocol.ts          # pcfs:// 协议处理
@@ -386,7 +388,8 @@ apps/desktop/src/renderer/
     ├── main.tsx                      # 入口：错误边界 + Providers + App
     ├── app/                          # 根组件、最外层错误边界（不写业务）
     ├── features/                     # 按功能切片，每个切片通过 index.ts 暴露公开 API
-    │   ├── shell/                    # 标题栏、活动栏、状态栏、命令面板、整体布局
+    │   ├── shell/                    # 标题栏、活动栏、状态栏、整体布局、唯一的快捷键分发（M5）
+    │   ├── command-palette/          # 命令面板与最近使用的记录（M5）
     │   ├── address-bar/              # 应用级地址栏（后退 / 前进 / 上一级 / 刷新 + 逻辑路径，M1-3b）
     │   ├── workspace/                # 工作区切换、创建、编辑
     │   ├── explorer/                 # 资源树（条目 + 真实目录）
@@ -394,7 +397,8 @@ apps/desktop/src/renderer/
     │   ├── preview/                  # 插件注册表、PreviewHost 实现、PreviewContainer
     │   ├── connections/              # 远程连接管理
     │   ├── desktop/                  # 桌面记录（M3）：活动栏视图、快照页、卡片式清单、恢复 / 退出对话框
-    │   └── settings/                 # 设置页（作为 internal://settings 标签打开）
+    │   ├── settings/                 # 设置页（内置页面 pch-settings:，M5）
+    │   └── about/                    # 关于页（内置页面 pch-about:，M5）
     ├── data/                         # 跨功能的主进程数据查询（TanStack Query hooks，如 settings、window）
     ├── lib/                          # ipc.ts、query-client.ts、query-keys.ts、report-error.ts
     ├── providers/                    # QueryProvider、I18nProvider、ThemeProvider
@@ -411,6 +415,7 @@ apps/desktop/src/renderer/
 - M1-3b 导航：`lib/logical-path.ts`（逻辑路径）、`features/preview/workspace-overview.tsx`（工作区总览）；`features/address-bar/`（应用级地址栏 `address-bar.tsx`、全局快捷键 `use-navigation-shortcuts.ts`、按键 / 侧键 → 命令的纯函数 `commands.ts`，12.2 节）；`stores/tabs-store.ts` 增加 `selectActiveTab`、刷新请求 `refreshSeq` / `requestRefresh` 与订阅函数 `onTabRefresh`（地址栏发出，标签内容订阅）。
 - M2 反馈第 6–8 项（2026-11-21）：`features/workspace/workspaces-page.tsx`（工作区一览，11.1 节「已实现」）；`features/address-bar/address-bar.tsx` 的地址框与前置的工作区按钮（12.2 节）；`stores/tabs-store.ts` 增加 `backFrom`
 - M3 桌面记录（2026-11-22，11.4 节）：`features/desktop/`（侧栏视图 `desktop-view.tsx`、快照页 `snapshot-page.tsx`（「現在」与各快照）、卡片式清单 `item-checklist.tsx`（快照页与两个对话框共用）、恢复对话框 `restore-dialog.tsx`、退出对话框 `exit-dialog.tsx`、两者的组合 `desktop-prompts.tsx` 与 `use-desktop-dialogs.ts`、改名 / 删除对话框、显示名与标签文字的纯函数 `item-label.ts` / `snapshot-label.ts`）；`data/desktop.ts`（`desktop.*` 的查询与操作，`lib/query-client.ts` 把 `desktop.changed` 桥接为查询失效）；`stores/ui-store.ts` 的 `SidebarView` 增加 `desktop`（活动栏「搜索」之后，lucide `MonitorIcon`）；`features/preview/preview-container.tsx` 对 `kind: 'desktop'` 渲染快照页（应用内置视图，不是插件）。
+- M5 完善与发布（2026-11-23，12.2、14 节）：`features/settings/`（`settings-page.tsx`、分区定义 `sections.ts`（9 个分区；隐藏键 `session.restoreOnStartup` / `window.onDetachedClose` / `launcher.autoUploadRemoteEdits` / `remote.cacheSizeMB` / `workspace.pickerView`）、按 zod schema 取控件类型与 min / max 的 `validate.ts`、`setting-row.tsx`、缓存占用 / 文件关联 / 隐私的 `blocks.tsx`、`use-open-builtin.ts`、`use-settings-commands.ts`）；`features/about/about-page.tsx`；`features/command-palette/`（`command-palette.tsx`、分组纯函数 `use-palette-items.ts`、IME 守卫 `palette-keys.ts`、最近使用的记录 `recent-recorder.tsx` / `recent-recording.ts`）；`features/workspace/picker/`（圆环布局纯函数 `ring-layout.ts`、`pickerReducer` 与按键映射 `use-picker-state.ts`、`ring-view.tsx` / `list-view.tsx` / `picker-card.tsx` / `picker-edit-card.tsx` / `picker-chrome.tsx` / `use-picker-edit.ts` / `workspace-picker.tsx`），以及 `workspace-menu.tsx`（菜单式，合并原两份菜单）、`workspace-filter.ts`、`use-filter-input.ts`、`color-swatches.tsx` / `color-dot.tsx` / `workspace-color.ts`、`workspace-time.ts`、`use-workspace-commands.ts`；`features/shell/use-command-shortcuts.ts`（取代 `use-shell-shortcuts.ts`）、`use-shell-commands.ts`、`use-appearance-commands.ts`；`features/explorer/use-explorer-commands.ts`；`stores/command-store.ts`（命令注册表）；`lib/shortcut.ts`、`lib/key-context.ts`、`lib/text-match.ts`（选择器与命令面板共用的筛选）、`lib/focus-return.ts`（浮层关闭后把焦点还给网页视图或原元素）、`lib/recent-policy.ts`（re-export `packages/shared/src/recent/policy.ts`）；`data/recent.ts`；`stores/ui-store.ts` 增加 `paletteOpen`、`pickerOpen`、`deleteWorkspaceTarget`；`stores/tabs-store.ts` 的 `open` / `openHere` / `navigate` 增加 `opts.source` 与 `recentSignal`。`features/shell/coming-soon.ts` 仍被欢迎页「打开文件夹」使用（R3，保留）。
 
 切片规则：`app → features → (providers, data, stores, lib, @pch/ui, @pch/shared)`；`providers → data → lib`；feature 之间不得互相 import（需要共享的数据放 `data/`，共享的 UI 放 `packages/ui`，跨 feature 的纯 UI 状态放 `stores/`）。`app/` 不直接依赖 `data/`（lint 强制），需要数据的组件放在 feature 中。
 
@@ -482,14 +487,20 @@ const route = <O>() => <I extends z.ZodType>(input: I) =>
 // vfs.{stat,list,cancel,interest,refresh,offlineShares,cacheInfo,clearCache,sniff}、doc.*（7.5 节）、search.query、system.{revealInOs,openPath,copyText,selectPaths}、
 // window.*、log.write、web.{attach,setBounds,hide,release,reload,freeze,unfreeze}（M2 浏览器视图，15 节）、
 // connection.{list,save,delete,test,reconnect,trustHostKey,answerHostKey,pendingHostKeyPrompts,home}（M4，7.6 节）、
-// desktop.{list,get,current,save,rename,delete,restore,clear,restorePrompt,exit,cancelExit,exitShown}（M3 桌面记录，11.4 节）；
-// 事件：settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
+// desktop.{list,get,current,save,rename,delete,restore,clear,restorePrompt,exit,cancelExit,exitShown}（M3 桌面记录，11.4 节）、
+// workspace.{summaries,reorder}、recent.{list,record,clear}、system.openAppFolder（M5）；
+// 事件：recent.changed（M5，广播）、settings.changed、workspace.changed、vfs.changed、vfs.reachability、window.stateChanged、doc.progress、doc.changed、
 // web.{state,navigate,notice,shortcut}（只发给视图所属的窗口）、desktop.changed（广播）、desktop.{exitRequested,exitCancelled}（只发给主窗口）
 // （vfs.watch 已于 2026-11-19 删除；system.openPath 同日删除、M1-3 恢复，只由预览插件的宿主调用；launcher.* 等为将来的预览窗口所用，见 10 节）
 export const ipcContract = {
   'workspace.list':      route<Workspace[]>()(z.void()),
   'workspace.create':    route<Workspace>()(WorkspaceCreateInput),
   'workspace.activate':  route<void>()(z.object({ id: z.string() })),
+  'workspace.summaries': route<WorkspaceSummary[]>()(z.void()),   // M5：选择器的详细信息 { id, entryCount, topEntries（根级前 4 个）}，全部工作区含已归档，只查 pch.db
+  'workspace.reorder':   route<void>()(WorkspaceReorderInput),    // M5：{ ids } 必须恰好是全部未归档工作区的排列，否则 IPC_BAD_INPUT；一次事务、一次 workspace.changed
+  'recent.list':         route<RecentItem[]>()(z.strictObject({ workspaceId: z.string().min(1), limit: z.number().int().min(1).max(100) })),  // M5：openedAt 降序
+  'recent.record':       route<void>()(z.strictObject({ workspaceId: z.string().min(1), uri: z.string().min(1), kind: z.enum(['file', 'directory']), title: z.string().max(500) })),  // 同 URI 只更新时间；每工作区保留 100 条
+  'recent.clear':        route<void>()(z.strictObject({ workspaceId: z.string().min(1).optional() })),  // 省略 = 全部工作区
   'entry.list':          route<WorkspaceEntry[]>()(z.object({ workspaceId: z.string() })),
   'entry.add':           route<WorkspaceEntry>()(EntryAddInput),
   'entry.move':          route<void>()(EntryMoveInput),
@@ -537,6 +548,7 @@ export const ipcContract = {
   'editSession.resolve': route<void>()(z.object({ id: z.string(), action: z.enum(['overwrite', 'uploadAsCopy', 'skip']) })),
   'system.openExternal': route<void>()(z.object({ uri: z.string() })),
   'system.revealInOs':   route<void>()(z.object({ uri: z.string() })),
+  'system.openAppFolder': route<void>()(z.strictObject({ which: z.enum(['logs', 'userData']) })),  // M5 关于页：主进程按固定路径 shell.openPath，不接受渲染端传路径
   'system.copyText':     route<void>()(z.object({ text: z.string().max(32768) })),
   'system.selectPaths':  route<string[]>()(z.object({ kind: z.enum(['folder', 'file']), multiple: z.boolean() })),  // 取消时为空数组
   'window.minimize':     route<void>()(z.void()),            // 自绘窗口按钮：作用于发起调用的窗口
@@ -563,8 +575,9 @@ export interface IpcEvents {
   'vfs.reachability':  { share: string; state: 'online' | 'offline'; since: number };  // 共享 / 卷断开或恢复
   'settings.changed':  Partial<Settings>;
   'workspace.changed': { id: string };
+  'recent.changed':    { workspaceId: string | null };   // M5：最近使用有变化（记录 / 清除）；null = 清除了全部
   'connection.changed': Record<string, never>;      // M4：连接列表有变化（保存 / 删除 / 信任密钥 / 重新连接 / 测试之后）
-  'connection.status': { id: string; state: 'idle' | 'connecting' | 'online' | 'offline' | 'auth-failed' | 'host-key-pending' | 'host-key-changed' };  // M4：连接池的状态
+  'connection.status': { id: string; state: 'idle' | 'connecting' | 'online' | 'offline' | 'auth-failed' | 'auth-unsupported' | 'host-key-pending' | 'host-key-changed' };  // M4：连接池的状态（auth-unsupported 为 M5 K2，7.6 节）
   'connection.hostKeyPrompt': HostKeyPrompt;        // M4：首次连接时请求确认主机密钥（只发给主窗口）；以 connection.answerHostKey 回答，5 分钟未回答按拒绝
   'connection.hostKeyPromptClosed': { promptId: string };  // M4：询问已结束（回答 / 超时），渲染端移除确认框
   'editSession.changed': EditSessionDto;
@@ -634,7 +647,7 @@ export async function call<C extends IpcChannel>(channel: C, input: IpcInput<C>)
 
 ### 6.6 错误模型
 
-错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）、`LAUNCH_FAILED`（启动本机程序失败：Office 等的打开方式不可用、启动失败、对象不是文件，M2 `modules/launcher`，10 节）、`DESKTOP_SNAPSHOT_NOT_FOUND`（桌面记录的快照不存在：已删除、恢复后已清空，或属于别的机器，M3，11.4 节；属于正常流程，IPC 路由按 warn 记录，见 `ipc/log-error.ts`）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4（已实现）增加 `CONN_*`：`NOT_FOUND`（连接不存在）、`AUTH_FAILED`（登录认证失败，锁定）、`KEY_INVALID`（私钥读不了 / 格式不支持 / 口令错误：本机错误，不连接、不锁定）、`HOST_KEY_REJECTED`、`HOST_KEY_CHANGED`、`SUDO_AUTH_FAILED`（sudo 密码错误，按连接锁定所有切换身份）、`SUDO_DENIED`、`SUDO_FAILED`、`SFTP_SERVER_NOT_FOUND`、`PROCESS_LIST_HIDDEN`、`SECRET_UNAVAILABLE`（语义见 7.6 节）；超时沿用 `FS_TIMEOUT`、断开沿用 `FS_UNAVAILABLE`（设计草案中的 `CONN_TIMEOUT` 未采用）。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
+错误码按领域前缀划分，定义在 `packages/shared` 的 `ERROR_CODES`：已有 `UNKNOWN`、`IPC_*`（FORBIDDEN / BAD_INPUT / UNKNOWN_CHANNEL）、`SETTINGS_INVALID`、`WORKSPACE_*`（NOT_FOUND / DEFAULT_PROTECTED / NAME_REQUIRED）、`ENTRY_*`（NOT_FOUND / INVALID_PARENT / KIND_MISMATCH / TEMPORARY_PATH）、`FS_*`（NOT_FOUND / PERMISSION_DENIED / NOT_A_DIRECTORY / INVALID_URI / UNSUPPORTED_SCHEME / CANCELLED / TIMEOUT / UNAVAILABLE）、`INDEX_UNAVAILABLE`（扫描进程或其缓存库不可用）、`DOC_NOT_FOUND`（文本文档已关闭 / 因每窗口上限被关闭 / 窗口已销毁，7.5 节）、`LAUNCH_FAILED`（启动本机程序失败：Office 等的打开方式不可用、启动失败、对象不是文件，M2 `modules/launcher`，10 节）、`DESKTOP_SNAPSHOT_NOT_FOUND`（桌面记录的快照不存在：已删除、恢复后已清空，或属于别的机器，M3，11.4 节；属于正常流程，IPC 路由按 warn 记录，见 `ipc/log-error.ts`）；网络类错误（ETIMEDOUT、ECONNRESET、ECONNREFUSED、ENETUNREACH、ENETDOWN、EHOSTUNREACH、EHOSTDOWN、EIO）映射为 `FS_UNAVAILABLE`（「位置无法访问」）；扫描进程的 win32 枚举器只把确定的网络 / 设备不可用类 Win32 错误码映射为 `FS_UNAVAILABLE`（列表见 5.2 节），其余未知错误码为 `UNKNOWN`（只影响该目录）；扫描进程客户端的 60 秒兜底超时为 `FS_TIMEOUT`；`ERR_INVALID_FILE_URL_*`、`ERR_INVALID_URL`、`ERR_INVALID_ARG_VALUE` 映射为 `FS_INVALID_URI`（M1-2）；M4（已实现）增加 `CONN_*`：`NOT_FOUND`（连接不存在）、`AUTH_FAILED`（登录认证失败，锁定）、`KEY_INVALID`（私钥读不了 / 格式不支持 / 口令错误：本机错误，不连接、不锁定）、`HOST_KEY_REJECTED`、`HOST_KEY_CHANGED`、`SUDO_AUTH_FAILED`（sudo 密码错误，按连接锁定所有切换身份）、`SUDO_DENIED`、`SUDO_FAILED`、`SFTP_SERVER_NOT_FOUND`、`PROCESS_LIST_HIDDEN`、`SECRET_UNAVAILABLE`（语义见 7.6 节）；M5 增加 `CONN_AUTH_UNSUPPORTED`（服务器的 `keyboard-interactive` 提示形式不支持且尚未交出密码：不锁定，D15 / M4-K2，7.6 节）；超时沿用 `FS_TIMEOUT`、断开沿用 `FS_UNAVAILABLE`（设计草案中的 `CONN_TIMEOUT` 未采用）。渲染端用错误码查 i18n 文案（`errors.CONN_AUTH_FAILED`），所以错误提示天然支持多语言，主进程不拼接用户可见文案。渲染端未捕获的异常经 `log.write` 写入 `main.log`（12.3 节），用户反馈问题时只需提供这一个文件。
 
 ---
 
@@ -777,7 +790,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 
 - **连接与凭据**：表 `connections`（迁移 0007，13 节）；机密以 safeStorage 加密，渲染端只见 `hasSecret` / `hasSudoSecret`。认证：密码（服务器只提供 `keyboard-interactive` 时以密码作答）、私钥（OpenSSH / PEM；PuTTY `.ppk` 只支持 v2 的 RSA / DSA，v3 与 Ed25519 的 `.ppk` → `CONN_KEY_INVALID`；未加密的 `.ppk` 不传口令——先不带口令解析，需要时再带）。`CONN_KEY_INVALID` 是本机错误，不连接、不锁定（D5）。删除连接时引用它的条目保留（显示「连接不存在」），确认框显示被引用的条目数。编辑时 `host` 或 `port` 变化清除已信任的主机密钥（D6 前半）。
 - **一次连接只交一次密码**：自定义 `authHandler` 按服务器提供的方式只选一种（优先 `password`，没有时 `keyboard-interactive`），失败即结束；`keyboard-interactive` 一轮必须恰好 1 个非回显提示，否则中止（detail `keyboard-interactive: unsupported prompt …`，未交出密码，仅限第 1 轮之前或第 1 轮即出现不支持的提示、尚未交出密码时：错误码 `CONN_AUTH_UNSUPPORTED`，不锁定，状态 `auth-unsupported`，M5 K2；第 1 轮已交出密码、第 2 轮才出现不支持的提示 → 无法排除密码错误，按 `CONN_AUTH_FAILED`（detail `undetermined after password (…)`）锁定）。服务器不提供可用方式（detail 以 `no acceptable method` 开头）时报 `CONN_AUTH_FAILED` 但不锁定（未提交凭据）。
-- **连接池**（`connection-pool.ts`）：懒连接，同一连接的并发请求共享一次连接尝试；请求被取消只让该请求离开，不中止共享的尝试；新的尝试先等同一连接上进行中（含已丢弃）的尝试结束再重读记录（R12）。登录用户的 SFTP 子系统按连接共享（打开以 `vfs.timeoutSec.remote` 为上限）；每个使用中的切换身份 1 个通道。保活 `keepaliveInterval = remote.keepaliveSec`（15 秒）、`keepaliveCountMax = 3`，静默断线约 `15 × 4 = 60` 秒发现；空闲 `remote.idleDisconnectMin`（5 分钟）无请求时断开（含 sudo 通道；进行中的身份打开过程计入「进行中」）。断线时**用户操作**发起的请求重连并重试一次，后台读取不重试。状态 `idle` / `connecting` / `online` / `offline` / `auth-failed` / `host-key-pending` / `host-key-changed` 经 `connection.status` 推送。
+- **连接池**（`connection-pool.ts`）：懒连接，同一连接的并发请求共享一次连接尝试；请求被取消只让该请求离开，不中止共享的尝试；新的尝试先等同一连接上进行中（含已丢弃）的尝试结束再重读记录（R12）。登录用户的 SFTP 子系统按连接共享（打开以 `vfs.timeoutSec.remote` 为上限）；每个使用中的切换身份 1 个通道。保活 `keepaliveInterval = remote.keepaliveSec`（15 秒）、`keepaliveCountMax = 3`，静默断线约 `15 × 4 = 60` 秒发现；空闲 `remote.idleDisconnectMin`（5 分钟）无请求时断开（含 sudo 通道；进行中的身份打开过程计入「进行中」）。断线时**用户操作**发起的请求重连并重试一次，后台读取不重试。状态 `idle` / `connecting` / `online` / `offline` / `auth-failed` / `auth-unsupported`（M5 K2）/ `host-key-pending` / `host-key-changed` 经 `connection.status` 推送。`auth-unsupported` 与 `CONN_AUTH_UNSUPPORTED`：**只在尚未交出密码时**使用（服务器的 `keyboard-interactive` 提示一轮多个 / 回显 / 第 1 轮即不支持）；已交出密码后第 2 轮才出现不支持的提示，无法排除密码错误，按 `CONN_AUTH_FAILED` 锁定（「同一个错误密码绝不提交两次」）。连接池只在**内存**中记住 unsupported（不写 `auth_state`、**不跨重启**）：后台请求不再拨号，用户操作过 30 秒冷却（`IDENTITY_RETRY_COOLDOWN_MS`）才重试一次；`disconnect` / 「重新连接」/ 编辑 / 连接成功 / 测试成功时清除。
 - **主机密钥**（`host-key-gate.ts`）：`hostVerifier` 必须设置（`ssh2` 不设置时自动接受）。首次连接向主窗口发 `connection.hostKeyPrompt`（算法 + `SHA256:` 指纹），5 分钟未回答按拒绝；回答 / 超时后发 `connection.hostKeyPromptClosed`，渲染端移除确认框；渲染端重新加载后以 `connection.pendingHostKeyPrompts` 取回未回答的询问（R17）。拒绝 / 超时 / 无窗口在内存中记住：后台请求直接 `CONN_HOST_KEY_REJECTED` 不再询问，用户操作重新询问（R13）。已保存的指纹不一致 → `CONN_HOST_KEY_CHANGED`，「远程连接」视图显示新旧指纹；「信任新的密钥」（`connection.trustHostKey { id, key }`）带**用户看到的**密钥，与服务器最新出示的不一致时以 `CONN_HOST_KEY_CHANGED` 拒绝、不保存（R24 I4）。
 - **身份切换**（`sudo-switch.ts`、`identity-sessions.ts`、`server-probe.ts`）：第一次使用切换身份时（每条 SSH 连接一次，D4）以登录用户探测 sftp-server 位置（`/usr/libexec/openssh/`、`/usr/lib/openssh/`、`/usr/libexec/ssh/`、`/usr/lib/ssh/` 下第一个可执行的，连接设置可指定）与「能否看到 root 的进程」；看不到 → `CONN_PROCESS_LIST_HIDDEN`，不执行 sudo。命令通道执行 `printf 'PCHPID:%s\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p '<标记>' su - <身份>`（目标为 root 时 `su -`；`LC_ALL=C` 使日文 locale 的服务器也输出英文信息，R8；目标用户与路径先按白名单正则校验，密码绝不进命令行）。同时开**一个长寿命的轮询通道**（D2）：`i=0; while [ $i -lt N ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep 0.15; i=$((i+1)); done`，N = ceil(2 × 切换超时 / 间隔) = 200（约 30 秒）；**服务器端的终止条件**：客户端关闭通道后写失败即退出（不依赖 SIGPIPE 的默认处理），且最多 N 次（R24 I2b）。sudo 的子孙中出现 `su` = 认证成功，之后才写 `printf '\120CHSTART\n'; exec <sftp-server> -R`，标记之前的输出全部跳过。提示出现 → 写一次密码；再次出现提示 = 密码错误 → `CONN_SUDO_AUTH_FAILED`。stderr 含拒绝措辞（传统 sudo 的 `is not allowed to execute` 等、sudo-rs 的 `I'm afraid I can't do that`）→ `CONN_SUDO_DENIED`；`must have a tty` → 以终端方式（pty，`stty raw -echo …`）重试一次并按「连接 + 身份」记住；标记前通道关闭 / 15 秒超时 → `CONN_SUDO_FAILED`。sudo 密码 = 另设的 sudo 密码 ?? 密码登录的登录密码（私钥登录且未另设时 sudo 若要密码 → `CONN_SUDO_AUTH_FAILED`，不写入任何东西）。用户取消不中止进行中的身份打开（15 秒上限内跑完，结果留作会话，R11a）。
   - **服务器配置类失败的记忆**（R10 / R16 / R24 Minor 2）：身份打开以 `CONN_SUDO_FAILED` / `CONN_SUDO_DENIED` / `CONN_PROCESS_LIST_HIDDEN` / `CONN_SFTP_SERVER_NOT_FOUND` 失败时，按（连接, 身份）在内存中记住：后台请求直接以同一错误失败、不再执行 sudo；用户操作才重试一次，且距上次失败 **30 秒内**（`IDENTITY_RETRY_COOLDOWN_MS`）的用户操作也直接以记住的错误失败（防止启动时恢复的多个标签各触发一次 sudo）。**随断线 / 空闲断开清除的只有 `CONN_SUDO_FAILED`**（偶发失败）；其余三种是服务器配置，只在 `unlock`（「重新连接」）、`disconnect`（编辑连接等）时清除。冷却期内服务器修好时「测试连接」可立即重试。
@@ -789,7 +802,7 @@ export function registerPcfsProtocol(vfs: VfsService, cache: RemoteCache, allowO
 - **超时语义**：`ssh2` 的 `readyTimeout` 从连接开始计时，到 `USERAUTH_SUCCESS` 才清除——**覆盖认证阶段与主机密钥确认的等待**；平时取 `vfs.timeoutSec.remote`（20 秒），主机密钥尚未信任的首次连接取 `max(timeoutSec × 1000, 300_000)` ms（R5）；握手超时与保活超时同为 `client-timeout`，按消息区分（握手 → `FS_TIMEOUT`，保活 → 断开 `FS_UNAVAILABLE`）。扫描进程的看门狗按「没有进展的时间」计 `vfs.timeoutSec.remote`：`statDir` 探测阶段超时 → 该连接断开（进入退避探测）；**`list` 阶段超时只把该目录记为超时（`FS_TIMEOUT`），不算断开**（R24 I3）。provider 对符号链接的目标 stat 以有界并发 32 执行（`LINK_STAT_CONCURRENCY`），`/usr/lib64` 之类大量链接的目录不至于超时；attrs 缺 `mtime` / `size` 时取 0。
 - **扫描进程中的远程目录**：复合枚举器按 scheme 分派，`sftp:` 交给远程枚举器（`remoteOp`，5.2 节）。位置 `remote`：`shareKey` / `hostKey` = `sftp://<connectionId>`（不含身份：一条 SSH 连接是一个可达性与并发单位），每连接同时 1 个用户读取（P0）+ 1 个后台读取，不计入本地 / 网络的线程池名额。**只在用户动作时读取**：展开、选中、标签中新显示的目录（P0，有缓存先显示缓存）、F5 / 刷新 / 状态行「重试」（强制）；关注点 / 近层 / 远层的定期确认、热点、窗口重新获得焦点、滚回视口都不读远程。**后台**只读「建立索引」的远程目录（整棵子树），每个目录距上次读取超过 `cache.remoteIndexIntervalMin`（30 分钟）才再读，每个目录之后休息 `cache.backgroundGapMs.remote`（500 ms）。检查 = 每次完整重新列出。远程条目的右键菜单隐藏「缓存策略」与「在资源管理器中显示」，保留「建立索引」。`CONN_AUTH_FAILED` / `CONN_HOST_KEY_*` / `CONN_SUDO_*` 等不算断开（显示错误行，不进入退避探测）；`FS_UNAVAILABLE` / 探测超时 → 断开，显示缓存与断开图标，退避探测（30 秒起翻倍、最长 5 分钟），探测即重连。`remoteOp` 的 `userAction`：P0 为 true（断线时连接池重连并重试一次），探测与后台为 false。
 - **断线在树上的显示**（R21 / R22 / R24 I2，`offline-refresh.ts`）：远程目录没有定期确认，连接池发现断线（状态 `online → offline`）本身不会让树显示断开。因此**已建立的连接稳定存续超过一个保活周期（`remote.keepaliveSec`）之后因错误断开**时，主进程对该连接的远程条目根调用一次 `scanner.refresh`（每个连接 60 秒内最多一次，`OFFLINE_REFRESH_GAP_MS`）；读取失败后由扫描进程的退避探测负责重连。连接失败造成的 offline、短暂 online 后的断开都不触发（防止「认证成功后服务器立即断开」的服务器上形成无退避的重连循环）。实测（WSL Ubuntu，冻结 sshd 不关 TCP，无用户操作）：冻结后约 58 秒保活发现，约 78 秒树显示断开（再加一次 20 秒的连接超时）；之后 +108 秒、+128 秒为退避探测，全程 3 次拨号，无紧循环；解冻后下一次退避探测成功、树恢复。
-- **访问范围**（设计 5.7，M1-K17 的 sftp 部分，D10）：`sftp:` URI 必须在某个工作区的远程 folder 条目之下，否则 `IPC_FORBIDDEN`——在 IPC handler（`vfs.*`、`doc.*`、`web.*`、`launcher.*`；`system.*` 只接受本地路径 / `file:`）与扫描进程 `remoteOp` 的入口检查（`vfs/remote-access.ts`；解码后含 `.` / `..` 段或 NUL 的路径一律拒绝），不放在 `VfsService`（`entry.add` 校验新条目时要对尚不是条目的 URI 调 `vfs.stat`）。远程 file 条目不提供（`entry.add` 拒绝，R14）；sftp 条目的身份必须为 null 或已登记在连接的 identities 中（`entry.add` 与 `pool.session` 都检查）。连接管理的通道按 connectionId 操作，不受此限。
+- **访问范围**（设计 5.7，D10；M5 起同一机制也限制 UNC，见 15 节第 11 项）：`sftp:` URI 必须在某个工作区的远程 folder 条目之下，否则 `IPC_FORBIDDEN`——在 IPC handler（`vfs.*`、`doc.*`、`web.*`、`launcher.*`、`system.revealInOs` / `system.openPath`（M5 加入：二者之后经 `fileUriToLocalPath` 只接受 `file:`；范围外的 sftp URI 先在检查处以 `IPC_FORBIDDEN` 拒绝））与扫描进程 `remoteOp` 的入口检查（`vfs/remote-access.ts`；解码后含 `.` / `..` 段或 NUL 的路径一律拒绝），不放在 `VfsService`（`entry.add` 校验新条目时要对尚不是条目的 URI 调 `vfs.stat`）。远程 file 条目不提供（`entry.add` 拒绝，R14）；sftp 条目的身份必须为 null 或已登记在连接的 identities 中（`entry.add` 与 `pool.session` 都检查）。连接管理的通道按 connectionId 操作，不受此限。
 - **界面**：活动栏「远程连接」视图（`features/connections`：列表、状态点、新建 / 编辑 / 删除 / 测试 / 重新连接 / 信任新的密钥；测试逐步显示连接 → 主机密钥 → 认证 → SFTP（home）→ 各身份（sftp-server 路径与方式「非终端 / 终端」），第一次 sudo 认证失败即停止）。资源管理器：「添加远程文件夹…」（连接、身份、路径；默认路径经 `connection.home`：登录用户为 `realpath('.')`，其他身份为 `/`，D8），远程条目用 `ServerIcon`；读取得到权限不足时状态行显示「无权限」，属主（SFTP `longname` 第 3 列，随列表进入缓存 `entries.owner`，D9）在连接登记的身份中时给出「以 <属主> 身份添加为条目」（不自动切换身份）。「复制路径」复制服务器上的绝对路径；地址栏 / 文件信息显示 `<连接名>:<路径>`（切换身份时 `<身份>@<连接名>:<路径>`）。远程文件只匹配兜底插件（office / html / markdown / text 的 manifest 声明 `schemes: ['file']`），兜底插件对非本地资源隐藏「用系统应用打开」「在资源管理器中显示」「作为文本查看」（SDK `fs.isLocal`）；渲染端对非 `file:` 资源不 sniff（D7）。
 - **升级影响**：`pch.db` 迁移 0007（新增表，不改旧表）；`index.db` 的 `CACHE_VERSION` 5 → 6（`entries.owner`），**升级后首次启动删表重建整个 `index.db`，本地目录的缓存也全部重建**（重建完成前搜索只能查到已重新读取的目录）。
 - **残余风险**（接受，记录）：
@@ -1168,7 +1181,7 @@ plugins/preview-office/       # Office 文件的启动面板插件
 ```ts
 export interface TabState {
   id: string;
-  uri: string;                 // 资源 URI 或 internal://settings
+  uri: string;                 // 资源 URI 或内置页面（pch-settings: 等，M5 起；原写 internal://settings）
   pluginId: string;
   title: string;
   pinned: boolean;
@@ -1326,7 +1339,7 @@ export interface SessionSnapshot {
 ### 12.2 界面布局
 
 ```
-┌ 标题栏：工作区切换器 │ 搜索/命令面板（Ctrl+K） │ 主题/语言快捷切换 │ 窗口按钮 ┐
+┌ 标题栏：Logo「環」│ 工作区按钮（● 名称）│ 命令面板（Ctrl+K）│ 主题 / 语言菜单 │ 窗口按钮 ┐
 ├ 地址栏：[←][→][↑][⟳] ( [≋] 工作区 › 条目别名 › 段 … › 文件名 )  [表示] ─────────┤
 ├──┬────────────────┬─────────────────────────────────────────────────────┤
 │活│ 资源树          │ 标签栏（拖拽排序、固定、预览模式、溢出菜单）              │
@@ -1338,13 +1351,23 @@ export interface SessionSnapshot {
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、远程连接、（后续）最近使用。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 与 fallback 插件已实现（9.3、9.4 节「已实现」），folder 与 fallback 插件均已实现（9.4 节「已实现」）。
+隐藏系统标题栏（`titleBarStyle: 'hidden'`，不使用 Window Controls Overlay），由渲染端自绘整条标题栏：Windows / Linux 在右端绘制最小化、最大化/还原、关闭按钮（尺寸与交互参照 Windows 11，经 `window.*` IPC 控制发起调用的窗口；最大化状态由 `window.stateChanged` 事件同步），外观随主题变化，也不会像系统按钮那样遮挡标题栏的边框；macOS 保留系统惯例的红绿灯。双击标题栏空白处最大化 / 还原由系统处理（已用系统级鼠标事件验证）；拖动窗口贴靠屏幕边缘、Win+方向键属于系统对隐藏标题栏窗口的标准行为，应同样可用（未逐一验证）。取舍是 Windows 11 悬停最大化按钮时出现的贴靠布局面板（Snap Layouts）不再出现。分栏用 shadcn Resizable，右键菜单用 ContextMenu，命令面板用 Command，通知用 Sonner。活动栏切换侧栏内容：资源树、搜索、桌面记录、远程连接，底部为设置（齿轮，M5 打开设置页）；最近使用在命令面板中（M5），不另设侧栏视图。已实现（M1-2）：标题栏左侧的工作区切换器（8.1 节）、侧栏的资源树（8.2 节）；（2026-11-19）活动栏的「搜索」视图与 `Ctrl+Shift+F`（8.4 节；标题栏中间的「搜索文件或命令」是 M5 的命令面板入口，与之不同）；欢迎页标题显示当前工作区名称；（M1-3）标签栏已实现（11 节「已实现」：没有标签时显示欢迎页；拖拽排序、固定、溢出菜单推迟），PreviewContainer 与 fallback 插件已实现（9.3、9.4 节「已实现」），folder 与 fallback 插件均已实现（9.4 节「已实现」）。
 
 **地址栏（M1-3b 已实现，`features/address-bar`，设计 `devDoc/2026-11-19-15-navigation-design.md` 2.2 / 2.8 节）**：标题栏正下方、横跨活动栏 / 侧栏 / 内容区的一行（`Shell` 的 `addressBar` 插槽，`<nav>`，与标题栏同级、不属于任何标签的内容），显示当前工作区**激活标签**的位置；没有标签时只有工作区一段。**地址框**（M2 反馈第 6 项，需求方 2026-11-21 确认）：前置的工作区按钮与路径各段放在一个圆角、浅底的框中（`data-slot="address-box"`：`rounded-md border bg-muted/50`，高 28px，地址栏行高 36px），导航按钮（← → ↑ ⟳）与右端的查看器按钮留在框外，像 Edge / Windows 资源管理器的地址框；亮色 / 暗色下框与 ghost 按钮的悬停底色都可分辨（截图确认）。**工作区部分**（v1.21）：工作区按钮与第一段（工作区；一览页时为一览段）合成地址框左端的一个区域（`data-slot="address-workspace"`：撑满框高 `self-stretch`、右侧分隔线 `border-r`、不透明的底色 `color-mix(in oklch, var(--background), var(--foreground) 7%)`，暗色为 20%），底色与框不同，与后面的路径区分。不是框中的框：没有自己的边框 / 圆角 / 阴影，左侧圆角由地址框的 `overflow-hidden` 裁出，与框一致（需求方 2026-11-21 第二轮反馈；暗色下原来的 `bg-background` 比框更暗、对比不足，改为叠加前景色变亮）。底色必须不透明：它是段列表的第一项，`sticky left-0`，路径很长横向滚动时固定在左端（路径从它下面经过），工作区这一级始终可见。**复制路径**（v1.21）：单击当前位置（最后一段，不带修饰键）或其后的空白处（框本身或段列表的空白）把当前位置的路径写入剪贴板（`system.copyText`；文件 / 目录为 Windows 路径，其他如网页为 URI）并提示「パスをコピーしました」；工作区 / 一览没有路径，不动作；`Ctrl+单击` / 中键当前段仍在新标签打开。当前段与空白处的悬停提示为「路径 + 换行 + クリックでパスをコピー」（`addressBar:copyHint`）。 **查看器下拉（M2 Task 3）**：地址栏右端的「表示」按钮（`viewer-menu.tsx`）列出当前标签资源的候选查看器（单选，选中即 `tabs-store.setViewer`，进入历史；候选少于 2 个或无标签时禁用）；分隔线下的勾选项「.ext は常にこれで開く」写入 / 删除设置 `preview.associations[ext]`（ext = 文件名最后一段扩展名小写）。候选由预览容器写入 `stores/viewer-store.ts`（`byTab[tabId] = { candidates, ext }`，名称已按插件语言资源翻译，卸载时清除；内容相同的重复写入不触发订阅），地址栏经 store 读取（feature 之间不互相 import）。
 - 按钮：后退 / 前进（按该标签自己的历史，11.1 节）、上一级（`lib/logical-path.ts` 的 `parentLocation`，与目录视图的 Backspace / `Alt+↑` 相同；总览之上是工作区一览）、刷新（`stores/tabs-store.ts` 的 `requestRefresh(tabId)`：目录视图重新确认并列出、文件标签重新 stat、工作区总览重新取得条目）；不可用时禁用（没有标签时全部禁用）。悬停提示带快捷键。
 - 路径段：每次由 `logicalPath` 用最新的工作区名与条目计算（条目改名后立即更新；标签栏的标题仍是打开时的快照）。单击其他段 = 在当前标签内导航（进入历史）；单击当前位置 = 复制路径（见上）；中键 / `Ctrl+单击` = 在新标签打开（同 URI 已打开时按 `tab/open` 只激活）；没有激活标签时单击也新建标签。段的悬停提示为真实路径（Windows 路径；工作区段没有，`title=""` 以免继承地址框的复制提示）；最后一段 `aria-current="location"`。段过长时截断（最大宽度），段多时横向滚动（滚动条隐藏，纵向滚轮换成横向），路径或宽度变化后滚到末尾，使当前位置可见。
-- **前置的工作区按钮**（M2 反馈第 7 项：放在工作区名**前面**，lucide `GalleryVerticalIcon`（v1.21 起；最初为 `LayersIcon`，与资源树 / 总览的分组图标重复），去掉原来工作区名后面的 ▾；ghost、`icon-xs`，`aria-label` / 悬停提示为 `workspace:switcherLabel`）：快速切换菜单，列出工作区（当前项选中），选中即切换（与标题栏的切换器相同，经 `data/workspace` 的 `activate`）；底部分隔线下「管理工作区…」进入工作区一览（11.1 节）。新建 / 重命名 / 删除在标题栏的切换器与工作区一览中。
-- 快捷键（`use-navigation-shortcuts.ts`，监听 window，按键 → 命令为纯函数 `commands.ts`）：`Alt+←` / `Alt+→` 后退 / 前进（焦点在输入框时也有效，与浏览器相同）；`Alt+↑` 上一级（M2 反馈第 8 项；焦点在应用的输入框时除外——输入框 / 下拉选择中 Alt+↑ 有自己的含义；目录视图自己处理 Alt+↑ 并 `preventDefault`，全局按 `defaultPrevented` 跳过，不会执行两次。**焦点在网页视图中时 Alt+↑ 总是上一级**，页面里的 `<select>` / `<textarea>` 也一样，与 Alt+← / Alt+→ 相同：主进程在 `before-input-event` 中必须同步决定是否拦截，而 `Electron.Input` 与 `WebContents`（含 `focusedFrame`）都拿不到页面中获得焦点的元素，只有向页面执行脚本才能知道——视图没有 preload，不为此注入脚本（15 节））；`F5` 刷新激活标签（焦点在 input / textarea / select / contenteditable 时除外；视图内已处理的按键——`defaultPrevented`，例如资源树内的 `F5` 刷新资源树——不再处理）；鼠标侧键为 `mouseup` 的 `button` 3 / 4（后退 / 前进），侧键的 `mousedown` / `mouseup` / `auxclick` 都阻止默认动作（不用主进程的 `app-command`）。**有模态对话框打开时**（DOM 中有未隐藏的 `[role="dialog"]` / `[role="alertdialog"]`，即 Base UI Dialog / AlertDialog 的弹出层；`OPEN_MODAL_SELECTOR`）这些快捷键与侧键都不处理（否则作用于对话框背后的标签；侧键的默认动作仍阻止。M1-3b 最终审查修复）。系统级侧键（`mouse_event` 的 XBUTTON1 / XBUTTON2）已实测：每按一次后退 / 前进一步，页面不发生历史导航。
+- **前置的工作区按钮**（M5 起与标题栏的工作区按钮、`Alt+W` 打开同一个工作区选择器，按 `workspace.pickerStyle` 为圆环或菜单式，见下文「M5 已实现」；以下为 M2 时的形态）（M2 反馈第 7 项：放在工作区名**前面**，lucide `GalleryVerticalIcon`（v1.21 起；最初为 `LayersIcon`，与资源树 / 总览的分组图标重复），去掉原来工作区名后面的 ▾；ghost、`icon-xs`，`aria-label` / 悬停提示为 `workspace:switcherLabel`）：快速切换菜单，列出工作区（当前项选中），选中即切换（与标题栏的切换器相同，经 `data/workspace` 的 `activate`）；底部分隔线下「管理工作区…」进入工作区一览（11.1 节）。新建 / 重命名 / 删除在标题栏的切换器与工作区一览中。
+- 快捷键（M5 起 `use-navigation-shortcuts.ts` 只把 `nav.back / forward / up / refresh` 登记到命令注册表，由唯一的 window keydown 分发 `features/shell/use-command-shortcuts.ts` 执行，下述行为不变；按键 → 命令为纯函数 `commands.ts`）：`Alt+←` / `Alt+→` 后退 / 前进（焦点在输入框时也有效，与浏览器相同）；`Alt+↑` 上一级（M2 反馈第 8 项；焦点在应用的输入框时除外——输入框 / 下拉选择中 Alt+↑ 有自己的含义；目录视图自己处理 Alt+↑ 并 `preventDefault`，全局按 `defaultPrevented` 跳过，不会执行两次。**焦点在网页视图中时 Alt+↑ 总是上一级**，页面里的 `<select>` / `<textarea>` 也一样，与 Alt+← / Alt+→ 相同：主进程在 `before-input-event` 中必须同步决定是否拦截，而 `Electron.Input` 与 `WebContents`（含 `focusedFrame`）都拿不到页面中获得焦点的元素，只有向页面执行脚本才能知道——视图没有 preload，不为此注入脚本（15 节））；`F5` 刷新激活标签（焦点在 input / textarea / select / contenteditable 时除外；视图内已处理的按键——`defaultPrevented`，例如资源树内的 `F5` 刷新资源树——不再处理）；鼠标侧键为 `mouseup` 的 `button` 3 / 4（后退 / 前进），侧键的 `mousedown` / `mouseup` / `auxclick` 都阻止默认动作（不用主进程的 `app-command`）。**有模态对话框打开时**（DOM 中有未隐藏的 `[role="dialog"]` / `[role="alertdialog"]`，即 Base UI Dialog / AlertDialog 的弹出层；`OPEN_MODAL_SELECTOR`）这些快捷键与侧键都不处理（否则作用于对话框背后的标签；侧键的默认动作仍阻止。M1-3b 最终审查修复）。系统级侧键（`mouse_event` 的 XBUTTON1 / XBUTTON2）已实测：每按一次后退 / 前进一步，页面不发生历史导航。
+
+**M5 已实现（2026-11-23，设计 `devDoc/2026-11-23-42-m5-design.md` 5.C–5.F，实现记录 `devDoc/2026-11-23-45-m5.md`）**：
+
+- **命令注册表**（`stores/command-store.ts`）：命令 = `{ id, titleKey, group, shortcut?, allowInEditable?, allowWithModal?, hidden?, when?, run }`，feature 经 `useRegisterCommands` 登记自己的命令（shell：侧栏视图、`palette.open` / `palette.openAlt`（hidden 的第二个键）、新建工作区；`use-appearance-commands.ts`：明暗 / 主题 / 语言；address-bar：`nav.*`；tabs：`tab.close`；settings：`settings.open` / `about.open`；explorer：全部折叠 / 定位到当前项；workspace：`workspace.pick`）。唯一的 window keydown 分发 `features/shell/use-command-shortcuts.ts`：跳过 `defaultPrevented` 与 IME 组字（`lib/key-context.ts`），有模态对话框时只执行 `allowWithModal` 的命令，焦点在输入框时只执行 `allowInEditable` 的命令——因此 `Ctrl+W` 在对话框 / 输入框中不再关闭标签，关闭后焦点移到新的激活标签（M1-K14）；`Ctrl+Shift+F` / `Ctrl+B` 在有模态对话框时也不再触发（有意的变化）。网页视图中 `Ctrl+K` / `Ctrl+Shift+P` / `Ctrl+,` / `Alt+W` 也转发给应用（`APP_SHORTCUTS`，15 节第 9 项）。
+- **命令面板**（`features/command-palette`，shadcn `command`（`cmdk` 1.1.1）的 `CommandDialog`，`shouldFilter={false}`、`vimBindings={false}`、`loop`）：入口 `Ctrl+K` / `Ctrl+Shift+P`、标题栏中间的按钮、`Ctrl+K` 再按关闭。分组：最近使用（当前工作区 8 条）、工作区（按最近打开）、命令（不列 hidden 与 `when` 不满足的，显示快捷键）、文件（输入 ≥ 2 字符，150 ms 防抖调用 `search.query`，当前工作区 `limit: 20`；只显示与当前输入一致的那次查询的结果，选中后经资源树定位并打开）。筛选与排序统一用 `lib/text-match.ts`（NFKC + 小写 + 平假名→片假名；名称前缀 > 名称包含 > 说明包含，D5）；IME 组字中的按键由 `palette-keys.ts` 阻止。关闭（未执行动作）时经 `lib/focus-return.ts` 把焦点还给原来的元素或网页视图（`web.unfreeze { refocus: true }`）。
+- **最近使用**（D1 / D2）：`tabs-store` 的 `open` / `openHere` / `navigate` 带 `opts.source`，`shouldRecordRecent(kind, source)`（`packages/shared/src/recent/policy.ts`）只记明确的打开动作——资源树的双击 / Enter / 新标签打开（`tree-open`）、命令面板、工作区总览记文件与目录，插件宿主（目录视图等）只记文件；资源树单击 / ↑↓ 停留（`tree-select`）、地址栏、后退 / 前进不记。命中时 store 写 `recentSignal`，`<RecentRecorder />`（`app.tsx`）调用 `recent.record`（标题截 500 字符）。设置页「隐私」可清除全部。
+- **工作区选择器**（`features/workspace/picker`，设计稿 `devDoc/assets/2026-11-23-m5-design/workspace-picker.html`）：标题栏的工作区按钮（颜色圆点 + 名称）、地址框左端的工作区按钮与 `Alt+W` 打开同一个选择器（`ui-store.pickerOpen`）；形式按 `workspace.pickerStyle`：**圆环**（默认；Base UI `Dialog`，网页视图随之冻结；3D 圆环只显示正面 ±2 共 5 张、首尾相接，头部「リング / リスト」切换记在 `workspace.pickerView`，简要 / 详细记在 `workspace.pickerDetail`，详细卡片显示说明、`workspace.summaries` 的条目数与根级前 4 个条目、绝对时间）或**菜单式**（`workspace-menu.tsx`，合并原标题栏与地址框的两份菜单：颜色圆点、相对时间、编号；超过 8 个时有筛选框；新建 / 重命名 / 恢复默认名称 / 删除作用于当前工作区）。误操作防护：只有正面卡片能切换（点击或 Enter），点侧面卡片只转到正面，正面换过 250 ms 内圆环上的点击一律无效（`FRONT_GUARD_MS`），滚轮只转动，IME 组字中不处理按键、筛选在 `compositionend` 后执行（`use-filter-input.ts`），按压反馈期间 Esc 取消切换；`Alt+1–9` 直选（编号按 sortOrder）；Esc 分级（删除确认 → 筛选词 → 关闭）。**编辑模式**（琥珀色开关，不记忆）：正面卡片变为表单（名称、说明、颜色 9 色，失焦 / Enter 即时保存，Esc 撤销该字段），圆环末尾「+」卡片新建，`Alt+←/→` 调整顺序（`workspace.reorder`），删除时卡片翻到背面确认（默认焦点「キャンセル」）。工作区 `color` 存颜色键（`packages/shared/src/workspace/colors.ts` 的 `WORKSPACE_COLORS`），色值由 `--ws-*` 令牌给出。动效经 `@pch/ui/lib/motion`（弹簧令牌 `ring` 等），`appearance.reduceMotion` 生效时取消位移、只保留透明度变化（shadcn Dialog 自身的 `tw-animate-css` 进出场不受该设置影响，待需求方确认）。性能实测（20 个工作区，生产构建）：`Alt+W` 到筛选框获得焦点且正面卡片已渲染 18–35 ms，连续转动期间平均 60 fps。工作区一览页的卡片也显示颜色带与说明，「編集…」对话框可改名称 / 说明 / 颜色；一览中删除当前工作区时确认框常驻到删除完成（`ui-store.deleteWorkspaceTarget`，M2-F2）。
+- **设置页**（`pch-settings:`，`kind: 'settings'`，入口：活动栏齿轮、`Ctrl+,`、命令面板）：左侧分区导航（一般 / 外观 / 工作区 / 资源管理器 / 预览 / 缓存与扫描 / 远程连接 / 桌面记录 / 隐私，末尾「このアプリについて」）+ 右侧设置项，顶部搜索按名称 / 说明筛选；控件类型与 min / max 从 zod schema 读出（`validate.ts`，数值项 `Input type="number"` + 单位，无效时显示错误不提交，D6），与默认值不同时显示「既定に戻す」。外观分区的主题为带色板的卡片；资源管理器分区末尾是文件关联（`preview.associations`，可删除单条）；缓存与扫描分区显示缓存占用与「清空缓存」（`vfs.cacheInfo` / `vfs.clearCache`）。写入为乐观更新，失败时按键回滚并重新拉取（`data/settings.ts`）。
+- **关于页**（`pch-about:`，`kind: 'about'`，入口：设置页导航末项、命令面板；标题栏的 Logo 不加菜单）：内联 Logo、产品名、版本、Electron / Chromium / Node 版本、平台，数据目录与日志目录（只显示），「ログフォルダーを開く」「データフォルダーを開く」（`system.openAppFolder`）、「診断情報をコピー」。
+- 两个内置页面与工作区一览一样是 `LayoutLocationKind` 的一种（`'settings'` / `'about'`，`packages/shared/src/layout/types.ts`；位置构造在 `location.ts`），标签、地址栏（一段，标题按当前语言取）、后退 / 前进自然可用。
 
 ### 12.3 渲染端入口
 
@@ -1369,7 +1392,7 @@ createRoot(document.getElementById('root')!).render(
 
 ## 13. 数据库设计
 
-位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留）、`launch_capabilities`（迁移 0005）、`desktop_snapshots` 与 `desktop_items`（迁移 0006，M3 桌面记录））。
+位置：`userData/data/pch.db`；启动时设置 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，并执行 Kysely 迁移（`infra/db/migrations/`）。下面以 SQL 描述表设计，各表在对应里程碑以迁移的形式落地（已实现：`settings`（迁移 0001）、`workspaces` 与 `workspace_entries`（迁移 0002，同时写入默认工作区 `default`）、`workspace_entries.refresh_level` 与 `index_targets`（迁移 0003，同时把已有条目 URI 的结尾 `/` 去掉，驱动器根 `file:///C:/` 除外）、`refresh_level` 改名为 `cache_strategy`（迁移 0004，旧值与 CHECK 约束保留）、`launch_capabilities`（迁移 0005）、`desktop_snapshots` 与 `desktop_items`（迁移 0006，M3 桌面记录）、`connections`（迁移 0007，M4）、`recent_items`（迁移 0008，M5 最近使用））。
 
 ```sql
 -- 时间戳一律为 UNIX 毫秒（INTEGER）；JSON 列以 TEXT 存储
@@ -1377,7 +1400,7 @@ CREATE TABLE workspaces (                             -- M1-1 已实现
   id             TEXT PRIMARY KEY,
   name           TEXT NOT NULL,
   description    TEXT,
-  color          TEXT,
+  color          TEXT,                                -- M5：颜色键（WORKSPACE_COLORS 9 个之一，如 'blue'）或 NULL；色值由 --ws-* 令牌给出，非法值读出时视为 NULL
   sort_order     INTEGER NOT NULL DEFAULT 0,
   archived       INTEGER NOT NULL DEFAULT 0,          -- boolean
   last_opened_at INTEGER,
@@ -1476,17 +1499,22 @@ CREATE TABLE edit_sessions (
   updated_at        INTEGER NOT NULL
 );
 
-CREATE TABLE recent_items (
+CREATE TABLE recent_items (                           -- 迁移 0008 已实现（M5 最近使用，12.2 节）
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   uri          TEXT NOT NULL,
-  opened_at    INTEGER NOT NULL
+  kind         TEXT NOT NULL CHECK (kind IN ('file', 'directory')),
+  title        TEXT NOT NULL,                         -- 记录时的标题（≤ 500 字符）
+  opened_at    INTEGER NOT NULL,
+  CONSTRAINT recent_items_workspace_uri UNIQUE (workspace_id, uri)   -- 同一 URI 只更新 opened_at / title
 );
+CREATE INDEX recent_items_workspace_opened ON recent_items (workspace_id, opened_at DESC);
+-- 每个工作区只保留最近 100 条（RECENT_KEEP）：recent.record 在同一事务内 upsert 后删除超出部分；排序 opened_at DESC, id DESC
 ```
 
 密码等机密永远不发送到渲染进程：返回给前端的 `ConnectionDto` 只包含 `hasSecret` / `hasSudoSecret: boolean`（M4 已实现；渲染端保存时传一次明文，主进程立即加密；`safeStorage` 不可用时拒绝保存机密 `CONN_SECRET_UNAVAILABLE`，不以明文保存）。`auth_state` 的写入与解除见 7.6 节。ID 使用 `crypto.randomUUID()`，不额外引入 ID 库。
 
-**目录缓存库 `index.db`（已实现，2026-11-19）**：与 `pch.db` 分开，位于 `userData/cache/index.db`，只由扫描进程打开（`scanner/cache/cache.ts`，node:sqlite 直接使用，不经 Kysely；`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`）。它是可随时删除重建的缓存：**不做迁移**，表结构在 `scanner/cache/cache-schema.ts`，变化时递增 `CACHE_VERSION`，打开时 `user_version` 不符即删表重建；打不开（例如损坏）时删除 `index.db` / `-wal` / `-shm` 重建一次（5.2 节）。表：`dirs`（整数编号 `id INTEGER PRIMARY KEY AUTOINCREMENT`（编号不复用：目录删除后以同一 URI 重建得到新编号）、目录 URI `uri`（`UNIQUE`）、父目录编号 `parent_id`（NULL 表示根、父行尚不存在的孤儿，或父行已被清理的根；新建目录行与 `prune` 之后由 `adoptOrphans` 认领孤儿，`applyListing` 不以 NULL 覆盖已有值）、上次枚举时目录自身的修改时间 `dir_mtime`、`listed_at` / `checked_at`、`state`（ok / not-found / denied / unreachable）与 `error_code`、热点计分 `visited_at` / `visit_score`、生成列 `depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；索引 `dirs_parent (parent_id)`，后台队列用的两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL` 与 `dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`，热点查询用的覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`）、`entries`（`dir_id` 引用 `dirs.id`、`(dir_id, name)` 为主键，随目录级联删除：`entries` 不再保存目录 URI，长路径下体积约为原来的 1/3，见 devDoc 11；删除子树只需按 `dirs.uri` 的区间删 `dirs`，条目与 `entries_fts` 的触发器随外键级联生效；搜索由命中的 `entries.dir_id` 关联 `dirs.uri` 做范围筛选与结果 URI 拼接）、FTS5 external content 表 `entries_fts`（`tokenize='trigram'`，由触发器与 `entries` 同步，供文件名搜索使用，8.4 节）。`CACHE_VERSION` = 6（M4：`entries` 加列 `owner TEXT`，远程目录的属主名；从 5 升级时按「`user_version` 不符即删表重建」重建整个库，本地目录的缓存也随之重建）。写入只在内容有差异时发生；配置下发后删除不在任何工作区任何 folder 条目之下的目录缓存。占用与清空经 `vfs.cacheInfo` / `vfs.clearCache`（界面随 M5）。
+**目录缓存库 `index.db`（已实现，2026-11-19）**：与 `pch.db` 分开，位于 `userData/cache/index.db`，只由扫描进程打开（`scanner/cache/cache.ts`，node:sqlite 直接使用，不经 Kysely；`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`）。它是可随时删除重建的缓存：**不做迁移**，表结构在 `scanner/cache/cache-schema.ts`，变化时递增 `CACHE_VERSION`，打开时 `user_version` 不符即删表重建；打不开（例如损坏）时删除 `index.db` / `-wal` / `-shm` 重建一次（5.2 节）。表：`dirs`（整数编号 `id INTEGER PRIMARY KEY AUTOINCREMENT`（编号不复用：目录删除后以同一 URI 重建得到新编号）、目录 URI `uri`（`UNIQUE`）、父目录编号 `parent_id`（NULL 表示根、父行尚不存在的孤儿，或父行已被清理的根；新建目录行与 `prune` 之后由 `adoptOrphans` 认领孤儿，`applyListing` 不以 NULL 覆盖已有值）、上次枚举时目录自身的修改时间 `dir_mtime`、`listed_at` / `checked_at`、`state`（ok / not-found / denied / unreachable）与 `error_code`、热点计分 `visited_at` / `visit_score`、生成列 `depth`（URI 中 `/` 的个数，驱动器根末尾的 `/` 不计）；索引 `dirs_parent (parent_id)`，后台队列用的两个互不重叠的部分索引 `dirs_unlisted (depth, uri) WHERE checked_at IS NULL` 与 `dirs_checked (checked_at, uri, depth) WHERE checked_at IS NOT NULL`，热点查询用的覆盖部分索引 `dirs_hot (visit_score, visited_at, uri) WHERE visit_score > 0`）、`entries`（`dir_id` 引用 `dirs.id`、`(dir_id, name)` 为主键，随目录级联删除：`entries` 不再保存目录 URI，长路径下体积约为原来的 1/3，见 devDoc 11；删除子树只需按 `dirs.uri` 的区间删 `dirs`，条目与 `entries_fts` 的触发器随外键级联生效；搜索由命中的 `entries.dir_id` 关联 `dirs.uri` 做范围筛选与结果 URI 拼接）、FTS5 external content 表 `entries_fts`（`tokenize='trigram'`，由触发器与 `entries` 同步，供文件名搜索使用，8.4 节）。`CACHE_VERSION` = 6（M4：`entries` 加列 `owner TEXT`，远程目录的属主名；从 5 升级时按「`user_version` 不符即删表重建」重建整个库，本地目录的缓存也随之重建）。写入只在内容有差异时发生；配置下发后删除不在任何工作区任何 folder 条目之下的目录缓存。占用与清空经 `vfs.cacheInfo` / `vfs.clearCache`（M5：设置页「缓存与扫描」分区）。
 
 ---
 
@@ -1500,8 +1528,13 @@ CREATE TABLE recent_items (
 export const settingsSchema = z.object({
   'general.language':            z.enum(['system', 'ja', 'zh-CN', 'en']).default('system'),
   'appearance.themeMode':        z.enum(['system', 'light', 'dark']).default('system'),
-  'appearance.accent':           z.enum(['neutral', 'blue', 'green', 'violet', 'orange']).default('neutral'),
+  'appearance.theme':            z.enum(['default', 'aitetsu', 'washi', 'matsuba']).default('default'),   // M5：配色主题（与明暗正交，14.3 节）
+  'appearance.accent':           z.enum(['neutral', 'blue', 'green', 'violet', 'orange']).default('neutral'),   // M5 起覆盖主题的 primary；neutral = 「テーマの既定」
   'appearance.density':          z.enum(['comfortable', 'compact']).default('comfortable'),
+  'appearance.reduceMotion':     z.enum(['system', 'on', 'off']).default('system'),   // M5：system 跟随系统；on 总是减少；off 不减少
+  'workspace.pickerStyle':       z.enum(['carousel', 'menu']).default('carousel'),     // M5：工作区选择器的形式（12.2 节）
+  'workspace.pickerDetail':      z.boolean().default(false),                           // M5：选择器卡片 false = 简要 / true = 详细
+  'workspace.pickerView':        z.enum(['ring', 'list']).default('ring'),             // M5：选择器头部「リング / リスト」的界面记忆（不在设置页显示，R2）
   'explorer.showHiddenFiles':    z.boolean().default(false),
   'explorer.singleClickPreview': z.boolean().default(true),   // M1-3b：「单击 / 键盘移动选中即在当前标签打开」（键名沿用）
   'preview.associations':        z.record(z.string(), z.string()).default({}),
@@ -1533,17 +1566,27 @@ export const settingsSchema = z.object({
 export type Settings = z.infer<typeof settingsSchema>;
 ```
 
-已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。目前只有语言、主题等少数键有界面，缓存与超时的全局设置暂无界面（M5「设置页完善」），条目级的缓存策略在资源树右键菜单中设置（8.2 节）。`desktop.askOnExit` 由退出对话框的「次回から確認しない」写为 `false`，在桌面记录侧栏标题行的「…」菜单「終了時に確認する」中重新打开（设置页随 M5）；`session.restoreOnStartup` / `window.onDetachedClose` 是原 M3（多窗口与应用内会话）设想的键，M3 改为桌面记录后没有任何代码读取，保留在 schema 中、是否删除待需求方确认（实现记录 `devDoc/2026-11-22-34-m3.md`）。
+已实现：上面的全部键（`launcher.officeExtensions` / `launcher.officeDefaultAction` 已于 M2 删除，库中残留的旧键被 `resolveSettings` 忽略、不报错）均在 `packages/shared/src/settings/schema.ts` 中定义（`refresh.*` / `vfs.timeoutSec.*` 于 2026-11-19 加入，`remote.pollIntervalSec` 同时删除；`refresh.*` 随后改为 `cache.*`，库中残留的 `refresh.*` 键被忽略）；`cache.*` / `vfs.*` 变化时主进程重新下发扫描配置（7.1 节）。条目级的缓存策略在资源树右键菜单中设置（8.2 节）。`desktop.askOnExit` 由退出对话框的「次回から確認しない」写为 `false`，可在设置页「桌面记录」分区或桌面记录侧栏标题行的「…」菜单「終了時に確認する」中重新打开。**设置页（M5 已实现）显示除以下键之外的全部键**：`session.restoreOnStartup` / `window.onDetachedClose`（原 M3 多窗口与应用内会话设想的键，M3 改为桌面记录后没有代码读取）、`launcher.autoUploadRemoteEdits`（远程编辑会话，「后续」）、`remote.cacheSizeMB`（下载缓存，「后续」）——这 4 个键没有代码读取，保留在 schema 中，是否删除待需求方在 beta 前决定（实现记录 `devDoc/2026-11-23-45-m5.md`）；`workspace.pickerView` 是界面记忆（R2）；`preview.associations` 不是单个控件，在「资源管理器」分区末尾以列表显示、可删除单条。连接池的 `remote.keepaliveSec` / `remote.idleDisconnectMin` / `vfs.timeoutSec.remote` 每次使用时读取，无需重启；保活间隔在建立连接时交给 `ssh2`，已建立的连接保持原值（设置页注明「新しい接続から有効」）。
 
-设置页本身是一个内部标签（`internal://settings`），由内部插件渲染，因此同样支持弹出与会话恢复。修改后主进程广播 `settings.changed`，所有窗口即时生效。
+**设置页的承载方式（M5，取代原写的 `internal://settings` 内部插件）**：设置页与关于页是应用内置页面标签（与工作区一览、桌面快照页同一方式）：位置 `pch-settings:` / `pch-about:`，`LayoutLocationKind` 为 `'settings'` / `'about'`，`features/preview/preview-container.tsx` 渲染 `app/` 经 `renderSettings` / `renderAbout` 传入的 `features/settings` / `features/about` 视图（不是插件），地址栏、标签、后退 / 前进自然可用（设计 4.5）。修改后主进程广播 `settings.changed`，所有窗口即时生效；渲染端写入为乐观更新，失败时按键回滚并重新拉取（`data/settings.ts`）。
 
 ### 14.2 国际化
 
-`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；M1-2 增加 workspace；2026-11-19 增加 search；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
+`packages/i18n` 存放 `ja`、`zh-CN`、`en` 三套资源，按命名空间拆分（M0：common、explorer、connections、welcome、errors；M1-2 增加 workspace；2026-11-19 增加 search；M5 增加 about、settings、commands（命令标题）、palette；随功能增加）。主进程与渲染进程用同一个工厂函数创建 i18next 实例，资源随代码打包、同步初始化；语言切换时主进程更新窗口标题（M5 起还要重建托盘菜单），渲染端调用 `changeLanguage`。插件通过 manifest 的 `i18n` 字段注入自己的命名空间。日期、文件大小统一用 `Intl` 格式化。三种语言的键一致性由类型（以日语资源为基准，缺键或多键编译失败）与单元测试（不允许空文案）共同保证。
 
 ### 14.3 主题
 
 shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通过 `<html class="dark">` 切换，强调色通过 `data-accent` 属性切换一组变量，紧凑密度通过 `data-density` 调整间距。主题以 SQLite 中的设置为唯一来源，并同步 `nativeTheme.themeSource`，使滚动条、表单控件等原生绘制部分与窗口底色一致（窗口按钮由渲染端自绘，直接使用主题变量）。这里自行实现约 50 行的 ThemeProvider，而不使用 next-themes，因为后者以 localStorage 为存储，与「设置存 SQLite」的要求冲突（shadcn 生成的 `sonner.tsx` 默认引用 next-themes，已改为由调用方传入主题）。
+
+**配色主题（M5 已实现，设计 5.A，配色以设计稿 `devDoc/assets/2026-11-23-m5-design/themes.html` 为准）**：
+
+- 四套：`default`（shadcn neutral）、`aitetsu`（藍鉄：深蓝铁底 + 冷青强调）、`washi`（和紙：纸色底 + 藍墨字）、`matsuba`（松葉：带绿意的灰 + 松叶绿），各有明暗两组。设置 `appearance.theme`，与明暗 `appearance.themeMode` 正交。
+- CSS（`packages/ui/src/styles/globals.css`）：`<html data-theme="x">`（default 不设属性），每套主题完整的 shadcn 变量按 `[data-theme='x']` 与 `[data-theme='x'].dark` 组织；**强调色覆盖主题**——`:root[data-accent='y']` 放在主题规则之后（`[data-theme=x].dark` 的优先级 0,2,0 高于单类选择器），`neutral` 表示使用主题自己的 primary（界面文案「テーマの既定」）。默认主题亮色的 `muted-foreground`（在 `muted` 上）与 `ring` 微调到 4.5 / 3.0 以上。扩展令牌：日志级别 `--log-*`（每主题一组，文本预览状态栏与网页预览的提示色改用它）、工作区颜色 `--ws-*`（9 色）、文件图标颜色 `--fi-*`（只分明暗，不随主题：文件类型颜色是外部约定）、Logo 颜色 `--logo-*`（每主题明暗各一组），均映射为 Tailwind 颜色。
+- 首帧：`BootstrapData.themeName`，`theme-init.js` 在 React 挂载前写 `data-theme`；`windows/window-factory.ts` 的窗口底色表按主题 × 明暗取值（与各主题 `--background` 一致，新增主题时同步），切换时 `syncWindowChrome` 更新。`ThemeProvider` 写 `data-theme` / `class="dark"` / `data-accent` / `data-density`。标题栏主题菜单增加「テーマ」单选组（D8）。
+- 网页视图：Markdown 外壳页按主题取一组颜色（`web-assets/markdown/markdown.css` 按 `[data-theme]` 组织，**颜色从 globals.css 手工抄写，改配色时两处同步**），主题名经 `markdown-shell.ts` 传入、切换时由主进程注入固定脚本（15 节第 9 项）；mermaid 用 `base` 主题 + `themeVariables`。HTML / PDF 是文件本身，不改。插件 SDK 的 `theme` 仍为 `{ mode }`（插件用 CSS 变量，自然跟随）。
+- **动效**：`motion` 14.14.0 只是 `packages/ui` 的依赖（R1），`packages/ui/src/lib/motion.ts` 集中令牌（时长 `fast` 0.12 s / `base` 0.2 s / `slow` 0.28 s；缓动 standard / enter / exit；弹簧 `ring` / `snappy` / `emphasized`）并 re-export `motion`、`AnimatePresence`、`MotionConfig`、`useReducedMotion`、`useReducedMotionConfig` 与类型 `Transition`；渲染端只从 `@pch/ui/lib/motion` 引入。`ThemeProvider` 根部 `<MotionConfig reducedMotion>`：`system` → `user`、`on` → `always`、`off` → `never`（`reducedMotionMode`）。简单的进出场（菜单、对话框）仍用 `tw-animate-css`，不受该设置影响（已知，待需求方确认是否处理）。
+- **文件图标**（设计 5.B，`packages/ui/src/lib/file-icon-map.ts` / `file-icon.tsx`）：27 类；A 级（大众认知，饱和）Word 蓝、Excel 绿、PowerPoint 橙、PDF 红（另换 `file-type` 字形）、邮件天蓝、文件夹黄（同色半透明填充）、压缩包茶色；B 级（只区分，降饱和）日志、脚本、代码、配置、数据库、证书、Markdown、图片、音视频、可执行等；纯文本 / 未知 / 文件链接为 `muted-foreground`，失效链接 `destructive`。轮转日志（`*.log.1`、`*.log.gz` 等）归 log，`Dockerfile` / `Makefile` / `.env` 等按全名映射。`FileIcon` 默认带 `text-fi-*`，选中行等需要单色时传 `monochrome`。资源树、目录视图、工作区总览、标签头、搜索结果、fallback 预览、命令面板、选择器详细卡片统一使用。不提供「图标单色」设置。
+- **Logo「環」**（设计 5.G）：`packages/ui/src/logo-mark.tsx`（`LogoMark`，内联 SVG，颜色 `var(--logo-*, 静态色)` 随主题），用于标题栏左端与关于页；窗口 / 任务栏 / exe 图标用静态版（16.4 节）。
 
 ---
 
@@ -1556,13 +1599,13 @@ shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通
 5. 机密使用 `safeStorage`（Windows 下为 DPAPI）加密存储，不进入渲染进程、不写日志。
 6. SFTP 主机密钥 TOFU 校验；FTP 明文连接在界面上标注风险并推荐 FTPS。
 7. 插件仅能访问 PreviewHost；第三方插件默认关闭，需用户显式启用。
-8. 打包时启用 Electron Fuses（`electron-builder.yml` 的 `electronFuses`：关闭 RunAsNode、NODE_OPTIONS 与 inspect 参数，启用 asar 完整性校验与仅从 asar 加载）；渲染端产物位于 asar 内，同受完整性校验保护；发布时进行代码签名。
+8. 打包时启用 Electron Fuses（`electron-builder.yml` 的 `electronFuses`：关闭 RunAsNode、NODE_OPTIONS 与 inspect 参数，启用 asar 完整性校验与仅从 asar 加载）；渲染端产物位于 asar 内，同受完整性校验保护；发布时进行代码签名（目标结构；M5 的 beta 按需求方决定以未签名 zip 分发，签名的接入点是 electron-builder 的 `win.signtoolOptions` 与证书环境变量 `CSC_LINK` / `CSC_KEY_PASSWORD`（已在 app-builder-lib 26.18.0 中确认存在，未实际签名；届时再确认）。
 9. **浏览器视图（M2，主进程 `modules/web`）**：本地 HTML / Markdown 显示在主进程为每个标签创建的 `WebContentsView` 中（独立渲染进程），插件只放占位元素。
    - **已实现**（`web-session.ts`、`web-view-manager.ts`、`navigation.ts`、`shortcuts.ts`、`web.ipc.ts`）：
      - 视图 `webPreferences`：`sandbox`、`contextIsolation`、`nodeIntegration: false`、无 preload、`webSecurity`、`devTools: false`、`spellcheck: false`；会话 `persist:pch-web`（持久化，localStorage 按范围编号隔离）。
      - **脚本注入**：视图无 preload，也不向页面注入脚本；唯一的例外是对应用自己生成的 Markdown 外壳页（`?pch-view=markdown`）由主进程 `setMarkdownTheme` 执行固定的主题切换脚本（`document.documentElement.dataset.theme` 的设置 / 删除，主题名来自 `ThemeName` 枚举，不拼接页面或用户内容）；其他网页视图一律不注入。
      - 会话：注册 `pch-web`（范围内只读，7.3 节）与 `pch-asset`（Markdown 查看脚本，7.3 节）两个处理器，各自外包**发起方检查**：`pch-web`（`guardInitiator`）按 `request.initiatorOrigin` 只放行「无发起方」（应用的 `loadURL` / `reload`）与「同一 `pch-web://<范围编号>` 源」，其余（外站 iframe、其他范围的页面、沙箱 iframe 等不透明源 `"null"`）403（e2e 以其他范围的图片 / fetch 失败确认检查生效）；`pch-asset`（`guardAssetInitiator`）只放行无发起方与来自 `pch-web://` 页面的请求，应用窗口、外站、不透明源 403。范围的含义：页面脚本可同源读出范围内全部文件的内容，且外网放行（可外发）；条目根为驱动器根 / 共享根时范围即整个盘 / 共享；范围判定为字符串比较，经范围内的符号链接 / 联接点可读到范围外。需求方 2026-11-21 了解上述风险后决定维持现状：不收窄范围、外网照常放行、不做 realpath 校验（实现记录 Q2 / Q13）。权限请求与检查除剪贴板写入（`clipboard-sanitized-write`，原型的「复制」按钮）外一律拒绝；`will-download` 一律取消并向该视图发 `web.notice download`。
-     - 导航：主框架的 `will-navigate` / `will-redirect` 与 `setWindowOpenHandler` 一律阻止视图自己导航，经 `decideNavigation` 判定——同范围 `pch-web`、范围内 `file:` → `web.navigate`（由应用在标签中打开，新窗口请求为 `newTab`；链接的 `?查询#锚点` 作为 `fragment` 不进入标签的位置，在该标签打开时交给下一次 `web.attach` 拼到加载地址后，Markdown 视图只取 `#锚点`；新标签打开时不带）；`http:` / `https:` / `mailto:` → `shell.openExternal`（同一视图 2 秒内最多一次，超出丢弃并记日志：页面脚本 / meta refresh 无需用户手势即可触发）；其他范围 / 范围外 → `web.notice outOfScope`；其他协议 → `web.notice unsupported`。子框架不拦截。每次主框架提交后清空视图的导航历史（标签历史由应用管理，页面的历史导航无处可去）。页面中点击 `file:` 链接（主框架与 `target=_blank`）在渲染进程即被 Chromium 拦截（`Not allowed to load local resource`），不触发上述事件：结果是静默无反应（不读取文件，但不提示，范围内的 `file:` 绝对链接也打不开）。
+     - 导航：主框架的 `will-navigate` / `will-redirect` 与 `setWindowOpenHandler` 一律阻止视图自己导航，经 `decideNavigation` 判定——同范围 `pch-web`、范围内 `file:` → `web.navigate`（由应用在标签中打开，新窗口请求为 `newTab`；链接的 `?查询#锚点` 作为 `fragment` 不进入标签的位置，在该标签打开时交给下一次 `web.attach` 拼到加载地址后，Markdown 视图只取 `#锚点`；新标签打开时不带）；`http:` / `https:` / `mailto:` → `shell.openExternal`，**要求用户手势**（M5，M2-Q24 / D13：Electron 45 的 `will-navigate` / `setWindowOpenHandler` 没有手势字段，以「最近一次用户输入」近似——`before-mouse-event` 的 mouseDown 与 `before-input-event` 的 keyDown 更新 `entry.lastInput`，要求 `now - lastInput <= USER_ACTIVATION_MS`（5 秒），否则丢弃并记 warn；已知余量：用户输入后 5 秒内页面脚本发起的导航仍会放行）；同一视图 2 秒内最多一次，超出丢弃并记日志；`web.attach` 对相对范围根的部分逐段解码，含 `.` / `..` / NUL 段或无法解码 → `FS_INVALID_URI`（M5，M2-K6）；其他范围 / 范围外 → `web.notice outOfScope`；其他协议 → `web.notice unsupported`。子框架不拦截。每次主框架提交后清空视图的导航历史（标签历史由应用管理，页面的历史导航无处可去）。页面中点击 `file:` 链接（主框架与 `target=_blank`）在渲染进程即被 Chromium 拦截（`Not allowed to load local resource`），不触发上述事件：结果是静默无反应（不读取文件，但不提示，范围内的 `file:` 绝对链接也打不开）。
      - 按键：`before-input-event` 中应用快捷键（F5、Alt+← / Alt+→ / Alt+↑、Ctrl+W、Ctrl+Shift+F、Ctrl+B、Ctrl+K、Ctrl+Shift+P、Ctrl+,、Alt+W，以渲染端命令注册表〔`stores/command-store.ts`，由 `features/shell/use-command-shortcuts.ts` 统一分发〕为准；`modules/web/shortcuts.ts` 的 `APP_SHORTCUTS`）不交给页面，作为 `web.shortcut` 发给所属窗口——不区分页面中的焦点是否在输入框（主进程拿不到页面的焦点元素，见 12.2 节 `Alt+↑`），页面内下拉选择的 Alt+↑ 也作为「上一级」；鼠标侧键（`before-mouse-event` 的 `back` / `forward`）整组阻止，抬起时转为 Alt+← / Alt+→。
      - 生命周期：每窗口最多 8 个视图（LRU，显示中的除外）；窗口关闭、渲染端提交新文档（重新加载）或崩溃时销毁该窗口的全部视图；退出时全部销毁。
      - 焦点（M2 Task 7 审查修复）：`hide` / `release` / `freeze` 时视图若持有键盘焦点，交回所属窗口的渲染端（`OwnerWindow.focus()`）；`freeze` 交回焦点时报告 `yielded`；`unfreeze({ refocus })` 只在渲染端判断「只因 toast 截图、截图时交回了焦点、期间用户没有在应用中操作（`document.hasFocus()` 且 `activeElement` 为 body）」时把焦点还给视图（审查第 2 轮：无条件还回会抢走用户在资源树等处的焦点）。否则隐藏 / 销毁的视图留着焦点，应用快捷键（Alt+→、F5…）在用户点击之前都不生效（系统级按键实测）。**加载时不抢焦点**（最终修复 I3，Q18）：视图新建 / `loadURL` 时会拿走键盘焦点（实测），资源树 ↑↓ 经过 html / pdf / 图片 / md 时方向键随之进入页面；`attach` 时视图没有焦点（用户在应用界面中操作）则此后视图自己拿到的焦点（webContents `focus` 事件，`setImmediate` 之后处理——在事件中同步交回不生效）交回应用界面，直到用户在视图内按下鼠标（`before-mouse-event` 的 mouseDown；焦点已被交回时按下鼠标把焦点给视图）或 `unfreeze` 还焦点；`attach` 时视图已持有焦点则不干预。**焦点在页面中导航时留在新页面**（试用反馈第 1 项）：在页面中点同范围链接 / 按 Alt+←→（`shortcuts.ts` 转发）时，渲染端先 `web.hide`（同一查看器，复用视图）或 `web.release`（查看器不同，例如 html → md）再 `web.attach`，hide / release 已把焦点交回应用，按上一条规则新页面拿到的焦点会被交回。为此 `hide` / `release` 交回了焦点时按窗口记下「焦点交接」（`WebViewManager.handoffs`：窗口 → 标签）；紧接着的 `attach` 若是同一标签则取走它：不设 guard 并主动 `webContents.focus()` 视图（复用的或新建的）。交接只给紧接着的一次 `attach`（任一标签的 attach 都作废它），用户在应用界面中按下键盘 / 鼠标（应用渲染端 webContents 的 `before-input-event` 非 keyUp / `before-mouse-event` 的 mouseDown，`bindWebViewOwner` 接到 `WebViewManager.appInput`）或窗口的视图全部销毁时也作废——例如页面中 Alt+← 回到文本文件后，在应用中按 Alt+→ 回到网页：焦点留在应用。只看按下：交回焦点后键的抬起落到应用界面，不算用户操作。
@@ -1575,6 +1618,13 @@ shadcn/ui 的 CSS 变量体系（Tailwind v4、oklch 颜色）。明暗模式通
    - **不保存整串命令行**（设计 5.6）：Eclipse 只取 `-data` 的值；其余类别只保存路径、只读标记、exe 路径与窗口矩形。日志中只写各类的个数，不写路径。
    - **按机器隔离**：快照只读写本机（`machine` = 主机名）的行，数据库随漫游配置到别的机器时不列出、不提示、不恢复那台机器的快照。
    - **e2e 假模式**（`PCH_E2E_FAKE_DESKTOP`）只在未打包时读取，打包后的应用不受环境变量影响（同 `PCH_E2E_FAKE_LAUNCHER`）。
+11. **UNC 访问范围（M1-K17，M5 部分修正，设计 5.H，控制者决定；`vfs/remote-access.ts`）**：
+   - **目的**：渲染端（含被入侵的渲染进程）不能对任意 UNC 主机（`file://<host>/…`）发起 stat / 读取，借 SMB 连接把 Windows 的 NTLM 凭据交给攻击者的主机。本地盘（host 为空）没有这个泄露面，不限制。
+   - **已实现**：`RemoteAccess` 同时判定 sftp 与 UNC：UNC URI 必须在某个工作区的 **folder 条目之下**，或 **file 条目所在目录之下**（网页视图的范围根，7.3 节；只有一段路径的 `file://host/x` 只放行该 URI 本身，不放行整个主机）。判断以 `new URL()` 解析后的 host（已小写）与解码并小写的路径（SMB 大小写不敏感）按「等于根或以根 + `/` 开头」比较（`proj` 不匹配 `project2`）；解码后含 `\`、NUL、`.` / `..` 段的一律拒绝。检查点与 sftp 相同：`vfs.*`、`doc.*`、`web.*`、`launcher.*`、`system.revealInOs` / `system.openPath` 的 IPC handler 入口与 `remoteOp`；范围外 → `IPC_FORBIDDEN`（界面上为通用的「禁止」文案）。`file:////host/…`、`file:///%5C%5Chost…` 在 `fileURLToPath` 处即抛错（`FS_INVALID_URI`），不构成绕过（未单独加测试）。
+   - **`entry.add` 例外**：添加条目是用户明确的动作，主进程要对尚不是条目的 URI 做 `vfs.stat` 校验，因此不经范围检查。
+   - **残余风险（R6，待需求方决定）**：被入侵的渲染端可以先调用 `entry.add` 添加 `file://evil/share` 为条目（触发一次 stat，即一次 SMB 连接），再在范围内访问——K17 只是部分缓解（正常界面之外无法悄悄访问任意主机，但 `entry.add` 这一条路仍在）。可选的加固：对 `entry.add` 中**新出现的 UNC 主机**由主进程弹出确认框；它改变添加条目的交互，是否在 beta 前追加由需求方决定（实现记录 `devDoc/2026-11-23-45-m5.md`）。
+   - **验证**：只有单元测试（本机没有真实 UNC 共享，未实机验证）。
+12. **启动本机程序的限制（M5，M2-K5 / D14）**：`launcher.capabilities` / `launcher.open` 只接受 Office 扩展名白名单（`packages/shared/src/launcher/types.ts` 的 `OFFICE_EXTENSIONS`；插件侧 `plugins/builtin/src/office/index.ts` 保留同一份清单，以 `app/office-extensions.test.ts` 断言一致，R5），其他扩展名返回空能力 / `LAUNCH_FAILED`，不执行 PowerShell；网页预览的「既定のアプリで開く」（`web-host.ts` 的 `openExternal`）对可执行类扩展名先弹出与 fallback 相同的确认框。
 
 ---
 
@@ -1618,6 +1668,10 @@ export default defineConfig({
 | portable 单文件 exe | 不采用 | 每次启动都把约 300MB 解压到 `%TEMP%` 并被杀毒软件扫描，启动 24–31 秒；强制结束后残留解压目录 |
 | zip 文件夹版 | 采用 | 首次启动约 15 秒（杀毒软件首次扫描），之后约 1.4 秒 |
 
+**应用图标（M5 已实现，设计 5.G / D9 / D10）**：唯一来源 `apps/desktop/build/logo.svg`（Logo「環」静态版：蓝 `#3778d7` / `#2a5fb7` / `#6d9adc` + 中心琥珀 `#f9b73f`；SVG 注释中不得出现连续两个连字符）。`pnpm icons`（`scripts/build-icons.mjs` → 用 electron 运行 `scripts/icons/render.cjs`：每个尺寸一个离屏 `BrowserWindow` + `capturePage`，裁剪左上 size×size，并断言每张 PNG 的 IHDR 宽高等于 size）生成 `build/icon.ico`（16 / 20 / 24 / 32 / 40 / 48 / 64 / 128 / 256，PNG 内嵌格式，`scripts/icons/ico.mjs` 的 `encodeIco` 有单元测试）、`resources/icon.png`（256）与渲染端 `public/favicon.svg`；产物提交进仓库，平时构建不运行脚本，只在 logo 变化时运行。接入：`electron-builder.yml` 的 `win.icon: build/icon.ico`（exe 资源：资源管理器、任务栏、任务管理器显示的图标；任务管理器的名称来自 exe 的 FileDescription = `productName` PremiumCowHorse）；`BrowserWindow` 的 `icon` = `paths.appIcon`（开发 `apps/desktop/resources/icon.png`，打包后 `resources/app.asar.unpacked/resources/icon.png`——原生代码读取，不能经 asar 虚拟路径，`asarUnpack: resources/**`）；`app.setAppUserModelId` 沿用已有的 `APP_USER_MODEL_ID`。窗口 / 任务栏 / exe 用静态版（任务栏底色由 Windows 决定，与本应用主题无关）；标题栏与关于页用随主题的内联 `LogoMark`（14.3 节）。
+
+**ssh2 的 Pageant 辅助程序（M5，M4-K1）**：`files` 中排除 `!**/node_modules/ssh2/util/**`（`util/pagent.exe` 只在使用 Pageant 时被 `ssh2/lib/agent.js` 引用，本应用不用）；包内不再有可执行文件，`ssh2` 不再被整体解包到 `app.asar.unpacked`（`app.asar.unpacked` 只有 `@koromix/koffi-win32-x64` 与 `resources/icon.png`；M5 Task 5 与 Task 17 打包实测，Task 17 另以打包版连接 WSL 的 sshd 展开远程目录，并经系统级截图确认任务栏、资源管理器中的 exe、任务管理器显示「環」图标）。
+
 打包工具链注意事项：electron-builder 自带的 7-Zip 24.09 被公司漏洞管理（TVM）封锁，需安装 7-Zip 25.01 以上版本并以 electron-builder 官方环境变量 `ELECTRON_BUILDER_7ZIP_PATH` 指定（见 README）。若将来恢复安装程序或 portable 目标（二者内部使用 NSIS），需在 `electron-builder.yml` 中设置 `toolsets.nsis: '1.2.1'`（NSIS 3.12），默认的 NSIS 3.0.4.1 含 CVE-2023-37378。
 
 ---
@@ -1631,8 +1685,8 @@ export default defineConfig({
 | Provider 集成测试 | 用容器启动 FTP / SFTP 服务器做真实读写与断线重连 | vitest + Docker |
 | 端到端测试 | 启动与沙箱/白名单、CSP、错误落盘、设置持久化、自绘窗口按钮；经 IPC 的工作区流程与重启后保留（M1-1）；资源树的懒加载、键盘、错误行与重试、先显示缓存再按检查更新（新建 / 删除）、切回窗口不显示「加载中」、折叠后再展开 / 切回工作区时重新列出、拖放前后的磁盘递归快照、右键菜单、工作区切换器（M1-2）；原则回归（展开 `A\B\C` 时改名上级 `A`）、条目级缓存策略 / 建立索引菜单、断开图标（刷新与缓存引擎，`e2e/app.spec.ts`、`e2e/explorer.spec.ts`，共用 `e2e/support.ts`）；标签的打开 / 关闭（`e2e/tabs.spec.ts`；M1-3b 起为浏览器式：单击当前标签、中键 / Ctrl+单击 / 菜单新标签、目录单击不展开、双击 / 箭头展开；M2 反馈第 3 项：文件单击 / ↑↓ 停留为文件信息、已在显示时不动，双击 / Enter 为默认查看器，Ctrl+单击 / 中键 / Ctrl+Enter 为新标签默认查看器）、树跟随标签与 ↑↓ 防抖打开、同步不循环（`e2e/tree-sync.spec.ts`，M1-3b）、全部折叠 / 定位到当前项、分组抽屉的互斥与恢复、未分组条目在上（`e2e/drawer.spec.ts`，M1-3b）、fallback 的文件信息与三个动作、可执行文件的确认、没有预览标签（点击 / 按键 / 插件动作都不改变标签）、插件崩溃只影响自己的标签（`e2e/preview.spec.ts`：在主进程替换 `shell.openPath` / `shell.showItemInFolder` 计数，不真的打开应用；崩溃插件见 9.3 节）（M1-3）；后续：打开与弹出标签、重启后恢复 | Playwright（Electron 模式） |
 | 视觉确认 | 系统原生绘制的部分（窗口边框、系统按钮等）不在页面截图中，需用系统级截屏确认（方法见 `knowledge/`） | Playwright + PowerShell |
-| 静态检查 | 类型检查、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
-| 依赖审计 | 已知漏洞 | pnpm audit |
+| 静态检查 | 类型检查（M5 起含 `e2e/`：根 `typecheck` 追加 `tsc -p e2e/tsconfig.json`，M1-K19）、lint、模块边界规则（5.5 节）、i18n 键一致性（类型 + 单元测试） | tsc、eslint、eslint-plugin-boundaries、vitest |
+| 依赖审计 | 已知漏洞（M5：`pnpm audit --prod` 无已知漏洞；完整结果见实现记录 `devDoc/2026-11-23-45-m5.md`） | pnpm audit |
 
 ---
 
@@ -1645,7 +1699,7 @@ export default defineConfig({
 | M2 预览插件体系（✅ 2026-11-21 完成，合并到 `main`，标签 `m2`；总结与待确认清单见 `devDoc/2026-11-21-29-m2-summary.md`；设计 `devDoc/2026-11-20-22-m2-design.md`，实现记录 `devDoc/2026-11-20-25-m2.md`，待需求方确认的决定见其第 4 节；试用反馈的修改 `devDoc/2026-11-21-26-m2-feedback.md`、`devDoc/2026-11-21-28-address-bar-copy-workspace-cards.md`） | 插件化落地 | 查看器切换与「常にこれで開く」、应用消息收纳、浏览器视图（`WebContentsView` + `pch-web://` 范围协议，取代原计划的 `pcfs://`）与 `PreviewHost.web`、html（含 PDF / 图片）/ markdown（GFM、脚注、mermaid）/ office 启动面板插件、Office 打开方式检测与启动（本地 / SMB 文件：编辑 / 保护视图 / 新建，Excel 另有只读）；text 在 M1 内已提前完成；专用 image / pdf / media 插件与 `pcfs://` 推迟 |
 | M3 桌面记录（✅ 2026-11-22 完成，合并到 `main`，标签 `m3`；总结与待确认清单见 `devDoc/2026-11-22-36-m3-summary.md`；设计 `devDoc/2026-11-21-31-m3-desktop-snapshot-design.md`，实现记录 `devDoc/2026-11-22-34-m3.md`，试用反馈第 2 轮 `devDoc/2026-11-22-35-m3-feedback-2.md`；Eclipse 实机与真实重启 / 关机场景未验证） | 重启后恢复现场 | 需求方 2026-11-21 改定（取代原「多窗口与会话」）：监控资源管理器（含标签）/ Office 三件套 / VS Code / Eclipse，自动（每次登录一份、原地更新）/ 手动 / 退出时快照（可见快照最多 3 个），关机时不冲掉记录（消失 1 分钟后才移除、会话结束冻结、登录标识），重启后的恢复提示与挑选恢复（exe 白名单、恢复后清空并重新扫描），活动栏视图、快照页与卡片式清单（11.4 节） |
 | M4 远程目录（SFTP 只读）（✅ 2026-11-23 完成，合并到 `main`，标签 `m4`；设计 `devDoc/2026-11-22-37-m4-sftp-design.md`，计划 `devDoc/2026-11-22-38-m4-sftp-plan.md`，台账 `devDoc/2026-11-22-39-m4-ledger.md`，总结（控制者裁定、推迟项、未验证项）`devDoc/2026-11-22-40-m4.md`） | 登录客户服务器看目录 | 需求方 2026-11-22 改定：**只做 SFTP 只读**——「远程连接」视图（新建 / 编辑 / 删除 / 测试）、safeStorage 保存凭据、连接池（保活、空闲断开、认证锁定跨重启）、主机密钥确认、以 `sudo su - <身份>` 切换身份浏览、远程目录作为资源管理器条目（只在展开 / 选中时读取，「建立索引」的目录定期读取）、断开显示、远程文件只显示文件信息（7.6 节）。**SMB 放弃**（需求方：意义不是很大）；FTP / FTPS、Office 远程编辑会话（10.5 节）、远程文件下载缓存（7.4 节）移到「后续」 |
-| M5 完善与发布 | 可分发 | 命令面板与最近使用、设置页完善、打包签名、E2E 测试，按需加入自动更新 |
+| M5 完善与发布（✅ 2026-11-23 完成，**待合并**，分支 `feat/m5-polish`；设计 `devDoc/2026-11-23-42-m5-design.md`，计划 `devDoc/2026-11-23-43-m5-plan.md`，台账 `devDoc/2026-11-23-44-m5-ledger.md`，实现记录（控制者决定、推迟项、未验证项、待需求方确认 / 决定）`devDoc/2026-11-23-45-m5.md`） | 可分发给同事试用的 beta | 主题（三套完整配色 + 动效基础 `motion`）、文件图标按类别着色、Logo「環」与应用图标、内置设置页 / 关于页、命令注册表与快捷键统一、命令面板与最近使用、工作区选择器（圆环 / 列表 / 菜单式、编辑模式）、beta 前修正（M4 K1–K6、M2 F2 / Q19 / Q20 / Q24 / Q25 / K2 / K3 / K5 / K6、M1 K14 / K17（部分）/ K19 / K23）。**非目标**（需求方 2026-11-23）：代码签名（beta 用未签名 zip）、自动更新（维持解压覆盖） |
 | 后续 | 扩展 | 第三方插件加载、跨窗口拖拽合并、工作区导出/导入（团队共享案件目录结构）；**远程的扩展**（原 M4：FTP / FTPS、Office 文件的远程编辑会话与冲突处理（10.5 节）、远程文件下载缓存与预览（7.4 节）；堡垒机 / ProxyJump、ssh-agent / Pageant、「不保存密码、连接时询问」按需追加）；**多窗口与应用内会话**（原 M3：LayoutService 与 reducer、标签弹出与移回、会话快照保存与恢复、工作区切换时的会话切换，11.1–11.3 节；需求方 2026-11-21 决定移出 M3，是否还做以后再定）；桌面记录的扩展（恢复窗口位置、更多程序、从本应用启动 VS Code / Eclipse 并与监控结合） |
 
 原计划把「多窗口与会话」放在 M4 之前，理由是它决定标签和插件 viewState 的数据结构，越早定型返工越少；该项移到「后续」后，标签状态仍按 M1-3 的单窗口子集由渲染端持有（11.2 节「已实现」），将来再做多窗口时需重新评估这部分返工。
@@ -1677,7 +1731,7 @@ export default defineConfig({
 | 枚举会让系统更新目录自身的最后访问时间（本机实测：系统管理的访问时间更新为启用） | 属于新原则允许的「读取时由系统自动更新的元数据」；曾经的写属性审核记录风险（I5）也不存在 | koffi 枚举器以只读句柄（`FILE_LIST_DIRECTORY \| FILE_READ_ATTRIBUTES`）打开目录，不请求任何写权限，因此不会产生 WriteAttributes 类审核记录；变化检测用目录修改时间，不依赖访问时间（需求方 2026-11-19 决定，设计第 7 节第 6 条） |
 | koffi 加载失败（二进制缺失、平台不支持、打包遗漏） | 失去原生枚举：隐藏文件退回按 `.` 判断；主进程无法识别映射的网络盘 | 扫描进程回退 `node:fs` 枚举并记警告（`[enumerator] native enumeration unavailable …`），主进程启动时记录 `[vfs] drive type detection` 的结果；打包后实测两个进程都能加载（devDoc 06） |
 | 扫描进程卡住或反复崩溃 | 树一直「加载中」或不再更新 | 请求 60 秒兜底超时（`FS_TIMEOUT`，不回退直接枚举）；重启 / 降级时断开状态复位（主进程发出 `online`）；意外退出立即重启并重发配置与关注点，5 分钟内 3 次意外退出后进入降级模式（直接枚举、不缓存，7.1 节）；`index.db` 损坏时删除重建 |
-| `index.db` 随树的规模增大 | 占用用户磁盘 | 只缓存工作区 folder 条目之下的目录，配置变化后清理；可随时删除重建（`vfs.clearCache`，界面随 M5）；1 万目录 / 11 万条目、平均 URI 204 字符的合成树编号化后约 23MB（编号化前 75MB；`entries` 以整数 `dir_id` 引用目录，不再保存目录 URI，见 13 节与 `devDoc/2026-11-19-11-dir-id.md`），真实应用中补满后的体积未验证 |
+| `index.db` 随树的规模增大 | 占用用户磁盘 | 只缓存工作区 folder 条目之下的目录，配置变化后清理；可随时删除重建（`vfs.clearCache`，设置页「缓存与扫描」分区，M5）；1 万目录 / 11 万条目、平均 URI 204 字符的合成树编号化后约 23MB（编号化前 75MB；`entries` 以整数 `dir_id` 引用目录，不再保存目录 URI，见 13 节与 `devDoc/2026-11-19-11-dir-id.md`），真实应用中补满后的体积未验证 |
 
 ---
 

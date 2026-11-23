@@ -287,3 +287,11 @@
 - 原因：`-e` 不经 WSL 的默认 shell 直接执行，得到的 PATH 不含 `/usr/local/sbin`（为什么经 shell 时含有，推测是 shell 的初始化补上的，未核实）。
 - 解决：`-e` 时用绝对路径（`/usr/local/sbin/pch-scenario`）。`-e` 的好处是参数不再经 shell 二次解析（见上一条），测试中从 Node `spawn('wsl.exe', ['-d', …, '-u', 'root', '-e', …])` 更可靠。
 - 预防：经 `-e` 执行的命令一律写绝对路径。
+
+### 从 Claude Code 的工具调用中运行 `scripts/wsl-sftp/start-sshd.ps1`：sshd 在调用结束后不存活
+
+- 日期：2026-11-23（M5 Task 14 发现；Task 17 打包验证直接用后台任务方式启动 Ubuntu 的 sshd，可用，未再试脚本）
+- 症状：在代理（Claude Code 的 Bash / PowerShell 工具）里执行 `powershell -File scripts/wsl-sftp/start-sshd.ps1`，输出「Ubuntu -> 127.0.0.1:2201」等，但工具调用结束后端口没有监听，`wsl.test.ts` 的 19 条全部以 `FS_UNAVAILABLE` 失败。在需求方的交互式终端中运行同一脚本正常。
+- 原因（推测，未核实）：脚本用 `Start-Process wsl.exe … sshd -D` 以前台方式运行 sshd，sshd 的寿命绑定在这个 `wsl.exe` 上；工具调用结束时其启动的进程（含 `Start-Process` 派生的 `wsl.exe`）随之被结束，sshd 也就停止。
+- 解决：在代理中用**后台任务**（工具的 `run_in_background`）直接运行 `wsl.exe -d <实例> -u root -- bash -c "mkdir -p /run/sshd && exec /usr/sbin/sshd -D -e -p <端口> -o PasswordAuthentication=yes -o KbdInteractiveAuthentication=yes -o PermitRootLogin=yes"`（与脚本中的命令相同），后台任务存续期间 sshd 一直监听；结束后 `wsl --terminate <实例>`。
+- 预防：代理里需要长时间存活的服务一律用后台任务启动，并在使用前确认端口在监听（`Test-NetConnection 127.0.0.1 -Port <端口>` 或 `ss -ltn`）；不要依赖 `Start-Process` 派生的进程。

@@ -22,7 +22,7 @@
 | `pnpm icons`     | 由 `apps/desktop/build/logo.svg` 重新生成 `build/icon.ico`、`resources/icon.png`、渲染端 `public/favicon.svg`（用 electron 离屏渲染；产物已提交，logo 改动后才需运行） |
 | `pnpm dist`      | 打包 zip 免安装文件夹版 `apps/desktop/release/<版本>/*.zip`                                                                                                            |
 | `pnpm dist:dir`  | 只生成未压缩的目录 `apps/desktop/release/<版本>/win-unpacked`（调试用）                                                                                                |
-| `pnpm typecheck` | 全部包类型检查                                                                                                                                                         |
+| `pnpm typecheck` | 全部包类型检查，并以 `e2e/tsconfig.json` 检查 `e2e/`（M5 起）                                                                                                          |
 | `pnpm lint`      | ESLint（含模块边界规则）                                                                                                                                               |
 | `pnpm format`    | Prettier 格式化                                                                                                                                                        |
 | `pnpm test`      | 单元测试（vitest）                                                                                                                                                     |
@@ -44,7 +44,7 @@
   ```bash
   PCH_WSL_SFTP=1 pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test.ts
   ```
-  PowerShell：`$env:PCH_WSL_SFTP=1; pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test.ts`。前提：各实例已按 [scripts/wsl-sftp/README.md](./scripts/wsl-sftp/README.md) 执行过 `setup.sh` 并安装最新的 `pch-scenario`，且 sshd 正在监听（`powershell -File scripts/wsl-sftp/start-sshd.ps1`）。测试会切换 sudoers 场景，结束时恢复为 `pch-scenario all quiet`。
+  PowerShell：`$env:PCH_WSL_SFTP=1; pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test.ts`。前提：各实例已按 [scripts/wsl-sftp/README.md](./scripts/wsl-sftp/README.md) 执行过 `setup.sh` 并安装最新的 `pch-scenario`，且 sshd 正在监听（`powershell -File scripts/wsl-sftp/start-sshd.ps1`；在 Claude Code 等代理的工具调用中由该脚本启动的 sshd 不存活，改用后台任务直接运行脚本中的 `wsl.exe … sshd -D` 命令，见 `knowledge/windows-and-tooling.md`）。测试会切换 sudoers 场景，结束时恢复为 `pch-scenario all quiet`。
 
 ## 目录
 
