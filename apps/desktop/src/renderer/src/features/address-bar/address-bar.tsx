@@ -1,37 +1,19 @@
-import { useEffect, useMemo, useRef, type JSX, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, type JSX, type MouseEvent, type ReactNode } from 'react'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpIcon,
   ChevronRightIcon,
-  GalleryVerticalIcon,
-  LayoutListIcon,
   RefreshCwIcon,
   type LucideIcon
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { notify } from '@renderer/stores/messages-store'
-import { AppError, workspaceLocation, workspacesLocation, type TabLocation } from '@pch/shared'
+import { AppError, workspaceLocation, type TabLocation } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@pch/ui/components/dropdown-menu'
 import { useConnectionNames } from '@renderer/data/connections'
 import { useEntries } from '@renderer/data/entries'
-import {
-  useActiveWorkspace,
-  useWorkspaceActions,
-  useWorkspaces,
-  workspaceDisplayName
-} from '@renderer/data/workspace'
+import { useActiveWorkspace, workspaceDisplayName } from '@renderer/data/workspace'
 import { copyablePath, displayPath } from '@renderer/lib/display-path'
 import { call } from '@renderer/lib/ipc'
 import {
@@ -60,12 +42,17 @@ type SegmentEvent = 'onClick' | 'onMouseDown' | 'onAuxClick'
  * - 段每次由 logicalPath 用最新的工作区名与条目计算（条目改名后随之更新），不用标签标题的快照。
  * - 单击其他段 = 在当前标签内导航（进入历史）；中键 / Ctrl+单击 = 在新标签打开（设计 2.8）；
  *   没有激活标签时单击也新建标签。段的悬停提示为真实路径（工作区 / 一览段没有真实路径）。
- * - 工作区按钮列出工作区，选中即切换（与标题栏的切换器相同，经 data/workspace）；
- *   菜单底部「管理工作区…」进入工作区一览（总览的上一级）。
+ * - 工作区按钮由 app.tsx 注入（workspacePicker 插槽，来自 features/workspace）：与标题栏按钮打开同一个
+ *   工作区选择器（圆环式 / 菜单式按设置），选择器中可进入工作区一览（总览的上一级）。
  * - 后退 / 前进按标签自己的历史；上一级为逻辑路径的上一段（parentLocation：总览 → 一览）；
  *   刷新经 tabs-store 的 requestRefresh 交给标签内容。快捷键见 use-navigation-shortcuts.ts。
  */
-export function AddressBar(): JSX.Element {
+export interface AddressBarProps {
+  /** 地址框左端的工作区按钮（features/workspace 的 WorkspaceAddressButton） */
+  workspacePicker: ReactNode
+}
+
+export function AddressBar({ workspacePicker }: AddressBarProps): JSX.Element {
   const { t } = useTranslation()
   const { data: workspace } = useActiveWorkspace()
   const { data: entries } = useEntries(workspace?.id)
@@ -277,9 +264,7 @@ ${t('addressBar:copyHint')}`
                   data-slot="address-workspace"
                   className="sticky left-0 z-10 flex shrink-0 items-center self-stretch border-r bg-[color-mix(in_oklch,var(--background),var(--foreground)_7%)] px-0.5 dark:bg-[color-mix(in_oklch,var(--background),var(--foreground)_20%)]"
                 >
-                  <WorkspaceMenu
-                    onManage={() => goTo(workspacesLocation(workspacesTitle), false)}
-                  />
+                  {workspacePicker}
                   {button}
                 </li>
               )
@@ -292,9 +277,7 @@ ${t('addressBar:copyHint')}`
             )
           })}
           {segments.length === 0 ? (
-            <li className="flex shrink-0 items-center">
-              <WorkspaceMenu onManage={() => goTo(workspacesLocation(workspacesTitle), false)} />
-            </li>
+            <li className="flex shrink-0 items-center">{workspacePicker}</li>
           ) : null}
         </ol>
       </div>
@@ -323,56 +306,4 @@ function pathOf(
     return null
   }
   return displayPath(segment.target.uri, connectionNames)
-}
-
-/**
- * 地址框前置的工作区按钮（lucide GalleryVertical）：列出工作区（当前项选中），选中即切换（与标题栏的切换器相同）；
- * 底部「管理工作区…」进入工作区一览（onManage：有激活标签时在其中导航，没有时新建标签）
- */
-function WorkspaceMenu({ onManage }: { onManage: () => void }): JSX.Element {
-  const { t } = useTranslation()
-  const { data: workspaces } = useWorkspaces()
-  const { data: active } = useActiveWorkspace()
-  const { activate } = useWorkspaceActions()
-  const defaultName = t('common:defaultWorkspace')
-  const fail = (e: unknown): void => {
-    notify('error', t(`errors:${e instanceof AppError ? e.code : 'UNKNOWN'}`))
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t('workspace:switcherLabel')}
-            title={t('workspace:switcherLabel')}
-          />
-        }
-      >
-        <GalleryVerticalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{t('workspace:listLabel')}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={active?.id ?? ''}
-            onValueChange={(id) => activate.mutate(id, { onError: fail })}
-            className="max-h-64 overflow-y-auto"
-          >
-            {(workspaces ?? []).map((w) => (
-              <DropdownMenuRadioItem key={w.id} value={w.id} closeOnClick>
-                <span className="truncate">{workspaceDisplayName(w, defaultName)}</span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onManage}>
-          <LayoutListIcon />
-          {t('workspace:manage')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
 }

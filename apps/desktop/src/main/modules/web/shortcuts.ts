@@ -5,7 +5,8 @@ import type { WebShortcut } from '@pch/shared'
  * （宿主把 web.shortcut 作为 window 上的 keydown 重新派发，复用这些处理）：
  * - `features/address-bar/use-navigation-shortcuts.ts`（commands.ts）：F5、Alt+← / Alt+→、Alt+↑
  * - `features/tabs/tab-bar.tsx`：Ctrl+W
- * - `features/shell/use-shell-commands.ts`：Ctrl+Shift+F、Ctrl+B、Ctrl+K / Ctrl+Shift+P（命令面板）、Alt+W（工作区选择器）
+ * - `features/shell/use-shell-commands.ts`：Ctrl+Shift+F、Ctrl+B、Ctrl+K / Ctrl+Shift+P（命令面板）
+ * - `features/workspace/use-workspace-commands.ts`：Alt+W（工作区选择器）
  * - `features/settings/use-settings-commands.ts`：Ctrl+,
  * 渲染端的快捷键都登记在命令注册表（stores/command-store.ts），由 features/shell/use-command-shortcuts.ts 统一分发。
  * 未列入：Ctrl+Tab / Ctrl+Shift+Tab（渲染端不存在）。Ctrl+K 等虽会夺走网页的同名按键（网页常用 Ctrl+K 作搜索），

@@ -517,6 +517,19 @@ test.describe('the browser view (html plugin)', () => {
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
 
+      // 工作区选择器（Alt+W，圆环式）：同样冻结视图；Esc 关闭后焦点回到页面
+      await page.locator('body').click({ position: { x: 5, y: 5 } })
+      await focusView(app, view)
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+      await page.keyboard.press('Alt+w')
+      const picker = page.getByRole('dialog')
+      await expect(picker.getByRole('combobox')).toBeFocused()
+      await expect.poll(() => visibility(app)).toEqual([false])
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect.poll(() => visibility(app)).toEqual([true])
+      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+
       // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
       await pressIn(app, view, 'W', ['control'])
       await expect(tabs(page)).toHaveCount(0)

@@ -2,7 +2,13 @@
  * 动效令牌（M5 设计稿 5 节）。所有动效的时长、缓动、弹簧都从这里取；
  * 渲染端不直接依赖 motion，统一从 `@pch/ui/lib/motion` 引入（依赖只在 packages/ui 声明一处）。
  */
-export { motion, AnimatePresence, MotionConfig, useReducedMotion } from 'motion/react'
+export {
+  motion,
+  AnimatePresence,
+  MotionConfig,
+  useReducedMotion,
+  useReducedMotionConfig
+} from 'motion/react'
 export type { Transition } from 'motion/react'
 
 /** 时长（秒），上限 0.3 */

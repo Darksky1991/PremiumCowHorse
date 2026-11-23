@@ -21,9 +21,13 @@ test.describe('the application address bar', () => {
     removeDirs(userData, files)
   })
 
-  /** 界面语言设为 en（断言固定文案），添加条目「案件」，返回条目与树 */
+  /**
+   * 界面语言设为 en（断言固定文案），添加条目「案件」，返回条目与树。
+   * 工作区选择器用菜单式（workspace.pickerStyle: menu）：本文件经地址框 / 标题栏按钮的菜单切换工作区、进入一览；
+   * 圆环式见 workspace-picker.spec.ts
+   */
   async function setup(page: Page): Promise<{ entryId: string; tree: Locator }> {
-    await data(page, 'settings.set', { 'general.language': 'en' })
+    await data(page, 'settings.set', { 'general.language': 'en', 'workspace.pickerStyle': 'menu' })
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     const { id: workspaceId } = await data(page, 'workspace.active')
     const entry = await data(page, 'entry.add', {
@@ -44,6 +48,11 @@ test.describe('the application address bar', () => {
     segments(page).getByRole('button', { name, exact: true })
   const button = (page: Page, name: string): Locator =>
     bar(page).getByRole('button', { name, exact: true })
+  /** 菜单式选择器各项的名称（项内还有相对时间与编号，名称取 aria-label） */
+  const radioNames = (page: Page): Promise<string[]> =>
+    page
+      .getByRole('menuitemradio')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? ''))
   const tabs = (page: Page): Locator => page.getByRole('tablist').getByRole('tab')
   const panel = (page: Page): Locator => page.getByRole('tabpanel')
   const grid = (page: Page): Locator => panel(page).getByRole('grid')
@@ -275,7 +284,7 @@ test.describe('the application address bar', () => {
 
       // 菜单列出工作区，底部「Manage workspaces…」：没有标签时新建标签显示工作区一览
       await layers.click()
-      await expect(page.getByRole('menuitemradio')).toHaveText(['Default', '別件'])
+      await expect.poll(() => radioNames(page)).toEqual(['Default', '別件'])
       await page.getByRole('menuitem', { name: 'Manage workspaces…' }).click()
       await expect(tabs(page)).toHaveText(['Workspaces'])
       await expect(segments(page)).toHaveText(['Workspaces'])
@@ -479,7 +488,7 @@ test.describe('the application address bar', () => {
         )
         .toEqual(['default'])
       await button(page, 'Switch workspace').click()
-      await expect(page.getByRole('menuitemradio')).toHaveText(['Default'])
+      await expect.poll(() => radioNames(page)).toEqual(['Default'])
       await page.getByRole('menuitem', { name: 'Manage workspaces…' }).click()
       await expect(panel(page).locator('[data-workspace-id]')).toHaveCount(1)
       await expect(item('Default')).toHaveAttribute('aria-current', 'true')
