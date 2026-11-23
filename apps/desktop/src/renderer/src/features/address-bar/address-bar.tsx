@@ -302,7 +302,7 @@ ${t('addressBar:copyHint')}`
 
 /**
  * 段的显示路径：本地文件 / 目录为 Windows 路径，远程为 `<连接名>:<路径>`，其他（网页等）为 URI；
- * 工作区 / 一览 / 桌面记录段没有路径
+ * 工作区 / 一览 / 桌面记录 / 设置 / 关于段没有路径
  */
 function pathOf(
   segment: PathSegment | undefined,
@@ -312,7 +312,9 @@ function pathOf(
     segment === undefined ||
     segment.kind === 'workspace' ||
     segment.kind === 'workspaces' ||
-    segment.kind === 'desktop'
+    segment.kind === 'desktop' ||
+    segment.kind === 'settings' ||
+    segment.kind === 'about'
   ) {
     return null
   }

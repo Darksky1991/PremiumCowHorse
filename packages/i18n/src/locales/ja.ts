@@ -369,6 +369,22 @@ export default {
     alwaysOpenWith: '.{{ext}} は常にこれで開く',
     copyHint: 'クリックでパスをコピー'
   },
+  about: {
+    title: 'このアプリについて',
+    settingsTitle: '設定',
+    version: 'バージョン',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: 'プラットフォーム',
+    dataDir: 'データフォルダー',
+    logsDir: 'ログフォルダー',
+    openLogs: 'ログフォルダーを開く',
+    openData: 'データフォルダーを開く',
+    copyDiagnostics: '診断情報をコピー',
+    copied: '診断情報をコピーしました',
+    openFailed: 'フォルダーを開けませんでした'
+  },
   tabs: {
     label: '開いているタブ',
     close: '閉じる'

@@ -354,6 +354,22 @@ export default {
     alwaysOpenWith: '.{{ext}} 总是用此查看器打开',
     copyHint: '单击复制路径'
   },
+  about: {
+    title: '关于本应用',
+    settingsTitle: '设置',
+    version: '版本',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: '平台',
+    dataDir: '数据文件夹',
+    logsDir: '日志文件夹',
+    openLogs: '打开日志文件夹',
+    openData: '打开数据文件夹',
+    copyDiagnostics: '复制诊断信息',
+    copied: '已复制诊断信息',
+    openFailed: '无法打开文件夹'
+  },
   tabs: {
     label: '已打开的标签',
     close: '关闭'

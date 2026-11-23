@@ -79,6 +79,10 @@ export interface AppInfo {
   node: string
   platform: NodeJS.Platform
   arch: string
+  /** 用户数据目录（只用于显示；打开用 system.openAppFolder） */
+  userDataDir: string
+  /** 日志目录（同上） */
+  logsDir: string
 }
 
 /** 发起调用的那个窗口的状态（自绘窗口按钮据此切换「最大化 / 还原」图标） */
@@ -197,6 +201,11 @@ export const ipcContract = {
    * 可执行类扩展名由渲染端先确认（设计 devDoc/2026-11-19-12 第 3.3 节）
    */
   'system.openPath': route<void>()(z.strictObject({ uri: z.string().min(1) })),
+  /**
+   * 在资源管理器中打开应用自己的目录（shell.openPath）：主进程按固定路径执行，不接受渲染端传路径
+   * （关于页的「ログフォルダーを開く」「データフォルダーを開く」）
+   */
+  'system.openAppFolder': route<void>()(z.strictObject({ which: z.enum(['logs', 'userData']) })),
   'system.copyText': route<void>()(z.strictObject({ text: z.string().max(32768) })),
   /** 返回所选本地路径；用户取消时为空数组 */
   'system.selectPaths': route<string[]>()(

@@ -373,6 +373,22 @@ export default {
     alwaysOpenWith: 'Always open .{{ext}} with this',
     copyHint: 'Click to copy the path'
   },
+  about: {
+    title: 'About this app',
+    settingsTitle: 'Settings',
+    version: 'Version',
+    electron: 'Electron',
+    chromium: 'Chromium',
+    node: 'Node.js',
+    platform: 'Platform',
+    dataDir: 'Data folder',
+    logsDir: 'Log folder',
+    openLogs: 'Open log folder',
+    openData: 'Open data folder',
+    copyDiagnostics: 'Copy diagnostics',
+    copied: 'Diagnostics copied',
+    openFailed: 'Could not open the folder'
+  },
   tabs: {
     label: 'Open tabs',
     close: 'Close'

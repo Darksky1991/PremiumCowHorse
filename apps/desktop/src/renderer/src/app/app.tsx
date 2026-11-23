@@ -3,11 +3,13 @@ import { builtinPlugins } from '@pch/plugin-builtin'
 import { AddressBar } from '@renderer/features/address-bar'
 import { ConnectionsView, HostKeyPrompts } from '@renderer/features/connections'
 import { DesktopPrompts, DesktopView, SnapshotPage } from '@renderer/features/desktop'
+import { AboutPage } from '@renderer/features/about'
 import { ExplorerView } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
+import { SettingsPage } from '@renderer/features/settings'
 import { Shell } from '@renderer/features/shell'
-import { TabsArea } from '@renderer/features/tabs'
+import { OpenBuiltinEvent, TabsArea } from '@renderer/features/tabs'
 import { WorkspaceSwitcher, WorkspacesPage } from '@renderer/features/workspace'
 
 /** 预览插件注册表的内容：内置插件（plugins/builtin），e2e 时追加测试插件 */
@@ -39,11 +41,14 @@ export function App(): JSX.Element {
                 plugins={plugins}
                 renderWorkspaces={(page) => <WorkspacesPage tab={page} />}
                 renderDesktop={(page) => <SnapshotPage tab={page} />}
+                renderSettings={(page) => <SettingsPage tab={page} />}
+                renderAbout={(page) => <AboutPage tab={page} />}
               />
             )}
           />
         }
       />
+      <OpenBuiltinEvent />
       <DesktopPrompts />
       <HostKeyPrompts />
     </>

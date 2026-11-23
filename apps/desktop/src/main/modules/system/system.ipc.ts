@@ -1,18 +1,27 @@
 import { app, BrowserWindow, clipboard, dialog, shell, webContents } from 'electron'
 import { AppError } from '@pch/shared'
+import type { AppPaths } from '../../infra/paths'
 import type { Logger } from '../../infra/logger'
 import type { HandlersOf } from '../../ipc/router'
 import { fileUriToLocalPath } from '../../vfs/local-path'
 import type { VfsService } from '../../vfs/vfs.service'
 
+/** 注入的系统操作（测试时替换；默认为 electron 的 shell.openPath，返回错误文字，空串为成功） */
+export interface SystemShell {
+  openPath: (path: string) => Promise<string>
+}
+
 export function systemHandlers(
   logger: Logger,
-  vfs: VfsService
+  vfs: VfsService,
+  paths: Pick<AppPaths, 'userData' | 'logs'>,
+  systemShell: SystemShell = shell
 ): HandlersOf<
   | 'app.getInfo'
   | 'log.write'
   | 'system.revealInOs'
   | 'system.openPath'
+  | 'system.openAppFolder'
   | 'system.copyText'
   | 'system.selectPaths'
 > {
@@ -24,7 +33,9 @@ export function systemHandlers(
       chrome: process.versions.chrome,
       node: process.versions.node,
       platform: process.platform,
-      arch: process.arch
+      arch: process.arch,
+      userDataDir: paths.userData,
+      logsDir: paths.logs
     }),
     'log.write': async ({ level, message, stack }) => {
       logger[level](`[renderer] ${message}${stack ? `\n${stack}` : ''}`)
@@ -37,6 +48,10 @@ export function systemHandlers(
       // 先经 VfsService 确认存在（带超时、错误码映射）：shell.openPath 失败时只返回描述文字
       await vfs.stat(uri)
       const error = await shell.openPath(localPath)
+      if (error) throw new AppError({ code: 'UNKNOWN', detail: `shell.openPath: ${error}` })
+    },
+    'system.openAppFolder': async ({ which }) => {
+      const error = await systemShell.openPath(which === 'logs' ? paths.logs : paths.userData)
       if (error) throw new AppError({ code: 'UNKNOWN', detail: `shell.openPath: ${error}` })
     },
     'system.copyText': async ({ text }) => {

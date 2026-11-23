@@ -1,8 +1,10 @@
 import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
 import {
   GalleryVerticalIcon,
+  InfoIcon,
   LayoutGridIcon,
   MonitorIcon,
+  SettingsIcon,
   XIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -21,6 +23,8 @@ const KIND_ICON: Record<TabState['kind'], LucideIcon | null> = {
   workspace: LayoutGridIcon,
   workspaces: GalleryVerticalIcon,
   desktop: MonitorIcon,
+  settings: SettingsIcon,
+  about: InfoIcon,
   directory: null,
   file: null
 }
@@ -96,8 +100,15 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
         const active = tab.id === activeId
         const Icon = KIND_ICON[tab.kind]
         const domId = tabDomId(baseId, tab.id)
-        // 工作区一览的标题按当前语言显示（标签标题是打开时的快照）
-        const title = tab.kind === 'workspaces' ? t('workspace:listPage') : tab.title
+        // 工作区一览 / 设置页 / 关于页的标题按当前语言显示（标签标题是打开时的快照）
+        const title =
+          tab.kind === 'workspaces'
+            ? t('workspace:listPage')
+            : tab.kind === 'settings'
+              ? t('about:settingsTitle')
+              : tab.kind === 'about'
+                ? t('about:title')
+                : tab.title
         return (
           <div
             key={tab.id}
@@ -107,9 +118,13 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
             aria-controls={active ? panelDomId(baseId) : undefined}
             aria-labelledby={`${domId}-title`}
             tabIndex={active ? 0 : -1}
-            // 悬停提示为完整路径；工作区总览 / 一览 / 桌面记录（不是文件系统）为标题
+            // 悬停提示为完整路径；工作区总览 / 一览 / 桌面记录 / 设置 / 关于（不是文件系统）为标题
             title={
-              tab.kind === 'workspace' || tab.kind === 'workspaces' || tab.kind === 'desktop'
+              tab.kind === 'workspace' ||
+              tab.kind === 'workspaces' ||
+              tab.kind === 'desktop' ||
+              tab.kind === 'settings' ||
+              tab.kind === 'about'
                 ? title
                 : displayPath(tab.uri, connectionNames)
             }
