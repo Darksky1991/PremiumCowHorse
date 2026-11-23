@@ -15,7 +15,7 @@ import { createContainer, type Container } from './container'
 import { bindDocumentOwner } from '../vfs/document/document-owner'
 import { bindWebViewOwner } from '../modules/web/web-session'
 import { buildScannerConfig } from '../vfs/scanner-config'
-import { remoteFolderRoots } from '../vfs/remote-access'
+import { remoteFolderRoots, uncRoots } from '../vfs/remote-access'
 import { registerShutdown } from './shutdown'
 
 export const APP_USER_MODEL_ID = 'com.premiumcowhorse.app'
@@ -164,8 +164,8 @@ function wireScanner(c: Container): void {
       const entries = (await Promise.all(all.map((w) => c.workspaces.listEntries(w.id)))).flat()
       // 更晚发起的下发已在途：丢弃这次（避免旧配置后到、覆盖新配置）
       if (mine !== seq) return
-      // 访问范围：所有工作区的远程 folder 条目（与扫描配置同一批条目）
-      c.remoteAccess.setRoots(remoteFolderRoots(entries))
+      // 访问范围：所有工作区的 sftp folder 条目与 UNC 的 folder / file 条目（与扫描配置同一批条目）
+      c.remoteAccess.setRoots({ remote: remoteFolderRoots(entries), unc: uncRoots(entries) })
       rootsSet = true
       c.scanner.configure(
         buildScannerConfig({
@@ -180,7 +180,7 @@ function wireScanner(c: Container): void {
       c.logger.error('[scanner] cannot build the scanner config', e)
       // 第一次就失败：不让等待中的 sftp 访问检查一直挂起（范围为空 = 全部拒绝，下一次下发时恢复）
       if (!rootsSet && mine === seq) {
-        c.remoteAccess.setRoots([])
+        c.remoteAccess.setRoots({ remote: [], unc: [] })
         rootsSet = true
       }
     } finally {

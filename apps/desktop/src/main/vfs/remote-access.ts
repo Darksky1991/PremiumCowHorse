@@ -14,7 +14,8 @@ export type RemoteScope = Pick<RemoteAccess, 'check' | 'filter'>
 /**
  * 主进程的访问范围（M1-K17 的 sftp 部分，设计 devDoc/2026-11-22-37 第 5.7 节）：
  * `sftp:` URI 必须在某个工作区的远程 folder 条目之下（同一连接、同一身份、路径在其下），否则 IPC_FORBIDDEN。
- * 连接管理的通道按 connectionId 操作，不经这里；`file:` 的 K17 不在本次范围（直接通过）。
+ * 连接管理的通道按 connectionId 操作，不经这里。
+ * UNC（`file://host/…`，M1-K17）同理：必须在 folder 条目或 file 条目所在目录之下；本地盘（host 为空）直接通过。
  *
  * 判断以解析后的位置为准，而不是字符串前缀：VfsService 经 `new URL()` 路由（scheme 大小写、前导空白、
  * `..` 都会被 URL 解析消化），SftpProvider 把解码后的路径交给服务器（`%2F..` 解码后成为 `..` 段，
@@ -22,6 +23,7 @@ export type RemoteScope = Pick<RemoteAccess, 'check' | 'filter'>
  */
 export class RemoteAccess {
   private roots: SftpLocation[] | null = null
+  private uncRoots: UncLocation[] = []
   private readonly ready: Promise<void>
   private markReady!: () => void
   /** 进行中的根更新数（beginUpdate）；归零时 idle 完成 */
@@ -33,14 +35,23 @@ export class RemoteAccess {
     this.ready = new Promise<void>((resolve) => (this.markReady = resolve))
   }
 
-  /** 所有工作区的 sftp folder 条目根（整体替换）；第一次调用前 check 等待 */
-  setRoots(uris: readonly string[]): void {
-    const roots: SftpLocation[] = []
-    for (const uri of uris) {
+  /**
+   * 所有工作区的根（整体替换）：remote = sftp folder 条目根，unc = UNC（`file://host/…`）的 folder 条目根与
+   * file 条目所在目录；第一次调用前 check 等待
+   */
+  setRoots(roots: { remote: readonly string[]; unc: readonly string[] }): void {
+    const remote: SftpLocation[] = []
+    for (const uri of roots.remote) {
       const loc = locate(uri)
-      if (loc && safePath(loc.path)) roots.push(loc)
+      if (loc && safePath(loc.path)) remote.push(loc)
     }
-    this.roots = roots
+    const unc: UncLocation[] = []
+    for (const uri of roots.unc) {
+      const loc = locateUnc(uri)
+      if (loc) unc.push(loc)
+    }
+    this.roots = remote
+    this.uncRoots = unc
     this.markReady()
   }
 
@@ -60,9 +71,9 @@ export class RemoteAccess {
     }
   }
 
-  /** 非 sftp: 直接通过；sftp: 不在任何根之下 → IPC_FORBIDDEN */
+  /** 本地路径直接通过；sftp: / UNC 不在任何根之下 → IPC_FORBIDDEN */
   async check(uri: string): Promise<void> {
-    if (!isSftp(uri)) return
+    if (!isRestricted(uri)) return
     await this.ready
     while (!this.allowed(uri)) {
       if (this.updates === 0) {
@@ -74,14 +85,23 @@ export class RemoteAccess {
 
   /** 过滤（vfs.interest / vfs.refresh 的数组）：范围外的 sftp URI 丢弃，其余保持原样与顺序 */
   async filter(uris: readonly string[]): Promise<string[]> {
-    if (!uris.some(isSftp)) return [...uris]
+    if (!uris.some(isRestricted)) return [...uris]
     await this.ready
-    const pass = (u: string): boolean => !isSftp(u) || this.allowed(u)
+    const pass = (u: string): boolean => !isRestricted(u) || this.allowed(u)
     while (this.updates > 0 && !uris.every(pass)) await this.idle
     return uris.filter(pass)
   }
 
   private allowed(uri: string): boolean {
+    if (!isSftp(uri)) {
+      const unc = locateUnc(uri)
+      if (!unc) return false
+      return this.uncRoots.some(
+        (r) =>
+          r.host === unc.host &&
+          (r.path === '' || unc.path === r.path || unc.path.startsWith(`${r.path}/`))
+      )
+    }
     const loc = locate(uri)
     if (!loc || !safePath(loc.path)) return false
     return (this.roots ?? []).some(
@@ -101,6 +121,37 @@ function isSftp(uri: string): boolean {
   return /^\s*sftp:/i.test(uri)
 }
 
+/** sftp: 或 UNC（host 非空的 file:）：需要在工作区条目范围内才放行 */
+function isRestricted(uri: string): boolean {
+  return isSftp(uri) || isUncUri(uri)
+}
+
+function isUncUri(uri: string): boolean {
+  if (!URL.canParse(uri)) return false
+  const url = new URL(uri)
+  return url.protocol === 'file:' && url.host !== ''
+}
+
+/** UNC 位置：host（URL 已小写）+ 解码后小写的路径（SMB 路径大小写不敏感），无结尾 / */
+interface UncLocation {
+  host: string
+  path: string
+}
+
+function locateUnc(uri: string): UncLocation | null {
+  if (!isUncUri(uri)) return null
+  const url = new URL(uri)
+  let path: string
+  try {
+    path = decodeURIComponent(url.pathname)
+  } catch {
+    return null
+  }
+  // 解码后出现 \ / 或 .. 段、NUL：fileURLToPath 会拒绝或解析到别处，一律不放行
+  if (path.includes('\\') || path.includes('\0') || hasDotSegment(path)) return null
+  return { host: url.host, path: path.toLowerCase().replace(/\/+$/, '') }
+}
+
 function locate(uri: string): SftpLocation | null {
   if (!URL.canParse(uri)) return null
   return parseSftpUri(new URL(uri).href)
@@ -118,6 +169,28 @@ export function remoteFolderRoots(entries: readonly WorkspaceEntry[]): string[] 
     if (e.kind !== 'folder' || e.uri === null) continue
     const uri = normalizeRootUri(e.uri)
     if (parseSftpUri(uri)) roots.add(uri)
+  }
+  return [...roots]
+}
+
+/**
+ * UNC（file://host/…）条目的访问根：folder 条目自身，file 条目所在目录（M1-K17）。
+ * 本地盘（host 为空）没有 NTLM 泄露面，不登记也不限制
+ */
+export function uncRoots(entries: readonly WorkspaceEntry[]): string[] {
+  const roots = new Set<string>()
+  for (const e of entries) {
+    if (e.uri === null || (e.kind !== 'folder' && e.kind !== 'file')) continue
+    const uri = normalizeRootUri(e.uri)
+    if (!isUncUri(uri)) continue
+    if (e.kind === 'folder') {
+      roots.add(uri)
+      continue
+    }
+    const cut = uri.lastIndexOf('/')
+    const dir = uri.slice(0, cut)
+    // 路径只有一段（file://host/x）时目录就是 host 根：此时只放行该 URI 本身，不放行整个主机
+    roots.add(/^file:\/\/[^/]+\/.+/.test(dir) ? dir : uri)
   }
   return [...roots]
 }

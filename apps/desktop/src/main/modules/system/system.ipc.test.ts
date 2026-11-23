@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ipcContract } from '@pch/shared'
+import { AppError, ipcContract } from '@pch/shared'
 
 // electron 在单元测试中不可用：只需要 app.getName / getVersion 等
 vi.mock('electron', () => ({
@@ -16,12 +16,16 @@ const { systemHandlers } = await import('./system.ipc')
 const ctx = { senderId: 1 }
 const paths = { userData: 'C:/data/PCH', logs: 'C:/data/PCH/logs' }
 
+const allowAll = { check: async () => undefined }
+
 function setup(): {
   handlers: ReturnType<typeof systemHandlers>
   openPath: ReturnType<typeof vi.fn>
 } {
   const openPath = vi.fn(async () => '')
-  const handlers = systemHandlers({} as never, {} as never, paths as never, { openPath } as never)
+  const handlers = systemHandlers({} as never, {} as never, paths as never, allowAll, {
+    openPath
+  } as never)
   return { handlers, openPath }
 }
 
@@ -35,7 +39,9 @@ describe('system.openAppFolder', () => {
 
   it('openPath 返回错误文字时抛出 UNKNOWN', async () => {
     const openPath = vi.fn(async () => 'boom')
-    const handlers = systemHandlers({} as never, {} as never, paths as never, { openPath })
+    const handlers = systemHandlers({} as never, {} as never, paths as never, allowAll, {
+      openPath
+    })
     await expect(handlers['system.openAppFolder']({ which: 'logs' }, ctx)).rejects.toMatchObject({
       code: 'UNKNOWN'
     })
@@ -46,6 +52,36 @@ describe('system.openAppFolder', () => {
     expect(schema.safeParse({ which: 'logs' }).success).toBe(true)
     expect(schema.safeParse({ which: 'other' }).success).toBe(false)
     expect(schema.safeParse({ which: 'logs', path: 'C:/x' }).success).toBe(false)
+  })
+})
+
+describe('system.openPath / system.revealInOs 的访问范围（M1-K17）', () => {
+  it('范围外的 UNC 抛 IPC_FORBIDDEN，不调用 vfs.stat 与 shell', async () => {
+    const stat = vi.fn(async () => undefined)
+    const showItemInFolder = vi.fn()
+    const shellOpen = vi.fn(async () => '')
+    const { shell } = await import('electron')
+    Object.assign(shell, { openPath: shellOpen, showItemInFolder })
+    const scope = {
+      check: vi.fn(async (uri: string) => {
+        if (uri.startsWith('file://evil/')) throw new AppError({ code: 'IPC_FORBIDDEN' })
+      })
+    }
+    const handlers = systemHandlers({} as never, { stat } as never, paths as never, scope)
+    await expect(
+      handlers['system.openPath']({ uri: 'file://evil/s/a' }, ctx)
+    ).rejects.toMatchObject({
+      code: 'IPC_FORBIDDEN'
+    })
+    await expect(
+      handlers['system.revealInOs']({ uri: 'file://evil/s/a' }, ctx)
+    ).rejects.toMatchObject({ code: 'IPC_FORBIDDEN' })
+    expect(stat).not.toHaveBeenCalled()
+    expect(shellOpen).not.toHaveBeenCalled()
+    expect(showItemInFolder).not.toHaveBeenCalled()
+    // 范围内（此处为本地盘）照常执行
+    await handlers['system.openPath']({ uri: 'file:///C:/a.txt' }, ctx)
+    expect(stat).toHaveBeenCalledTimes(1)
   })
 })
 

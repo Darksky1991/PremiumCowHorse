@@ -12,7 +12,7 @@
     "start": "pnpm --filter @pch/desktop start",
     "dist": "pnpm --filter @pch/desktop build:zip",
     "dist:dir": "pnpm --filter @pch/desktop build:unpack",
-    "typecheck": "pnpm -r --parallel typecheck",
+    "typecheck": "pnpm -r --parallel typecheck && tsc -p e2e/tsconfig.json",
     "lint": "eslint --cache .",
     "format": "prettier --write .",
     "icons": "node scripts/build-icons.mjs",

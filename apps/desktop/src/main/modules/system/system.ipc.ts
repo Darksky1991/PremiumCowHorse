@@ -4,6 +4,7 @@ import type { AppPaths } from '../../infra/paths'
 import type { Logger } from '../../infra/logger'
 import type { HandlersOf } from '../../ipc/router'
 import { fileUriToLocalPath } from '../../vfs/local-path'
+import type { RemoteScope } from '../../vfs/remote-access'
 import type { VfsService } from '../../vfs/vfs.service'
 
 /** 注入的系统操作（测试时替换；默认为 electron 的 shell.openPath，返回错误文字，空串为成功） */
@@ -15,6 +16,7 @@ export function systemHandlers(
   logger: Logger,
   vfs: VfsService,
   paths: Pick<AppPaths, 'userData' | 'logs'>,
+  scope: Pick<RemoteScope, 'check'>,
   systemShell: SystemShell = shell
 ): HandlersOf<
   | 'app.getInfo'
@@ -41,9 +43,12 @@ export function systemHandlers(
       logger[level](`[renderer] ${message}${stack ? `\n${stack}` : ''}`)
     },
     'system.revealInOs': async ({ uri }) => {
+      // UNC 只限工作区条目范围内（M1-K17）：不让渲染端借此触发对任意主机的 SMB 连接
+      await scope.check(uri)
       shell.showItemInFolder(fileUriToLocalPath(uri))
     },
     'system.openPath': async ({ uri }) => {
+      await scope.check(uri)
       const localPath = fileUriToLocalPath(uri)
       // 先经 VfsService 确认存在（带超时、错误码映射）：shell.openPath 失败时只返回描述文字
       await vfs.stat(uri)

@@ -34,7 +34,7 @@ function setup(
     ...scanner
   }
   const access = new RemoteAccess()
-  access.setRoots(remoteRoots)
+  access.setRoots({ remote: remoteRoots, unc: [] })
   return { handlers: vfsHandlers(vfs as unknown as VfsService, full, access), vfs }
 }
 

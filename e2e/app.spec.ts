@@ -631,7 +631,7 @@ test.describe('workspace data layer over IPC', () => {
       const alert = page.getByRole('alertdialog')
       await expect(alert).toBeVisible()
       await data(page, 'entry.add', { kind: 'file', workspaceId, parentId: null, path: a })
-      await data(page, 'entry.remove', { id: entryB.id })
+      await data(page, 'entry.remove', { id: entryB!.id })
       await alert.getByRole('button', { name: removeLabel }).click()
       await expect(alert).toHaveCount(0)
       await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0)

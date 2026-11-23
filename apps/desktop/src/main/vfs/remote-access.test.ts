@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AppError, type WorkspaceEntry } from '@pch/shared'
-import { RemoteAccess, remoteFolderRoots } from './remote-access'
+import { RemoteAccess, remoteFolderRoots, uncRoots } from './remote-access'
 
 const ID = '3f2a0000-0000-4000-8000-000000000001'
 
@@ -14,9 +14,9 @@ async function codeOf(p: Promise<unknown>): Promise<string | null> {
   }
 }
 
-function ready(roots: string[]): RemoteAccess {
+function ready(remote: string[], unc: string[] = []): RemoteAccess {
   const a = new RemoteAccess()
-  a.setRoots(roots)
+  a.setRoots({ remote, unc })
   return a
 }
 
@@ -85,14 +85,14 @@ describe('RemoteAccess.check', () => {
     expect(await codeOf(a.check('file:///C:/x'))).toBeNull()
     await new Promise((r) => setTimeout(r, 10))
     expect(settled).toBeUndefined()
-    a.setRoots([`sftp://${ID}/opt`])
+    a.setRoots({ remote: [`sftp://${ID}/opt`], unc: [] })
     await p
     expect(settled).toBeNull()
   })
 
   it('setRoots 替换根：移除的条目之下不再放行', async () => {
     const a = ready([`sftp://${ID}/opt`])
-    a.setRoots([`sftp://${ID}/var`])
+    a.setRoots({ remote: [`sftp://${ID}/var`], unc: [] })
     expect(await codeOf(a.check(`sftp://${ID}/opt/a`))).toBe('IPC_FORBIDDEN')
     expect(await codeOf(a.check(`sftp://${ID}/var/log`))).toBeNull()
   })
@@ -108,7 +108,7 @@ describe('RemoteAccess：根的更新在途', () => {
     expect(await codeOf(a.check(`sftp://${ID}/opt/a`))).toBeNull()
     await new Promise((r) => setTimeout(r, 10))
     expect(settled).toBeUndefined()
-    a.setRoots([`sftp://${ID}/opt`, `sftp://${ID}/var`])
+    a.setRoots({ remote: [`sftp://${ID}/opt`, `sftp://${ID}/var`], unc: [] })
     done()
     await p
     expect(settled).toBeNull()
@@ -118,7 +118,7 @@ describe('RemoteAccess：根的更新在途', () => {
     const a = ready([`sftp://${ID}/opt`])
     const done = a.beginUpdate()
     const p = codeOf(a.check(`sftp://${ID}/etc`))
-    a.setRoots([`sftp://${ID}/opt`])
+    a.setRoots({ remote: [`sftp://${ID}/opt`], unc: [] })
     done()
     expect(await p).toBe('IPC_FORBIDDEN')
   })
@@ -133,7 +133,7 @@ describe('RemoteAccess：根的更新在途', () => {
     d1()
     await new Promise((r) => setTimeout(r, 10))
     expect(settled).toBeUndefined()
-    a.setRoots([`sftp://${ID}/opt`])
+    a.setRoots({ remote: [`sftp://${ID}/opt`], unc: [] })
     d2()
     await p
     expect(settled).toBeNull()
@@ -143,7 +143,7 @@ describe('RemoteAccess：根的更新在途', () => {
     const a = ready([`sftp://${ID}/opt`])
     const done = a.beginUpdate()
     const p = a.filter([`sftp://${ID}/opt/a`, `sftp://${ID}/var/log`, `sftp://${ID}/etc`])
-    a.setRoots([`sftp://${ID}/opt`, `sftp://${ID}/var`])
+    a.setRoots({ remote: [`sftp://${ID}/opt`, `sftp://${ID}/var`], unc: [] })
     done()
     await expect(p).resolves.toEqual([`sftp://${ID}/opt/a`, `sftp://${ID}/var/log`])
   })
@@ -209,5 +209,104 @@ describe('remoteFolderRoots', () => {
         entry({ uri: `sftp://app1@${ID}/` })
       ])
     ).toEqual([`sftp://${ID}/opt`, `sftp://app1@${ID}`])
+  })
+})
+
+describe('RemoteAccess：UNC（file://host/…）', () => {
+  it('范围外的 UNC 为 IPC_FORBIDDEN；本地盘直接通过', async () => {
+    const a = ready([], ['file://nas/share/proj'])
+    expect(await codeOf(a.check('file://evil/share/x'))).toBe('IPC_FORBIDDEN')
+    expect(await codeOf(a.check('file://nas/other/x'))).toBe('IPC_FORBIDDEN')
+    expect(await codeOf(a.check('file:///C:/anything'))).toBeNull()
+    expect(await codeOf(a.check('file:///C:/'))).toBeNull()
+  })
+
+  it('folder 根之下与根本身通过；前缀相同的兄弟目录不通过', async () => {
+    const a = ready([], ['file://nas/share/proj'])
+    expect(await codeOf(a.check('file://nas/share/proj/a.txt'))).toBeNull()
+    expect(await codeOf(a.check('file://nas/share/proj'))).toBeNull()
+    expect(await codeOf(a.check('file://nas/share/project2/a.txt'))).toBe('IPC_FORBIDDEN')
+  })
+
+  it('host 与路径大小写不敏感；编码形式等价', async () => {
+    const a = ready([], ['file://nas/share/%E6%97%A5%E6%9C%AC'])
+    expect(await codeOf(a.check('FILE://NAS/Share/%E6%97%A5%E6%9C%AC/a'))).toBeNull()
+    expect(await codeOf(a.check('file://nas/share/日本/a'))).toBeNull()
+  })
+
+  it('经 .. / 编码的 / 与反斜杠逃出根的 URI 被拒绝', async () => {
+    const a = ready([], ['file://nas/share/proj'])
+    expect(await codeOf(a.check('file://nas/share/proj/../secret'))).toBe('IPC_FORBIDDEN')
+    expect(await codeOf(a.check('file://nas/share/proj/%2e%2e/secret'))).toBe('IPC_FORBIDDEN')
+    expect(await codeOf(a.check('file://nas/share/proj/a%2F..%2F..%2Fsecret'))).toBe(
+      'IPC_FORBIDDEN'
+    )
+    expect(await codeOf(a.check('file://nas/share/proj/a%5C..%5C..%5Csecret'))).toBe(
+      'IPC_FORBIDDEN'
+    )
+  })
+
+  it('file 条目所在目录之下通过', async () => {
+    const a = ready([], ['file://nas/share/doc'])
+    expect(await codeOf(a.check('file://nas/share/doc/b.html'))).toBeNull()
+    expect(await codeOf(a.check('file://nas/share/doc2/b.html'))).toBe('IPC_FORBIDDEN')
+  })
+
+  it('setRoots 之前发起的 UNC check 等待；更新在途时对新根的 check 等到 setRoots 之后通过', async () => {
+    const a = new RemoteAccess()
+    let settled: string | null | undefined
+    const p = codeOf(a.check('file://nas/share/proj/a')).then((c) => (settled = c))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBeUndefined()
+    a.setRoots({ remote: [], unc: [] })
+    expect(await p).toBe('IPC_FORBIDDEN')
+
+    const done = a.beginUpdate()
+    let s2: string | null | undefined
+    const p2 = codeOf(a.check('file://nas/share/proj/a')).then((c) => (s2 = c))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(s2).toBeUndefined()
+    a.setRoots({ remote: [], unc: ['file://nas/share/proj'] })
+    done()
+    await p2
+    expect(s2).toBeNull()
+  })
+
+  it('filter：丢弃范围外的 UNC，本地与范围内的保持', async () => {
+    const a = ready([], ['file://nas/share/proj'])
+    await expect(
+      a.filter(['file:///C:/a', 'file://evil/s/x', 'file://nas/share/proj/x'])
+    ).resolves.toEqual(['file:///C:/a', 'file://nas/share/proj/x'])
+  })
+})
+
+describe('uncRoots', () => {
+  const entry = (over: Partial<WorkspaceEntry>): WorkspaceEntry => ({
+    id: 'e',
+    workspaceId: 'w',
+    parentId: null,
+    kind: 'folder',
+    label: 'x',
+    uri: null,
+    sortOrder: 0,
+    meta: null,
+    cacheStrategy: null,
+    createdAt: 0,
+    updatedAt: 0,
+    ...over
+  })
+
+  it('UNC 的 folder 条目取自身，file 条目取所在目录；本地盘与 sftp 不登记', () => {
+    expect(
+      uncRoots([
+        entry({ uri: 'file://nas/share/proj/' }),
+        entry({ kind: 'file', uri: 'file://nas/share/doc/a.html' }),
+        entry({ kind: 'file', uri: 'file://nas/x' }),
+        entry({ uri: 'file:///C:/work' }),
+        entry({ kind: 'file', uri: 'file:///C:/work/a.txt' }),
+        entry({ uri: `sftp://${ID}/opt` }),
+        entry({ kind: 'group', uri: null })
+      ])
+    ).toEqual(['file://nas/share/proj', 'file://nas/share/doc', 'file://nas/x'])
   })
 })
