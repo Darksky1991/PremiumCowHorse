@@ -27,4 +27,30 @@ describe('FileIcon 的颜色', () => {
     expect(list).toContain('text-muted-foreground')
     expect(list).not.toContain('text-destructive')
   })
+
+  it('按类别着色（text-fi-*）', () => {
+    expect(classes({ name: 'a.docx', kind: 'file' })).toContain('text-fi-word')
+    expect(classes({ name: 'a.xlsx', kind: 'file' })).toContain('text-fi-excel')
+    expect(classes({ name: 'a.pdf', kind: 'file' })).toContain('text-fi-pdf')
+    expect(classes({ name: 'a.txt', kind: 'file' })).toContain('text-fi-neutral')
+  })
+
+  it('monochrome 时不带类别颜色，随调用方的前景色', () => {
+    const list = classes({ name: 'a.docx', kind: 'file', monochrome: true, className: 'size-4' })
+    expect(list.some((c) => c.startsWith('text-fi-'))).toBe(false)
+    expect(list).toContain('size-4')
+  })
+
+  it('文件夹带填充，monochrome 时不带', () => {
+    const list = classes({ name: 'x', kind: 'directory' })
+    expect(list).toContain('text-fi-folder')
+    expect(list).toContain('fill-fi-folder-fill')
+    const mono = classes({ name: 'x', kind: 'directory', monochrome: true })
+    expect(mono.some((c) => c.includes('fi-'))).toBe(false)
+  })
+
+  it('失效链接 monochrome 时仍为 text-destructive', () => {
+    const list = classes({ name: 'x', kind: 'symlink', target: null, monochrome: true })
+    expect(list).toContain('text-destructive')
+  })
 })

@@ -1,7 +1,5 @@
 import { useEffect, useRef, type JSX, type KeyboardEvent, type WheelEvent } from 'react'
 import {
-  FileIcon,
-  FolderIcon,
   GalleryVerticalIcon,
   LayoutGridIcon,
   MonitorIcon,
@@ -12,17 +10,19 @@ import { useTranslation } from 'react-i18next'
 import { cn } from 'cn'
 import type { TabState, TabsState } from '@pch/shared'
 import { Button } from '@pch/ui/components/button'
+import { FileIcon } from '@pch/ui/file-icon'
 import { useConnectionNames } from '@renderer/data/connections'
 import { displayPath } from '@renderer/lib/display-path'
 import { useTabsStore } from '@renderer/stores/tabs-store'
 import { panelDomId, tabDomId } from './dom-ids'
 
-const KIND_ICON: Record<TabState['kind'], LucideIcon> = {
+/** 标签类型 → 固定图标；null = 文件系统条目（directory / file），按名称用 FileIcon 显示 */
+const KIND_ICON: Record<TabState['kind'], LucideIcon | null> = {
   workspace: LayoutGridIcon,
   workspaces: GalleryVerticalIcon,
   desktop: MonitorIcon,
-  directory: FolderIcon,
-  file: FileIcon
+  directory: null,
+  file: null
 }
 
 export interface TabBarProps {
@@ -130,7 +130,16 @@ export function TabBar({ state, baseId }: TabBarProps): JSX.Element {
                 : 'text-muted-foreground hover:bg-sidebar-accent/50'
             )}
           >
-            <Icon aria-hidden className="size-4 shrink-0" />
+            {Icon ? (
+              <Icon aria-hidden className="size-4 shrink-0" />
+            ) : (
+              <FileIcon
+                // 标题可能是别名，类型按 uri 末段（真实文件名）判断
+                name={tab.uri.split(/[\\/]/).pop() || title}
+                kind={tab.kind === 'directory' ? 'directory' : 'file'}
+                className="size-4 shrink-0"
+              />
+            )}
             <span id={`${domId}-title`} className="min-w-0 truncate">
               {title}
             </span>

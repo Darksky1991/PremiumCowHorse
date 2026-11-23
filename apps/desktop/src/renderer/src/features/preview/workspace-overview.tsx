@@ -199,7 +199,7 @@ function EntryItem({
           // 标签可能是别名，类型按真实路径的文件名判断
           name={path.split(/[\\/]/).pop() ?? path}
           kind="file"
-          className="size-5 shrink-0 text-muted-foreground"
+          className="size-5 shrink-0"
         />
       )}
       <span className="flex min-w-0 flex-col">

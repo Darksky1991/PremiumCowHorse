@@ -1,14 +1,8 @@
 import type { JSX } from 'react'
-import {
-  CopyIcon,
-  ExternalLinkIcon,
-  FileIcon,
-  FileTextIcon,
-  FolderIcon,
-  FolderOpenIcon
-} from 'lucide-react'
+import { CopyIcon, ExternalLinkIcon, FileTextIcon, FolderOpenIcon } from 'lucide-react'
 import { FALLBACK_PLUGIN_ID, TEXT_PLUGIN_ID, type PreviewProps } from '@pch/plugin-sdk'
 import { Button } from '@pch/ui/components/button'
+import { FileIcon } from '@pch/ui/file-icon'
 import { formatBytes, formatDateTime } from './format'
 
 /**
@@ -20,7 +14,6 @@ import { formatBytes, formatDateTime } from './format'
 export default function FallbackPreview({ resource, host }: PreviewProps): JSX.Element {
   const { t, language } = host.i18n
   const isDirectory = resource.kind === 'directory'
-  const Icon = isDirectory ? FolderIcon : FileIcon
   const size = formatBytes(resource.size, language)
   const chosen = host.tabs.selectedViewer() === FALLBACK_PLUGIN_ID
   const local = host.fs.isLocal(resource.uri)
@@ -29,7 +22,7 @@ export default function FallbackPreview({ resource, host }: PreviewProps): JSX.E
     <div className="h-full overflow-auto">
       <section aria-label={t('name')} className="flex max-w-3xl flex-col gap-6 p-8">
         <div className="flex items-start gap-3">
-          <Icon aria-hidden className="mt-0.5 size-8 shrink-0 text-muted-foreground" />
+          <FileIcon name={resource.name} kind={resource.kind} className="mt-0.5 size-8 shrink-0" />
           <div className="min-w-0">
             <h2 className="text-lg font-semibold break-all select-text">{resource.name}</h2>
             {isDirectory || chosen ? null : (

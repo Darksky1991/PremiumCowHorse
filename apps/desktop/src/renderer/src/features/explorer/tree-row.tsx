@@ -178,7 +178,9 @@ export function TreeRow({
               name={node.label}
               {...FS_KIND[node.kind]}
               open={node.expanded}
-              className="size-4 shrink-0 text-muted-foreground"
+              // 选中行随前景色，不按类别着色（避免与选中底色冲突）
+              monochrome={selected}
+              className="size-4 shrink-0"
             />
           )}
           <span
