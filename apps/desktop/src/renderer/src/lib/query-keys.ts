@@ -39,5 +39,7 @@ export const queryKeys = {
   recent: (workspaceId: string) => ['recent', workspaceId] as const,
   /** 文件名搜索（只查缓存）；kind 为类型筛选 */
   search: (workspaceId: string, text: string, kind: SearchKindFilter) =>
-    ['search', workspaceId, text, kind] as const
+    ['search', workspaceId, text, kind] as const,
+  /** 命令面板的文件组（固定 kind 与 limit，不与搜索视图共享缓存） */
+  paletteFiles: (workspaceId: string, text: string) => ['palette-files', workspaceId, text] as const
 }

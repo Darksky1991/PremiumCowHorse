@@ -6,7 +6,7 @@ import { Button } from '@pch/ui/components/button'
 import { Kbd, KbdGroup } from '@pch/ui/components/kbd'
 import { LogoMark } from '@pch/ui/logo-mark'
 import { getBootstrap } from '@renderer/lib/ipc'
-import { notifyComingSoon } from '../coming-soon'
+import { useUiStore } from '@renderer/stores/ui-store'
 import { LanguageMenu } from './language-menu'
 import { ThemeMenu } from './theme-menu'
 import { WindowControls } from './window-controls'
@@ -16,7 +16,8 @@ import { WindowControls } from './window-controls'
  * Windows / Linux 在右端绘制自己的窗口按钮；macOS 使用系统红绿灯，左侧留出其位置。
  */
 export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }): JSX.Element {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
+  const setPaletteOpen = useUiStore((s) => s.setPaletteOpen)
   const isMac = getBootstrap()?.platform === 'darwin'
 
   return (
@@ -36,7 +37,7 @@ export function TitleBar({ workspaceSwitcher }: { workspaceSwitcher: ReactNode }
           variant="outline"
           size="sm"
           className="app-no-drag w-full max-w-md justify-between bg-background font-normal text-muted-foreground"
-          onClick={() => notifyComingSoon(i18n)}
+          onClick={() => setPaletteOpen(true)}
         >
           <span className="flex min-w-0 items-center gap-2">
             <SearchIcon data-icon="inline-start" />

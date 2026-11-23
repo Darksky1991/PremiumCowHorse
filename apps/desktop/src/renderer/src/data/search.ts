@@ -8,6 +8,8 @@ export interface SearchInput {
   workspaceId: string
   text: string
   kind: SearchKindFilter
+  /** 省略 = 主进程的默认条数；命令面板只取前 20 条 */
+  limit?: number
 }
 
 /** 是否有搜索词（与主进程同一份 parseQuery：空白不算） */

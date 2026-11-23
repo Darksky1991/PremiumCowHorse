@@ -472,7 +472,7 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
-  test('popups and toasts swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
+  test('popups and the palette swap the view for a screenshot; Ctrl+W in the page closes the tab', async () => {
     const { app, page } = await launchFast(userData)
     try {
       const tree = await setup(app, page)
@@ -500,24 +500,23 @@ test.describe('the browser view (html plugin)', () => {
       await expect(view.locator('#counter')).toHaveText('1')
       expect(await focus(app)).toEqual({ app: true, views: [false] })
 
-      // toast（Ctrl+K「即将推出」）：截图态；点击预览区 → toast 收进状态栏，视图恢复（点击不转发给页面）
-      // 焦点在页面中时：隐藏的视图拿不住焦点，截图期间焦点在应用界面（应用中没有焦点元素）；
-      // 期间没有在应用中操作 → 结束后焦点回到页面
+      // 命令面板（Ctrl+K）：焦点在页面中时照常打开（主进程转发），视图冻结为截图态，焦点在应用界面；
+      // Esc 关闭后视图恢复；与其他弹出层相同，焦点留在应用界面（不还给视图）
       await page.locator('body').click({ position: { x: 5, y: 5 } })
       await focusView(app, view)
       await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
       await page.keyboard.press('Control+k')
-      const toast = page.locator('[data-sonner-toast]')
-      await expect(toast).toHaveCount(1)
+      const palette = page.getByRole('dialog')
+      await expect(palette).toBeVisible()
+      await expect(palette.getByRole('combobox')).toBeFocused()
       await expect.poll(() => visibility(app)).toEqual([false])
       await expect.poll(() => focus(app)).toEqual({ app: true, views: [false] })
-      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
-      await placeholder(page).click()
-      await expect(toast).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Notifications: 1' })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
       await expect.poll(() => visibility(app)).toEqual([true])
       expect(await placeholder(page).evaluate((el) => el.style.backgroundImage)).toBe('')
-      await expect.poll(() => focus(app)).toEqual({ app: false, views: [true] })
+      expect(await focus(app)).toEqual({ app: true, views: [false] })
+      await focusView(app, view)
 
       // 焦点在页面中按 Ctrl+W：关闭标签，视图销毁
       await pressIn(app, view, 'W', ['control'])

@@ -1,11 +1,11 @@
 import type { JSX } from 'react'
 import { builtinPlugins } from '@pch/plugin-builtin'
 import { AddressBar } from '@renderer/features/address-bar'
-import { RecentRecorder } from '@renderer/features/command-palette'
+import { CommandPalette, RecentRecorder } from '@renderer/features/command-palette'
 import { ConnectionsView, HostKeyPrompts } from '@renderer/features/connections'
 import { DesktopPrompts, DesktopView, SnapshotPage } from '@renderer/features/desktop'
 import { AboutPage } from '@renderer/features/about'
-import { ExplorerView } from '@renderer/features/explorer'
+import { ExplorerView, useExplorerCommands } from '@renderer/features/explorer'
 import { PreviewContainer, previewPlugins } from '@renderer/features/preview'
 import { SearchView } from '@renderer/features/search'
 import { SettingsPage, useSettingsCommands } from '@renderer/features/settings'
@@ -24,6 +24,7 @@ const plugins = previewPlugins(builtinPlugins)
  */
 export function App(): JSX.Element {
   useSettingsCommands()
+  useExplorerCommands()
   return (
     <>
       <Shell
@@ -51,6 +52,7 @@ export function App(): JSX.Element {
         }
       />
       <RecentRecorder />
+      <CommandPalette />
       <DesktopPrompts />
       <HostKeyPrompts />
     </>

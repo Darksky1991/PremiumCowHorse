@@ -13,6 +13,10 @@ interface UiState {
   /** 「新建工作区」对话框的开关：标题栏切换器与欢迎页都能打开它（feature 之间不互相 import） */
   newWorkspaceOpen: boolean
   setNewWorkspaceOpen: (open: boolean) => void
+  /** 命令面板的开关：Ctrl+K / 标题栏搜索按钮 */
+  paletteOpen: boolean
+  setPaletteOpen: (open: boolean) => void
+  togglePalette: () => void
   toggleSidebar: () => void
   /** 每次请求聚焦搜索框（Ctrl+Shift+F）时递增；搜索视图据此聚焦（挂载时也会聚焦） */
   searchFocusRequest: number
@@ -34,6 +38,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   newWorkspaceOpen: false,
   setNewWorkspaceOpen: (open) => set({ newWorkspaceOpen: open }),
+  paletteOpen: false,
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
+  togglePalette: () => set({ paletteOpen: !get().paletteOpen }),
   toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
   searchFocusRequest: 0,
   requestSearchFocus: () => set({ searchFocusRequest: get().searchFocusRequest + 1 })

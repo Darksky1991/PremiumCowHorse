@@ -12,6 +12,7 @@ import { TitleBar } from './components/title-bar'
 import { Welcome } from './components/welcome'
 import { useReachabilityEvents } from './use-reachability-events'
 import { useCommandShortcuts } from './use-command-shortcuts'
+import { useAppearanceCommands } from './use-appearance-commands'
 import { useShellCommands } from './use-shell-commands'
 
 export interface ShellProps {
@@ -38,6 +39,7 @@ export function Shell({
 }: ShellProps): JSX.Element {
   useCommandShortcuts()
   useShellCommands()
+  useAppearanceCommands()
   useReachabilityEvents()
   const sidebarRef = usePanelRef()
   const collapsed = useUiStore((s) => s.sidebarCollapsed)
