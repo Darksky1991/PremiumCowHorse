@@ -12,7 +12,7 @@ import {
 export type RemoteScope = Pick<RemoteAccess, 'check' | 'filter'>
 
 /**
- * 主进程的访问范围（M1-K17 的 sftp 部分，设计 devDoc/2026-11-22-37 第 5.7 节）：
+ * 主进程的访问范围（M1-K17；sftp 部分见设计 devDoc/2026-11-22-37 第 5.7 节，UNC 部分见 devDoc/2026-11-23-42 5.H）：
  * `sftp:` URI 必须在某个工作区的远程 folder 条目之下（同一连接、同一身份、路径在其下），否则 IPC_FORBIDDEN。
  * 连接管理的通道按 connectionId 操作，不经这里。
  * UNC（`file://host/…`，M1-K17）同理：必须在 folder 条目或 file 条目所在目录之下；本地盘（host 为空）直接通过。
@@ -83,7 +83,7 @@ export class RemoteAccess {
     }
   }
 
-  /** 过滤（vfs.interest / vfs.refresh 的数组）：范围外的 sftp URI 丢弃，其余保持原样与顺序 */
+  /** 过滤（vfs.interest / vfs.refresh 的数组）：范围外的 sftp / UNC URI 丢弃，其余保持原样与顺序 */
   async filter(uris: readonly string[]): Promise<string[]> {
     if (!uris.some(isRestricted)) return [...uris]
     await this.ready

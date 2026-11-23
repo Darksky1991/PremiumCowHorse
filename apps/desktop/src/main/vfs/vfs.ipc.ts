@@ -28,8 +28,8 @@ const isUnavailable = (e: unknown): boolean =>
 /**
  * 参数已由路由按契约校验。目录列表经扫描进程（缓存 + 调度）；扫描进程不可用时退回
  * VfsService 直接枚举、不缓存（降级模式，设计 4.1）。
- * 访问范围（设计 5.7）：stat / list / sniff 的 sftp: URI 必须在远程条目之下（IPC_FORBIDDEN）；
- * interest / refresh 丢弃范围外的 URI
+ * 访问范围（M4 设计 5.7、M1-K17）：stat / list / sniff 的 sftp: URI 必须在远程条目之下、UNC 必须在
+ * folder 条目或 file 条目所在目录之下（IPC_FORBIDDEN）；interest / refresh 丢弃范围外的 URI
  */
 export function vfsHandlers(
   vfs: VfsService,
