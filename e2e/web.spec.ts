@@ -802,6 +802,51 @@ test.describe('the browser view (html plugin)', () => {
     }
   })
 
+  test('Markdown view follows the app theme: data-theme is applied in place and mermaid is re-rendered', async () => {
+    const docs = path.join(project, 'docs')
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(
+      path.join(docs, 'README.md'),
+      ['# T', '', '```mermaid', 'graph TD', '  A[a] --> B[b]', '```', ''].join('\n')
+    )
+    const { app, page } = await launchFast(userData)
+    try {
+      const tree = await setup(app, page)
+      await toggleRow(tree.getByRole('treeitem', { name: '案件' }))
+      await toggleRow(tree.getByRole('treeitem', { name: 'docs' }))
+      await tree.getByRole('treeitem', { name: 'README.md' }).dblclick()
+      const view = await viewPage(app, '/docs/README.md?pch-view=markdown')
+      const html = view.locator('html')
+      await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
+      await expect(html).not.toHaveAttribute('data-theme', /.*/)
+      const svgBefore = await view.locator('#content .mermaid-diagram').innerHTML()
+      const bg = (): Promise<string> =>
+        view.evaluate(() => getComputedStyle(document.body).backgroundColor)
+      const bgDefault = await bg()
+
+      // 已打开的视图就地切换（不重新加载）：属性、底色与 mermaid 的图都变化
+      await data(page, 'settings.set', { 'appearance.theme': 'washi' })
+      await expect(html).toHaveAttribute('data-theme', 'washi')
+      await expect.poll(bg).not.toBe(bgDefault)
+      await expect
+        .poll(() => view.locator('#content .mermaid-diagram').innerHTML())
+        .not.toBe(svgBefore)
+      await expect(view.locator('#content .mermaid-diagram svg')).toHaveCount(1)
+
+      // 回到 default：属性移除
+      await data(page, 'settings.set', { 'appearance.theme': 'default' })
+      await expect(html).not.toHaveAttribute('data-theme', /.*/)
+      await expect.poll(bg).toBe(bgDefault)
+
+      // 新打开 / 重新加载的页面：外壳按当前主题生成
+      await data(page, 'settings.set', { 'appearance.theme': 'matsuba' })
+      await view.reload()
+      await expect(view.locator('html')).toHaveAttribute('data-theme', 'matsuba')
+    } finally {
+      await app.close()
+    }
+  })
+
   test('images and PDFs open in the browser view', async () => {
     const media = path.join(project, 'media')
     mkdirSync(media)

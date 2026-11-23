@@ -5,7 +5,7 @@ import './markdown.css'
 import { renderMermaidBlocks } from './mermaid'
 import { decodeMarkdown, renderMarkdown } from './render'
 
-/** 浅色 / 深色：视图的 prefers-color-scheme 跟随应用的主题（nativeTheme.themeSource，台账 S2），切换时不重新加载 */
+/** 浅色 / 深色：视图的 prefers-color-scheme 跟随应用的主题（nativeTheme.themeSource，台账 S2），切换时不重新加载；配色主题见 markdown.css */
 const darkQuery = matchMedia('(prefers-color-scheme: dark)')
 const themeOf = (): 'light' | 'dark' => (darkQuery.matches ? 'dark' : 'light')
 
@@ -48,9 +48,10 @@ async function main(): Promise<void> {
   if (!content.querySelector('pre > code.language-mermaid')) return
   await renderMermaidBlocks(content, themeOf())
 
-  // 主题切换：mermaid 的颜色写在 SVG 里，按新主题重新渲染（保持滚动位置；连续切换时只保留最后一次）
+  // 主题切换（明暗：prefers-color-scheme；配色主题：主进程改写 <html data-theme>）：mermaid 的颜色写在 SVG 里，
+  // 按新主题重新渲染（保持滚动位置；连续切换时只保留最后一次）
   let latest = 0
-  darkQuery.addEventListener('change', () => {
+  const rerender = (): void => {
     const mine = ++latest
     const y = window.scrollY
     const fresh = document.createElement('article')
@@ -62,6 +63,11 @@ async function main(): Promise<void> {
       document.getElementById(content.id)!.replaceWith(fresh)
       window.scrollTo(0, y)
     })
+  }
+  darkQuery.addEventListener('change', rerender)
+  new MutationObserver(rerender).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme']
   })
 }
 

@@ -3,7 +3,7 @@ import { MARKDOWN_CSP, markdownShell } from './markdown-shell'
 
 describe('markdownShell', () => {
   it('外壳页：charset、样式、内容容器与查看脚本', () => {
-    const html = markdownShell()
+    const html = markdownShell({ theme: 'default' })
     expect(html).toContain('<meta charset="utf-8">')
     expect(html).toContain('<link rel="stylesheet" href="pch-asset://viewer/markdown.css">')
     expect(html).toContain('<article id="content"')
@@ -11,9 +11,15 @@ describe('markdownShell', () => {
   })
 
   it('开发模式：脚本地址可替换，没有样式表时不输出 link（样式由脚本经 dev server 注入）', () => {
-    const html = markdownShell({ script: 'pch-asset://viewer/@fs/C:/x/main.ts' })
+    const html = markdownShell({ theme: 'default', script: 'pch-asset://viewer/@fs/C:/x/main.ts' })
     expect(html).toContain('<script type="module" src="pch-asset://viewer/@fs/C:/x/main.ts">')
     expect(html).not.toContain('<link rel="stylesheet"')
+  })
+
+  it('配色主题：非 default 写入 <html data-theme>，default 不设属性', () => {
+    expect(markdownShell({ theme: 'washi' })).toContain('<html data-theme="washi">')
+    expect(markdownShell({ theme: 'default' })).not.toContain('data-theme')
+    expect(markdownShell({ theme: 'default' })).toContain('<html>')
   })
 })
 

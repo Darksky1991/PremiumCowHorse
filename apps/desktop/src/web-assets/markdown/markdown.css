@@ -1,4 +1,11 @@
-/* Markdown 查看器的样式（GitHub 风格的版式）。浅色 / 深色按 prefers-color-scheme（视图跟随应用主题，台账 S2） */
+/*
+ * Markdown 查看器的样式（GitHub 风格的版式）。
+ * 浅色 / 深色按 prefers-color-scheme（视图跟随应用主题，台账 S2）；配色主题按 <html data-theme>（外壳页写入，主题变化时
+ * 主进程就地改写）。本页单独构建，读不到应用的 CSS 变量，所以各主题的取值在此按 packages/ui 的 globals.css 对应主题的
+ * foreground / muted-foreground / background / muted / border / primary / log-error 抄写（修改配色时两处同步；
+ * 表格线要看得清，border 比 globals.css 略深）。
+ * default 不设属性，沿用 GitHub 配色。
+ */
 :root {
   color-scheme: light dark;
   --fg: #1f2328;
@@ -12,6 +19,37 @@
   --error: #d1242f;
 }
 
+:root[data-theme='aitetsu'] {
+  --fg: oklch(0.22 0.025 258);
+  --fg-muted: oklch(0.5 0.025 255);
+  --bg: oklch(0.985 0.004 250);
+  --bg-subtle: oklch(0.955 0.008 250);
+  --border: oklch(0.88 0.014 250);
+  --border-muted: oklch(0.88 0.014 250 / 70%);
+  --link: oklch(0.5 0.13 248);
+  --error: oklch(0.54 0.19 25);
+}
+:root[data-theme='washi'] {
+  --fg: oklch(0.25 0.022 262);
+  --fg-muted: oklch(0.5 0.02 70);
+  --bg: oklch(0.975 0.008 85);
+  --bg-subtle: oklch(0.945 0.01 85);
+  --border: oklch(0.86 0.015 80);
+  --border-muted: oklch(0.86 0.015 80 / 70%);
+  --link: oklch(0.43 0.12 263);
+  --error: oklch(0.52 0.18 32);
+}
+:root[data-theme='matsuba'] {
+  --fg: oklch(0.24 0.02 170);
+  --fg-muted: oklch(0.5 0.025 170);
+  --bg: oklch(0.98 0.005 160);
+  --bg-subtle: oklch(0.955 0.01 160);
+  --border: oklch(0.87 0.014 160);
+  --border-muted: oklch(0.87 0.014 160 / 70%);
+  --link: oklch(0.48 0.1 165);
+  --error: oklch(0.54 0.19 27);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --fg: #f0f6fc;
@@ -23,6 +61,36 @@
     --link: #4493f8;
     --mark: #bb800926;
     --error: #f85149;
+  }
+  :root[data-theme='aitetsu'] {
+    --fg: oklch(0.93 0.012 240);
+    --fg-muted: oklch(0.71 0.03 245);
+    --bg: oklch(0.175 0.022 256);
+    --bg-subtle: oklch(0.25 0.026 256);
+    --border: oklch(0.34 0.03 256);
+    --border-muted: oklch(0.34 0.03 256 / 70%);
+    --link: oklch(0.8 0.12 212);
+    --error: oklch(0.72 0.16 22);
+  }
+  :root[data-theme='washi'] {
+    --fg: oklch(0.9 0.016 85);
+    --fg-muted: oklch(0.71 0.02 80);
+    --bg: oklch(0.205 0.008 70);
+    --bg-subtle: oklch(0.27 0.009 70);
+    --border: oklch(0.36 0.01 70);
+    --border-muted: oklch(0.36 0.01 70 / 70%);
+    --link: oklch(0.75 0.085 258);
+    --error: oklch(0.72 0.15 32);
+  }
+  :root[data-theme='matsuba'] {
+    --fg: oklch(0.92 0.012 160);
+    --fg-muted: oklch(0.71 0.03 165);
+    --bg: oklch(0.19 0.014 175);
+    --bg-subtle: oklch(0.26 0.017 175);
+    --border: oklch(0.35 0.02 175);
+    --border-muted: oklch(0.35 0.02 175 / 70%);
+    --link: oklch(0.78 0.11 160);
+    --error: oklch(0.72 0.16 25);
   }
 }
 

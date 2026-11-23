@@ -68,10 +68,7 @@ export function WebPagePreview({
         className="flex h-8 shrink-0 items-center gap-3 border-t px-2 text-xs text-muted-foreground"
       >
         {notice !== null ? (
-          <span
-            role="status"
-            className="flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-400"
-          >
+          <span role="status" className="flex min-w-0 items-center gap-1 text-log-warn">
             <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
             <span className="truncate">{t(NOTICE_KEYS[notice.notice])}</span>
           </span>

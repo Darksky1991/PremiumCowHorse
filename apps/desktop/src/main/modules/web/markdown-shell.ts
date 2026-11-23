@@ -1,3 +1,5 @@
+import type { ThemeName } from '@pch/shared'
+
 // Markdown 的外壳页（设计 5.4）：pch-web 协议处理器对 `?pch-view=markdown` 返回它。
 // 文档的 URL 仍是 .md 文件本身的位置（相对路径的图片与链接按它解析）；内容由应用自带的查看脚本
 // （src/web-assets/markdown，经 pch-asset:// 提供）取 `?pch-raw=1` 后在页面中渲染。
@@ -35,27 +37,31 @@ const escapeAttr = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 /**
- * 外壳 HTML。assets 省略时为生产的产物地址；开发模式只传 script（`pch-asset://viewer/@fs/<main.ts 的绝对路径>`，
+ * 外壳 HTML。script / style 省略时为生产的产物地址；开发模式只传 script（`pch-asset://viewer/@fs/<main.ts 的绝对路径>`，
  * 协议处理器代理到 renderer dev server），样式由脚本中的 CSS import 经 dev server 注入，不输出 link。
- * color-scheme 让脚本与样式加载前的底色也跟随浅色 / 深色
+ * color-scheme 让脚本与样式加载前的底色也跟随浅色 / 深色。
+ * theme：应用的配色主题，写入 `<html data-theme>`（default 不设属性，与应用本体一致），markdown.css 按它取色
  */
-export function markdownShell(
-  assets: { script: string; style?: string } = {
-    script: `${MARKDOWN_ASSET_BASE}markdown.js`,
-    style: `${MARKDOWN_ASSET_BASE}markdown.css`
-  }
-): string {
-  const style =
-    assets.style === undefined ? '' : `<link rel="stylesheet" href="${escapeAttr(assets.style)}">\n`
+export function markdownShell(opts: { theme: ThemeName; script?: string; style?: string }): string {
+  const production = opts.script === undefined
+  const script = opts.script ?? `${MARKDOWN_ASSET_BASE}markdown.js`
+  const style = production ? `${MARKDOWN_ASSET_BASE}markdown.css` : opts.style
+  const link =
+    style === undefined
+      ? ''
+      : `<link rel="stylesheet" href="${escapeAttr(style)}">
+`
+  const htmlTag =
+    opts.theme === 'default' ? '<html>' : `<html data-theme="${escapeAttr(opts.theme)}">`
   return `<!doctype html>
-<html>
+${htmlTag}
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
-${style}</head>
+${link}</head>
 <body>
 <article id="content" class="markdown-body"></article>
-<script type="module" src="${escapeAttr(assets.script)}"></script>
+<script type="module" src="${escapeAttr(script)}"></script>
 </body>
 </html>
 `

@@ -3,6 +3,7 @@ import {
   isUnderUri,
   normalizeRootUri,
   type IpcEvents,
+  type ThemeName,
   type WebBounds,
   type WebNotice,
   type WebViewKind,
@@ -62,6 +63,7 @@ export interface ViewLike {
     readonly id: number
     loadURL(url: string): Promise<void>
     reload(): void
+    executeJavaScript(code: string): Promise<unknown>
     capturePage(): Promise<{ toDataURL(): string }>
     /** 键盘焦点是否在本视图中 */
     isFocused(): boolean
@@ -228,6 +230,26 @@ export class WebViewManager {
 
   reload(ownerId: number, tabId: string): void {
     this.find(ownerId, tabId)?.view.webContents.reload()
+  }
+
+  /**
+   * 应用的配色主题变化：已打开的 Markdown 视图就地切换 `<html data-theme>`（不重新加载，滚动位置与已渲染的内容保留）；
+   * 查看脚本监视该属性并按新主题重新渲染 mermaid。脚本由主进程注入（executeJavaScript 不受页面 CSP 约束），
+   * 主题名来自枚举，不含需要转义的字符
+   */
+  setMarkdownTheme(theme: ThemeName): void {
+    const code =
+      theme === 'default'
+        ? 'delete document.documentElement.dataset.theme'
+        : `document.documentElement.dataset.theme = '${theme}'`
+    for (const entries of this.windows.values()) {
+      for (const entry of entries.values()) {
+        if (entry.destroyed || !entry.url.endsWith(MARKDOWN_QUERY)) continue
+        entry.view.webContents.executeJavaScript(code).catch((e: unknown) => {
+          this.deps.logger.debug(`[web] cannot apply the theme to tab ${entry.tabId}`, e)
+        })
+      }
+    }
   }
 
   /**

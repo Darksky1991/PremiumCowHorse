@@ -77,7 +77,7 @@ export function StatusBar(props: StatusBarProps): JSX.Element {
 
 function Hint({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+    <span className="flex items-center gap-1 text-log-warn">
       <TriangleAlertIcon aria-hidden className="size-3.5" />
       {children}
     </span>

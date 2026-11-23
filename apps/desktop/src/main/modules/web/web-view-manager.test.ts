@@ -21,6 +21,7 @@ class FakeView implements ViewLike {
   destroyed = false
   readonly loads: string[] = []
   reloads = 0
+  readonly scripts: string[] = []
   /** 键盘焦点在本视图中 */
   focused = false
   readonly webContents = {
@@ -30,6 +31,10 @@ class FakeView implements ViewLike {
     },
     reload: (): void => {
       this.reloads++
+    },
+    executeJavaScript: async (code: string): Promise<unknown> => {
+      this.scripts.push(code)
+      return undefined
     },
     capturePage: async () => ({ toDataURL: () => 'data:image/png;base64,AAAA' }),
     isFocused: (): boolean => this.focused,
@@ -212,6 +217,17 @@ describe('WebViewManager', () => {
     manager.reload(win.id, 't1')
     manager.hide(win.id, 't1')
     expect(await manager.freeze(win.id, 't1')).toEqual({ image: '', yielded: false })
+    expect(viewOf(0).reloads).toBe(0)
+  })
+
+  it('setMarkdownTheme：只对 Markdown 视图执行主题切换脚本（default 移除属性），不重新加载', () => {
+    manager.attach(win, input('md', 'notes.md', { view: 'markdown' }))
+    manager.attach(win, input('web'))
+    manager.setMarkdownTheme('washi')
+    expect(viewOf(0).scripts).toEqual(["document.documentElement.dataset.theme = 'washi'"])
+    expect(viewOf(1).scripts).toEqual([])
+    manager.setMarkdownTheme('default')
+    expect(viewOf(0).scripts[1]).toBe('delete document.documentElement.dataset.theme')
     expect(viewOf(0).reloads).toBe(0)
   })
 

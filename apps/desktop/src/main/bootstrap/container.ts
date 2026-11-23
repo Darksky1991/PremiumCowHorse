@@ -226,9 +226,12 @@ export async function createContainer(rendererUrl: string): Promise<Container> {
   const assetSource: AssetSource = devServer
     ? { kind: 'dev', origin: devServer, fetch: (url) => net.fetch(url) }
     : { kind: 'files', root: paths.webAssets }
-  const viewerShell = devServer
-    ? markdownShell({ script: `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}` })
-    : markdownShell()
+  // 外壳每次请求时生成：data-theme 取当前的配色主题（设置变化后新打开 / 重新加载的页面即用新主题）
+  const viewerScript = devServer
+    ? `${MARKDOWN_ASSET_BASE}@fs/${viewerEntry.replace(/\\/g, '/')}`
+    : undefined
+  const viewerShell = (): string =>
+    markdownShell({ theme: settings.get('appearance.theme'), script: viewerScript })
   configureWebSession(webSession, {
     handler: createWebProtocolHandler({ scopes: webScopes, vfs, markdownShell: viewerShell }),
     assetHandler: createAssetProtocolHandler(assetSource),
