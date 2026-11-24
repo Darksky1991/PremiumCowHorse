@@ -21,6 +21,15 @@ wsl -d Debian -u root -- bash /mnt/c/<仓库路径>/scripts/wsl-sftp/setup.sh
 
 `setup.sh`：安装 openssh-server / sudo，建试验用户（`pchuser` / `Pch-pass1`、`app1` / `App1-pass1`、`app2`，root 密码 `Root-pass1`），建只有 app1 能读的 `/opt/app1/log` 与只有 root 能读的 `/root/secret`，安装场景切换命令 `pch-scenario`，并输出 sftp-server 位置、sudoers 默认设置与版本。这些是本机试验用的固定密码，不要在其他环境使用。
 
+## csh 场景
+
+```powershell
+wsl -d Debian -u root -- bash /mnt/c/<仓库路径>/scripts/wsl-sftp/setup-csh.sh
+wsl -d AlmaLinux-9 -u root -- bash /mnt/c/<仓库路径>/scripts/wsl-sftp/setup-csh.sh
+```
+
+`setup-csh.sh`（可重复执行）：安装 csh（apt 系为 BSD csh 的 `csh` 包，dnf / zypper 系为 `tcsh`），建登录用户 `pchcsh` / `Pch-pass1` 与目标用户 `app3`（shell 均为 `/bin/csh`），sudoers 文件 `/etc/sudoers.d/pch-csh` 为精确规则 `su - app3`、`su - app1`、`su -`（与 `pch-scenario` 的文件互不影响）。`wsl.test.ts` 只在 Debian 与 AlmaLinux-9 上运行 csh 用例。
+
 ## sudoers 场景
 
 ```powershell
@@ -49,7 +58,7 @@ PCH_WSL_SFTP=1 pnpm vitest run apps/desktop/src/main/modules/connection/wsl.test
 
 前提：4 个实例的 sshd 在 2201–2204 监听（见下节），已执行过 `setup.sh` 且安装了最新的 `pch-scenario`。测试会切换 sudoers 场景、清空 `/var/log/pch-sudo.log`、在 `/opt/app1/log` 下临时放一个 1MB 的文件，结束时恢复为 `pch-scenario all quiet` 并删除该文件。约 2.5 分钟。
 
-内容（每个实例）：`all quiet` 下登录用户 / app1 / root 列目录与「测试连接」；`exact noisy` 下精确规则与登录脚本输出、未授权的 app2 被拒绝（openSUSE 默认 `ALL ALL=(ALL) ALL`，不测）；`requiretty` / `exact-requiretty` 下改用终端方式并经切换后的通道读回 1MB 全字节文件比较哈希（sudo-rs 不支持，不测）；错误的 sudo 密码与登录密码各只记 1 次失败、之后不再提交。
+内容（每个实例）：`all quiet` 下登录用户 / app1 / root 列目录与「测试连接」；`exact noisy` 下精确规则与登录脚本输出、未授权的 app2 被拒绝（openSUSE 默认 `ALL ALL=(ALL) ALL`，不测）；`requiretty` / `exact-requiretty` 下改用终端方式并经切换后的通道读回 1MB 全字节文件比较哈希（sudo-rs 不支持，不测）；错误的 sudo 密码与登录密码各只记 1 次失败、之后不再提交；Debian / AlmaLinux-9 另有 csh 用例（登录 / 目标用户为 csh：非终端 / 终端方式切换、测试连接、家目录前后不多出文件）。
 
 ## 启动 sshd
 

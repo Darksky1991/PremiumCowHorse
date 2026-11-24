@@ -283,6 +283,15 @@
 - 解决：按 `message` 区分握手超时（`FS_TIMEOUT`）与保活超时（断开）；主机密钥尚未信任的首次连接把 `readyTimeout` 设为 `max(vfs.timeoutSec.remote × 1000, 300_000)`（`connection-pool.ts` 的 `FIRST_CONNECT_READY_MS`，R5）；**已交出密码之后**、`ready` 之前的超时 / 断开不当作「断开」，而按认证失败锁定（`ssh-session.ts`，detail `undetermined after password (…)`，否则后台退避探测会以同一个可能错误的密码反复提交）。
 - 预防：不要把 `readyTimeout` 理解为「TCP + 密钥交换」的超时；涉及「交出密码后结果未定」的分支一律按失败处理（反目标：账号被锁）。
 
+### OpenSSH exec：命令由登录用户的 shell 解释（csh / tcsh 下 sh 语法失败；tcsh 会写出 `~/.history`）
+
+- 日期：2026-11-24
+- 症状（现场）：登录用户与目标用户的 shell 均为 `/bin/csh`（sudo 1.8.19p2）的服务器上，切换用户总是「切换用户失败（超时或通道被关闭）」。`ssh host 'for p in a b; do echo $p; done; echo PS:ok'` 输出 `for: Command not found.`。WSL 复现：Debian（BSD csh）、AlmaLinux 9（tcsh）均为 `CONN_SUDO_FAILED: probe incomplete`。
+- 原因：sshd 以 `<登录 shell> -c '<命令>'` 执行 exec 请求，命令按登录 shell 的语法解释。探测 / sudo / 轮询命令是 sh 语法（`for … do`、`while [ … ]`、`$((…))`、`2>&1`），csh 不认；`>&2` 在 csh 中是「标准输出与错误一起写进名为 2 的文件」。
+- 解决：`ssh-session.ts` 的 `viaPosixShell`：发送 `unset savehist; exec /bin/sh -c '<命令>'`（单引号按 `'\''` 转义，含换行或 `!` 时拒绝）。不按 shell 分支，整行在 sh / bash / ksh / zsh / csh / tcsh 中都成立。
+- 补充（tcsh 的 `~/.history`，AlmaLinux 9 实测）：RHEL 系 `/etc/csh.cshrc` 有 `set savehist = (1024 merge)`。tcsh 在**内建 `exec` 之前**、**收到 SIGHUP 时**（终端方式下本端关闭通道）、**登录 shell 结束时**都会写出 `~/.history`；`csh -c '外部命令'`（不经 exec、正常结束）不写。不用 exec 时终端方式会留下 csh 父进程（关闭时 SIGHUP 写历史），用 exec 而不先 `unset savehist` 时 exec 本身写历史，所以两者都要。写给目标用户登录 shell（`su -`）的启动命令同样以 `unset savehist;` 开头。
+- 预防：经 SSH exec 在别人的服务器上执行的命令，不要假设登录 shell 是 bash；新增远程命令只经 `SshSession.exec`（自动包装），命令内不写换行与 `!`。实机测试 `wsl.test.ts` 的「csh：」用例比较家目录前后的文件列表（环境 `scripts/wsl-sftp/setup-csh.sh`）。
+
 ### OpenSSH 的会话命令：SIGPIPE 为默认处理（Debian 13 实测）；服务器上的轮询循环仍要自己能结束
 
 - 日期：2026-11-23

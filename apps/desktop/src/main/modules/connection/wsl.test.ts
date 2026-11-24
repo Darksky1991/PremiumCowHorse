@@ -48,6 +48,9 @@ const DISTROS: Distro[] = [
   }
 ]
 
+/** 执行过 setup-csh.sh 的实例 */
+const CSH_DISTROS = ['Debian', 'AlmaLinux-9']
+
 const LOGIN_PASSWORD = 'Pch-pass1'
 const SUDO_LOG = '/var/log/pch-sudo.log'
 const BLOB = '/opt/app1/log/pch-blob.bin'
@@ -274,12 +277,13 @@ async function readOverIdentity(
   d: Distro,
   identity: string,
   mode: SwitchMode,
-  path: string
+  path: string,
+  username = 'pchuser'
 ): Promise<{ data: Buffer; mode: SwitchMode }> {
   const ssh = await connectSsh({
     host: '127.0.0.1',
     port: d.port,
-    username: 'pchuser',
+    username,
     auth: { kind: 'password', password: LOGIN_PASSWORD },
     keepaliveSec: 15,
     readyTimeoutMs: 20_000,
@@ -542,6 +546,44 @@ describe.skipIf(!ENABLED)('WSL 实机：SFTP 与身份切换', () => {
         `${d.name} wrong login then retry: ${e2.code}/${e2.detail}; dials=${h.dials}; journal failures=${count(j2, SSHD_AUTH_FAILURE)}`
       )
       expect(count(j2, SSHD_AUTH_FAILURE)).toBe(1)
+    })
+  })
+
+  // 登录用户与目标用户的 shell 为 /bin/csh（现场：sudo 1.8.19p2，两者均为 csh）。环境：scripts/wsl-sftp/setup-csh.sh
+  // （Debian = BSD csh，AlmaLinux 9 = tcsh）。远程命令是 sh 语法，必须经 /bin/sh 执行（knowledge/libraries.md）
+  describe.each(DISTROS.filter((x) => CSH_DISTROS.includes(x.name)))('csh：$name', (d) => {
+    const homes = (): string => sh(d.name, 'ls -A /home/pchcsh /home/app3')
+
+    it('登录 / 目标用户为 csh：app3 / app1 / root 经 sudo 列目录、测试连接；终端方式读回文件；服务器上不留下文件', async () => {
+      const before = homes()
+      const h = makePool(
+        record(d, {
+          id: `wsl-csh-${d.name}`,
+          username: 'pchcsh',
+          sudoSecret: null,
+          identities: ['app3', 'app1', 'root']
+        })
+      )
+      const login = await session(h, null)
+      expect(await names(login, '/home')).toContain('app3')
+      const app3 = await timed(`${d.name} csh/app3 switch`, () => session(h, 'app3'))
+      expect(await names(app3, '/home/app3')).toContain('app3.txt')
+      expect(await names(await session(h, 'app1'), '/opt/app1/log')).toContain('app.log')
+      expect(await names(await session(h, 'root'), '/root/secret')).toContain('r.txt')
+      const t = await h.pool.test(h.rec.id)
+      facts.push(`${d.name} csh test(): ${JSON.stringify(t.steps.map((s) => [s.step, s.ok]))}`)
+      expect(t.steps.every((s) => s.ok)).toBe(true)
+      for (const mode of ['nopty', 'pty'] as const) {
+        const r = await readOverIdentity(d, 'app3', mode, '/home/app3/app3.txt', 'pchcsh')
+        expect({ text: r.data.toString('utf8'), mode: r.mode }).toEqual({
+          text: 'hello from app3\n',
+          mode
+        })
+      }
+      await sleep(1000)
+      expect(leftoverPolls(d.name)).toBe('')
+      // csh 中 `>&2` 等写法会建文件：家目录不得多出任何东西
+      expect(homes()).toBe(before)
     })
   })
 })

@@ -162,7 +162,9 @@ describe('命令字符串', () => {
 
   it('startCommand：标记用八进制写，回显里没有 PCHSTART 字样', () => {
     const c = startCommand(SFTP_PATH)
-    expect(c).toBe("printf '\\120CHSTART\\n'; exec /usr/lib/openssh/sftp-server -R\n")
+    expect(c).toBe(
+      "unset savehist; printf '\\120CHSTART\\n'; exec /usr/lib/openssh/sftp-server -R\n"
+    )
     expect(c).not.toContain('PCHSTART')
   })
 
