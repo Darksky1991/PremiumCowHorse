@@ -13,6 +13,7 @@ import {
   hostKeyInfo,
   parsePrivateKey,
   toExecChannel,
+  viaPosixShell,
   type SshConnectConfig,
   type SshSession
 } from './ssh-session'
@@ -484,6 +485,22 @@ describe('liveness', () => {
     // 关闭之后注册的回调也会收到
     expect(await new Promise((r) => session.onClose(r))).toBeNull()
     expect((await errorOf(session.exec('true', { pty: false }))).code).toBe('FS_UNAVAILABLE')
+  })
+})
+
+describe('viaPosixShell', () => {
+  // unset savehist：tcsh 的 exec / SIGHUP 在 savehist 下写出 ~/.history
+  it("wraps the command for /bin/sh, escaping ' as '\\''", () => {
+    expect(viaPosixShell("printf 'PCHPID:%s\\n' $$ >&2")).toBe(
+      String.raw`unset savehist; exec /bin/sh -c 'printf '\''PCHPID:%s\n'\'' $$ >&2'`
+    )
+    expect(viaPosixShell('true')).toBe("unset savehist; exec /bin/sh -c 'true'")
+  })
+
+  it('rejects line breaks and ! (csh cannot quote them)', () => {
+    expect(() => viaPosixShell('a\nb')).toThrow()
+    expect(() => viaPosixShell('a\rb')).toThrow()
+    expect(() => viaPosixShell('echo !1')).toThrow()
   })
 })
 

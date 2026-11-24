@@ -105,6 +105,23 @@ function unavailable(detail: string): AppError {
   return new AppError({ code: 'FS_UNAVAILABLE', detail })
 }
 
+/**
+ * 远程命令一律交给 /bin/sh 解释：sshd 用登录用户的 shell 执行 exec 的命令行（`<shell> -c '<命令>'`），
+ * 本模块的命令（探测、sudo、轮询）是 sh 语法，登录 shell 为 csh / tcsh 时语法错误（`for: Command not found.`），
+ * `>&2` 还会被 csh 当成「写入名为 2 的文件」（knowledge/libraries.md）。
+ * 外层只用 sh / bash / ksh / zsh / csh / tcsh 共通的写法：`unset savehist; exec /bin/sh -c '<命令>'`，
+ * 单引号按 `'\''` 转义。不按 shell 分支，所有 shell 执行同一条命令行。
+ * - exec：sh 取代登录 shell，不留父进程。留下时，终端方式下本端关闭通道（sshd 发 SIGHUP）会让 tcsh 写出 ~/.history。
+ * - unset savehist：tcsh 设了 savehist（RHEL 系 /etc/csh.cshrc 的默认）时内建 exec 也写 ~/.history；
+ *   其他 shell 中只是删除一个不存在的变量（AlmaLinux 9 tcsh 实测，knowledge/libraries.md）。
+ * `$$` 在内层 sh 中求值（且 exec 不改变 PID），sudo 的 PID 判定不受影响。
+ * csh 的单引号内不能有换行，`!` 可能触发历史替换：命令中出现即拒绝（本模块的命令都不含）。
+ */
+export function viaPosixShell(command: string): string {
+  if (/[\r\n!]/.test(command)) throw new Error('remote command must not contain a line break or !')
+  return `unset savehist; exec /bin/sh -c '${command.replace(/'/g, `'\\''`)}'`
+}
+
 /** ssh2 的命令通道 → ExecChannel */
 export function toExecChannel(ch: ClientChannel): ExecChannel {
   let closed = false
@@ -389,7 +406,7 @@ function createSession(client: Client, sock: Socket): SshSession {
           ensureOpen()
           // 终端方式：与先行试验相同的 dumb 终端（设计 5.4）
           const execOpts = opts.pty ? { pty: { term: 'dumb', modes: {} } } : {}
-          client.exec(command, execOpts, (err, ch) =>
+          client.exec(viaPosixShell(command), execOpts, (err, ch) =>
             err ? reject(openError(err)) : resolve(toExecChannel(ch))
           )
         } catch (e) {

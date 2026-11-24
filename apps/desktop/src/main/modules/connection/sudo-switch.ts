@@ -47,10 +47,15 @@ export function sudoCommand(identity: string): string {
   return `printf 'PCHPID:%s\\n' $$ >&2; exec env LC_ALL=C sudo -k -S -p '${SUDO_PROMPT_MARKER}' ${su}`
 }
 
-/** 标记用八进制写（\120 = P）：终端方式回显出的命令行里没有 PCHSTART 字样 */
+/**
+ * 写给目标用户登录 shell 的命令行（该 shell 可能是 sh / bash / ksh / zsh / csh / tcsh，只用各 shell 共通的写法）。
+ * 标记用八进制写（\120 = P）：终端方式回显出的命令行里没有 PCHSTART 字样。
+ * `unset savehist`：tcsh 设了 savehist（RHEL 系默认）时，登录 shell 结束或 exec 都会写出 ~/.history；
+ * 其他 shell 中只是删除一个不存在的变量（AlmaLinux 9 tcsh 实测，knowledge/libraries.md）。
+ */
 export function startCommand(sftpServerPath: string): string {
   if (!SFTP_SERVER_PATH_PATTERN.test(sftpServerPath)) throw new Error('invalid sftp-server path')
-  return `printf '\\120CHSTART\\n'; exec ${sftpServerPath} -R\n`
+  return `unset savehist; printf '\\120CHSTART\\n'; exec ${sftpServerPath} -R\n`
 }
 
 /** 终端方式：把终端切成透明模式（不回显、不转换换行、不处理控制字符） */
