@@ -104,7 +104,7 @@ function harness(over: Partial<SwitchDeps> = {}, opts: { holdPoll?: boolean } = 
   return { deps, cmd, poll, commands, releasePoll: () => release() }
 }
 
-/** ps -eo pid=,ppid=,comm= 的一帧（含 PCHEND） */
+/** ps -e -o pid= -o ppid= -o comm= 的一帧（含 PCHEND） */
 function psFrame(withSu: boolean): string {
   const rows = [
     '    1     0 systemd',
@@ -175,7 +175,7 @@ describe('命令字符串', () => {
 
   it('pollCommand：间隔换算成服务器端 sleep 的秒数，PCHEND 分帧不变', () => {
     expect(pollCommand(150, 15_000)).toBe(
-      'i=0; while [ $i -lt 200 ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep 0.15; i=$((i+1)); done'
+      'i=0; while [ $i -lt 200 ]; do ps -e -o pid= -o ppid= -o comm= || exit; echo PCHEND || exit; sleep 0.15; i=$((i+1)); done'
     )
     expect(pollCommand(1000, 15_000)).toContain('sleep 1;')
     expect(pollCommand(1500, 15_000)).toContain('sleep 1.5;')
@@ -187,9 +187,11 @@ describe('命令字符串', () => {
 
   it('I2b：轮询循环在写失败（SIGPIPE 被忽略时）即退出，且迭代次数覆盖切换超时的两倍', () => {
     const cmd = pollCommand(150, 15_000)
-    expect(cmd).toContain('ps -eo pid=,ppid=,comm= || exit;')
+    expect(cmd).toContain('ps -e -o pid= -o ppid= -o comm= || exit;')
     expect(cmd).toContain('echo PCHEND || exit;')
     expect(cmd).not.toContain('while :')
+    // 旧 procps-ng 把 `pid=,ppid=` 中 = 之后的整段当作列标题：每列各用一个 -o
+    expect(cmd).not.toMatch(/=,/)
     // 次数 = ceil(2 × 超时 / 间隔)
     expect(pollCommand(1000, 15_000)).toContain('-lt 30 ]')
     expect(pollCommand(150, 10_000)).toContain('-lt 134 ]')
