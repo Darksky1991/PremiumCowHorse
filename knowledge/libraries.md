@@ -292,12 +292,20 @@
 - 补充（tcsh 的 `~/.history`，AlmaLinux 9 实测）：RHEL 系 `/etc/csh.cshrc` 有 `set savehist = (1024 merge)`。tcsh 在**内建 `exec` 之前**、**收到 SIGHUP 时**（终端方式下本端关闭通道）、**登录 shell 结束时**都会写出 `~/.history`；`csh -c '外部命令'`（不经 exec、正常结束）不写。不用 exec 时终端方式会留下 csh 父进程（关闭时 SIGHUP 写历史），用 exec 而不先 `unset savehist` 时 exec 本身写历史，所以两者都要。写给目标用户登录 shell（`su -`）的启动命令同样以 `unset savehist;` 开头。
 - 预防：经 SSH exec 在别人的服务器上执行的命令，不要假设登录 shell 是 bash；新增远程命令只经 `SshSession.exec`（自动包装），命令内不写换行与 `!`。实机测试 `wsl.test.ts` 的「csh：」用例比较家目录前后的文件列表（环境 `scripts/wsl-sftp/setup-csh.sh`）。
 
+### procps-ng `ps -o pid=,ppid=,comm=`：旧版把第一个 `=` 之后的整段当作列标题（RHEL 7）
+
+- 日期：2026-11-24
+- 症状（现场，sudo 1.8.19p2 的服务器，客户环境为 RHEL 7.6 / 8.10 / 9.6 / 9.10，该台大概率为 RHEL 7，未确认）：登录 shell 问题修复后切换用户仍失败（超时）。手动确认：`sudo su - mebiap` 后进程链 `csh → sudo → su → csh` 正常，`comm` 为 `su`；但 `ps -eo pid=,ppid=,user=,comm=,args=` 只输出一列——首行为标题 `,ppid=,user=,comm=,args=`，其下为右对齐的 PID。应用的轮询拿不到 PPID 与进程名，永远判定不出切换成功。
+- 原因：POSIX 规定 `-o` 中 `名称=标题` 的标题延续到该参数末尾（可含逗号）。该服务器的 procps-ng 按此处理；本机 WSL 的 procps-ng 3.3.17（AlmaLinux 9）～ 4.0.5 把 `=,` 当作下一列开始，所以 WSL 测试都通过（从哪个版本开始改变未确认）。
+- 解决：`sudo-switch.ts` 的 `pollCommand` 改为每列各一个 `-o`：`ps -e -o pid= -o ppid= -o comm=`（现场与 WSL 4 个实例实测均输出三列、无标题行）。单元测试断言命令中不含 `=,`。
+- 预防：`ps -o` 不要用 `a=,b=` 的写法；需要空标题的多列时逐列写 `-o a= -o b=`。WSL 环境只有新版 procps-ng，测不出这类差异，涉及 `ps` / coreutils 选项时考虑 RHEL 7 等旧版本。
+
 ### OpenSSH 的会话命令：SIGPIPE 为默认处理（Debian 13 实测）；服务器上的轮询循环仍要自己能结束
 
 - 日期：2026-11-23
 - 症状 / 担心（M4 整体审查 I2b）：身份切换时在服务器上常驻 `while :; do ps …; echo PCHEND; sleep 0.15; done` 轮询进程表。客户端关闭通道后，循环只能靠写失败时的 SIGPIPE 结束；若会话命令继承了被忽略的 SIGPIPE（systemd 服务默认 `IgnoreSIGPIPE=yes`），内建 `echo` 写失败只返回非零，循环会在客户服务器上永久运行。
 - 事实（实测）：Debian 13（OpenSSH_10.0p2 Debian-7+deb13u4）以 `bash -c "trap '' PIPE; … exec /usr/sbin/sshd -D -e -p 2299 …"` 启动临时 sshd（监听进程 `SigIgn: 0000000000001000`，SIGPIPE 被忽略），会话中的轮询 bash 为 `SigIgn: 0x4`——**OpenSSH 的会话子进程恢复了 SIGPIPE 的默认处理**，关闭通道后无残留（修前也是 0 个）。在轮询命令前加 `trap '' PIPE;` 模拟「继承了被忽略的 SIGPIPE」时（SigIgn `0x1004`），修前 6.5 秒后残留 1 个循环。WSL 中的 sshd 由脚本直接启动、不经 systemd，systemd 下的 sshd 与其他发行版未用这种方法验证。
-- 解决：`sudo-switch.ts` 的 `pollCommand`：`i=0; while [ $i -lt N ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep S; i=$((i+1)); done`，N = ceil(2 × 切换超时 / 间隔)（150 ms、15 秒 → 200 次 ≈ 30 秒）。修后模拟情形也无残留；`wsl.test.ts` 断言切换后 `pgrep -a -f '[P]CHEND'` 为空。
+- 解决：`sudo-switch.ts` 的 `pollCommand`：`i=0; while [ $i -lt N ]; do ps -e -o pid= -o ppid= -o comm= || exit; echo PCHEND || exit; sleep S; i=$((i+1)); done`，N = ceil(2 × 切换超时 / 间隔)（150 ms、15 秒 → 200 次 ≈ 30 秒）。修后模拟情形也无残留；`wsl.test.ts` 断言切换后 `pgrep -a -f '[P]CHEND'` 为空。
 - 预防：在别人的服务器上启动的循环必须「写失败即退出 + 次数上限」，不依赖信号的默认处理。
 
 ### ssh2 的 `.ppk`：只支持 PPK v2（RSA / DSA），未加密的 `.ppk` 不能传口令

@@ -70,6 +70,8 @@ const POLL_INTERVAL_MAX_MS = 3_600_000
  * I2b（R24）：本端关闭通道后循环只能靠 SIGPIPE 结束；会话子进程若继承了被忽略的 SIGPIPE，写失败只返回非零，
  * 循环会在服务器上永远运行。因此 ps / echo 失败即 exit，并以 ceil(2 × timeoutMs / 间隔) 次为上限
  * （覆盖身份切换超时的两倍：超时之前不会因次数用完而提前关闭通道）。
+ * 列用 `-o pid= -o ppid= -o comm=` 逐列指定（POSIX 写法）：较旧的 procps-ng（现场 RHEL 7，sudo 1.8.19p2）把
+ * `-o pid=,ppid=,comm=` 中第一个 = 之后的整段当作 PID 列的标题，只输出一列，su 永远判定不出（knowledge/libraries.md）。
  */
 export function pollCommand(intervalMs: number, timeoutMs: number): string {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0 || intervalMs > POLL_INTERVAL_MAX_MS) {
@@ -81,7 +83,7 @@ export function pollCommand(intervalMs: number, timeoutMs: number): string {
   const times = Math.ceil((2 * timeoutMs) / ms)
   // 换算出指数形式的数字会让 shell 语法出错
   if (!Number.isSafeInteger(times)) throw new Error('invalid switch timeout')
-  return `i=0; while [ $i -lt ${times} ]; do ps -eo pid=,ppid=,comm= || exit; echo PCHEND || exit; sleep ${sec}; i=$((i+1)); done`
+  return `i=0; while [ $i -lt ${times} ]; do ps -e -o pid= -o ppid= -o comm= || exit; echo PCHEND || exit; sleep ${sec}; i=$((i+1)); done`
 }
 const POLL_FRAME_END = 'PCHEND'
 
